@@ -5,6 +5,7 @@
  *
  ***/
 #include "cutil.h"
+#include <signal.h>
 
 /***
  *
@@ -13,6 +14,9 @@
  ***/
 void h_exit(char *errmesg){
   perror(errmesg);
+#ifdef linux
+	prctl(PR_SET_PDEATHSIG, SIGHUP);
+#endif
   exit(1);
 }
 
