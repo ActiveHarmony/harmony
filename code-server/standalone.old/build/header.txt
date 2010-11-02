@@ -1,0 +1,61 @@
+#define __suif_min(x,y) ((x)<(y)?(x):(y))
+#define __suif_max(x,y) ((x)>(y)?(x):(y))
+struct __tmp_struct1 { int xs;
+                       int xe;
+                       int ys;
+                       int ye;
+                       int zs;
+                       int ze; };
+
+extern void streaming_all(double *, int, int, int, struct __tmp_struct1 *);
+
+extern void streaming_all(double *fi, int nx_local, int ny_local, int nz_local, struct __tmp_struct1 *i_c)
+  {
+    int i;
+    int j;
+    int k;
+    int kk;
+    int ii;
+    int imin;
+    int imax;
+    int jmin;
+    int jmax;
+    int kmin;
+    int kmax;
+    int n_i;
+    int n_ip1;
+    int n_ij;
+    int n_ijp1;
+    int n_ip1j;
+    int n_ip1jp1;
+    int n_ijk;
+    int n_im1;
+    int n_ijm1;
+    int n_im1j;
+    int n_im1jm1;
+    int n_im1jp1;
+    int myid;
+    int n_ip1jm1;
+    int jj;
+    int ny_local_plus;
+    int nz_local_plus;
+    int over1;
+    int _t7;
+    int _t9;
+    int _t10;
+    int _t11;
+    int _t12;
+    int _t13;
+    int _t14;
+    int _t15;
+    int _t16;
+    int _t17;
+    int _t18;
+    int _t19;
+    int _t20;
+    int t2;
+    int t4;
+    int t8;
+    int t10;
+    int t6;
+    int t12;
