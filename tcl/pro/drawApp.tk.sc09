@@ -1,0 +1,382 @@
+proc car {l} { return [lindex $l 0]}
+proc cadr {l} { return [lindex $l 1]}
+proc caddr {l} { return [lindex $l 2]}
+proc cadddr {l} { return [lindex $l 3]}
+proc caddddr {l} { return [lindex $l 4]}
+proc cdr {l} { return [lrange $l 1 end]}
+proc cddr {l} { return [lrange $l 2 end]}
+
+proc redraw_dependencies {name appName sendUpdate currValue} {
+#  puts "Redraw dependencies"
+#  puts $name
+#  puts $appName
+   
+  #increment the global time of the application
+  global ${appName}_time
+  if {![info exists ${appName}_time]} {
+    set ${appName}_time 0
+  }
+  incr ${appName}_time
+
+  upvar #0 ${appName}_bundle_${name}(value) appvalue
+	
+  global ${appName}_bundle_${name}
+  #parr ${appName}_bundle_${name}
+
+  upvar #0 ${appName}_bundle_${name}(depend) depend_list
+  foreach depend $depend_list {
+	set winname [string range $depend [expr 1+[string last "_" $depend]] end]
+	recompute_dependencies $depend $appName
+	if "[string match "*bundle*" $depend]" {
+	  puts " Redraw bundle"
+	  puts " $depend ; $winname"
+
+	  upvar #0 ${appName}_bundle_${winname}(isglobal) isglobal
+
+  	  #destroy .application_${appName}.bundles.f_$winname
+	  #if {$isglobal >= 0} {
+	#	destroy .application_${appName}.bundles.f_${winname}_isglobal
+ 	 # }
+	  drawharmonyBundle $winname $appName
+	} elseif "[string match "*node*" $depend]" {
+	  destroy .application_${appName}.nodes.f_$winname
+	  ####drawharmonyNode $winname $appName
+	} else {
+	  destroy .application_${appName}.others.f_$winname
+	  ####drawOther $winname $appName
+	}
+  }
+
+  #now we have to check if this is a global variable. 
+  #in this case we update all the locals that depend on it
+  upvar #0 ${appName}_bundle_${name}(isglobal) isglobl
+  if {$isglobl<0} {
+	upvar #0 ${appName}_bundle_${name}(deplocals) deplocals
+	upvar #0 ${appName}_bundle_${name}(value) value
+	foreach depend $deplocals {
+		upvar #0 $depend dependent
+		set dependent(value) $value
+		set winname [string range $depend [expr 1+[string last "_" $depend]] end]	  
+		set aName [string range $depend 0 [expr [string first "_bundle" $depend]-1]]
+	
+#		puts "Update dependent bundle : $depend ; $winname ; $aName"
+#		parr $depend
+
+		recompute_dependencies $depend $aName
+
+	  	upvar #0 ${aName}_bundle_${winname}(isglobal) isglobal
+
+  	  	destroy .application_${aName}.bundles.f_$winname
+	  	if {$isglobal >= 0} {
+			destroy .application_${aName}.bundles.f_${winname}_isglobal
+ 	  	}
+	  drawharmonyBundle $winname $aName
+	}	
+  }
+
+# call the C function that sends data to client
+#	puts "Checking update"
+#	puts $sendUpdate
+if {$sendUpdate==1} {
+#	puts "!!!!!!!!Sending Update!!!!!!!!!"
+#temporary commented for testing purposes
+#	update_client $name $appName $appvalue
+}
+}
+
+
+proc update_bundle_isglobal {name appName} {
+  global ${appName}_bundle_${name}(isglobal)
+  upvar #0 ${appName}_bundle_${name}(isglobal) isglobal
+
+  #first get the real name of the application without the socket number
+  set aName [string range $appName 0 [expr [string last "_" $appName]-1]]
+  #puts "aName=$aName"
+
+  global ${aName}_bundle_$name
+
+  if {$isglobal==0} {
+	if {[info exists ${aName}_bundle_$name]} {
+	  global ${aName}_bundle_${name}(deplocals)
+	  upvar #0 ${aName}_bundle_${name}(deplocals) deplocals
+	
+	  puts "Removing ${appName}_bundle_$name from $deplocals"
+
+	  set pos [lsearch -exact $deplocals ${appName}_bundle_$name]
+		  
+	  set ${aName}_bundle_${name}(deplocals) [lreplace $deplocals $pos $pos]
+
+	  puts "Removed from list: $deplocals"	
+	} else {
+	  puts "Global ${aName}_bundle_$name does not exist"
+	}
+  }  else {
+	if {[info exists ${aName}_bundle_$name]} {
+	  upvar #0 ${aName}_bundle_${name}(deplocals) deplocals
+
+	  if {[lsearch deplocals ${appName}_bundle_$name]<0} {
+		lappend deplocals ${appName}_bundle_$name
+	  }
+
+ 	  puts "Added to list: $deplocals"
+	  
+	  # need to get the value from the global variable and update
+	  # ourselves
+	  # here we might have a problem if somebody played with the 
+	  # global and local values independently. 
+	  # one way to protect against this kind of problems is 
+	  # to force all the variables we depend on to become global 
+	  # as well.
+	  # for now we are not going to implement this
+	  # this note is just for further improvements, if the need is
+	  # found for this kind of details.
+
+		upvar #0 ${aName}_bundle_${name}(value) glvalue
+		upvar #0 ${appName}_bundle_${name}(value) value
+
+		set value $glvalue	  	
+		recompute_dependencies ${appName}_bundle_${name} $appName
+
+	  	upvar #0 ${appName}_bundle_${name}(isglobal) isglobal
+
+  	  	destroy .application_${appName}.bundles.f_$name
+	  	if {$isglobal >= 0} {
+			destroy .application_${appName}.bundles.f_${name}_isglobal
+ 	  	}
+	  drawharmonyBundle $name $appName
+	} else {
+	  puts "Global ${aName}_bundle_$name does not exist"
+	  set isglobal 0
+	}
+  }
+  
+}
+
+
+proc drawharmonyApp {name} {
+
+  # mark that this application was drawn
+  global ${name}_draw
+  set ${name}_draw 1
+
+    set rank_num [string range $name [expr [string last "_" $name]+1] end]
+    set title_str  [string range $name 0 [expr [string last "_" $name]-1]]
+    if { [string is digit $rank_num] == 1 } {
+        append title_str "_" [expr $rank_num - 1]
+    } else {
+        set title_str $name
+    }
+
+#   wm title . $name
+  toplevel .application_$name
+   wm iconify .application_$name
+    wm title .application_$name $title_str
+  frame .application_${name}.bundles 
+  #pack .application_${name}.bundles
+   #set f [frame .application_${name}.bundles.f]
+  label .application_${name}.bundles.label_2_${name} -textvariable ${name}_label_text
+  .application_${name}.bundles.label_2_${name} configure -fg blue 
+  pack .application_${name}.bundles.label_2_${name} -side left
+  pack .application_${name}.bundles -side top
+  
+  frame .application_${name}.nodes -borderwidth 3 -relief groove
+  pack .application_${name}.nodes
+
+  frame .application_${name}.others -borderwidth 3 -relief raised
+  pack .application_${name}.others
+
+#  upvar #0 ${name}_bundles bundles
+#  label .label_2 -textvariable ${appName}_label_text
+#  .label_2 configure -fg red
+#  pack .label_2
+
+  foreach bun $bundles {
+    drawharmonyBundle $bun $name
+  }
+  drawharmonyBundle_temp $bundles $name
+
+  #we don't know if an application has nodes or others (it might be the
+  # case of global definition
+
+  upvar #0 ${name}_nodes nodes
+  if {[info exists ${name}_nodes]} {
+    foreach nod $nodes {
+      drawharmonyNode $nod $name
+    }
+  }
+
+  upvar #0 ${name}_others others
+  if {[info exists ${name}_others]} {
+    foreach opt $others {
+      drawOther $opt $name
+    }
+  }
+   
+
+
+
+  #this function is called to draw the Goodness and the Utilization functions
+  # if they were defined
+  #puts "now drawing the performance window for $name"
+  drawPerformance $name
+
+      ##############  added for SC09 demo ##########
+  # global ${name}_obsGoodness(is_global)
+  # upvar #0 ${name}_obsGoodness(is_global) isglobal
+
+    #puts "IS GLOBAL VAR : $isglobal"
+
+    #if {$is_global < 0} {
+    #    # Just add another pane
+    #     label .application_${name} -text "Hello World"  
+    #}
+    
+    ##############  added for SC09 demo ##########
+
+
+}
+
+proc drawOther {name appName} {
+  menubutton .application_${appName}.others.f_${name} -text $name -menu .application_${appName}.others.f_${name}.menu
+  pack .application_${appName}.others.f_$name -padx 10 -pady 10
+  set m [menu .application_${appName}.others.f_${name}.menu -tearoff 1]
+
+  upvar #0 ${appName}_other_${name} arrayName
+
+  $m add command -label "$arrayName(value) from $arrayName(expression)"
+}
+
+
+proc drawharmonyBundle_temp {names appName} {
+   set offset_x 0
+   set offset_y 0
+   #toplevel .application_$[appName].bundles
+   puts $names
+   foreach name $names {
+   	upvar #0 ${appName}_bundle_${name}(minv) minv
+		upvar #0 ${appName}_bundle_${name}(maxv) maxv
+		upvar #0 ${appName}_bundle_${name}(stepv) stepv
+      upvar #0 ${appName}_bundle_${name}(value) value
+		#set f [frame .application_${appName}.bundles.f_$name]
+		label .label_$name -textvariable ${appName}_bundle_${name}(value)
+      place .label_$name -in .application_$[appName].bundles -x 3.8c -y 13.3c -width 20.2c
+      #place $f.label_1 -x [expr (100+$offset_x)] -y [expr (100+$offset_y)]
+      .label.$name configure -fg red
+      #grid $f.label_1 -row 0 -column 0 
+		pack .label.$name
+      #pack $f
+   }
+
+
+}
+
+proc drawharmonyBundle {name appName} {
+
+global ${appName}_bundle_${name}
+global ${appName}_bundle_${name}(value)
+global ${appName}_bundle_${name}(isglobal)
+global ${appName}_label_text
+upvar #0 ${appName}_bundle_${name}(isglobal) isglobal
+
+upvar #0 ${appName}_bundle_${name} arrayName
+
+switch $arrayName(type) {
+	"enum" { 
+		 set f [frame .application_${appName}.bundles.f_$name]
+		 label $f.label -text "$name:    "
+		 pack $f.label -side left
+		 
+		 checkbutton $f.isglobal -text "global" -variable ${appName}_bundle_${name}(isglobal) -command "update_bundle_isglobal $name $appName"
+		 pack $f.isglobal -side right
+
+	 	 for {set i 1} {$i<=$arrayName(nr_opt)} {incr i 1} {
+			radiobutton $f.rb_opt${i} -variable ${appName}_bundle_${name}(value) -text $arrayName(opt${i}) -value $arrayName(opt${i}) -command "redraw_dependencies $name $appName 1 0"
+			pack $f.rb_opt${i} -side left 
+		 }
+		 pack $f 
+
+		if {$isglobal >=0} {
+		 checkbutton .application_${appName}.bundles.f_${name}_isglobal -text "global" -variable ${appName}_bundle_${name}(isglobal) -command "update_bundle_isglobal $name $appName"
+		 pack .application_${appName}.bundles.f_${name}_isglobal
+	        }
+	}
+	"real" -
+	"int" { 
+		upvar #0 ${appName}_bundle_${name}(minv) minv
+		upvar #0 ${appName}_bundle_${name}(maxv) maxv
+		upvar #0 ${appName}_bundle_${name}(stepv) stepv
+      upvar #0 ${appName}_bundle_${name}(value) value
+      upvar #0 ${appName}_label_text label_text
+		set f [frame .application_${appName}.bundles.f_$name]
+      #place [ label .$f.label -textvariable "W] -x 100 -y 100 .l configure -bg red
+      #label $f.label_1 -text "block_x"
+		label $f.label_2 -textvariable ${appName}_label_text
+      $f.label_2 configure -fg red
+      
+		pack $f.label_2
+      pack $f
+#set w [label $w.l-$var -textvariable $var -width 8]
+      scale .application_${appName}.bundles.f_$name -from $minv -to $maxv -resolution $stepv -variable ${appName}_bundle_${name}(value) -orient horizontal -label $name -showvalue true  -length [expr ($maxv-$minv)*15/$stepv] -command "redraw_dependencies $name $appName 1"
+#		scale .application_${appName}.bundles.f_$name -from $minv -to $maxv -resolution $stepv -variable ${appName}_bundle_${name}(value) -orient horizontal -label $name -tickinterval [expr 2*$stepv] -showvalue true  -length [expr ($maxv-$minv)*15/$stepv] -command "redraw_dependencies $name $appName 1"
+
+#		puts "!!!!!!!!Drawing"
+#		puts $appName
+
+		pack .application_${appName}.bundles.f_$name
+
+#		if {$isglobal >= 0} {
+#		 checkbutton .application_${appName}.bundles.f_${name}_isglobal -text "$name is global" -variable ${appName}_bundle_${name}(isglobal) -command "update_bundle_isglobal $name $appName"
+#		 pack .application_${appName}.bundles.f_${name}_isglobal
+#		}
+	}
+}
+}
+
+
+proc drawharmonyNode {name appName} {
+
+
+  upvar #0 ${appName}_node_${name} arrayName
+ 
+  if {$arrayName(replicatev)==0} {return}
+
+  menubutton .application_${appName}.nodes.f_${name} -text $name -menu .application_${appName}.nodes.f_${name}.menu
+  pack .application_${appName}.nodes.f_$name -padx 10 -pady 10
+  set m [menu .application_${appName}.nodes.f_${name}.menu -tearoff 1]
+
+
+
+  foreach tag [lsort [array names arrayName]] {
+#	puts "Check against $arrayName($tag)"
+
+	if "[expr 1+[string last "v" $tag]]!=[string length $tag]" {
+	  if "[string compare $arrayName($tag) $arrayName(${tag}v)]" {
+	    $m add command -label "$tag: $arrayName(${tag}v) from $arrayName($tag)"	
+	  } else {
+	     $m add command -label "$tag: $arrayName($tag)"	 
+	  }
+	}
+  }
+  
+  return
+
+  foreach opt $args {
+	puts stdout [cadr $opt]
+	switch [car $opt] {
+	"hostname" -
+	"os" { $m add command -label "[car $opt]: [cadr $opt]" }
+	
+	"seconds" -
+	"cycles" -
+	"memory" -
+	"replicate" {
+	  global $opt
+	  set $opt [uplevel #0 "expr [cadr $opt]"]
+#	  puts stdout $opt
+	  $m add command -label "[car $opt]: $opt" 
+	  }
+	}
+  }
+}
+
+

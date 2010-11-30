@@ -1,0 +1,6 @@
+__i=1
+while [ $__i -le 2 ]
+do
+   ./code_tuner
+done
+
