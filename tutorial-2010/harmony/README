@@ -1,0 +1,94 @@
+
+This file contains a description of the files that are comprised in this 
+directory. It has a short description of each file, but it does not
+get into details of implementation, as this is (or should be!) done in 
+each file. 
+
+The current supported platform is Linux only. 
+
+bin/     : executables
+example/ : several demo examples.
+tcl/     : Tcl scripts used by the h_server (this is where all the
+           search algorithms are implemented).
+build/	 : source files
+
+hclient.c - the implementation of the API functions of Harmony
+
+hclient.h - prototypes of the API functions
+
+hconfig.tcl - the tcl script that loads the functions that parse the RSL 
+		and take care of the tk interface
+
+hmesgs.c - the implementation of functions that pack/unpack 
+		(serialize/deserialize) messages
+
+hmesgs.h - the definition of message classes. 
+
+hserver.c - the implementation of the Harmony server
+
+hserver.h - function prototypes for harmony server and other definitions
+
+Next, a few pointers on how to compile the code and run the example.
+
+just do a:
+
+$ cd build
+$ make
+
+This will build the harmony server and the libcreater for you 
+
+$ cd ../bin
+$ ls 
+hconfig.tcl  hserver  libcreater
+
+To run the server:
+
+$ ./hserver <search_algorithm> <enable_disable_graphics>
+If no command line parameter is specified, the default search algorithm
+is PRO. Otherwise, if the first parameter is:
+1: harmony chooses PRO
+2. Nelder Mead Simplex Algorithm
+3. Random Algorithm
+4. Brute Force Algorithm
+
+To run the example client you have to setup the environment variables:
+
+at bash:
+$ export HARMONY_S_HOST=localhost
+$ export HARMONY_S_PORT=1977
+
+at csh/tcsh:
+$ setenv HARMONY_S_HOST localhost
+$ setenv HARMONY_S_PORT 1977
+
+Of course, "localhost" is put just for demo purposes. You should set that
+variable to whatever hostname the server is running on. However, the port
+has to be 1977. Maybe in future versions the port number will be hardcoded
+in the client code. 
+
+We provide a set of examples:
+To build and run the example client:
+$ cd ../example/c++_examples/example2/
+$ make
+
+Before running the example, make sure to check the hconfig.tcl file in bin
+directory. The hconfig.tcl file should include correct pro init file. For
+this example, you can put pro_init_generic.tcl in the load list.
+Check the pro_init_generic file to make sure that the parameters are set
+correctly. In particular, check the space_dimension and simplex_npoints
+parameters. For this example, the space dimension is 2 (x and y parameters).
+
+    set space_dimension 2
+    # simplex size
+    set simplex_npoints 8
+Since the simplex_npoints is 8, harmony expects eight clients. So to run the
+example, you can do one of the following:
+
+$ for i in $(seq 1 1 8); do ./example& done
+
+OR
+
+$ mpiexec -np 8 ./example
+
+Try other examples as well.
+
