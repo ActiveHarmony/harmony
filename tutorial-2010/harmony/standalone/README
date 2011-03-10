@@ -1,0 +1,84 @@
+Please read this carefully before setting up the code-generator.
+
+code_generator can be used to generate code using CHiLL. 
+CHiLL and its components can be downloaded from (www.cs.utah.edu/~chunchen)
+
+The code_generator is designed to take advantage of the available free machines to do a distributed
+code generation.
+
+setup_code_gen_hosts.sh: a script file, which sets up necessary directories in $HOME/scratch
+for code generation. This file take the name of the application (for example, gemm) as an 
+argument. This name should match the directory name for the application.
+For distributed code generation, we ssh into each remote host, create a
+$HOME/scratch directory and within the scratch directory, we create multiple directories based
+on how many code generation instances we want to use in the remote host.
+All hosts available for code_generation are stored in generator_hosts_<appname> file.
+The format of this file is the following:
+	host <num_instances>
+For example if we have two dual core machine (named foo and bar) and we want to use all four
+	cores, the generator_hosts_<appname> file will look like the following:
+	foo 2
+	bar 2
+The setup script create the following directories:
+on foo:
+$HOME/scratch/foo_1_<appname>
+$HOME/scratch/foo_2_<appname>
+
+on bar:
+$HOME/scratch/bar_1_<appname>
+$HOME/scratch/bar_2_<appname>
+
+These new directories are populated with the required files for code-generation. The information
+about required files is provided below.
+
+To use the code_generator:
+
+One time changes per installation:
+code_generator.h : Make sure the code generator host definitions are updated to reflect the 
+	properties of the machine that you are installing the code_generator.
+
+First compile: 
+% gmake
+
+Lets assume the code_generator is installed in <code_generator> directory.
+Assume we want to generate code for gemm (matrix multiplication):
+
+First create a directory called "gemm" within the <code_generator> directory.
+Copy all files from <code_generator>/generic to gemm directory. Rename the 
+chill_script.generic.sh to chill_script.gemm.sh
+Files that need to be changed:
+generate_temp_script.sh : This file takes the code transformation parameters as arguments and
+	creates a chill script (named temp.script).
+code.properties: This file defines some global environment variables. The appname has to match
+	the name of the directory (in this case gemm). Other changes that needs to made are
+	documented in the file itself.
+required_files.dat: This file lists all the files are needed by CHiLL to generate code. These
+	files include SUIF intermediate files, a default file (needed in case CHiLL cannot
+	generate code for the provided transformation parameters), code.properties, etc. More
+	information can be found on the generic code.properties file iteself.
+Files that need to be created:
+gemm.f (or c) : depending on your requirement.
+gemm_default.f : which can be a copy of gemm.f
+gemm.sp2 (SUIF intermediate file): you can create this using chill_runner_f.sh. The runner
+	script takes the appname (in this case gemm) as an argument and creates the 
+	intermediate files.
+generator_hosts_gemm : you have create this file in <code_generator> directory. There are
+	multiple examples that show how this file works.
+
+Things to remember:
+1. If any of the files in required_files.dat change, you will have to run the ./setup_code_gen_hosts.sh
+again. This has to be done to make sure the updated files are copied into the code generation 
+directories.
+
+2. We assume that password-less login have been setup between the host that runs the code_generator driver
+and all the remote code-generator hosts. (you can do this using the ssh-keygen).
+
+3. We assume that CHiLL and its components are installed in $HOME. More specifically, we assume CHiLL
+is installed in $HOME/CHiLL, Omega plus is installed in $HOME/omega and SUIF is installed in 
+$HOME/suifhome.
+
+To launch the code_generator:
+% ./code_generator <appname>
+
+For this example:
+% ./code_generator gemm 

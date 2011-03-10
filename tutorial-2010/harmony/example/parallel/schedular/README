@@ -1,0 +1,58 @@
+This is a simple example meant to demonstrate the offline tuning.
+This is different than the other offline tuning examples because
+here we have to actually run the application (that is being tuned)
+on the cluster using the schedular that the cluster provides.
+
+The "dummy" application that is used for demonstration is a
+simple application that takes an integer parameter as a command
+line argument and prints out the performance number (based
+on a simple integer function) in the following format:
+perf: <perf>
+
+run_sch.c: is a driver that can be run on brood. If you want to 
+run multiple copies of this driver, use the for command on bash.
+For example, if you are tuning a parameter space that is
+N-dimensional, you need to run at least N+1 copes of this.
+In this example, we assume that the parameter space is 
+1-dimensional, which means you have to run at least two copies.
+
+create_tcl_file.sh: is a script file that takes APPID as the 
+parameter and create a unique tcl file for each client process.
+
+create_submission_script.sh is the script file that creates a 
+processor-specific submission script.
+
+Some assumption that have been made on this example are the 
+following:
+1. The cluster uses the PBS schedular (hence the qsub command).
+(for other schedulars, appropriate changes have to be made.)
+
+
+The normal mode of operation is as follows:
+
+Driver:
+
+Register with harmony server.
+Add the paramters.
+Get the new values of the paramters.
+If the configuration has been evaluated already,
+    no need to do anything. Get the perf from the
+    server and update the server.
+Else:
+    Create a submission script.
+    Submit the Job.
+    Wait for the result.
+    Read the result.
+    Update the Harmony server.
+Repeat until convergence.
+
+
+Before running this example, make sure that the pro_init_<appname>.tcl file
+has the right values for space_dimension. (In this case, we are using pro_init_generic.tcl
+in hconfig.pro.tcl file; so goto tcl/pro/pro_init_generic.tcl file and change the 
+space_dimension to 1). Also make sure that you are using pro_init_generic.tcl in your
+hconfig.tcl file.
+Make sure npoints is set to 2 (in  pro_init_generic.tcl).
+
+Running this with 2 processes:
+for i in $(seq 1 1 2); do ./schedular $i & done 
