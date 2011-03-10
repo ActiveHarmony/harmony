@@ -1,0 +1,231 @@
+
+
+# the performance canvas has some fixed values from now. 
+# the layout is the following: 
+#  visible width: 500 ; visible height: 200
+#  scroll region width: 5000 ; scroll region height: 200
+# we are going to compute the place where we place the predicted function threshold
+# based on the values used for the observed function. As described in the specs, the
+# observed function should provide some min and max values which are not to be 
+# crossed by normal execution. However, we understand that this kind of values are
+# difficult to be provided in an absolute manner, so our code would not crash if
+# the values obtained are outside the given range.
+
+proc drawPerformance {appName} {
+  # first check if any of the functions is defined
+  upvar #0 ${appName}_predGoodness predG
+  upvar #0 ${appName}_obsGoodness obsG
+
+  if {[info exists predG] && [info exists obsG]} {
+    label .application_${appName}.performanceText -width 70 -pady 5 -anchor w -text "Performance function:"     
+    pack .application_${appName}.performanceText
+
+    global ${appName}_obsGoodness(isglobal)
+    upvar #0 ${appName}_obsGoodness(isglobal) isglobal
+
+    puts "Drawing performance for $appName : $isglobal"
+
+    #if {$isglobal >= 0} {
+    #  checkbutton .application_${appName}.performanceisglobal -text "global" -variable ${appName}_obsGoodness(isglobal) -command "update_perf_isglobal $appName"
+    #  pack .application_${appName}.performanceisglobal -anchor w
+    #}
+
+    Scrolled_Canvas .application_${appName}.performance -width 500 -height 200 -scrollregion {0 0 5000 200} -background #E0E088
+   
+    pack .application_${appName}.performance
+
+    drawharmonyPredGoodness $appName
+
+    drawharmonyObsGoodness $appName
+  }
+}
+
+
+proc update_perf_isglobal {appName} {
+
+  upvar #0 ${appName}_obsGoodness(isglobal) isglobal
+
+  #first get the real name of the application without the socket number
+  set aName [string range $appName 0 [expr [string last "_" $appName]-1]]
+  puts "aName=$aName"
+
+  global ${aName}_obsGoodness
+
+  if {$isglobal==0} {
+        if {[info exists ${aName}_obsGoodness]} {
+	  global ${aName}_obsGoodness(deplocals)
+          upvar #0 ${aName}_obsGoodness(deplocals) deplocals
+
+          set pos [lsearch -exact $deplocals ${appName}_obsGoodness]
+                  
+	  puts "Removing position $pos from $deplocals"
+
+          set ${aName}_obsGoodness(deplocals) [lreplace $deplocals $pos $pos]
+
+          puts "Removed from list: $deplocals"  
+        } else {
+	  info globals ADR_obsGoodness
+          puts "Global ${aName}_obsGoodness does not exist"
+        }
+  }  else {
+        if {[info exists ${aName}_obsGoodness]} {
+          upvar #0 ${aName}_obsGoodness(deplocals) deplocals
+
+          lappend deplocals ${appName}_obsGoodness
+          puts "Added to list: $deplocals"
+          
+          # here we might have a problem if somebody played with the 
+          # global and local values independently. 
+          # one way to protect against this kind of problems is 
+          # to force all the variables we depend on to become global 
+          # as well.
+          # for now we are not going to implement this
+          # this note is just for further improvements, if the need is
+          # found for this kind of details.
+
+        } else {
+          puts "Global ${aName}_obsGoodness does not exist"
+          set $isglobal 0
+        }
+  }
+}
+
+
+
+# this function is "imported" from Brent B. Welch
+# "Practical Programming in Tcl and Tk"
+proc Scrolled_Canvas { c args } {
+        frame $c
+        eval {canvas $c.canvas \
+                -xscrollcommand [list $c.xscroll set] \
+                -yscrollcommand [list $c.yscroll set] \
+                -highlightthickness 0 \
+                -borderwidth 0} $args
+        scrollbar $c.xscroll -orient horizontal \
+                -command [list $c.canvas xview]
+        scrollbar $c.yscroll -orient vertical \
+                -command [list $c.canvas yview]
+        grid $c.canvas $c.yscroll -sticky news
+        grid $c.xscroll -sticky ew
+        grid rowconfigure $c 0 -weight 1
+        grid columnconfigure $c 0 -weight 1
+        return $c.canvas
+}                  
+
+proc canvasyCoord {appName y} {
+  upvar #0 ${appName}_obsGoodness(min) omin
+  upvar #0 ${appName}_obsGoodness(max) omax
+  set step [expr 200.0/($omax-$omin)]
+
+  return [expr ($omax-$y)*$step]
+}
+
+proc drawharmonyPredGoodness {appName} {
+
+  upvar #0 ${appName}_predGoodness(min) pmin
+  upvar #0 ${appName}_predGoodness(max) pmax
+  upvar #0 ${appName}_obsGoodness(min) omin
+  upvar #0 ${appName}_obsGoodness(max) omax
+  set step [expr 200.0/($omax-$omin)]
+#  .application_${appName}.performance.canvas create line 0 [expr 200-($pmin-$omin)*$step] 5000 [expr 200-($pmin-$omin)*$step] -fill red -tag predGmin
+#  .application_${appName}.performance.canvas create line 0 [expr ($omax-$pmax)*$step] 5000 [expr ($omax-$pmax)*$step] -fill red -tag predGmax
+
+  .application_${appName}.performance.canvas create line 0 [canvasyCoord $appName $pmin] 5000 [canvasyCoord $appName $pmin] -fill red -tag predGmin
+  .application_${appName}.performance.canvas create line 0 [canvasyCoord $appName $pmax] 5000 [canvasyCoord $appName $pmax] -fill red -tag predGmax
+  .application_${appName}.performance.canvas create line 0 0 0 200 -fill darkgreen -tag timeLine
+
+ .application_${appName}.performance.canvas create text 0 [canvasyCoord $appName $pmin] -anchor nw -text "predGoodness(min): $pmin" -fill red -tag {predGmin predGminText}
+ .application_${appName}.performance.canvas create text 0 [canvasyCoord $appName $pmax] -anchor sw -text "predGoodness(max): $pmax" -fill red -tag {predGmax predGmaxText}
+  .application_${appName}.performance.canvas create text 0 0 -anchor nw -text " time line: 20" -fill darkgreen -tag {timeLine timeLineText}
+
+  .application_${appName}.performance.canvas bind predGmin <B1-Motion> {predGDrag %W %y predGmin}
+  .application_${appName}.performance.canvas bind predGmax <B1-Motion> {predGDrag %W %y predGmax}
+  .application_${appName}.performance.canvas bind timeLine <B1-Motion> {timeLineDrag %W %x}
+
+}
+
+
+proc drawharmonyObsGoodness {appName} {
+  global ${appName}_obsGoodness(coordinates)
+  upvar #0 ${appName}_obsGoodness(coordinates) coords
+
+#  .application_${appName}.performance.canvas delete obsGoodness
+
+#  .application_${appName}.performance.canvas create line $coords -fill blue -tag obsGoodness
+	
+#  puts "Here I have: [lindex $coords [expr [llength $coords]-1]] [lindex $coords end]"
+#  puts "Coords: $coords"
+
+  drawCross .application_${appName}.performance.canvas [lindex $coords [expr [llength $coords]-2]] [lindex $coords end]
+}
+
+
+proc drawCross {win xcoord ycoord} {
+  $win create line [expr 2*$xcoord-1] $ycoord [expr 2*$xcoord+2] $ycoord -fill blue -tag obsGoodness
+  $win create line [expr 2*$xcoord] [expr $ycoord-1] [expr 2*$xcoord] [expr $ycoord+2] -fill blue -tag obsGoodness
+}
+
+
+proc timeLineDrag {win x} {
+  set tempStr [string range $win [expr [string first "_" $win]+1] [string length $win]]
+  set appName [string range $tempStr 0 [expr [string first "." $tempStr]-1] ]
+
+  set oldx [lindex [$win coords timeLine] 0]
+
+  set newx [expr $x + 5000*[lindex [$win xview] 0]]
+
+  set dx [expr $newx-$oldx] 
+
+  set nx [expr $oldx+$dx]
+
+  if {$nx>0 && $nx<5000} {
+
+    $win move timeLine $dx 0
+
+    $win itemconfigure timeLineText -text " time line: [expr $newx/2]"
+  }
+}  
+
+proc predGDrag {win y what} {
+
+
+  set tempStr [string range $win [expr [string first "_" $win]+1] [string length $win]]
+  set appName [string range $tempStr 0 [expr [string first "." $tempStr]-1] ]
+
+  global ${appName}_predGoodness
+  global ${appName}_obsGoodness
+
+  upvar #0 ${appName}_predGoodness(min) pmin
+  upvar #0 ${appName}_predGoodness(max) pmax
+  upvar #0 ${appName}_obsGoodness(min) omin
+  upvar #0 ${appName}_obsGoodness(max) omax
+
+  set step [expr 200.0/($omax-$omin)]
+
+  set newy [expr $y+200*[lindex [$win yview] 0]]
+
+  if {[string match predGmax $what]} {
+    set inity [cadr [$win coords predGmax]]
+    set oldpmax $pmax
+    set pmax [expr $pmax-($newy-$inity)/$step]
+
+    if {$pmax > $omax || $pmax < $pmin} {
+      set pmax $oldpmax
+    } else {
+      $win move predGmax 0 [expr $newy-$inity]
+      $win itemconfigure predGmaxText -text  "predGoodness(max): $pmax"
+    }
+  } else {
+    set inity [cadr [$win coords predGmin]]
+    set oldpmin $pmin
+    set pmin [expr $pmin-($newy-$inity)/$step]
+
+    if {$pmin < $omin || $pmin > $pmax} {
+      set pmin $oldpmin
+    } else {  
+      $win move predGmin 0 [expr $newy-$inity]
+      $win itemconfigure predGminText -text  "predGoodness(min): $pmin"
+    }
+  }
+}
+    

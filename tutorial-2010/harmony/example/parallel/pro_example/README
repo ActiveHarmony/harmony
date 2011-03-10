@@ -1,0 +1,9 @@
+This is an mpi based example.
+
+Since the application here has six tunable parameters, the mpi application has to be run on at least
+7 processors. Please make sure the parameters in pro_init_<appname>.tcl (in <harmony_dir>/tcl/pro/
+directory) are defined appropriately.
+
+space_dimension parameter in the init file has to be 6 and the npoints parameter in the init file
+has to be at least 7 (no upper limit).
+
