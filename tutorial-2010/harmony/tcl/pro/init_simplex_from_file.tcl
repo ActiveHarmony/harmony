@@ -1,2 +1,0 @@
-global init__
-set init__ [list  [list  55      61      61      3       1] [list  59      36      61      3       10] [list  52      59      26      3       1] [list 61      61      61      16      1] [list 65      61      59      3       1] [list 65      59      61      3       1] [list 59      46      88      1       1] [list 59      46      88      3       1]]
