@@ -1,7 +1,0 @@
-lib:OUT__1__6755__.so
-OUT__1__6755__.o:OUT__1__6755__.c
-	gcc -c -fpic OUT__1__6755__.c
-OUT__1__6755__.so:OUT__1__6755__.o
-	gcc -shared -lc -o OUT__1__6755__.so OUT__1__6755__.o
-clean:
-	rm -rf lib:OUT__1__6755__.so OUT__1__6755__.o

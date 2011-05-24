@@ -1,7 +1,0 @@
-appname=$1
-__i=1
-while [ $__i -le 2 ]
-do
-   ./code_generator $appname -1
-done
-
