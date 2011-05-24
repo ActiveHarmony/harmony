@@ -1,6 +1,0 @@
-To run this example:
-gmake
-
-Make sure the server is started and the environment variable HARMONY_S_PORT and HARMONY_S_HOST are set properly.
-
-./offline_tuning

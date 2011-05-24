@@ -1,5 +1,0 @@
-image create photo logo -file /hivehomes/tiwari/harmony_pro_release/tcl/logo_new.ppm
- pack [canvas .c]
- .c create image 0 0 -anchor nw -image logo
-wm title . "Active Harmony"
-wm geometry . [image width logo]x[image height logo] 
