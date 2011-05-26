@@ -4,7 +4,6 @@
 proc project_points { points appName } {
     upvar #0 projection_method method_num
     set projected_points {}
-    #foreach point $points 
     if { $method_num == 1 } {
         return [projection_using_ann $points]
     } elseif { $method_num == 2 } {
@@ -12,10 +11,6 @@ proc project_points { points appName } {
             lappend projected_points [projection_onto_boundary $appName $point]
         }
     }
-    #puts "Before Projection :: "
-    #puts $points
-    #puts "After Projection ::"
-    #puts $projected_points
     return $projected_points
 }
 
@@ -76,13 +71,10 @@ proc projection_middle {bundleName point domain} {
     set return_value 0
     # find the value in the domain that is closest to the "value" passed
     for {set i 0} {($i < [llength $domain]) && ([lindex $domain $i] < $point)} {incr i} { }
-    #parr $domain
     if {$i==0} {
         set return_value [lindex $domain $i]
-        #set ${bundleName}(value) [lindex $domain $i]
     } elseif {$i >= [llength $domain]} {
         set return_value [lindex $domain end]
-        #set ${bundleName}(value) [lindex $domain end]
     } else {
         # set the new value as close as possible.
         # look at the values that are one step lower than $i
@@ -90,13 +82,10 @@ proc projection_middle {bundleName point domain} {
         set dif1 [expr [lindex $domain $i]-$point]
         set dif2 [expr $point - [lindex $domain [expr $i-1]]]
 
-        #puts "diffs: $dif1 $dif2"
         if {$dif1 > $dif2} {
             set return_value [lindex $domain [expr $i-1]]
-            #set ${bundleName}(value) [lindex $domain [expr $i-1]]
         } else {
             set return_value [lindex $domain $i]
-            #set ${bundleName}(value) [lindex $domain $i]
         }
     }
     return $return_value

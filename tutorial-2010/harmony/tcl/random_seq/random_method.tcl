@@ -38,7 +38,6 @@ proc random_method {appName} {
         if { $idx_upper > 0 } {
             set idx  [random_uniform 0 $idx_upper 1]
         }
-        #puts "random index:: $idx"
         set bunv [lindex $domain $idx]
         redraw_dependencies $bun $appName 0 0
     }
@@ -65,23 +64,16 @@ proc get_next_configuration { appName } {
 
      set out_str ""
 
-     #creating the list of the bundles
-     #set bundle_list[list]
-
      upvar #0 ${appName}_bundles buns
 
      foreach bun $buns {
 
 	 upvar #0 ${appName}_bundle_${bun}(domain) domain
 
-	 #set idx_upper [expr [llength $domain]-1]
 	 set idx_upper [expr [llength $domain]]
 
 	 set range [expr {$idx_upper-$min}]
 
-	 #unique random number generator
-	 #set idx [expr {int($min+(($idx_upper-$min)*rand()))}]
-	 
 	 set idx [expr {int($min+$range*rand())}]
 
 	 append out_str $idx "_"

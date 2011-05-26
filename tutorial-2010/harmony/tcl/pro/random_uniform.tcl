@@ -60,11 +60,3 @@ proc tack_on { ls_1  ls_2 } {
     }
     return $out_list
 }
-
-#set temp [random_uniform 100 900 5]
-#set simplex {{1 2} {2 3} {4 5} {6 7} {8 9}}
-#set tacked [tack_on $temp $simplex]
-#puts $tacked
-#puts [lsort -index 0 $tacked]
-#puts $temp
-

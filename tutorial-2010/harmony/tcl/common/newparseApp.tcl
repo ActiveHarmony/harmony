@@ -217,9 +217,7 @@ proc updateObsGoodness {appName value timestamp args} {
             #	    puts $depend
             #	    parr ${appName}_obsGoodness
             if {[llength $qdepend]>=1} { incr i }
-            #	    puts $qdepend
         }
-        #puts "Counted : $i"
         if {$i == [llength $deplocals]} {
             # means we got samples from everybody, so we can just go ahead
             # and agregate individually using ${appName}_agregation_local
@@ -240,15 +238,11 @@ proc updateObsGoodness {appName value timestamp args} {
                 set nvalue [general_aggregation $temp]
             }
 
-            #parr ${appName}_obsGoodness
-
             # now clean everything behind us
             foreach depend $deplocals {
                 upvar #0 ${appName}_obsGoodness(queue_${depend}) qdepend
                 set qdepend {}
             }
-
-            #parr ${appName}_obsGoodness
 
             #now we just go ahead and do with this value whatever we usually do
             set ${appName}_obsGoodness(value) $nvalue
@@ -313,8 +307,6 @@ proc initialize_first_bundle {appName indx value} {
 	    set ${bun}(value) [closest_value ${appName}_bundle_${bun} $value]
 	}
     }
-
-    #redraw_dependencies $bun $appName 0 0
 }
 
 proc general_aggregation {values} {
@@ -371,7 +363,5 @@ proc harmony_cleanup {appName} {
     upvar #0 ${appName}_obsGoodness(isglobal) isglobal
     set isglobal 0
     update_perf_isglobal $appName
-
-#    parr ${appName}_obsGoodness
 
 }

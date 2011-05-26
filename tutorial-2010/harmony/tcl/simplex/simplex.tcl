@@ -221,8 +221,6 @@ proc simplex_method {appName yvalue} {
 	    global ${appName}_simplex_refp
 	    set ${appName}_simplex_refp $points($low(index))
 
-	    #for {set i 0} {$i < $npoints} {incr i} {set ${appName}_simplex_points($i) {} }
-
 	    set npoints 0
 
 	    upvar \#0 ${appName}_simplex_refp refp
@@ -406,7 +404,6 @@ proc set_bundles_to_new_values {appName values} {
     for {set sign 1} {($ok==0) && ($sign>-2)} {incr sign -2} {
 	for {set retry -1} {($ok==0) && ($retry < [llength $values])} {incr retry} {
 	    puts "Retry : $retry ; [llength $values] ; $ok ; sign = $sign"
-#	    puts "------"
 	    set i 0
 	    foreach bun $bundles {
 		upvar #0 ${appName}_bundle_${bun}(value) bunv
@@ -418,9 +415,7 @@ proc set_bundles_to_new_values {appName values} {
 		    set closestv [closest_value ${appName}_bundle_${bun} [lindex $values $i]]
 		    set proposedv [expr $closestv + $stepv*($i==$retry)*$sign]
  
-#		    puts "Values: $closestv ; $proposedv ; $minv ; $maxv"
 		    if {($proposedv >= $minv) && ($proposedv <= $maxv)} {
-#			puts "Proposed passed!"
 			set ${bun}(value) $proposedv
 		    } else {
 			set ${bun}(value) $closestv
@@ -433,18 +428,14 @@ proc set_bundles_to_new_values {appName values} {
 	    if {[exists_point $temporary ${appName}]} {
 		set ok 0
 	    } else {
-#		            puts "point does not exist"
 		set ok 1
 	    }
 	}
-#	puts "OK: $ok ;($ok==0) && ($retry < [llength $values]) ; sign = $sign "
     }
 
     global ${appName}_simplex_time
     global ${appName}_time
     upvar #0 ${appName}_time time
-#    puts $time
-#    puts ${appName}_simplex_time
     set ${appName}_simplex_time $time
 }
 
@@ -453,7 +444,6 @@ proc exists_point {temp appName} {
     upvar #0 ${appName}_simplex_npoints npoints
     upvar #0 ${appName}_simplex_points points
     for {set i 0} {$i < $npoints} {incr i} {
-        #puts "Checking $temp against $points($i) ; $npoints ; $i"
         if {$temp == $points($i)} {
             puts "Found equality: $temp = points($i)=$points($i)"
             return 1}

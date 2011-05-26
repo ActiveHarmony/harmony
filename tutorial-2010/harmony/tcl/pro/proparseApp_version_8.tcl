@@ -192,19 +192,15 @@ proc updateObsGoodness {appName value timestamp args} {
                 set qdepend {}
             }
 
-            #parr ${appName}_obsGoodness
-
             #now we just go ahead and do with this value whatever we usually do
             #set ${appName}_obsGoodness(value) $current_low
 
             incr time
 
-            #puts "time:: $time"
             # check if best performance so far is defined already?
             upvar #0 best_coordinate_so_far disp_low_point
             upvar #0 best_perf_so_far best_perf_so_far
             lappend coords $time [canvasyCoord $appName $best_perf_so_far]
-            #puts "coords:: $coords"
 
             upvar #0 draw_har_windows draw_windows
             if { $draw_windows == 1 } {

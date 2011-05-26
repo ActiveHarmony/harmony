@@ -53,7 +53,6 @@ proc recompute_dependencies {name appName} {
 }
 
 proc dependencies {type name appName} {
-#  puts "DEPENDENCIES : $type, $name, $appName"
 
   upvar #0 $name arrayName
   upvar #0 ${appName}_bundles bundles
@@ -62,7 +61,6 @@ proc dependencies {type name appName} {
     "enum" {
  	for {set i 1} {$i<=$arrayName(nr_opt)} {incr i 1} {
 	    foreach bun $bundles {
-# 		puts "check *${bun}* against $arrayName(opt${i})"
 		if [string match "*${bun}*" $arrayName(opt${i})] {
 		    lappend ${appName}_bundle_${bun}(depend) $name
 		}
@@ -72,9 +70,6 @@ proc dependencies {type name appName} {
     "real" -
     "int" {
 	foreach bun $bundles {
-#	    puts "Check *${bun}* against $arrayName(min) ;[string match "*$bun*" $arrayName(min)] "
-#	    puts "Check *${bun}* against $arrayName(max) ;[string match "*$bun*" $arrayName(max)]"
-#	    puts "Check *${bun}* against $arrayName(step) ;[string match "*$bun*" $arrayName(step)] "
 	    if {[string match "*$bun*" $arrayName(min)] || 
 	       [string match "*$bun*" $arrayName(max)] ||
 	       [string match "*$bun*" $arrayName(step)] } {
@@ -88,7 +83,6 @@ proc dependencies {type name appName} {
 	foreach bun $bundles {
 	    set matched 0
 	    foreach tag [lsort [array names arrayName]] {
-#		puts "Check *${bun}* against $arrayName($tag) ;[string match "*$bun*" $arrayName($tag)] "
 		if {[string match "*$bun*" $arrayName($tag)]} {
 		  set matched 1
 		}
@@ -261,14 +255,12 @@ proc harmonyOther {args} {
 
 proc computeBundle {name appName} {
 
-  #define global variable AppName_bundle_BundleName
   global ${name}
   upvar #0 ${name} arrayName
 
   upvar #0 ${appName}_bundles bundles
   #define values as global 
   foreach bundle $bundles {
-#      puts $bundle
       upvar #0 ${appName}_bundle_${bundle}(value) $bundle
   }
 
@@ -290,8 +282,6 @@ proc computeBundle {name appName} {
 	  set  ${name}(maxv) [expr $max]
 	  set  ${name}(stepv) [expr $step]
 	  
-	  
-	  #  puts $tvalue
 	  if {$tvalue<[expr $min]} { 
 	      set ${name}(value) [expr $min]
 	  } else {
@@ -312,10 +302,8 @@ proc computeBundle {name appName} {
 }
 
 proc harmonyBundle {name bundle_desc appName} {
-  #define global variable AppName_bundle_BundleName
   global ${appName}_bundle_${name}
 
-  #update appName_bundles global variables
   global ${appName}_bundles
 
   puts $${appName}_bundles
@@ -370,12 +358,7 @@ proc harmonyBundle {name bundle_desc appName} {
             
 
 	    computeBundle "${appName}_bundle_${name}" $appName
-
-	    #upvar #0 ${appName}_bundle_${name}(minv) minv
-	    
-	    # the value is the minimum value
-	    #set ${appName}_bundle_${name}(value) $minv
-	    
+  
 	    #determine dependencies
 	    dependencies "int" ${appName}_bundle_${name} $appName
 	}
@@ -390,9 +373,6 @@ proc harmonyBundle {name bundle_desc appName} {
 	    set ${appName}_bundle_${name}(value) 0
 
 	    computeBundle ${appName}_bundle_${name} $appName
-
-	  #the init value is the minimum value
-	  #set ${appName}_bundle_${name}(value)  ${appName}_bundle_${name}(minv)
 
 	  #determine dependencies
 	  dependencies "real" ${appName}_bundle_${name} $appName
@@ -444,8 +424,6 @@ proc harmonyBundle {name bundle_desc appName} {
   }
 
 
-#  parr ${appName}_bundle_${name}
-#  drawharmonyBundle $name $bundle_desc
 }
 
 proc computeNode {name appName} {
@@ -459,7 +437,6 @@ proc computeNode {name appName} {
 
   #define values as global 
   foreach bundle $bundles {
-#      puts $bundle
       upvar #0 ${appName}_bundle_${bundle}(value) $bundle
   }
 
@@ -517,7 +494,6 @@ proc node {name args} {
   #define some cool things
   foreach bun $bundles {
 	upvar #0 ${appName}_bundle_${bun}(value) $bun
-#        puts $bun
   }
 
 
@@ -535,8 +511,6 @@ proc node {name args} {
 
   dependencies "node"  ${appName}_node_${name} $appName
 
-#  parr ${appName}_node_${name}
-#  drawnode $name $args
 }
 
 proc case {args} {

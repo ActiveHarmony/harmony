@@ -280,7 +280,6 @@ proc parallel_simplex_init {appName} {
     set icsm_6_params(init_point) {30 30 30 4 4 }
     set icsm_6_params(init_distance) 20
     set icsm_6_params(use_exploration_point) 1
-    # ndm - new directions method
     set curr_new_dir_trial 1
     set max_new_dir_trial 5
 

@@ -57,8 +57,6 @@ proc pro { appName } {
                 } else {
                     set c_connection 1
                     puts "Requesting code generation"
-                    # debug
-                    #generate_code "2 2 2 1 3 : 1 2 1 2 1 | 3 3 3 3 3"
                 }
             }
         }
@@ -268,9 +266,6 @@ proc pro_algorithm {appName} {
         set fname [open "best_points.log" {WRONLY APPEND CREAT} 0600]
         puts $fname "------------------"
         close $fname
-        #set fname [open "all_points.log" {WRONLY APPEND CREAT} 0600]
-        #puts $fname "------------------"
-        #close $fname
         logging [append log "PRO step: " $pro_step ". Creating Initial Simplex: \n"] $appName 0
         set init_simplex_points [construct_initial_simplex $appName]
         set points $init_simplex_points
@@ -336,7 +331,6 @@ proc pro_algorithm {appName} {
             }
             upvar #0 sorted_perfs sorted
             set wrt [lindex $points $sim_low(index)]
-            #puts "got wrt point"
             set c_points [transform_simplex 2 $wrt $points $appName]
             if { $debug_ == 1 } {
                 puts "simplex transformed"
@@ -440,7 +434,6 @@ proc pro_algorithm {appName} {
     } elseif { $pro_step == 11 } {
         puts "we are done"
         set temp_all_done 1
-        #signal_all_done $appName
     }
 
     # check for convergence
@@ -531,11 +524,6 @@ proc pro_algorithm {appName} {
         close $fname
     }
     
-    #set fname [open "all_points.log" {WRONLY APPEND CREAT} 0600]
-    #puts $fname "---"
-    #puts $fname [format_initial_simplex $c_points]
-    #close $fname
-
     logging "------------------------" $appName 0
 
     if { $g_code == 1 } {
@@ -562,7 +550,6 @@ proc best_point { procs } {
     upvar #0 candidate_simplex points
     upvar #0 sorted_perfs sorted__
     global last_best_candidate
-    #global last_best_cand_perf
     upvar #0 last_best_cand_perf last_best_cand
     set current_perfs {}
 
@@ -583,7 +570,7 @@ proc best_point { procs } {
     #  for now, all the perf numbers are integers
     # sorted is a global variable
     set sorted__ [lsort -index 0 -real $current_perfs]
-    #parr $sorted__
+ 
     # set the best
     set c_low(index) [car [cdr [lindex $sorted__ 0]]]
     set c_low(value) [car [lindex $sorted__ 0]]
@@ -592,9 +579,6 @@ proc best_point { procs } {
     puts $last_best_cand
     upvar #0 cand_best_coord temp_coord
     set temp_coord [lindex $points [car [cdr [lindex $sorted__ 0]]]]
-    #set last_best_candidate [lindex $points [cdr [lindex $sorted__ 0]]]
-    #puts -nonewline "temp_coord from best_point proc:: "
-    #puts $last_best_candidate
 
     lappend step_cost [car [cdr [lindex $sorted__ [expr [llength $procs] - 1]]]]
 
@@ -639,7 +623,6 @@ proc check_for_convergence {appName} {
     upvar #0 simplex_converged simplex_converged
     if {$converged__ == 1} {
         set simplex_converged 1
-        #new_search_directions $appName $first_point
     } else {
         set simplex_converged 0
     }
