@@ -1,4 +1,23 @@
 /*
+ * Copyright 2003-2011 Jeffrey K. Hollingsworth
+ *
+ * This file is part of Active Harmony.
+ *
+ * Active Harmony is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published
+ * by the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Active Harmony is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
  * This example shows how to search code-variants for MM. If the user likes
  * to change the tuning from MM to some other code, he/she needs to make
  * certain changes. These changes have been marked by CHANGE THIS.
