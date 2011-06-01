@@ -103,9 +103,49 @@ double timer()
 // CHANGE THIS
 void construct_so_filename()
 {
-     sprintf(so_filename,"%s_%d_%d_%d_%d_%d.so",path_prefix_code,*TI, *TJ,*TK,*UI,*UJ);
-}
+    
+    sprintf(so_filename,"%s_%d_%d_%d_%d_%d.so", path_prefix_code, *TI, *TJ, *TK, *UI, *UJ);
 
+ 
+    // extract only the appname and conf from the file name and getrid off the process id here
+    // the process id is used for the distinguishing purpose only.
+
+    //char *new_so_file = so_filename;
+    //char delimiter1[] = "_";
+    //char *first, *second, *third, *remainder1, *remainder3, *context1, *context2, *context3;
+    //int inputLength1 = strlen(new_so_file);
+    //char *inputCopy1 = (char*) calloc(inputLength1, sizeof(char));
+    //strncpy(inputCopy1, new_so_file, inputLength1);
+    //first = strtok_r(inputCopy1, delimiter1, &context1);
+    //remainder1 = context1;
+
+    //printf("The old file looks like thissssssssssssss: %s \n", so_filename);
+
+    //printf("The file looks like thissssssssssssss: %s \n", remainder1);
+        
+    //char *remainder2 = remainder1;
+    //char delimiter2[] = "/";
+    //int inputLength2 = strlen(remainder2);
+    //char *inputCopy2 = (char*) calloc(inputLength2, sizeof(char));
+    //strncpy(inputCopy2, remainder2, inputLength2);
+    //second = strtok_r(inputCopy2, delimiter2, &context2);
+    //remainder3 = context2;
+    
+    //printf("The file looks like thissssssssssssss: %s \n", remainder3);
+
+    //char *remainder4 = remainder3;
+    //char delimiter3[] = "_";
+    //int inputLength3 = strlen(remainder4);
+    //char *inputCopy3 = (char*) calloc(inputLength3, sizeof(char));
+    //strncpy(inputCopy3, remainder4, inputLength3);
+    //third = strtok_r(inputCopy3, delimiter3, &context3);
+    //remainder4 = context3;
+
+    //printf("The file looks like thissssssssssssss: %s \n", remainder4);
+
+    //sprintf(so_filename, "%s\n", remainder4);
+   
+}
 
 // update the evaluation pointer: This is called once the new code becomes available.
 void update_so_eval()

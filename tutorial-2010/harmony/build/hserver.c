@@ -18,6 +18,12 @@
 #include <stdlib.h>
 #include <ctype.h>
 
+//PID
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+
 using namespace std;
 /***
  *
@@ -95,6 +101,13 @@ map<string,string>::iterator it;
 
 map<string,string> appName_confs;
 map<string,string>::iterator it2;
+
+//Harmony server's Process ID info
+int hs_process_id;
+char *APPNAME = "gemm";
+char path[]="/hivehomes/rahulp/scratch/new_code";
+
+struct dirent *dptr;
 
 /***
  *
@@ -240,6 +253,16 @@ void server_startup() {
     struct sockaddr_in sin;
 
     int optVal;
+
+    /* Harmony server process ID */
+    hs_process_id = getppid();
+
+    printf("Harmony Server's Process-Id (PID) for this run: %d \n", hs_process_id);
+
+    FILE *hs_pid;
+    hs_pid = fopen("/hivehomes/rahulp/activeharmony/tutorial-2010/harmony/standalone/hs_process_id", "w+");
+    fprintf(hs_pid, "%d", hs_process_id);
+    fclose(hs_pid);
 
     int err;
     char * serv_port;
@@ -1237,6 +1260,32 @@ void filter(map<string,string> &m, vector<string> & result, vector<string> &valu
  ***/
 void client_unregister(HRegistMessage *m, int client_socket) {
 
+    char new_dir_name[512];
+    char new_pid_dir_name[512];
+    char default_file_ext[] = "default.so";
+    char appname_default[512];
+    struct dirent *drnt;
+    struct stat buff;
+    char strcomparison[512];
+
+    DIR *dr;
+    DIR *new_dr;
+
+    FILE *inFile;
+    FILE *outFile;
+
+    char sourceFile;
+    char destFile;
+    
+    int Byte;
+    int i;
+
+    char c[100];
+    char ch;
+
+    int renameFile=0;
+
+
     /* clear all the information related to the client */
     char *appName = clientName[client_socket];
     if(debug_mode)
@@ -1291,6 +1340,7 @@ void client_unregister(HRegistMessage *m, int client_socket) {
     if (Tcl_VarEval(tcl_inter,"harmony_cleanup ",clientName[client_socket], NULL)!=TCL_OK) {
         fprintf(stderr, "Error cleaning up after client! %d\n", tcl_inter->result);
     }
+
     
     FD_CLR(client_socket, &listen_set);
     if (client_socket==*socketIterator)
@@ -1305,16 +1355,95 @@ void client_unregister(HRegistMessage *m, int client_socket) {
         /* revoke resources */
         revoke_resources(clientName[client_socket]);
     } else {
-        //printf("Send confimation !\n");
         HRegistMessage *mesg = new HRegistMessage(HMESG_CONFIRM,0);
         
         /* send back the received message */
         send_message(mesg,client_socket);
         delete mesg;
     }
+
+
+    //After the completion of code generation and auto tuning, the server puts all the 
+    //newly generated files into a seperate folder. The new folder is named after the PID of
+    //the harmony server. This is mainly used for the cleaning purpose.
+
+    //Creating a new directory
+
+    sprintf(new_pid_dir_name, "harmonyPID_%d", hs_process_id);
+
+    sprintf(new_dir_name, "%s/harmonyPID_%d", path, hs_process_id);
+
+    sprintf(appname_default, "%s_%s", APPNAME, default_file_ext);
+
+    dr=opendir(path);
+   
+    if((mkdir(new_dir_name,00777))==0)
+    {
+       printf("The new directory [harmonyPID_%d] has been created \n", hs_process_id);
+    
+       //Moving all the files created by the code-server to the new folder
+    
+    	if(dr)
+    	{
+    	    while(drnt=readdir(dr))
+    	    {
+	      sprintf(strcomparison, "%s", drnt->d_name);
+	   
+	      if(strcmp(strcomparison, appname_default) != 0)
+	      {  
+	        if(strcmp(drnt->d_name, appname_default) !=0)
+	        {
+	      
+		  int x1, x2, x3;
+	  
+		  char newcmd[512];
+
+		  new_dr=opendir(new_dir_name);
+
+		  printf("%s", drnt->d_name);
+
+		  sprintf(newcmd, "cp /%s/* /%s", path, new_dir_name);
+
+		  printf("Calling System(%s)\n", newcmd);
+
+		  x1 = system(newcmd);
+
+		  printf("system() returned %d\n",x1);
+
+		  printf("calling system(%s)\n", newcmd);
+
+		  x2 = system(newcmd);
+		
+		  printf("system() returned %d\n",x2);
+
+		  sprintf(newcmd, "rm %s/%s", path, drnt->d_name);
+	    
+		  printf("calling system(%s)\n", newcmd);
+	    
+		  x3 = system(newcmd);
+
+		  printf("system() returned %d\n", x3);
+
+		}
+	      }
+	      else
+	      {
+		printf("Not allowed to copy %s to %s \n", drnt->d_name, new_dir_name);
+	      }
+	   }
+	   closedir(dr);
+	}
+	else
+	{
+	  printf("Cannot open directory [%s] \n", path);
+	}
+     }
+     else
+     {
+      printf("The directory [harmonyPID_%d] already exists \n", hs_process_id);
+     }
 }
 
-// performance update function (INT)
 void performance_update_int(HUpdateMessage *m, int client_socket) {
 
     int err;
