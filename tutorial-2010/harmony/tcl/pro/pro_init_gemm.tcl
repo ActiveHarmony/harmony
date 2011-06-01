@@ -229,14 +229,14 @@ proc parallel_simplex_init {appName} {
     #               server has been establish : need to make a connection at the
     #               start of the search algorithm
 
-    set ann_params(use_ann) 1
+    set ann_params(use_ann) 0
     set ann_params(pserver_host) "brood00"
-    set ann_params(pserver_port) 2077
+    set ann_params(pserver_port) 1977
     set ann_params(connected) 0
     set ann_params(num_groups) 1
     set ann_params(group_info) {3 2}
     set ann_params(use_diff_radius) 1
-    set ann_params(init_simplex_name) "/hivehomes/rahulp/tutorial-2010/harmony/bin/constructed_simplex.dat"
+    set ann_params(init_simplex_name) "/hivehomes/rahulp/activeharmony/tutorial-2010/harmony/bin/constructed_simplex.dat"
 
 
     # code generation related parameters
@@ -244,17 +244,14 @@ proc parallel_simplex_init {appName} {
     set code_generation_params(gen_method) 2
 
     # method 1 parameters
-    set code_generation_params(cserver_host) "spoon"
-    set code_generation_params(cserver_port) 2002
+    set code_generation_params(cserver_host) "brood00"
+    set code_generation_params(cserver_port) 1977
     set code_generation_params(cserver_connection) 0
-    
-    # method 2 parameters
-    # code server main: wood
-    #set code_generation_params(code_generation_destination) "rahulp@wood:/fs/wood/rahulp/scratch/confs/"
-    # code server main: driver
-    set code_generation_params(code_generation_destination) "rahulp@mashie:/fs/mashie/rahulp/scratch/confs/"
 
-    set initial_simplex_method 6
+    # method 2 parameters
+    set code_generation_params(code_generation_destination) "rahulp@brood00:/hivehomes/rahulp/scratch/confs/"
+   
+    set initial_simplex_method 4
 
     # space exploration parameters
     set space_explore_params(num_iterations) 3

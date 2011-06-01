@@ -1623,10 +1623,8 @@ void main_loop() {
 
     while (1) {
         listen_set_copy=listen_set;
-        //printf("Select\n");
         active_sockets=select(highest_socket+1,&listen_set_copy, NULL, NULL, NULL);
-        
-	/* we have a communication request */
+        /* we have a communication request */
         for (socketIterator=socket_set.begin();socketIterator!=socket_set.end();socketIterator++) {
             if (FD_ISSET(*socketIterator, &listen_set_copy) && (*socketIterator!=listen_socket) && (*socketIterator!=xfd)) {
                 /* we have data from this connection */

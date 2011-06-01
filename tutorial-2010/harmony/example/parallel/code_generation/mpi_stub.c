@@ -82,9 +82,9 @@ char path_prefix_run_dir[128];
 // CHANGE THIS (if needed)
 void initialize_paths()
 {
-    sprintf(path_prefix_run_dir,"/hivehomes/rahulp/tutorial-2010/harmony/example/parallel/code_generation");
+    sprintf(path_prefix_run_dir,"/hivehomes/rahulp/activeharmony/tutorial-2010/harmony/example/parallel/code_generation");          
     sprintf(path_prefix_def,"%s/%s_default.so",path_prefix_run_dir, code_name_prefix);
-    sprintf(path_prefix_code,"/hivehomes/rahulp/scratch/code/%s", code_name_prefix);
+    sprintf(path_prefix_code,"/hivehomes/rahulp/scratch/new_code/%s", code_name_prefix);
 }
 
 double timer()

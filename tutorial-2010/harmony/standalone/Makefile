@@ -1,11 +1,11 @@
 OPTIMIZE = -O2
 GCC_LINUX = g++ -g -DLinux -DLINUX -Dlinux
-LIBS_LINUX =    -lm -ldl  
+LIBS_LINUX =    -lm -ldl -lnsl -ltcl8.4 -ltk8.4  
 INCLUDE_LINUX = 
 
 GCC_SOLARIS = g++ -g -DSOLARIS -DUSE_TK
-LIBS_SOLARIS = -L/usr/imports/lib -lsocket -lnsl -ltk8.0 -ltcl -lm -ldl -lX11
-INCLUDE_SOLARIS = -I/usr/imports/include -I/hivehomes/tiwari/ann_1.1.1/include/
+LIBS_SOLARIS = -L/usr/imports/lib -lsocket -lnsl -ltk8.4 -ltcl8.4 -lm -ldl -lX11
+INCLUDE_SOLARIS = -I/usr/imports/include -I/hivehomes/rahulp/ann_1.1.1/include/
 
 GCC=$(GCC_LINUX)
 LIBS=$(LIBS_LINUX)

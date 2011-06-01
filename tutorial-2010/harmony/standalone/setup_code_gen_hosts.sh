@@ -10,17 +10,18 @@
 code_generator_host=$HOSTNAME
 
 # please set this to where the generator is installed
-code_generator_base="/hivehomes/rahulp/tutorial-2010/harmony/standalone/"
+code_generator_base="$HOME/activeharmony/tutorial-2010/harmony/standalone/"
 
 # first argument to the script is the name of the application we are generating code for
 appname=$1
 
 # generated codes are stored in $HOME/scratch directory
-scratch_dir="/fs/mashie/rahulp/scratch/"
-
+scratch_dir="\$HOME/scratch/"
+ 
 # How do we want to transfer the files to the remote host? We rely on script to do this.
 # Each application will have its own transport_files.sh.
 cp $code_generator_base/$appname/transport_files.sh .
+
 
 # all hosts available for code_generation are stored in generator_hosts_<appname> file.
 # the format of this file is the following:
@@ -45,10 +46,10 @@ fi
 if [[ $node_list == "" ]]
 then
     echo "generator_hosts_${appname} is empty. The format is as follows:"
-    echo "If we have two dual core machine (named wood and spoon) and we want to use all four"
+    echo "If we have two dual core machine (named driver and spoon) and we want to use all four"
     echo "  cores to generate code for an application baz, then generator_hosts_baz should"
     echo "  look like the following:"
-    echo "  wood 2"
+    echo "  driver 2"
     echo "  spoon 2"
     echo "  with each host in its own line."
     echo "Cannot proceed further. Baling out."
@@ -73,17 +74,16 @@ do
     if [ $machine_name == $code_generator_host ]; then
 
 	if [ $unique_dirs_created_local == 0 ]; then
-	    dir_string="/fs/mashie/rahulp/scratch/new_code_${appname}"
+	    dir_string="$HOME/scratch/new_code_${appname}"
 	    echo "Creating $dir_string"
 	    mkdir $dir_string
-	    dir_string="/fs/mashie/rahulp/scratch/zipped_${appname}"
+	    dir_string="$HOME/scratch/zipped_${appname}"
 	    echo "Creating $dir_string"
 	    mkdir $dir_string
 	    unique_dirs_created_local=1
 	fi
-
-	dir_string="/fs/mashie/rahulp/scratch/${__node}_${appname}"
-	#rm -rf $dir_string
+	
+	dir_string="$HOME/scratch/${__node}_${appname}"
 	echo "Creating $dir_string"
 	mkdir $dir_string
 	cp $appname/chill_script.${appname}.sh ~/scratch/${__node}_${appname}
@@ -100,9 +100,8 @@ do
 	dir_string="/fs/mashie/rahulp/scratch/new_code_${appname}"
 	ssh $machine_name "mkdir $dir_string"
 	dir_string="/fs/mashie/rahulp/scratch/zipped_${appname}"
-	ssh $machine_name "mkdir $dir_string"
-	dir_string="\/fs/mashie/rahulp/scratch/${__node}_${appname}"
-	#ssh $machine_name "rm -rf $dir_string"
+        ssh $machine_name "mkdir $dir_string"
+        dir_string="/fs/mashie/rahulp/scratch/${__node}_${appname}"
 	ssh $machine_name "mkdir $dir_string"
 	scp $appname/chill_script.${appname}.sh $machine_name:~/scratch/${__node}_${appname}/chill_script.${appname}.sh
 	while read line
