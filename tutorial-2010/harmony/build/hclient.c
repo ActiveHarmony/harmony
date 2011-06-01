@@ -680,8 +680,63 @@ int harmony_request_all(int socketIndex, int pull)
 	return 0;
       
     }
-   
-    else if (mesg->get_type()==HMESG_PERF_UPDT)
+    else if (mesg->get_type()==HMESG_PERF_ALREADY_EVALUATED) 
+    {
+      int i;
+
+      // the perf is already evaluated
+      printf("The performance has been evaluated before");
+      
+      //Extracting the performance value and then reporting the performance back to the server.
+      //Updating the variable with the received performance
+      //Also updating the message to be sent with the performance
+      //Updating the message
+
+      m=(HUpdateMessage *)mesg;
+
+      //Updating the timestamp
+      hclient_timestamp[socketIndex] = m->get_timestamp();
+
+      if (debug_mode)
+      {
+        m->print();
+      }
+
+
+      // update the variable: REMEMBER: the last entry on the variable list is the performance VarDef
+      int num_tunable_params=m->get_nr_vars();
+
+      for (VarIterator=reg_vars[socketIndex].begin(),i=0;VarIterator!=reg_vars[socketIndex].end();VarIterator++,i++)
+      {
+	if(i == num_tunable_params) 
+	{
+	  break;
+	} 
+	else 
+	{
+	  switch (VarIterator->getType())
+	  {
+	    case VAR_INT:
+	       VarIterator->setValue(*(int *)m->get_var(i)->getPointer());
+	       break;
+	    case VAR_STR:
+	       VarIterator->setValue((char *)m->get_var(i)->getPointer());
+	       break;
+	  }
+	}
+      }
+
+      int seen_performance = *(int*)(m->get_var(i)->getPointer());
+
+      printf("Performance from the database is : %d \n ", seen_performance);
+
+      delete m;
+
+      // 1 means the server has the performance value and we have already made a call to
+      // harmony_performance_update. So, do not make a duplicate call.
+      return 1;     
+    }
+    else
     {
       
       int i;
@@ -718,55 +773,6 @@ int harmony_request_all(int socketIndex, int pull)
       // using the harmony_performance_update
       return 0;    
     }
-
-    else 
-    {
-      int i;
-
-      // the perf is already evaluated
-      printf("The performance has been evaluated before \n");
-      
-      //Extracting the performance value and then reporting the performance back to the server.
-      //Updating the variable with the received performance
-      //Also updating the message to be sent with the performance
-      //Updating the message
-
-      m=(HUpdateMessage *)mesg;
-
-      //Updating the timestamp
-      hclient_timestamp[socketIndex] = m->get_timestamp();
-
-      if (debug_mode)
-      {
-        m->print();
-      }
-
-
-      // update the variable: REMEMBER: the last entry on the variable list is the performance VarDef
-      //int num_tunable_params=mesg->get_nr_vars()-1;
-      int num_tunable_params=m->get_nr_vars();
-
-      for (VarIterator=reg_vars[socketIndex].begin(),i=0;VarIterator!=reg_vars[socketIndex].end();VarIterator++,i++)
-      {
-	switch (VarIterator->getType())
-	{
-	  case VAR_INT:
-	     VarIterator->setValue(*(int *)m->get_var(i)->getPointer());
-	     break;
-	  case VAR_STR:
-	     VarIterator->setValue((char *)m->get_var(i)->getPointer());
-	     break;
-	}
-      }
-
-      delete m;
-
-      // 1 means the server has the performance value and we have already made a call to
-      // harmony_performance_update. So, do not make a duplicate call.
-      return 1;     
-    }
-
-
 }
 
 /*
