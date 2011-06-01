@@ -45,7 +45,6 @@
  * the size of the buffer used to transfer data between server and client
  */
 #define BUFFER_SIZE 1024
-
 #define MAX_VAR_NAME BUFFER_SIZE
 
 /*
@@ -53,8 +52,6 @@
  */
 #define false 0
 #define true 1
-//#define INT_MAX 2147483647
-//#define FLT_MAX 1E+37
 
 
 /***
@@ -124,7 +121,6 @@ void * harmony_request_variable(char *variable, int socketIndex=0);
 /*
  * Get the current value of all the bound variables
  */
-//void harmony_request_all(int socketIndex=0, int pull=0);
 int harmony_request_all(int socketIndex=0, int pull=0);
 
 /*

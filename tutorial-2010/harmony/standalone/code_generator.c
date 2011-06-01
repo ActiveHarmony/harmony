@@ -30,7 +30,6 @@ typedef pair <int, int> Int_Pair;
 typedef struct {
     vector<int> parameters;
     int avail;
-    //string hostname;
     int rand_amount;
     int pid;
 } generator;
@@ -128,9 +127,6 @@ void generator_main(int i,vector<int> params) {
        ss << "ssh  " << generator_name << " exec ";
        ss << "\\$HOME/scratch/" <<  generator_vec.at(i) << "_" << appname;
      }
-     //ss << "ssh  " << generator_vec.at(i) << " exec ";
-     // full path to the script
-     //ss << "\\$HOME/scratch/" <<  generator_vec.at(i);
 
      ss << "/chill_script." << appname << ".sh ";
 
@@ -139,7 +135,6 @@ void generator_main(int i,vector<int> params) {
      } else {
        ss << vector_to_bash_array_remote(params);
      }
-     //ss << vector_to_string(gen_ptr[i].parameters);
      ss << generator_vec.at(i) << "_" << appname << " " << hostname;
      cout << ss.str() << " " ;
     
@@ -168,17 +163,11 @@ int main(int argc, char **argv)
     appname=argv[1];
     log_file="generation."+appname+".log";
     cout << "generating code for: " << appname << endl;
-  
-
-    //num_generators=get_num_code_generators(num_code_gen_loc);
     
-
-    //cout << "num_generators: " << num_generators << endl; 
     int allpids[2];
     stringstream ss, ss2, ss3,log_message;
 
      // first get the list of available machines
-    //ss << "generator_hosts_" << num_generators;
     ss << "generator_hosts_" << appname;
     string filename=ss.str();
     ss.str("");
@@ -239,37 +228,15 @@ int main(int argc, char **argv)
         cout << "filename: " << filename << "\n";
 
         get_parameters_from_file(all_params, filename);
-        /*
-        for(int jj = 0; jj < all_params.size(); jj++)
-        {
-            print_vec(all_params.at(jj));
-        }
-        */
-
+      
         // populate the global database and remove the confs
         // that we have seen already
         populate_remove(all_params, code_parameters);
 
-
-        //get_points_vector(argv[1], code_parameters);
-        //cout << "Command Line arguments: " << argv[1] << "\n";
-
-
-        
         cout << "Code Transformation Parameters: size: " << code_parameters.size() << " \n";
         log_message << "Code Transformation Parameters received for iteration: " << timestep << "\n";
 	log_message << "# of unique confs for this iteration: " << code_parameters.size() << " \n";
-        /*
-        for(int i=0; i < code_parameters.size(); i++) {
-            cout << "[";
-            vector<int> temp_vector = code_parameters.at(i);
-            for (int j=0; j < temp_vector.size(); j++) {
-                cout << temp_vector.at(j) << " ";
-            }
-            cout << "] ";
-        }
-        cout << "\n";
-        */
+      
 	double time1__, time2__;
 	time1__=time_stamp();
         for (int i = 0; i < code_parameters.size(); i++)
@@ -333,37 +300,10 @@ int main(int argc, char **argv)
 	/* unique to hopper
 	   generate Makefile
 	 */
-	//generate_makefile(code_parameters);
-	
-
-	if(code_parameters.size()!=0) {
-	  // transport the .so's to the destination system
-	  // relying on bash script here. this might not be portable.
-	  ss.str("");
-	  ss << code_generator_base << appname << "/transport_files.sh " << appname;
-	  int sys_return = system(ss.str().c_str());
-	}
-
-	// now unzip the file
-	//ss.str("");
-	//ss << "ssh tiwari@brood00 /hivehomes/tiwari/smg2000_harmony/test/unzip_new_code.sh";
-	//sys_return = system(ss.str().c_str());
-	//cout << " new code unzipped";
-
-        // first indicate that this round is complete
-        //ss.str("");
-        //ss << "touch /fs/spoon/tiwari/smg2000_code_generator/code_flags/code_complete." << timestep;
-        //system(ss.str().c_str());
 
 	ss.str("");
 	ss << code_flag_destination << "code_complete." << appname << "." << timestep;
 	touch_remote_file(ss.str().c_str(), code_destination_host.c_str());
-	
-	//ss << "scp /fs/spoon/tiwari/smg2000_code_generator/code_flags/code_complete." << timestep 
-	//   << " tiwari@brood00:~/smg2000_harmony/harmony/bin/code_flags/";
-	//system(ss.str().c_str());
-
-
 	
         // clear the stream
         ss.str("");
@@ -430,9 +370,7 @@ populate_remove(vec_of_intvec all_params, vec_of_intvec& code_parameters)
         {
             ss << temp.at(i) << " ";
         }
-        //string str=vector_to_string(temp);
-
-        //cout << "string from vector_to_string " << ss.str().c_str() << "\n";
+        
         pair< map<string,int>::iterator, bool > pr;
         pr=global_data.insert(pair<string, int>(ss.str(), 1));
         ss.str("");
@@ -504,7 +442,6 @@ get_code_generators (vector<string>& vec, string filename)
               stringstream tmp;
               tmp.str("");
               tmp << machine_name << "_" << ii;
-              //cout << tmp.str() << endl;
               vec.push_back(tmp.str());
             }
             num_lines++;
@@ -512,36 +449,9 @@ get_code_generators (vector<string>& vec, string filename)
         myfile.close();
     }
     else cout << "Unable to open file: " << filename;
-    //return num_lines;
 }
 
-/*
 
-
-void
-get_code_generators (vector<string>& vec, string filename)
-{
-    int num_lines=0;
-    string line;
-    ifstream myfile;
-
-    myfile.open(filename.c_str());
-    if (myfile.is_open()) {
-        //while (! myfile.eof() ) {
-        while(getline (myfile,line)) {
-            //getline (myfile,line);
-            if(line.length() == 0) break;
-            vec.push_back(line);
-            num_lines++;
-	    
-        }
-        myfile.close();
-        //cout << "NUM_LINES READ: " << num_lines;
-    }
-    else cout << "Unable to open file";
-    //return num_lines;
-}
-*/
 void
 get_parameters_from_file(vec_of_intvec& intvec, string filename)
 {
@@ -581,21 +491,6 @@ process_point_line(string line, vector<int>& one_point)
     }
 
 }
-/*
-void
-process_point_line(string line, vector<int>& one_point)
-{
-    StringTokenizer strtok_space (line, " ");
-    while(strtok_space.hasMoreTokens())
-    {
-        int temp = strtok_space.nextIntToken();
-        //cout << temp << ", ";
-        one_point.push_back(temp);
-    }
-
-}
-*/
-
 
 string
 vector_to_string_demo(vector<int> v)
@@ -711,28 +606,3 @@ get_points_vector (string point, vec_of_intvec& code_parameters)
     }
 }
 
-/*
-
-void
-get_points_vector (string point, vec_of_intvec& code_parameters)
-{
-
-    StringTokenizer strtok_colon (point, ":");
-
-
-    vector<int> temp_vector;
-    while (strtok_colon.hasMoreTokens())
-    {
-        StringTokenizer strtok_space (strtok_colon.nextToken(), " ");
-        while(strtok_space.hasMoreTokens())
-        {
-            int temp = strtok_space.nextIntToken();
-            //cout << temp << ", ";
-            temp_vector.push_back(temp);
-        }
-        code_parameters.push_back(temp_vector);
-        temp_vector.clear();
-
-    }
-}
-*/

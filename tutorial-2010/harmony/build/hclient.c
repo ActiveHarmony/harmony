@@ -31,11 +31,7 @@ using namespace std;
 /* Tcl Interpreter */
 Tcl_Interp *tcl_inter;
 
-//char harmonyTclFile[256]="hconfig.pro.tcl";
-//char harmonyTclFile[256]="hconfig.random.tcl";
-char harmonyTclFile[256]="hconfig.nm.tcl";
-//char harmonyTclFile[256]="hconfig.brute.tcl";
-
+char harmonyTclFile[256]="hconfig.pro.tcl";
 
 /* Map containing client AppName and socket */
 map<string, int> clientInfo;
@@ -975,7 +971,6 @@ int code_generation_complete(int socketIndex)
     //printf("waiting for the code generation response socke: %d\n",hclient_socket[socketIndex]);
     // wait for answer
     HMessage *mesg = receive_message(hclient_socket[socketIndex]);
-    //printf("heard back from the server \n");
     if (mesg->get_type()==HMESG_FAIL) {
         // the server could not return the value of the variable
         printf("The Server failed to return the respose to code generation!!\n");
@@ -984,10 +979,8 @@ int code_generation_complete(int socketIndex)
     }
 
     m=(HUpdateMessage *)mesg;
-    //printf("heard back from from the server about code generation  \n");
     VarDef *v = m->get_var(0);
     int result =  *(int *)m->get_var(0)->getPointer();
-    //printf("Code generation result is %d \n", result);
     delete m;
     return result;
 }
@@ -1048,7 +1041,6 @@ void* harmony_database_lookup(int socketIndex)
 
     void* perf_dbl=(void*)(m->get_var(0)->getPointer());
 
-    //double result=atof(perf_dbl);
     return perf_dbl;
 }
 
@@ -1304,9 +1296,6 @@ void process_update(HUpdateMessage *m) {
                     break;
                 case VAR_STR:
                     VarIterator->setShadow((char*)v->getPointer());
-                    //fprintf(stderr, "new val: %s [%s] shadow [%s]\n", v->getName(),
-                    //(char*)(VarIterator->getPointer()),
-                    //        VarIterator->getShadow());
                     break;
             }
         }
@@ -1318,7 +1307,6 @@ void process_update(HUpdateMessage *m) {
  */
 void harmony_set_all(int socketIndex){
 
-    //block_sigio();
     // go through the entire list of registered variables and create a
     // message containing all these variables and their values
 
@@ -1376,7 +1364,6 @@ char *str_replace(char const * const original,
     patcnt++;
   }
 
-  //{
     // allocate memory for the new string
     size_t const retlen = orilen + patcnt * (replen - patlen);
     char * const returned = (char *) malloc( sizeof(char) * (retlen + 1) );
@@ -1400,5 +1387,5 @@ char *str_replace(char const * const original,
       strcpy(retptr, oriptr);
     }
     return returned;
-    //}
+ 
 }

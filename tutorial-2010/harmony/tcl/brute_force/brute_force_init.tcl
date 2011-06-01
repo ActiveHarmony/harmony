@@ -3,7 +3,6 @@ proc brute_force_init {appName} {
     global ${appName}_brute_force_bundles
     upvar #0 ${appName}_bundles bundles
     global ${appName}_simplex_time
-    #set ${appName}_brute_force_bundles [lsort $bundles]
     set ${appName}_brute_force_bundles $bundles
     upvar #0 ${appName}_brute_force_bundles brutefb
     set ${appName}_simplex_time 0
@@ -39,24 +38,10 @@ proc brute_force_init {appName} {
         puts $bunv
         puts $minv
         set bunv $minv
-        #recompute_dependencies $bun $appName
     }
     global ${appName}_simplex_time
     global ${appName}_time
     upvar #0 ${appName}_time time
     incr ${appName}_simplex_time
-
-    #upvar #0 code_generation_params(cserver_connection) c_connection
-    #upvar #0 code_generation_params(generate_code) g_code
-    #upvar #0 code_generation_params(cserver_port) cserver_port
-    #upvar #0 code_generation_params(cserver_host) cserver_host
-    #upvar #0 code_generation_params(gen_method) gen_code_method
-    #if { $g_code == 1 } {
-	#    if { $gen_code_method == 1 } {
-	#        send_candidate_simplex $appName
-	#    } else {
-	#        write_candidate_simplex $appName
-	#    }
-	#}
 
 }

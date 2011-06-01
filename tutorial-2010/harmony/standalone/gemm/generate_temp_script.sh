@@ -1,7 +1,5 @@
 # generate a new CHiLL script using the transformation parameters
-
 # this script gets the code transformation parameters as an argument.
-
 # This generic (MM) example has five parameters: TI, TJ, TK, UI and UJ.
 
 TI=$1
@@ -37,7 +35,7 @@ echo "
     tile(0,2,TI)
     tile(0,5,TK)
     
-    # unrol I and J
+    # unroll I and J
     unroll(0,4,UI)
     unroll(0,5,UJ)
    

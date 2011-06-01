@@ -33,8 +33,8 @@ source ../tcl/pro/combine.tcl
 ##   before starting the search algorithm etc. 
 ## As a starting point, take a look at the generic init file provided with 
 ##  this distribution.
-source ../tcl/pro/pro_init_generic.tcl
+#source ../tcl/pro/pro_init_generic.tcl
 #source ../tcl/pro/pro_init_smg.tcl
 #source ../tcl/pro/pro_init_irs.tcl
-#source ../tcl/pro/pro_init_gemm.tcl
+source ../tcl/pro/pro_init_gemm.tcl
 

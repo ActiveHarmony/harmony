@@ -74,13 +74,8 @@ proc get_best_configuration { appName } {
 proc write_candidate_simplex { appName } {
     set c_points [get_candidate_configuration $appName]
 
-    #set c_points [get_next_configuration $appName]
-
     upvar #0 ${appName}_code_timestep iteration
     set g_name [string range $appName 0 [expr [string last "_" $appName]-1]]
-    #upvar #0 ${appName}_simplex_time iteration_temp
-    #set iteration $iteration_temp
-    #incr iteration
     upvar #0 ${appName}_code_generation_params(code_generation_destination) code_generation_dest
     set fname [open "/tmp/candidate_simplex.$g_name.$iteration.dat" "w"]
 
@@ -117,9 +112,6 @@ proc send_candidate_simplex { appName } {
 proc send_candidate_simplex_to_server { appName } {
     
     upvar #0 ${appName}_candidate_simplex [get_candidate_configuration $appName]
-
-    #upvar #0 ${appName}_candidate_simplex [get_next_configuration $appName]
-
     upvar #0 ${appName}_code_generation_params(cserver_connection) c_connection
 
     if { $c_connection == 0 } {

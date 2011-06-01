@@ -1,6 +1,6 @@
 /*
  * This example shows how to search code-variants for MM. If the user likes
- * to change the tuning from MM to some other code, she needs to make
+ * to change the tuning from MM to some other code, he/she needs to make
  * certain changes. These changes have been marked by CHANGE THIS.
 */
 
@@ -8,6 +8,7 @@
 
 #include <mpi.h>
 #include <sys/time.h>
+
 // dlopen
 #include <dlfcn.h>
 #include <stdlib.h>
@@ -22,6 +23,8 @@
 #define EXT_FAILURE -1
 #define TAG 1234
 #define N 500
+//#define N 1000
+
 // code related variables
 /*
  * typedef for gemm: If you would like to tune a different code, please
@@ -45,6 +48,7 @@ char *dlError;
 
 char so_filename[128];
 int matrix_size=500;
+//int matrix_size=1000;
 
 /* matrix definitions for MM. If you would like to tune a different code,
  * please make appropriate changes here.
@@ -114,6 +118,8 @@ void update_so_eval()
         printf("cannot open .so file! %s \n", so_filename);
         exit(1);
     }
+
+
     // fetch the symbol
     code_so_eval=(code_t)dlsym(flib_eval, symbol_name);
     dlError = dlerror();
@@ -312,6 +318,7 @@ int  main(int argc, char *argv[])
     int new_performance=1;
     char* best_conf_from_server;
 
+
     /* MPI Initialization */
     MPI_Init(&argc,&argv);
     time_initial  = MPI_Wtime();
@@ -338,6 +345,7 @@ int  main(int argc, char *argv[])
     printf("sending the app description \n");
     sprintf(app_desc, "offline.tcl");
     harmony_application_setup_file("offline.tcl");
+
     /* declare application's runtime tunable parameters. for example, these
      * could be blocking factor and unrolling factor for matrix
      * multiplication program.
@@ -382,16 +390,20 @@ int  main(int argc, char *argv[])
             update_so_eval();
             perf=eval_code(0)+penalty_factor();
             new_performance=1;
-            if(perf < current_best_perf)
+
+	    if(perf < current_best_perf)
             {
                 // update the best pointer
                 best_conf_from_server=harmony_get_best_configuration();
                 printf("Best Conf from server: %s \n", best_conf_from_server);
-                if(best_conf_from_server!=NULL && *best_conf_from_server!='\0')
+
+		if(best_conf_from_server!=NULL && *best_conf_from_server!='\0')
                 {
-                    sprintf(so_filename, "%s_%s.so", path_prefix_code, best_conf_from_server);
-                }
-                free(best_conf_from_server);
+		  sprintf(so_filename, "%s_%s.so", path_prefix_code, best_conf_from_server);
+
+	        }
+
+		free(best_conf_from_server);
                 flib_best=dlopen(so_filename, RTLD_LAZY);
                 dlError = dlerror();
                 if( dlError ) {
@@ -417,8 +429,7 @@ int  main(int argc, char *argv[])
             perf=eval_code(1);
         }
 
-        printf("rank :%d, TI: %d,TJ: %d, TK: %d, UI: %d, UJ: %d, perf: %d\n", 
-               rank, *TI, *TJ, *TK, *UI, *UJ, perf);
+        printf("rank :%d, TI: %d,TJ: %d, TK: %d, UI: %d, UJ: %d, perf: %d \n", rank, *TI, *TJ, *TK, *UI, *UJ, perf);
 
         // does the perf that we just determined reflect the changes in the
         // parameter values? If it does, then send the performance to the server.
@@ -437,9 +448,10 @@ int  main(int argc, char *argv[])
             harmony_request_all();
             update_so_eval();
             perf=eval_code(0);
-            printf("rank :%d, TI: %d,TJ: %d, TK: %d, UI: %d, UJ: %d, perf: %d\n", 
-               rank, *TI, *TJ, *TK, *UI, *UJ, perf);
-            // If we are using online tuning for real applications, we can
+            
+	    printf("rank :%d, TI: %d,TJ: %d, TK: %d, UI: %d, UJ: %d, perf: %d", rank, *TI, *TJ, *TK, *UI, *UJ, perf);
+
+	    // If we are using online tuning for real applications, we can
             // call the harmony_end() function here and continue execution
             // with the best performing candidate.
         }

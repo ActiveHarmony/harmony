@@ -19,6 +19,6 @@ harmonyApp gemm {
        int {1 8 1} global 
        }
         }
-    { obsGoodness 2000 6200 global }
-    { predGoodness 2300 3500 }
+    { obsGoodness 3500 20000 global }
+    { predGoodness 3500 20000 }
 }

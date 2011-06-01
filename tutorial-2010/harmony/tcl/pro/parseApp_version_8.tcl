@@ -301,6 +301,7 @@ proc computeBundle {name appName} {
       
       for {set i $minv} {$i<=$maxv} {set i [expr $i+$stepv]} {
 	      lappend ${name}(domain) $i
+	}
       }
   }
 }

@@ -5,7 +5,7 @@ global search_algorithm
 # 3. Random
 # 4. Brute Force
 
-set search_algorithm 2 
+set search_algorithm 1 
 
 #### to disable client windows, set draw_har_windows variable to 0
 global draw_har_windows
@@ -43,7 +43,8 @@ if { $search_algorithm == 1 } {
 	##   before starting the search algorithm etc. 
 	## As a starting point, take a look at the generic init file provided with 
 	##  this distribution.
-	source ../tcl/pro/pro_init_generic.tcl
+	#source ../tcl/pro/pro_init_generic.tcl
+	source ../tcl/pro/pro_init_gemm.tcl
 	#source ../tcl/pro/pro_init_smg.tcl
 	#source ../tcl/pro/pro_init_irs.tcl
 } elseif { $search_algorithm == 2 } {

@@ -4,7 +4,6 @@ _host_name_=$HOSTNAME
 
 # read in the properties file
 
-
 # command line arguments
 # first argument to this script file is the code-generation parameters.
 #  code generation parameters are passed in as bash array. Each array

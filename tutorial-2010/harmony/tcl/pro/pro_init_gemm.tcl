@@ -206,9 +206,9 @@ proc parallel_simplex_init {appName} {
     # SECOND PART :: Search specific parameters
     ###########################################################
     set space_dimension 5
-    set simplex_npoints 16 
+    set simplex_npoints 8
     set pro_max_iterations 1000
-    set tolerance 50
+    set tolerance 0
 
     # projection related methods
     #  method 1: contact the point server, which uses Approximate Nearest
@@ -216,7 +216,7 @@ proc parallel_simplex_init {appName} {
     #            dimensions
     # method 2: project to boundary values
     set do_projection 1
-    set projection_method 1 
+    set projection_method 2 
 
     # ANN RELATED :
     #   use_ann :: use ann nearest neighbor calculcation?
@@ -276,6 +276,11 @@ proc parallel_simplex_init {appName} {
     set icsm_2_params(use_exploration_point) 0
 
     # method 3 takes the same parameter as method 2
+    set icsm_3_params(init_point) {2.5 2.5 2.5 2.5 2.5 4}
+    set icsm_3_params(scaling_vector) {.01 .02 .01 .03 .04 .05}
+    #set icsm_2_params(center) {0 0}
+    set icsm_3_params(use_exploration_point) 0
+
     # method 4 is a random simplex generation method
     set icsm_4_params(use_exploration_point) 0
     set icsm_4_params(filename) "random_simplex.tcl"
@@ -287,10 +292,10 @@ proc parallel_simplex_init {appName} {
     set icsm_6_params(init_point) {200 200 200 4 4 }
     set icsm_6_params(init_distance) 75
     set icsm_6_params(use_exploration_point) 1
-    # ndm - new directions method
     set curr_new_dir_trial 1
     set max_new_dir_trial 10
 
+    # ndm - new directions method
     set new_directions_method 4
 
     # new directions params

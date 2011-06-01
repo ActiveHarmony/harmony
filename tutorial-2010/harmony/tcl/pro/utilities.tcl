@@ -51,7 +51,6 @@ proc user_puts { message } {
 }
 
 proc set_label_texts { appName iteration } {
-    #global ${appName}_procs
     upvar #0 ${appName}_procs deplocals1
     foreach process $deplocals1 {
         upvar #0 ${process}_label_text label_text
@@ -86,15 +85,11 @@ proc set_label_texts { appName iteration } {
         set label_text_main ""
         upvar #0 ${appName}_label_text label_main
         set label_main ""
-        #puts "\#\#\#\#\#\#\#\#\#\#\#\#\#\#${appName}_label_text"
-        # our current best point
-        ##set disp_low_point [lindex $disp_points $disp_index]
         set counter 0
         upvar #0 ${appName}_bundles bun_names
         foreach bun $disp_low_point {
             set current_bun_name [lindex $bun_names $counter]
             incr counter
-            #append label_text_main " $current_bun_name: $bun "
             append label_main " $current_bun_name=$bun "
         }
     }
@@ -194,13 +189,9 @@ proc get_next_configuration { appName } {
 
 	 upvar #0 ${appName}_bundle_${bun}(domain) domain
 
-	 #set idx_upper [expr [llength $domain]-1]
 	 set idx_upper [expr [llength $domain]]
 
 	 set range [expr {$idx_upper-$min}]
-
-	 #unique random number generator
-	 #set idx [expr {int($min+(($idx_upper-$min)*rand()))}]
 	 
 	 set idx [expr {int($min+$range*rand())}]
 
@@ -214,9 +205,8 @@ proc get_next_configuration { appName } {
     
 }
 
-###########################################################################################
+
 proc get_next_configuration_by_name { appName varName } {
-    
     set min 1
     set out_str ""
 
@@ -243,11 +233,6 @@ proc get_next_configuration_by_name { appName varName } {
    
 	return $out_str
 
-	#append out_str [expr [lindex $domain]-1]
-	
-	#append $out_str "\0"
-
-	#return $out_str
     }
     else 
     {
@@ -267,7 +252,7 @@ proc get_next_configuration_by_name { appName varName } {
     }
      
 }
-#########################################################################################
+
 
 proc round_towards_min { wrt point step } {
     # here the assumption is that the step-size is one
@@ -283,10 +268,6 @@ proc round_towards_min { wrt point step } {
             lappend temp_ind [lindex $point $j]
         }
     }
-    #puts "Round towards min step: $step ::::::::::::::::::::::"
-    #puts "$point :::: "
-    #puts "$wrt :::: "
-    #puts "$temp_ind"
     return $temp_ind
 }
 
@@ -333,13 +314,14 @@ proc logging { str appName flag } {
     close $fname
 }
 
+
 proc write_candidate_simplex { appName } {
     upvar #0 candidate_simplex c_points
     upvar #0 simplex_iteration iteration
     upvar #0 code_generation_params(code_generation_destination) code_generation_dest
     
     set fname [open "/tmp/candidate_simplex.$appName.$iteration.dat" "w"]
-
+ 
     set i 0
     set out_str ""
     foreach point $c_points {
@@ -351,7 +333,9 @@ proc write_candidate_simplex { appName } {
     }
     puts $fname $out_str
     close $fname
+    
     set filename_ "/tmp/candidate_simplex.$appName.$iteration.dat"
+   
     scp_candidate $filename_ $code_generation_dest
 
 }
