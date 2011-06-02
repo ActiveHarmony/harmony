@@ -489,8 +489,12 @@ void get_appl_description(HDescrMessage *mesg, int client_socket){
         char *startp, *endp;
 
         startp=new_string;
-        // get rid of begining spaces
-        while (*startp==' ') startp++;
+        // Skip past intro comments and/or whitespace
+        while (strspn(startp, " \t\n\r\f#")) {
+            startp = startp + strspn(startp, " \t\n\r\f");
+            if (*startp=='#')
+                while (*(startp++)!='\n');
+        }
         // go to first space
         while (*startp!=' ') startp++;
         // get rid of separating spaces
