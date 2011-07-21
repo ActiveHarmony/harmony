@@ -17,10 +17,17 @@
 # along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
 #
 proc signal_go { appName expand_best_local } {
+    puts "inside signal_go"
     upvar #0 ${appName}_procs deplocals1
+
+    puts "tcl check 1"
     upvar #0 best_coordinate_so_far best_coord
+    puts "tcl check 1"
     foreach process $deplocals1 {
+	puts "process $process"
         upvar #0 ${process}_expand_best expand_best
+        upvar #0 ${process}_simplex_time s_time
+        incr s_time
         if {$expand_best_local == 1} {
             set expand_best 1
         } else {
@@ -28,19 +35,20 @@ proc signal_go { appName expand_best_local } {
         }
         upvar #0 ${process}_next_iteration next
         set next 1
-        upvar #0 ${process}_all_done a_done
-        set a_done 0
+        upvar #0 ${process}_search_done s_done
+        set s_done 0
         upvar #0 ${process}_best_coord_so_far bc
         set bc $best_coord
     }
+    puts "done signalling"
 }
 
 
 proc signal_all_done { appName best_so_far } {
     upvar #0 ${appName}_procs deplocals1
     foreach process $deplocals1 {
-        upvar #0 ${process}_all_done a_done
-        set a_done 1
+        upvar #0 ${process}_search_done s_done
+        set s_done 1
     }
 
     upvar #0 simplex_npoints size
@@ -60,7 +68,6 @@ proc user_puts { message } {
 }
 
 proc set_label_texts { appName iteration } {
-    #global ${appName}_procs
     upvar #0 ${appName}_procs deplocals1
     foreach process $deplocals1 {
         upvar #0 ${process}_label_text label_text
@@ -95,15 +102,11 @@ proc set_label_texts { appName iteration } {
         set label_text_main ""
         upvar #0 ${appName}_label_text label_main
         set label_main ""
-        #puts "\#\#\#\#\#\#\#\#\#\#\#\#\#\#${appName}_label_text"
-        # our current best point
-        ##set disp_low_point [lindex $disp_points $disp_index]
         set counter 0
         upvar #0 ${appName}_bundles bun_names
         foreach bun $disp_low_point {
             set current_bun_name [lindex $bun_names $counter]
             incr counter
-            #append label_text_main " $current_bun_name: $bun "
             append label_main " $current_bun_name=$bun "
         }
     }
@@ -147,8 +150,6 @@ proc list_to_string { ls } {
     return $return_string
 }
 
-
-
 proc get_candidate_configuration { appName } {
     set out_str ""
     upvar #0 candidate_simplex c_points
@@ -177,12 +178,105 @@ proc get_test_configuration { appName } {
     return $out_str
 }
 
-proc round_towards_min { wrt point } {
+proc get_next_configuration_dep { appName } {
+     set out_str ""
+     upvar #0 ${appName}_bundles buns
+     foreach bun $buns {
+ 	upvar #0 ${appName}_bundle_${bun}(value) v
+ 	append out_str $v "_"
+     }
+     set out_str [string range $out_str 0 [expr [string length $out_str] -2]]
+     append $out_str "\0"
+     return $out_str
+}
+
+# unique configuration
+proc get_next_configuration { appName } {
+
+     set min 0
+
+     set out_str ""
+
+     #creating the list of the bundles
+     #set bundle_list[list]
+
+     upvar #0 ${appName}_bundles buns
+
+     foreach bun $buns {
+
+	 upvar #0 ${appName}_bundle_${bun}(domain) domain
+
+	 set idx_upper [expr [llength $domain]]
+
+	 set range [expr {$idx_upper-$min}]
+	 
+	 set idx [expr {int($min+$range*rand())}]
+
+	 append out_str $idx "_"
+
+     }
+
+     set out_str [string range $out_str 0 [expr [string length $out_str] -2]]
+     append $out_str "\0"
+     return $out_str
+    
+}
+
+
+proc get_next_configuration_by_name { appName varName } {
+    set min 1
+    set out_str ""
+
+    #creating the list of the bundles
+    set bundle_list [list]
+
+    #put each varName in the list
+    lappend bundle_list ${varName}
+
+    #search for the unique varName
+    if{ [lsearch -exact $bundle_list ${varName}] != -1 } 
+    {
+	
+	upvar #0 ${appName}_bundle_${varName}(domain) domain
+    
+	set idx_upper [expr [llength $domain]-1]
+
+	#unique random number generator
+	set idx [expr {int($min+(($idx_upper-$min)*rand()))}]
+
+	append out_str  [lindex $domain $idx]
+   
+	append $out_str "\0"
+   
+	return $out_str
+
+    }
+    else 
+    {
+
+	upvar #0 ${appName}_bundle_${varName}(domain) domain
+	
+        set idx_upper [expr [llength $domain]-1]
+
+	#unique random number generator
+	set idx [expr {int($min+(($idx_upper-$min)*rand()))}]
+
+	append out_str  [lindex $domain $idx]
+   
+	append $out_str "\0"
+   
+	return $out_str
+    }
+     
+}
+
+
+proc round_towards_min { wrt point step } {
     # here the assumption is that the step-size is one
     #    i.e. the co-ordinate system is normalized
     # Change this should the step size change
     
-    set step 1
+    #set step 1
     set temp_ind {}
     for {set j 0} {$j < [llength $wrt]} {incr j} {
         if {[expr (abs ( [lindex $wrt $j] - [lindex $point  $j]))] < $step} {
@@ -237,28 +331,32 @@ proc logging { str appName flag } {
     close $fname
 }
 
+
 proc write_candidate_simplex { appName } {
     upvar #0 candidate_simplex c_points
     upvar #0 simplex_iteration iteration
     upvar #0 code_generation_params(code_generation_destination) code_generation_dest
     
-    set fname [open "/tmp/candidate_simplex.$iteration.dat" "w"]
-
+    set fname [open "/tmp/candidate_simplex.$appName.$iteration.dat" "w"]
+ 
     set i 0
     set out_str ""
     foreach point $c_points {
-        foreach elem $point {
-           append out_str " " $elem
-        }
-        append out_str "\n"
-        incr i
+         foreach elem $point {
+	     append out_str " " $elem
+	 }
+         append out_str "\n"
+         incr i
     }
     puts $fname $out_str
     close $fname
-    set filename_ "/tmp/candidate_simplex.$iteration.dat"
+    
+    set filename_ "/tmp/candidate_simplex.$appName.$iteration.dat"
+   
     scp_candidate $filename_ $code_generation_dest
 
 }
+
 proc send_candidate_simplex { appName } {
     upvar #0 candidate_simplex c_points
     upvar #0 simplex_iteration iteration
@@ -277,6 +375,7 @@ proc send_candidate_simplex { appName } {
     generate_code $out_str
 
 }
+
 proc format_print_simplex { simplex perf } {
     set i 0
     set out_str ""

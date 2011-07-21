@@ -16,8 +16,8 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
 #
-image create photo logo -file ../tcl/common/logo_new.ppm
+image create photo logo -file logo_new.ppm
  pack [canvas .c]
  .c create image 0 0 -anchor nw -image logo
 wm title . "Active Harmony"
-wm geometry . [image width logo]x[image height logo] 
+wm geometry . [image width logo]x[image height logo]

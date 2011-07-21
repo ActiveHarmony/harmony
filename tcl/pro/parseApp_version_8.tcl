@@ -70,7 +70,6 @@ proc recompute_dependencies {name appName} {
 }
 
 proc dependencies {type name appName} {
-#  puts "DEPENDENCIES : $type, $name, $appName"
 
   upvar #0 $name arrayName
   upvar #0 ${appName}_bundles bundles
@@ -79,7 +78,6 @@ proc dependencies {type name appName} {
     "enum" {
  	for {set i 1} {$i<=$arrayName(nr_opt)} {incr i 1} {
 	    foreach bun $bundles {
-# 		puts "check *${bun}* against $arrayName(opt${i})"
 		if [string match "*${bun}*" $arrayName(opt${i})] {
 		    lappend ${appName}_bundle_${bun}(depend) $name
 		}
@@ -180,25 +178,15 @@ proc harmonyApp {simple_name app_desc socket} {
   }
 
   upvar #0 ${name}_bundles bundles
-  #puts "Bundles: $bundles"
-  #puts ""
   upvar #0 ${name}_nodes nodes
-  #puts "Nodes: $nodes"
-  #puts ""
   upvar #0 ${name}_others others
-  #puts "Others: $others"
-  #puts ""
 
-  #print dependencies
-  #puts "Dependencies:"
   foreach bun $bundles {
       upvar #0 ${name}_bundle_${bun}(depend) depend
-      #puts "${name}_bundle_${bun}: $depend"
   }
 
   upvar #0 draw_har_windows draw_windows
 
-  #puts ""
   set ${name}_visible_height 400
     set ${name}_visible_width 500
     set ${name}_scroll_height 400
@@ -212,10 +200,6 @@ proc harmonyApp {simple_name app_desc socket} {
   set aName [string range $name 0 [expr [string last "_" $name]-1]]
   global ${aName}_bundles
   global ${aName}_draw
-  #puts "Exists? ${aName}_bundles"
-  #puts "Exists? .application_${aName}"
-  #puts "Exists? [info exists ${aName}_bundles]"
-  #puts "Exists? [info exists ${aName}_draw]"
   if { $draw_windows == 1 } {
       if {[info exists ${aName}_bundles] && ![info exists ${aName}_draw]} {
           puts "drawing the app $aName"
@@ -275,9 +259,6 @@ proc harmonyOther {args} {
 
   upvar #0 ${appName}_bundles bundles
 
-  #puts "$appName ; $name"
-  #puts "[info exists $bundles]"
-
   #define some cool things ???
   # I think that you need the
   foreach bun $bundles {
@@ -301,7 +282,6 @@ proc computeBundle {name appName} {
   upvar #0 ${appName}_bundles bundles
   #define values as global
   foreach bundle $bundles {
-#      puts $bundle
       upvar #0 ${appName}_bundle_${bundle}(value) $bundle
   }
 
@@ -337,15 +317,10 @@ proc computeBundle {name appName} {
 	  upvar #0 ${name}(stepv) stepv
 
 	  set ${name}(domain) {}
-      #puts ${name}
-	  for {set i $minv} {$i<=$maxv} {incr i $stepv} {
-          #puts "setting the domain for: "
-          #puts ${name}
+      
+      for {set i $minv} {$i<=$maxv} {set i [expr $i+$stepv]} {
 	      lappend ${name}(domain) $i
-	  }
-
-      #upvar #0 ${name}(domain) domain
-      #puts $domain
+	}
       }
   }
 }
@@ -357,7 +332,6 @@ proc harmonyBundle {name bundle_desc appName} {
   #update appName_bundles global variables
   global ${appName}_bundles
   global ${appName}_label_text
-  #puts $${appName}_bundles
 
   set ${appName}_label_text " "
 
@@ -402,7 +376,6 @@ proc harmonyBundle {name bundle_desc appName} {
 	    upvar #0 ${appName}_bundle_${name}(minv) minv
 	    upvar #0 ${appName}_bundle_${name}(maxv) maxv
 	    # the value is the minimum value
-	    #set ${appName}_bundle_${name}(value) $minv
 	    #changed to compare with PRO
        set ${appName}_bundle_${name}(value) [expr (($maxv+$minv)/2)]
 
@@ -419,13 +392,10 @@ proc harmonyBundle {name bundle_desc appName} {
 
 	    set ${appName}_bundle_${name}(value) 0
 
-	    computeBundle "${appName}_bundle${name} $appName"
-
-	  #the init value is the minimum value
-	  set ${appName}_bundle_${name}(value)  ${appName}_bundle_${name}(minv)
+	    computeBundle ${appName}_bundle_${name} $appName
 
 	  #determine dependencies
-	  dependencies "int" ${appName}_bundle_${name} $appName
+	  dependencies "real" ${appName}_bundle_${name} $appName
 	}
   }
 
@@ -440,10 +410,8 @@ proc harmonyBundle {name bundle_desc appName} {
 
       #first get the real name of the application without the socket number
       set aName [string range $appName 0 [expr [string last "_" $appName]-1]]
-      #puts "aName=$aName"
 
       #check if the bundle was already created
-      #puts "Check if bundle was created"
       global ${aName}_bundle_${name}
       if {[info exists ${aName}_bundle_${name}]} {
 	  #do nothing here
@@ -473,9 +441,6 @@ proc harmonyBundle {name bundle_desc appName} {
       set ${appName}_bundle_${name}(isglobal) 0
   }
 
-
-#  parr ${appName}_bundle_${name}
-  #drawharmonyBundle $name $bundle_desc
 }
 
 proc computeNode {name appName} {
@@ -489,7 +454,6 @@ proc computeNode {name appName} {
 
   #define values as global
   foreach bundle $bundles {
-#      puts $bundle
       upvar #0 ${appName}_bundle_${bundle}(value) $bundle
   }
 
@@ -547,7 +511,6 @@ proc node {name args} {
   #define some cool things
   foreach bun $bundles {
 	upvar #0 ${appName}_bundle_${bun}(value) $bun
-#        puts $bun
   }
 
 
@@ -565,8 +528,6 @@ proc node {name args} {
 
   dependencies "node"  ${appName}_node_${name} $appName
 
-#  parr ${appName}_node_${name}
-#  drawnode $name $args
 }
 
 proc case {args} {

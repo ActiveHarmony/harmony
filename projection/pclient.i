@@ -34,9 +34,9 @@
 #include <signal.h>
 
 
-#include "hutil.h"
-#include "hmesgs.h"
-#include "hsockutil.h"
+#include "putil.h"
+#include "pmesgs.h"
+#include "psockutil.h"
 #include "StringTokenizer.h"
 #include "pclient.h"
 
@@ -61,4 +61,4 @@ double rosen_6d(double x1_, double x2_,double x3_, double x4_,double x5_,double 
 double sombrero_6d(double x1_, double x2_,double x3_, double x4_,double x5_,double x6_);
 double rastrigin_6d(double x1_, double x2_,double x3_, double x4_,double x5_,double x6_);
 double quad_6d(double x1_, double x2_,double x3_, double x4_,double x5_,double x6_);
-*/
+*/ 

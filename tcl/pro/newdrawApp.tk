@@ -28,44 +28,39 @@
 # difficult to be provided in an absolute manner, so our code would not crash if
 # the values obtained are outside the given range.
 
-set visible_height 400
-set visible_width 500
-set scroll_height 400
-set scroll_width 500
-
-
 proc drawPerformance {appName} {
+
+    #puts "inside drawPerformance"
   # first check if any of the functions is defined
   upvar #0 ${appName}_predGoodness predG
   upvar #0 ${appName}_obsGoodness obsG
 
   if {[info exists predG] && [info exists obsG]} {
-    #label .application_${appName}.performanceText -width 70 -pady 5 -anchor w -text "Performance function:"     
-    #pack .application_${appName}.performanceText
+    label .application_${appName}.performanceText -width 70 -pady 5 -anchor w -text "Performance function:"     
+    pack .application_${appName}.performanceText
 
     global ${appName}_obsGoodness(isglobal)
     upvar #0 ${appName}_obsGoodness(isglobal) isglobal
 
-#    puts "Drawing performance for $appName : $isglobal"
+    #puts "Drawing performance for $appName : $isglobal"
 
-    if {$isglobal >= 0} {
-      checkbutton .application_${appName}.performanceisglobal -text "global" -variable ${appName}_obsGoodness(isglobal) -command "update_perf_isglobal $appName"
-      pack .application_${appName}.performanceisglobal -anchor w
-    }
+    #if {$isglobal >= 0} {
+    #  checkbutton .application_${appName}.performanceisglobal -text "global" -variable ${appName}_obsGoodness(isglobal) -command "update_perf_isglobal $appName"
+    #  pack .application_${appName}.performanceisglobal -anchor w
+    #}
 
-   # attributes default: width 250 height 200 scroll region: 0 0 5000 200
-    #Scrolled_Canvas .application_${appName}.performance -width 320 -height 200 -scrollregion {0 0 5000 200} -background #E0E088
-   Scrolled_Canvas .application_${appName}.performance -width 200 -height 200 -scrollregion {0 0 5000 1000} -background #F0F8FF
+    Scrolled_Canvas .application_${appName}.performance -width 500 -height 200 -scrollregion {0 0 5000 200} -background  #F0F8FF
+   
     pack .application_${appName}.performance
-
+    #puts "entering drawPerformance"
     drawharmonyPredGoodness $appName
-
+    #puts "out of  drawPerformance"
+    #puts "entering drawPerformance"
     drawharmonyObsGoodness $appName
+    #puts "out of drawPerformance"
   }
+    #puts "exiting drawPerformance"
 }
-
-
-
 
 proc update_perf_isglobal {appName} {
 
@@ -73,7 +68,7 @@ proc update_perf_isglobal {appName} {
 
   #first get the real name of the application without the socket number
   set aName [string range $appName 0 [expr [string last "_" $appName]-1]]
-#  puts "aName=$aName"
+  #puts "aName=$aName"
 
   global ${aName}_obsGoodness
 
@@ -91,7 +86,7 @@ proc update_perf_isglobal {appName} {
           #puts "Removed from list: $deplocals"  
         } else {
 	  info globals ADR_obsGoodness
-          #puts "Global ${aName}_obsGoodness does not exist"
+          puts "Global ${aName}_obsGoodness does not exist"
         }
   }  else {
         if {[info exists ${aName}_obsGoodness]} {
@@ -143,7 +138,7 @@ proc canvasyCoord {appName y} {
   upvar #0 ${appName}_obsGoodness(max) omax
   set step [expr 200.0/($omax-$omin)]
 
-  return [expr ($omax-$y)*$step]
+  return [expr ($omax-$y)*$step] 
 }
 
 proc drawharmonyPredGoodness {appName} {
@@ -156,12 +151,12 @@ proc drawharmonyPredGoodness {appName} {
 #  .application_${appName}.performance.canvas create line 0 [expr 200-($pmin-$omin)*$step] 5000 [expr 200-($pmin-$omin)*$step] -fill red -tag predGmin
 #  .application_${appName}.performance.canvas create line 0 [expr ($omax-$pmax)*$step] 5000 [expr ($omax-$pmax)*$step] -fill red -tag predGmax
 
-  .application_${appName}.performance.canvas create line 0 [canvasyCoord $appName $pmin] 5000 [canvasyCoord $appName $pmin] -fill red -width 2 -tag predGmin
-  .application_${appName}.performance.canvas create line 0 [canvasyCoord $appName $pmax] 5000 [canvasyCoord $appName $pmax] -fill red -width 2 -tag predGmax
+  .application_${appName}.performance.canvas create line 0 [canvasyCoord $appName $pmin] 5000 [canvasyCoord $appName $pmin] -fill red -tag predGmin
+  .application_${appName}.performance.canvas create line 0 [canvasyCoord $appName $pmax] 5000 [canvasyCoord $appName $pmax] -fill red -tag predGmax
   .application_${appName}.performance.canvas create line 0 0 0 200 -fill darkgreen -tag timeLine
 
- .application_${appName}.performance.canvas create text 1 [canvasyCoord $appName $pmin] -anchor nw -text "predGoodness(min): $pmin"  -fill red -tag {predGmin predGminText}
- .application_${appName}.performance.canvas create text 1 [canvasyCoord $appName $pmax] -anchor sw -text "predGoodness(max): $pmax"  -fill red -tag {predGmax predGmaxText}
+ .application_${appName}.performance.canvas create text 0 [canvasyCoord $appName $pmin] -anchor nw -text "predGoodness(min): $pmin" -fill red -tag {predGmin predGminText}
+ .application_${appName}.performance.canvas create text 0 [canvasyCoord $appName $pmax] -anchor sw -text "predGoodness(max): $pmax" -fill red -tag {predGmax predGmaxText}
   .application_${appName}.performance.canvas create text 0 0 -anchor nw -text " time line: 20" -fill darkgreen -tag {timeLine timeLineText}
 
   .application_${appName}.performance.canvas bind predGmin <B1-Motion> {predGDrag %W %y predGmin}
@@ -179,16 +174,18 @@ proc drawharmonyObsGoodness {appName} {
 
 #  .application_${appName}.performance.canvas create line $coords -fill blue -tag obsGoodness
 	
-#  puts "Here I have: [lindex $coords [expr [llength $coords]-1]] [lindex $coords end]"
-#  puts "Coords: $coords"
+  #puts "Here I have: [lindex $coords [expr [llength $coords]-1]] [lindex $coords end]"
+  #puts "Coords: $coords"
 
   drawCross .application_${appName}.performance.canvas [lindex $coords [expr [llength $coords]-2]] [lindex $coords end]
 }
 
 
 proc drawCross {win xcoord ycoord} {
-  $win create line [expr 2*$xcoord-1] $ycoord [expr 2*$xcoord+2] $ycoord -fill blue -tag obsGoodness
-  $win create line [expr 2*$xcoord] [expr $ycoord-1] [expr 2*$xcoord] [expr $ycoord+2] -fill blue -tag obsGoodness
+    #puts "drawing the cross"
+    $win create line [expr 2*$xcoord-1] $ycoord [expr 2*$xcoord+2] $ycoord -fill blue -tag obsGoodness
+    $win create line [expr 2*$xcoord] [expr $ycoord-1] [expr 2*$xcoord] [expr $ycoord+2] -fill blue -tag obsGoodness
+    #puts "done drawing the cross"
 }
 
 
@@ -210,6 +207,7 @@ proc timeLineDrag {win x} {
 
     $win itemconfigure timeLineText -text " time line: [expr $newx/2]"
   }
+    
 }  
 
 proc predGDrag {win y what} {

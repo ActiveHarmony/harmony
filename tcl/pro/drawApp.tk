@@ -46,15 +46,15 @@ proc redraw_dependencies {name appName sendUpdate currValue} {
 	set winname [string range $depend [expr 1+[string last "_" $depend]] end]
 	recompute_dependencies $depend $appName
 	if "[string match "*bundle*" $depend]" {
-	  puts " Redraw bundle"
-	  puts " $depend ; $winname"
+	  #puts " Redraw bundle"
+	  #puts " $depend ; $winname"
 
 	  upvar #0 ${appName}_bundle_${winname}(isglobal) isglobal
 
   	  #destroy .application_${appName}.bundles.f_$winname
 	  #if {$isglobal >= 0} {
-	#	destroy .application_${appName}.bundles.f_${winname}_isglobal
- 	 # }
+	  #	destroy .application_${appName}.bundles.f_${winname}_isglobal
+ 	  # }
 	  drawharmonyBundle $winname $appName
 	} elseif "[string match "*node*" $depend]" {
 	  destroy .application_${appName}.nodes.f_$winname
@@ -118,13 +118,13 @@ proc update_bundle_isglobal {name appName} {
 	  global ${aName}_bundle_${name}(deplocals)
 	  upvar #0 ${aName}_bundle_${name}(deplocals) deplocals
 	
-	  puts "Removing ${appName}_bundle_$name from $deplocals"
+	  #puts "Removing ${appName}_bundle_$name from $deplocals"
 
 	  set pos [lsearch -exact $deplocals ${appName}_bundle_$name]
 		  
 	  set ${aName}_bundle_${name}(deplocals) [lreplace $deplocals $pos $pos]
 
-	  puts "Removed from list: $deplocals"	
+	  #puts "Removed from list: $deplocals"	
 	} else {
 	  puts "Global ${aName}_bundle_$name does not exist"
 	}

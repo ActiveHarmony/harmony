@@ -71,56 +71,11 @@
 #                         performance value that we get reflects the changes
 #                         made to the parameters
 #
-proc simplex_init {appName} {
-    global ${appName}_simplex_step
-    global ${appName}_simplex_points
-    global ${appName}_simplex_npoints
-    global ${appName}_simplex_performance
-    global ${appName}_simplex_low
-    global ${appName}_simplex_high
-    global ${appName}_simplex_nhigh
-    global ${appName}_simplex_alpha
-    global ${appName}_simplex_beta
-    global ${appName}_simplex_gamma
-    global ${appName}_simplex_centroid
-    global ${appName}_simplex_pstar
-    global ${appName}_simplex_ystar
-    global ${appName}_simplex_pdstar
-    global ${appName}_simplex_ydstar
-    global ${appName}_simplex_time
-
-    set ${appName}_simplex_step 0
-
-    set ${appName}_simplex_npoints 0
-
-    set ${appName}_simplex_low(index) -1
-    set ${appName}_simplex_low(value) 0
-
-    set ${appName}_simplex_high(index) -1
-    set ${appName}_simplex_high(value) 0
-  
-    set ${appName}_simplex_nhigh(index) -1
-    set ${appName}_simplex_nhigh(value) -1
-
-    set ${appName}_simplex_alpha 1
-    set ${appName}_simplex_beta 0.5
-    set ${appName}_simplex_gamma 2
-
-    set ${appName}_simplex_pstar {}
-    set ${appName}_simplex_ystar -1
-    set ${appName}_simplex_pdstar {}
-    set ${appName}_simplex_ydstar -1
-
-    set ${appName}_simplex_time -1
-
-    set ${appName}_simplex_performance {}
-}
-
 
 # this function computes the new simplex until no visible improvement in the 
 # performance function. For now we will run the simplex until the performance
 # does not change in terms of units (3 units)
-# 
+#
 proc simplex_method {appName yvalue} {
 
     global ${appName}_bundles
@@ -151,89 +106,93 @@ proc simplex_method {appName yvalue} {
     upvar #0 ${appName}_simplex_ydstar ydstar
     upvar #0 ${appName}_simplex_performance performance
     upvar #0 ${appName}_bundles bundles
-
-    global temporary 
-
+    
+    global temporary
+    
     puts "Entered simplex with step: $step ; yvalue=$yvalue"
     puts $performance
     parr ${appName}_simplex_points
-
+    
     if {$step == 0} {
-	puts "********** Step 0 : $npoints ; $bundles"
-	collect_bundles $appName $npoints
-	lappend performance $yvalue
-	incr npoints
-	if {$npoints > [llength $bundles]} {
-	    incr step
-	    simplex_method $appName $yvalue
-	} else {
-	    set_ith_bundle_to_given_value $appName [expr $npoints-1] "max"
-	}   
+        
+        # Provide initial simplex construction methods here.
+        
+        puts "********** Step 0 : $npoints ; $bundles"
+        collect_bundles $appName $npoints
+        lappend performance $yvalue
+        incr npoints
+        if {$npoints > [llength $bundles]} {
+            incr step
+            simplex_method $appName $yvalue
+        } else {
+            upvar #0 init_simplex_method init_method
+            set_ith_bundle_to_given_value $appName [expr $npoints-1] $init_method
+        }  
     } elseif {$step == 1} {
-	puts "=============== Step 1 ; $yvalue"
-
-	    low_high_index $appName
+        puts "=============== Step 1 ; $yvalue"
+        
+	    low_high_index $appName 
 	    
 	    compute_centroid $appName
 	    
-	puts "Centroid: $centroid"
-
+        puts "Centroid: $centroid"
+        
 	    #compute P*
 	    set temp {}
 	    for {set j 0} {$j < [llength $centroid]} {incr j} {
-		lappend temp [expr [lindex $centroid $j] * (1.0 + $alpha) - $alpha * [lindex $points($high(index)) $j]]
+            lappend temp [expr [lindex $centroid $j] * (1.0 + $alpha) - $alpha * [lindex $points($high(index)) $j]]
 	    }
 	    
 	    puts "New values for params: $temp"
 	    
 	    set_bundles_to_new_values $appName $temp
-
+        
 	    recollect_bundles $appName ${appName}_simplex_pstar
-
+        
 	    puts "Pstar: $pstar"
-
+        
 	    incr step
-
+        
 	    puts "Step: $step"
     } elseif {$step == 2} {
-	puts "********** Step 2: $performance ; $low(value) ; $yvalue ; $nhigh(value)"
-	set ystar $yvalue
-	if {$low(value) < $ystar && $ystar <= $nhigh(value)} {
-	    #replace Ph by P*
-	    puts "Replace Ph by P* : $ystar"
-	    puts "Performance initially: $performance"
-	    set ${appName}_simplex_points($high(index)) $pstar
-	    set ${appName}_simplex_performance [lreplace $performance $high(index) $high(index) $ystar]
-	    puts "New performance: $performance"
-	    set ${appName}_simplex_step 1
-	    simplex_method $appName $yvalue
-	} elseif {$ystar < $low(value)} {
-	    #compute P**
-	    set temp {}
-	    for {set j 0} {$j < [llength $centroid]} {incr j} {
-		lappend temp [expr [lindex $centroid $j] * (1.0 - $gamma) + $gamma * [lindex $pstar $j]]
-	    }
-
-	    puts "Computed P**: $temp"
-	    
-	    set_bundles_to_new_values $appName $temp
-	    
-	    recollect_bundles $appName ${appName}_simplex_pdstar
-	    
-	    puts "Pdstar: $pdstar"
-
-	    incr step
-	} else { #means $nhigh(value) < $ystar
-	    if {$ystar < [lindex $performance $high(index)]} {
-		set ${appName}_simplex_performance [lreplace $performance $high(index) $high(index) $ystar]
-	    }
-	    puts "Compute P**"
-	    #compute P**
-	    set temp {}
-	    for {set j 0} {$j < [llength $centroid]} {incr j} {
-		lappend temp [expr [lindex $centroid $j] * (1.0 - $beta) + $beta * [lindex $points($high(index)) $j]]
-	    }
-
+        puts "********** Step 2: $performance ; $low(value) ; $yvalue ; $nhigh(value)"
+        set ystar $yvalue
+        if {$low(value) < $ystar && $ystar <= $nhigh(value)} {
+            #replace Ph by P*
+            puts "Replace Ph by P* : $ystar"
+            puts "Performance initially: $performance"
+            set ${appName}_simplex_points($high(index)) $pstar
+            set ${appName}_simplex_performance [lreplace $performance $high(index) $high(index) $ystar]
+            puts "New performance: $performance"
+            set ${appName}_simplex_step 1
+            simplex_method $appName $yvalue
+        } elseif {$ystar < $low(value)} {
+            #compute P**
+            set temp {}
+            for {set j 0} {$j < [llength $centroid]} {incr j} {
+                lappend temp [expr [lindex $centroid $j] * (1.0 - $gamma) + $gamma * [lindex $pstar $j]]
+            }
+            
+            puts "Computed P**: $temp"
+            
+            set_bundles_to_new_values $appName $temp
+            
+            recollect_bundles $appName ${appName}_simplex_pdstar
+            
+            puts "Pdstar: $pdstar"
+            
+            incr step
+        } else { #means $nhigh(value) < $ystar
+            if {$ystar < [lindex $performance $high(index)]} {
+                set ${appName}_simplex_performance [lreplace $performance $high(index) $high(index) $ystar]
+            }
+            puts "Compute P**"
+            #compute P**
+            set temp {}
+            for {set j 0} {$j < [llength $centroid]} {incr j} {
+                lappend temp [expr [lindex $centroid $j] * (1.0 - $beta) + $beta * [lindex $points($high(index)) $j]]
+            }
+            
 	    puts "Setting bundles to :$temp!"
     
 	    set_bundles_to_new_values $appName $temp
@@ -281,8 +240,6 @@ proc simplex_method {appName yvalue} {
 	    global ${appName}_simplex_refp
 	    set ${appName}_simplex_refp $points($low(index))
 
-	    #for {set i 0} {$i < $npoints} {incr i} {set ${appName}_simplex_points($i) {} }
-
 	    set npoints 0
 
 	    upvar \#0 ${appName}_simplex_refp refp
@@ -307,50 +264,40 @@ proc simplex_method {appName yvalue} {
 	    incr step
 	}
     } elseif {$step==5} {
-	puts "Step 5............ $npoints ; [llength $performance] ; $performance"
-	set ${appName}_simplex_performance [lreplace $performance $npoints $npoints $yvalue]
-
-	puts $performance
-	parr ${appName}_simplex_low
-
-	incr npoints
-
-	if {$npoints<[llength $performance]} {
-	    upvar \#0 ${appName}_simplex_refp refp
-	    set temp {}
-	    for {set j 0} {$j < [llength $centroid]} {incr j} {
-		puts "Shrink from [lindex $points($npoints) $j] to [lindex $refp $j] + [lindex $points($npoints) $j])/2]"
-		lappend temp [expr ([lindex $refp $j] + [lindex $points($npoints) $j])/2]
-		if {$npoints==$low(index)} {
-		    set_ith_bundle_to_given_value $appName $j  [expr ([lindex $refp $j] + [lindex $points($npoints) $j])/2]
-		}
-	    }
-	    
-
-	    puts $temp
-
-	    if {$npoints!=$low(index)} {
-		set_bundles_to_new_values $appName $temp
-	    }
-	    collect_bundles $appName $npoints
-	    puts "Point $npoints: $points([expr $npoints-1])"
-	} else {
-	    set ${appName}_simplex_step 1
-	}
+        puts "Step 5............ $npoints ; [llength $performance] ; $performance"
+        set ${appName}_simplex_performance [lreplace $performance $npoints $npoints $yvalue]
+        
+        puts $performance
+        parr ${appName}_simplex_low
+        
+        incr npoints
+        
+        if {$npoints<[llength $performance]} {
+            upvar \#0 ${appName}_simplex_refp refp
+            set temp {}
+            for {set j 0} {$j < [llength $centroid]} {incr j} {
+                puts "Shrink from [lindex $points($npoints) $j] to [lindex $refp $j] + [lindex $points($npoints) $j])/2]"
+                lappend temp [expr ([lindex $refp $j] + [lindex $points($npoints) $j])/2]
+                if {$npoints==$low(index)} {
+                    set_ith_bundle_to_given_value $appName $j  [expr ([lindex $refp $j] + [lindex $points($npoints) $j])/2]
+                }
+            }
+            
+            
+            puts $temp
+            
+            if {$npoints!=$low(index)} {
+                set_bundles_to_new_values $appName $temp
+            }
+            collect_bundles $appName $npoints
+            puts "Point $npoints: $points([expr $npoints-1])"
+        } else {
+            set ${appName}_simplex_step 1
+        }
     }
 }
 
-proc get_test_configuration { appName } {
-    set out_str ""
-    upvar #0 ${appName}_bundles buns
-    foreach bun $buns {
-        upvar #0 ${appName}_bundle_${bun}(value) v
-        append out_str $v "_"
-    }
-    set out_str [string range $out_str 0 [expr [string length $out_str] -2]]
-    append $out_str "\0"
-    return $out_str
-}
+
 
 # this function computes the low, high, and next-high indexes
 proc low_high_index {appName} {
@@ -414,33 +361,26 @@ proc collect_bundles {appName indx} {
     puts "Collected bundles: $bundle_list"
 
     foreach bun $bundles {
-	upvar \#0 ${appName}_bundle_${bun}(value) bunv
-	puts "Collecting $bun ; $bunv"
-	lappend bundle_list $bunv
+        upvar #0 ${appName}_bundle_${bun}(value) bunv
+        puts "Collecting $bun ; $bunv"
+        lappend bundle_list $bunv
     }
 
     puts "Collected bundles: $bundle_list"
-
     set ${appName}_simplex_points($indx) $bundle_list
- 
 }
 
 
 proc recollect_bundles {appName where} {
     global ${appName}_simplex_points 
-    
     global $where
-
     upvar #0 ${appName}_bundles bundles
-
     set bundle_list {}
     foreach bun $bundles {
-	upvar #0 ${appName}_bundle_${bun}(value) $bun
-	lappend bundle_list [expr $$bun]
+        upvar #0 ${appName}_bundle_${bun}(value) $bun
+        lappend bundle_list [expr $$bun]
     }
-
     set $where $bundle_list
- 
 }
 
 
@@ -483,7 +423,6 @@ proc set_bundles_to_new_values {appName values} {
     for {set sign 1} {($ok==0) && ($sign>-2)} {incr sign -2} {
 	for {set retry -1} {($ok==0) && ($retry < [llength $values])} {incr retry} {
 	    puts "Retry : $retry ; [llength $values] ; $ok ; sign = $sign"
-#	    puts "------"
 	    set i 0
 	    foreach bun $bundles {
 		upvar #0 ${appName}_bundle_${bun}(value) bunv
@@ -495,9 +434,7 @@ proc set_bundles_to_new_values {appName values} {
 		    set closestv [closest_value ${appName}_bundle_${bun} [lindex $values $i]]
 		    set proposedv [expr $closestv + $stepv*($i==$retry)*$sign]
  
-#		    puts "Values: $closestv ; $proposedv ; $minv ; $maxv"
 		    if {($proposedv >= $minv) && ($proposedv <= $maxv)} {
-#			puts "Proposed passed!"
 			set ${bun}(value) $proposedv
 		    } else {
 			set ${bun}(value) $closestv
@@ -510,18 +447,14 @@ proc set_bundles_to_new_values {appName values} {
 	    if {[exists_point $temporary ${appName}]} {
 		set ok 0
 	    } else {
-#		            puts "point does not exist"
 		set ok 1
 	    }
 	}
-#	puts "OK: $ok ;($ok==0) && ($retry < [llength $values]) ; sign = $sign "
     }
 
     global ${appName}_simplex_time
     global ${appName}_time
     upvar #0 ${appName}_time time
-#    puts $time
-#    puts ${appName}_simplex_time
     set ${appName}_simplex_time $time
 }
 
@@ -530,7 +463,6 @@ proc exists_point {temp appName} {
     upvar #0 ${appName}_simplex_npoints npoints
     upvar #0 ${appName}_simplex_points points
     for {set i 0} {$i < $npoints} {incr i} {
-        #puts "Checking $temp against $points($i) ; $npoints ; $i"
         if {$temp == $points($i)} {
             puts "Found equality: $temp = points($i)=$points($i)"
             return 1}
@@ -623,24 +555,36 @@ proc set_ith_bundle_to_given_value {appName indx value} {
     upvar #0 ${appName}_bundle_${bun}(value) bunv
     upvar #0 ${appName}_bundle_${bun}(maxv) maxv
     upvar #0 ${appName}_bundle_${bun}(minv) minv
+   
     upvar #0 ${appName}_bundle_${bun} $bun
 
     switch -- $value {
-	"min" {
-	    set ${bun}(value) $minv
-	}
 	"max" {
 	    set ${bun}(value) $maxv
 	}
+        "center" {
+            set temp [expr ($minv+$maxv)/2]
+            set ${bun}(value) [closest_value ${appName}_bundle_${bun} $temp]
+        }
+        "user_defined" {
+            # first set all the other bundles to their initial values
+            foreach ind_bun $bundles {
+                upvar #0 ${appName}_bundle_${ind_bun}(value) curr_val
+                upvar #0 ${appName}_bundle_${ind_bun}(ivalue) init_val
+                set curr_val $init_val
+            }
+            upvar #0 ${appName}_bundle_${bun}(iscale) iscale
+            set temp [expr $bunv+$iscale]
+            set ${bun}(value) [closest_value ${appName}_bundle_${bun} $temp]
+        }
 	default {
 	    puts $value
 	    puts [closest_value ${appName}_bundle_${bun} $value]
 	    set ${bun}(value) [closest_value ${appName}_bundle_${bun} $value]
 	}
     }
-
     redraw_dependencies $bun $appName 0 0
-}	    
+}
 
 
 proc print_all_bundles {appName} {
@@ -664,3 +608,4 @@ proc min {v1 v2} {
 	return $v2
     }
 }
+

@@ -224,8 +224,11 @@ proc parallel_simplex_init {appName} {
     ###########################################################
     # SECOND PART :: Search specific parameters
     ###########################################################
-    set space_dimension 2 
-    set simplex_npoints 8
+    #For PRO Example: space dimension is set to 6
+    set space_dimension 5
+
+    #set space_dimension 2
+    set simplex_npoints 8 
     set pro_max_iterations 1000
     set tolerance 0
 
@@ -250,7 +253,7 @@ proc parallel_simplex_init {appName} {
 
     set ann_params(use_ann) 0
     set ann_params(pserver_host) "brood00"
-    set ann_params(pserver_port) 2077
+    set ann_params(pserver_port) 1977
     set ann_params(connected) 0
 
     # code generation related parameters
@@ -258,17 +261,17 @@ proc parallel_simplex_init {appName} {
     set code_generation_params(gen_method) 2
 
     # method 1 parameters
-    set code_generation_params(cserver_host) "spoon"
-    set code_generation_params(cserver_port) 2002
+    set code_generation_params(cserver_host) "brood00"
+    set code_generation_params(cserver_port) 1977
     set code_generation_params(cserver_connection) 0
 
     # method 2 parameters
-    set code_generation_params(code_generation_destination) "tiwari@spoon:/fs/spoon/tiwari/scratch/confs/"
+    set code_generation_params(code_generation_destination) "rahulp@brood00:/hivehomes/rahulp/scratch/confs/"
 
-    set initial_simplex_method 6
+    set initial_simplex_method 4
 
     # space exploration parameters
-    set space_explore_params(num_iterations) 2
+    set space_explore_params(num_iterations) 0
     set space_explore_params(random_step) 0
     set space_explore_params(best_perf) $int_max_value
     set space_explore_params(best_point) {}
@@ -280,11 +283,17 @@ proc parallel_simplex_init {appName} {
     set icsm_1_params(num_neighbors) 1000
 
     # method 2 params
-    set icsm_2_params(init_point) {20 20}
-    set icsm_2_params(scaling_vector) {8 3}
-    set icsm_2_params(center) {0 0}
+    set icsm_2_params(init_point) {2.5 2.5 2.5 2.5 2.5 4}
+    set icsm_2_params(scaling_vector) {.1 .2 .1 .3 .4 .5}
+    #set icsm_2_params(center) {0 0}
+    set icsm_2_params(use_exploration_point) 0
 
     # method 3 takes the same parameter as method 2
+    set icsm_3_params(init_point) {2.5 2.5 2.5 2.5 2.5 4}
+    set icsm_3_params(scaling_vector) {.01 .02 .01 .03 .04 .05}
+    #set icsm_2_params(center) {0 0}
+    set icsm_3_params(use_exploration_point) 0
+
     # method 4 is a random simplex generation method
     set icsm_4_params(use_exploration_point) 0
     set icsm_4_params(filename) "random_simplex.tcl"
@@ -293,14 +302,13 @@ proc parallel_simplex_init {appName} {
     # method 5 reads the initial simplex from a file
     set icsm_5_params(filename) "init_simplex_from_file.tcl"
 
-    set icsm_6_params(init_point) {25 25 }
-    set icsm_6_params(init_distance) 50
+    set icsm_6_params(init_point) {25 25 25 25 25 25}
+    set icsm_6_params(init_distance) 5
     set icsm_6_params(use_exploration_point) 1
-    # ndm - new directions method
     set curr_new_dir_trial 1
     set max_new_dir_trial 4
 
-    set new_directions_method 4
+    set new_directions_method 4 
 
     # new directions params
     # method 1: uses ann to construct a new simplex around the current best
@@ -314,8 +322,8 @@ proc parallel_simplex_init {appName} {
     set ndm_1_params(distance_step) {1 1}
 
     set ndm_2_params(start_scale) 4
-    set ndm_2_params(step) -0.25
-    set ndm_2_params(scaling_vector) {4 4}
+    set ndm_2_params(step) 3
+    set ndm_2_params(scaling_vector) {.1 .2 .1 .3 .4 .5}
 
     set ndm_3_params(how_many) 10
     set ndm_3_params(next_index) 0

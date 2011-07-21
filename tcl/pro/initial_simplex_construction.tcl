@@ -49,16 +49,14 @@ proc construct_initial_simplex { appName } {
     if { $initial_simplex_method == 1 } {
         upvar #0 icsm_${initial_simplex_method}_params(init_point) init_point
         upvar #0 icsm_${initial_simplex_method}_params(init_distance) init_distance
-        
         upvar #0 icsm_1_params(use_exploration_point) use_e_point
-        
-        
+
         # using the best point from space exploration?
         if { $use_e_point == 1 } {
             upvar #0 space_explore_params(best_point) b_point
             set init_point $b_point
         }
-        
+
         set temp [initial_simplex_with_ann $size $init_point $init_distance]
 
         if { [llength $temp] != $size } {
@@ -79,23 +77,25 @@ proc construct_initial_simplex { appName } {
         upvar #0 icsm_${initial_simplex_method}_params(scaling_vector) scaling_vector
         upvar #0 icsm_${initial_simplex_method}_params(init_point) init_point
         upvar #0 simplex_npoints  size
-        
         upvar #0 icsm_${initial_simplex_method}_params(use_exploration_point) use_e_point
-        
+
         # using the best point from space exploration?
         if { $use_e_point == 1 } {
             upvar #0 space_explore_params(best_point) b_point
             set init_point $b_point
         }
-        
         set temp [initial_2N_simplex_with_scaling $init_point $scaling_vector $size]
     }
 
     # 3: same as 2, but start at the center of the search space
     if { $initial_simplex_method == 3 } {
-        # not implemented yet
-        set center [get_center_of_search_space]
-        set temp [initial_2N_simplex_with_scaling $center $scaling_vector]
+        upvar #0 icsm_${initial_simplex_method}_params(scaling_vector) scaling_vector
+        upvar #0 simplex_npoints  size
+        upvar #0 icsm_${initial_simplex_method}_params(use_exploration_point) use_e_point
+
+        set center [get_center_of_search_space $appName]
+        set init_point $center
+        set temp [initial_2N_simplex_with_scaling $center $scaling_vector $size]
     }
 
    # 4: Random simplex
@@ -104,7 +104,7 @@ proc construct_initial_simplex { appName } {
         #puts $random_simplex_file
         upvar #0 icsm_${initial_simplex_method}_params(init_point) init_point
         #set temp [initial_simplex_from_file $random_simplex_file]
-        set temp [construct_random_simplex $appName]
+        set temp [construct_random_simplex_domain $appName]
     }
 
 
@@ -126,13 +126,13 @@ proc construct_initial_simplex { appName } {
         upvar #0 icsm_${initial_simplex_method}_params(init_distance) init_distance
         upvar #0 simplex_npoints size
         upvar #0 icsm_${initial_simplex_method}_params(use_exploration_point) use_e_point
-        
+
         # using the best point from space exploration?
         if { $use_e_point == 1 } {
             upvar #0 space_explore_params(best_point) b_point
             set init_point $b_point
         }
-        
+
         set temp [initial_simplex_no_ann $init_point $init_distance $size]
         if { [llength $temp] != $size } {
             while { [llength $temp] < $size } {
@@ -168,7 +168,7 @@ proc construct_initial_simplex { appName } {
         puts -nonewline "Creating an initial simplex with method "
         puts $initial_simplex_method
         puts -nonewline "Simplex:: with init_point:: "
-        
+
         puts $init_point
         puts [format_initial_simplex $return_simplex]
     }
@@ -176,16 +176,31 @@ proc construct_initial_simplex { appName } {
     return $return_simplex
 }
 
+
+proc get_center_of_search_space { appName } {
+    upvar #0 ${appName}_bundles bundles
+    set return_mat {}
+    foreach bun $bundles {
+        upvar #0 ${appName}_bundle_${bun}(domain) domain
+        set domain_size [llength $domain]
+        set mid_point [expr $domain_size/2]
+        puts "$domain_size : $mid_point"
+        #set rounded [round mid_point]
+        lappend return_mat [lindex $domain $mid_point]
+    }
+    return $return_mat
+}
+
 # construct a random simplex
 proc construct_random_simplex { appName } {
     upvar #0 simplex_npoints size
     upvar #0 ${appName}_bundles bundles
     upvar #0 ${appName}_procs procs
-    
+
     set temp {}
     set points {}
     for {set i 0} {$i < $size} {incr i} {
-        foreach bun $bundles { 
+        foreach bun $bundles {
             upvar #0 ${appName}_bundle_${bun}(min) min
             upvar #0 ${appName}_bundle_${bun}(max) max
             lappend temp [random_uniform $min $max 1]
@@ -193,7 +208,35 @@ proc construct_random_simplex { appName } {
         lappend points $temp
         set temp {}
     }
-    
+
+    return $points
+}
+
+# construct a random simplex - domain dependent
+proc construct_random_simplex_domain { appName } {
+    upvar #0 simplex_npoints size
+    upvar #0 ${appName}_bundles bundles
+    upvar #0 ${appName}_procs procs
+
+    set temp {}
+    set points {}
+    for {set i 0} {$i < $size} {incr i} {
+        foreach bun $bundles {
+            upvar #0 ${appName}_bundle_${bun}(min) min
+            upvar #0 ${appName}_bundle_${bun}(max) max
+            upvar #0 ${appName}_bundle_${bun}(domain) domain
+
+            set idx_upper [expr [llength $domain]-1]
+            set idx  0
+            if { $idx_upper > 0 } {
+                set idx  [random_uniform 0 $idx_upper 1]
+            }
+            lappend temp [lindex $domain $idx]
+        }
+        lappend points $temp
+        set temp {}
+    }
+
     return $points
 }
 
@@ -214,7 +257,7 @@ proc initial_simplex_with_ann { size init_point distance } {
     upvar #0 ann_params(num_groups) num_groups
     upvar #0 ann_params(group_info) group_info
     upvar #0 ann_params(use_diff_radius) diff_radius
-    upvar #0 ann_params(combine_method) c_method
+    set c_method 2
 
     # construct the distance string
     set dist_str ""
@@ -239,35 +282,27 @@ proc initial_simplex_with_ann { size init_point distance } {
     set request_str ""
     append request_str $dist_str [list_to_string $init_point]
 
-    #puts -nonewline "request string from initial simplex constructor :: "
-    #puts $request_str
-    
-    upvar #0 pro_step curr_step
-    #puts -nonewline "current step:: "
-    #puts $curr_step
+    puts -nonewline "request string from initial simplex constructor :: "
+    puts $request_str
 
+    upvar #0 pro_step curr_step
+  
     # special case for the new directions
     if {$curr_step == 10} {
         simplex_construction $request_str "constructed_simplex.tcl"
     }
+    upvar #0 ann_params(init_simplex_name) init_simplex_file
+     simplex_construction $request_str $init_simplex_file
     source ./constructed_simplex.tcl
-    #puts $init__
-
+   
     set init_simplex_temp [combine_groups_method_${c_method} $init__ $init_point $group_info]
-
-    #puts -nonewline "init_simplex_temp:: "
-    #puts $init_simplex_temp
 
     set index [expr [llength $init_simplex_temp] -1]
 
     set init_simplex {}
 
-    #puts -nonewline "Number of neighbors :: "
-    #puts [llength $init_simplex_temp]
-
     # corner case : what if we do not have enough neighbors?
     set neighbors $init_simplex_temp
-    #set size_temp [expr $size - [llength $init_simplex]]
     if { [llength $neighbors] > $size } {
         set init_simplex [select_k_random $init_simplex_temp $size]
     } else {
@@ -282,7 +317,6 @@ proc select_k_random { ls k } {
     set random_numbers [random_uniform 100 999 [llength $ls]]
     set tacked [tack_on $random_numbers $ls]
     set sorted [lsort -index 0 $tacked]
-    #puts $sorted
     for {set j 0} {$j < $k} {incr j} {
         lappend return_list [car [cdr [lindex $sorted $j]]]
     }
@@ -294,8 +328,10 @@ proc select_k_random { ls k } {
 # scaling simplex -- 2N size -- This does not use ANN
 proc initial_2N_simplex_with_scaling { init_point scaling_vector size } {
 
+    puts $init_point
+    puts $scaling_vector
     set negated [scale_vect -1 $scaling_vector]
-    set negated [scale_vect -1 $scaling_vector]
+    puts $negated
     set upper_N [make_diagonal $scaling_vector]
     set lower_N [make_diagonal $negated]
 
@@ -303,19 +339,16 @@ proc initial_2N_simplex_with_scaling { init_point scaling_vector size } {
 
     set joined [join $joined_temp]
     set replicated [replicate_rows $size $init_point]
+    puts $replicated
+    puts $joined
     set init_simplex [add_mat $replicated $joined]
-
-    #puts -nonewline "from 2N simplex construction"
-    #puts $init_simplex
 
     return $init_simplex
 }
 
 proc initial_N_plus_1_simplex_with_scaling { init_point scaling_vector } {
-    #puts "inside the n_plus_1 method"
     upvar #0 simplex_npoints size
     set size_2n [expr [llength $init_point] * 2]
-    #puts "now calling the 2N simplex method"
     set 2N_simplex [initial_2N_simplex_with_scaling $init_point $scaling_vector $size_2n]
     return [select_k_random $2N_simplex $size]
 }
@@ -324,7 +357,6 @@ proc initial_N_plus_1_simplex_with_scaling { init_point scaling_vector } {
 #  a definition for a list of lists named as init__
 
 proc initial_simplex_from_file { filename } {
-    #puts "check 2"
     source ./$filename
     return $init__
 }
@@ -539,9 +571,6 @@ proc get_one_scale_vector {size} {
     return $return_list
 }
 
-#set temp [get_one_scale_vector 10]
-#puts "hold"
-
 proc initial_simplex_no_ann { init_point dist size } {
     # number of ways to generate points within the given L1 distance
     set num_ways_to_add [balls_and_bins $dist [llength $init_point]]
@@ -611,7 +640,6 @@ proc initial_simplex_no_ann { init_point dist size } {
         # once the scaling matrix is generated, discard the same elements
         set scaling_matrix [discard_same_elems $scaling_temp]
     }
-    #puts "done constructing the scaling matrix"
 
     set index 0
     set scaled [list]
@@ -631,7 +659,6 @@ proc initial_simplex_no_ann { init_point dist size } {
 
     unset rand_permutations
     unset scaling_matrix
-    #puts "done constructing plus_minus matrix"
 
     set scaled [join $scaled]
     set temp_size [llength $scaled]
@@ -650,27 +677,8 @@ proc initial_simplex_no_ann { init_point dist size } {
         set init_simplex $result
     }
 
-    #####################################
-    #upvar #0 curr_new_dir_trial curr_trial
-    #upvar #0 pro_step pro_step
-    #set size_temp $size
-    #if { $pro_step == 10 } {
-    #    if {$curr_trial == 2} {
-    #        puts "now constructing the 2N simplex"
-    #        upvar #0 icsm_2_params(scaling_vector) scaling_vector
-    #        set  init_simplex [initial_2N_simplex_with_scaling  $init_point $scaling_vector [expr [llength $init_point] *2]]
-    #        puts "done constructing the 2N simplex"
-    #        puts $init_simplex
-    #        set size_temp [expr $size - [expr [llength $init_point]*2]]
-    #    }
-    #}
-    #
-
-    #puts "exiting out of initial construction"
     return $init_simplex
 }
-
-#puts [initial_simplex_no_ann [list 100 50] 40  5]
 
 proc initial_simplex_no_ann_deprecated { init_point dist size } {
     set num_ways_to_add [balls_and_bins $dist [llength $init_point]]
@@ -736,12 +744,10 @@ proc initial_simplex_no_ann_deprecated { init_point dist size } {
 
     #set size_temp [expr $size - [expr [llength $init_point]*2]]
     # change the size_temp to size if 2N simplex not needed
-    #set neighbors $result
     set random_numbers [random_uniform 100 999 [llength $result]]
     if { [llength $result] > $size_temp } {
         set tacked [tack_on $random_numbers $result]
         set sorted [lsort -index 0 $tacked]
-        #puts $sorted
         for {set j 0} {$j < $size_temp} {incr j} {
             lappend init_simplex [car [cdr [lindex $sorted $j]]]
         }
@@ -751,8 +757,6 @@ proc initial_simplex_no_ann_deprecated { init_point dist size } {
     return $init_simplex
 }
 
-
-#puts [initial_simplex_no_ann [list 100 20 10 10] 2 50]
 #############################################################################
 #     NEW DIRECTIONS SIMPLEX CONSTRUCTION METHODS                           #
 #  Methods:                                                                 #
@@ -788,7 +792,6 @@ proc construct_new_directions { appName } {
 
         if { $method == 1 } {
             upvar #0 ndm_${method}_params params
-            #upvar #0 $params(curr_distance) curr_dist
             upvar #0 ndm_${method}_params(curr_distance) curr_dist
             upvar #0 ndm_${method}_params(distance_step) dist_step
             set temp [initial_simplex_with_ann $size $best_point $curr_dist]
@@ -812,19 +815,17 @@ proc construct_new_directions { appName } {
         if { $method == 2 } {
             upvar #0 ndm_${method}_params params
             upvar #0 ndm_${method}_params(scaling_vector) scaling_vector
-            #set temp_scaling [scale_vect $new_dir_scaling $init_point]
+            upvar #0 ndm_${method}_params(step) scaling_step
             upvar #0 simplex_npoints size
             set temp [initial_2N_simplex_with_scaling $best_point $scaling_vector $size]
-            set scaling_vector [scale_vect 2 $scaling_vector]
+            set scaling_vector [scale_vect $scaling_step $scaling_vector]
         }
 
         # method 3: initial point is a member of best k-points of this pro run
         if { $method == 3 } {
-            # (not implemented yet)
         }
         if { $method == 4 } {
             upvar #0 ndm_${method}_params params
-            #upvar #0 $params(curr_distance) curr_dist
             upvar #0 ndm_${method}_params(curr_distance) curr_dist
             upvar #0 ndm_${method}_params(distance_step) dist_step
             set temp [initial_simplex_no_ann $best_point [car $curr_dist] $size]
@@ -854,14 +855,10 @@ proc construct_new_directions { appName } {
         upvar #0 ndm_3_params(next_index) next_index
         upvar #0 last_k_best last_k_best
         set last_k_best [discard_same_elems $last_k_best]
-        #puts -nonewline "last k best ::"
-        #puts $last_k_best
-
+       
         #only look at half of the last-k points, starting from the most recent best
-        #set last_k_to_look 5
         # LOWERING THE LAST k SEARCH to last 1
         if { $next_index < 0 } {
-        # if { $next_index < [expr [llength $last_k_best]/2] } 
             upvar #0 simplex_npoints size
             set best_point [lindex $last_k_best $next_index]
             set curr_temp_distance {20}
@@ -911,12 +908,4 @@ proc reset_new_dir_params {} {
     set curr_dist {1}
 
 }
-
-#init_defs
-#set filename [make_string "data.pts"]
-#set tree [construct_tree 3 2 $filename]
-#set simplex_ [initial_simplex 30 {100 20 35} $tree {"OfflineT"} 1]
-#print_matrix $simplex_ 1 " "
-
-#puts [initial_2N_simplex_with_scaling {100 10 50} {10 2 20}]
 

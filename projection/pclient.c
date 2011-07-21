@@ -355,20 +355,20 @@ void simplex_construction(char* request, char* filename) {
     char* simplex = m_casted->get_descr();
 
     /* store the simplex to the file */
-    /*
-      FILE * pFile;
-      pFile = fopen (filename,"w");
-      if (pFile!=NULL)
-      {
-      fputs (simplex,pFile);
-      fclose (pFile);
-      }
-      else {
-      pc_exit("Saving simplex to a file failed ...");
-      }
-    */
+    
+    FILE * pFile;
+    pFile = fopen (filename,"w");
+    if (pFile!=NULL)
+    {
+        fputs (simplex,pFile);
+        fclose (pFile);
+    }
+    else {
+        pc_exit("Saving simplex to a file failed ...");
+    }
+    
 
-    //printf("simplex : %s \n", simplex);
+    printf("simplex : %s \n", simplex);
     delete m_casted;
     //return simplex;
 }
@@ -468,7 +468,7 @@ int main() {
     printf("point_valid? --> %d \n ", is_a_valid_point(point));
 
     char point_init[24];
-    sprintf(point_init,"12 2 2 3 -1");
+    sprintf(point_init,"10:1 250 250 250 4 4");
     simplex_construction(point_init,"temp.tcl");
 
     char point_[24];

@@ -17,16 +17,28 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
 #
-cd $HOME/scratch/new_code
 
-tar -cvf all_code.tar *
+appname=$1
 
-bzip2 all_code.tar 
+cd $HOME/scratch/new_code_${appname}
 
-scp all_code.tar.bz2 tiwari@brood00:~/scratch/code/
-rm *.so
-rm all_code.tar.bz2
+tar -cvf all_code_${appname}.tar *
 
-ssh tiwari@brood00 tar -xjf /hivehomes/tiwari/scratch/code/all_code.tar.bz2 -C /hivehomes/tiwari/scratch/code/
+bzip2 all_code_${appname}.tar 
 
-ssh tiwari@brood00 rm /hivehomes/tiwari/scratch/code/all_code.tar.bz2
+echo "done zipping"
+
+#brood
+scp all_code_${appname}.tar.bz2 rahulp@brood00:~/scratch/code/
+
+########################## TRANSPORT ####################################
+
+#brood
+rm -rf *.o *.c *.so
+rm -rf all_code_${appname}.tar.bz2
+
+
+# brood
+ssh rahulp@brood00 tar -xjf /hivehomes/rahulp/scratch/code/all_code_${appname}.tar.bz2 -C /scratch/code/
+ssh rahulp@brood00 rm /hivehomes/rahulp/scratch/code/all_code_${appname}.tar.bz2
+

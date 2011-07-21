@@ -1,0 +1,307 @@
+Please read this carefully before setting up the code-generator.
+
+code_generator can be used to generate code using CHiLL. 
+CHiLL and its components can be downloaded from (www.cs.utah.edu/~chunchen)
+
+The code_generator is designed to take advantage of the available free machines to do a distributed
+code generation.
+
+setup_code_gen_hosts.sh: a script file, which sets up necessary directories in $HOME/scratch
+for code generation. This file take the name of the application (for example, gemm) as an 
+argument. This name should match the directory name for the application.
+For distributed code generation, we ssh into each remote host, create a
+$HOME/scratch directory and within the scratch directory, we create multiple directories based
+on how many code generation instances we want to use in the remote host.
+All hosts available for code_generation are stored in generator_hosts_<appname> file.
+The format of this file is the following:
+	host <num_instances>
+For example if we have two dual core machine (named foo and bar) and we want to use all four
+	cores, the generator_hosts_<appname> file will look like the following:
+	foo 2
+	bar 2
+The setup script create the following directories:
+on foo:
+$HOME/scratch/foo_1_<appname>
+$HOME/scratch/foo_2_<appname>
+
+on bar:
+$HOME/scratch/bar_1_<appname>
+$HOME/scratch/bar_2_<appname>
+
+These new directories are populated with the required files for code-generation. The information
+about required files is provided below.
+
+To use the code_generator:
+
+One time changes per installation:
+code_generator.h : Make sure the code generator host definitions are updated to reflect the 
+	properties of the machine that you are installing the code_generator.
+
+First compile: 
+% gmake
+
+Lets assume the code_generator is installed in <code_generator> directory.
+Assume we want to generate code for gemm (matrix multiplication):
+
+First create a directory called "gemm" within the <code_generator> directory.
+Copy all files from <code_generator>/generic to gemm directory. Rename the 
+chill_script.generic.sh to chill_script.gemm.sh
+Files that need to be changed:
+generate_temp_script.sh : This file takes the code transformation parameters as arguments and
+	creates a chill script (named temp.script).
+code.properties: This file defines some global environment variables. The appname has to match
+	the name of the directory (in this case gemm). Other changes that needs to made are
+	documented in the file itself.
+required_files.dat: This file lists all the files are needed by CHiLL to generate code. These
+	files include SUIF intermediate files, a default file (needed in case CHiLL cannot
+	generate code for the provided transformation parameters), code.properties, etc. More
+	information can be found on the generic code.properties file iteself.
+Files that need to be created:
+gemm.f (or c) : depending on your requirement.
+gemm_default.f : which can be a copy of gemm.f
+gemm.sp2 (SUIF intermediate file): you can create this using chill_runner_f.sh. The runner
+	script takes the appname (in this case gemm) as an argument and creates the 
+	intermediate files.
+generator_hosts_gemm : you have create this file in <code_generator> directory. There are
+	multiple examples that show how this file works.
+
+Things to remember:
+1. If any of the files in required_files.dat change, you will have to run the ./setup_code_gen_hosts.sh
+again. This has to be done to make sure the updated files are copied into the code generation 
+directories.
+
+2. We assume that password-less login have been setup between the host that runs the code_generator driver
+and all the remote code-generator hosts. (you can do this using the ssh-keygen).
+
+3. We assume that CHiLL and its components are installed in $HOME. More specifically, we assume CHiLL
+is installed in $HOME/CHiLL, Omega plus is installed in $HOME/omega and SUIF is installed in 
+$HOME/suifhome.
+
+To launch the code_generator:
+% ./code_generator <appname>
+
+For this example:
+% ./code_generator gemm 
+
+
+
+Steps to run the code generator with example
+
+1. The code generator launching instructions are provided in 'README' file that is 
+   available under the "code-server/standalone" directory.
+
+2. Working with code generator files
+    a) Files that need to be modified are
+	1. code_generator.h
+	2. generator_hosts_gemm (used to specify the machines on 
+				 which the code generator has to run)
+	3. num_code_generators (used to specify the total number of 
+				times the code generation has to take place)
+	4. transport_files.sh
+	b) Create a 'gemm' directory within 'standalone' directory.
+	c) Copy all files from 'code_generator/generic' directory to 'gemm' directory.
+	d) Rename chill_script.generic.sh to chill_script.gemm.sh
+	e) Following files that are needed to be changed under 'gemm'
+		i)   generate_temp_script.sh (This is used to specify the 
+                           		      tunable parameters)
+		ii)  code.properties (This is used to specify the PATH variables
+                                      and appname)
+		iii) required_files.dat (This provides the list of files used to 
+                                         run code generator)
+		iv)  gemm.f or gemm.c
+		v)   gemm_default.f
+		vi)  gemm.sp2
+		vii) generator_hosts_gemm
+
+3. Launching the code generator
+
+	For setting up the code generator hosts initially do the following
+	
+	"./setup_code_gen_hosts.sh <appname>"
+	 
+	For example, "./setup_code_gen_hosts.sh gemm"
+
+   Then to run code generator, do the following
+         
+	"./code_generator <appname>"
+
+	For example, "./code_generator gemm"
+
+4. transport_files.sh
+	Under this file, change the "username" to the concerned user's name.
+
+5. Also important to change the "code_generator.h" file. This is where the "host" 
+   machine's information and to the machine on which the code has to be transported 
+   are provided. 
+
+6. Running the "code_generator" will automatically invoke "chill" to generate code.
+
+
+Code_generation Example
+
+Let us assume that we are generating the code on "spoon" and the host machine is 
+"brood00". Also the code is transported to the "brood00". Follow the exact steps 
+for running the code_generator
+
+1. In the "standalone" directory and under "generator_hosts" file make sure the "spoon"
+   machine is declared as follows.
+		spoon 6
+		
+2. Also in "generator_hosts_gemm" file, make sure the machines are declared as follows.
+		spoon 6
+		
+
+3. In the "code_generator.h" file, make sure the host (brood00) and the remote side 
+   where to transport the code are declared.
+
+	host side: main code generator runs here
+		string hostname("brood00");
+		string user_home("/hivehomes/<username>/");
+		string confs_dir(user_home+"scratch/"+"confs/");
+		string new_code_dir(user_home+"scratch/"+"hosts/");
+		string code_generator_base(user_home+"tutorial-2010/"+"harmony/"+"standalone/");
+		string appname;
+		string num_code_gen_loc(code_generator_base+"num_code_generators");
+
+	remote side: used to transport the code
+		string code_destination_host("brood00");
+		string code_destination("<username>@brood00:~/scratch/code");
+		string code_flag_destination("/scratch0/code_flags/");
+
+4. In the "transport_files.sh" file, do the following
+	
+   #brood00
+   scp all_code_${appname}.tar.bz2 <username>@brood00:~/scratch/code/
+
+   Also, under the "Transport" section, do the following
+
+   #brood00
+   ssh <username>@brood00 tar -xjf /hivehomes/<username>/scratch/code/all_code_${appname}.tar.bz2 -C /scratch/code/
+   ssh <username>@brood00 rm /hivehomes/<username>/scratch/code/all_code_${appname}.tar.bz2
+
+5. In the "setup_code_gen_hosts.sh", do the following changes.
+	
+   The base machine on which the code generator is installed is "brood00". Hence the 
+   following field has to be as follows.
+	code_generator_base="$HOME/tutorial-2010/harmony/standalone/"
+
+   Now the generated codes are stored in the $HOME/scratch directory on the respective 
+   machines which in this case are (driver and spoon). So set the following field as 
+   follows
+	scratch_dir="\$HOME/scratch/"
+   
+   The following changes are required to make the corresponding directories for storing 
+   the generated code on the machines. Do the following changes.
+
+   Under " # make the directories
+	   # copy the relevant files" section and 
+	  under the "if[$unique_dirs_created_local == 0]; then"
+
+        The following various "dir_string" fields have to be changed as follows. 
+	(Non remote version only)
+
+	  dir_string="$HOME/scratch/new_code_${appname}"
+	  dir_string="$HOME/scratch/zipped_${appname}"
+	  dir_string="$HOME/scratch/${__node}_${appname}"
+
+	For remote version the "dir_string" fields have to changed as follows.
+
+	  dir_string="/fs/mashie/<username>/scratch/new_code_${appname}"
+	  dir_string="/fs/mashie/<username>/scratch/zipped_${appname}"
+	  dir_string="/fs/mashie/<username>/scratch/${__node}_${appname}"
+
+6. In this example, we use to generate code for matrix multiplication, the directory 
+   "gemm" has to be created within "standalone" directory. Now copy all the files from 
+   "generic" directory to "gemm" directory.
+
+7. Rename "chill_script.generic.sh" to "chill_script.gemm.sh"
+
+8. In the "code.properties" file which is available under "gemm" directory, do the 
+   following to change the PATH variables.Since the host machine is "brood00" 
+   change the following paths.
+
+   export OMEGA_P=$HOME/omega
+   export SUIFHOME=$HOME/suifhome
+   export PATH=$HOME/chill/bin:${SUIFHOME}/i386-linux/bin/:${PATH}
+   export LD_LIBRARY_PATH=${SUIFHOME}/i386-linux/solib:${LD_LIBRARY_PATH}
+
+   Also, change the following "appname = gemm"
+
+   Based on what file we are going to use (either a c or fortran) the following field 
+   is set accordingly. In this example, fortran is used.
+	"file_suffix = f"
+
+   Make sure the "username" field is set to your username.
+
+9. "transport_files.sh" file under "gemm" directory, make sure to enter the system 
+   information on which the code generation happens. Do the following. 
+
+   #brood
+   scp all_code_${appname}.tar.bz2 <username>@brood:~/scratch/code/
+
+   Also, under the "Transport" section, do the following
+
+   #brood
+   ssh <username>@brood00 tar -xjf /hivehomes/<username>/scratch/code/all_code_${appname}.tar.bz2 -C /scratch/code/
+   ssh <username>@brood00 rm /hivehomes/<username>/scratch/code/all_code_${appname}.tar.bz2
+
+10. After modifying the following files, make sure to do the following under "standalone"
+    folder in order for the changes to become effective.
+  
+      	"make clean"
+	"gmake"
+
+11. After the above step do the following for setting up the hosts for code generation
+    in case of matrix multiplication
+
+       "./setup_code_gen_hosts.sh gemm"
+
+***** Important point to note: There is no relation as to which one to run first 
+      (either code_generator or hserver). They both have to be ready and running before
+      the application starts.
+
+12. After setting up the clients for code generation, to run the code generator, do the 
+    following under "standalone" directory.
+	./code_generator gemm
+
+13. Open a new terminal and ssh into "brood00". (From now on it shows how to run 
+    PRO example). Under "pro_init_generic.tcl" make sure the "space dimension" is set
+    to "5" and "npoints" is set to atleast "7".
+
+14. After that do the following for the changes to become effective 
+
+	cd build
+	make clean
+	gmake
+
+15. For running the "hserver" with PRO example do the following
+
+	cd bin
+	gdb ./hserver 1
+	
+    Now at (gdb) prompt, type "run" 
+
+16. Open another terminal and ssh into "brood00" and then change the directory 
+    to "pro_example" folder
+	example->parallel->pro_example
+
+17. Type "bash" for entering the environment variables, then do the following
+
+	export HARMONY_S_HOST=brood00
+	export HARMONY_S_PORT=1977
+
+18. Do the following
+	qsub -IV -lnodes = bug21+bug22+bug23+bug24+.....+bug29
+
+19. After the above step, type "lamboot"
+
+20. Then do the following at the bash prompt
+	cd example/parallel/pro_example
+
+21. For running the parallel examples, do the following
+
+	mpirun -np 8 ./pro_example &
+
+    This runs the "pro_example" for the code generation part.
+
+

@@ -26,9 +26,24 @@
 #include <iostream>
 #include <assert.h>
 #include <sstream>
+#include <set>
+#include <deque>
+
+#include <dirent.h>
+#include <errno.h>
+#include<string.h>
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <ctype.h>
+
+//PID
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+
 using namespace std;
-
-
 /***
  *
  * Main variables
@@ -41,8 +56,8 @@ using namespace std;
  * if value is 0 there is no output
  *
  */
-static int debug_mode=0;
-
+static int debug_mode=1;
+static int hserver_start_timestamp=0;
 /*
  * the socket waiting for connections
  */
@@ -70,12 +85,15 @@ list<int> id_set;
 /* the X file descriptor */
 int xfd;
 
-
 /*
  * The Tcl Interpreter
  */
 Tcl_Interp *tcl_inter;
-char harmonyTclFile[256]="hconfig.tcl";
+
+//char harmonyTclFile[256]="hconfig.pro.tcl";
+//char harmonyTclFile[256]="hconfig.random.tcl";
+char harmonyTclFile[256]="hconfig.nm.tcl";
+//char harmonyTclFile[256]="hconfig.brute.tcl";
 
 
 /*
@@ -87,13 +105,28 @@ map<int, int> clientSignals;
 map<int, int> clientSocket;
 map<int, int> clientId;
 
+/*
+ * code generation specific parameters
+*/
+map<string, int> code_timesteps;
+map<string, int> last_code_req_timesteps;
+map<string, int> last_code_req_responses;
 
 /* this map contains the configurations that we have seen so far and
    their corresponding performances.
  */
+map<string,string> global_data;
+map<string,string>::iterator it;
 
-map<string,double> global_data;
-map<string,double>::iterator it;
+map<string,string> appName_confs;
+map<string,string>::iterator it2;
+
+//Harmony server's Process ID info
+int hs_process_id;
+char *APPNAME = "gemm";
+char path[]="/hivehomes/rahulp/scratch/new_code";
+
+struct dirent *dptr;
 
 /***
  *
@@ -102,6 +135,45 @@ map<string,double>::iterator it;
  ***/
 void check_parameters(int argc, char **argv) {
 
+    // by default, we use PRO search algorithm
+    int search_algo=1;
+
+    // by default, no windows are drawn
+    int draw_windows=0;
+
+    if( argc >= 2 )
+    {
+
+        // first argument is the search algorithm
+        search_algo=atoi(argv[1]);
+    }
+    if( argc == 3)
+    {
+        // second argument is the graphics parameter
+         draw_windows=atoi(argv[2]);
+    }
+
+    if(search_algo==1)
+    {
+        sprintf(harmonyTclFile,"hconfig.pro.tcl");
+        printf("using the PRO algorithm. Please make sure the parameters in \n");
+        printf("../tcl/pro_init_<appname>.tcl are defined properly.\n");
+    }
+    if(search_algo==2)
+    {
+        printf("using the Nelder Mead Simplex Algorithm. \n");
+        sprintf(harmonyTclFile,"hconfig.nm.tcl");
+    }
+    if(search_algo == 3)
+    {
+        printf("using random Algorithm. \n");
+        sprintf(harmonyTclFile,"hconfig.random.tcl");
+    }
+    if(search_algo == 4)
+    {
+        printf("using brute force Algorithm. \n");
+        sprintf(harmonyTclFile,"hconfig.brute.tcl");
+    }
 }
 
 
@@ -119,7 +191,6 @@ void operation_failed(int sock) {
 
 int update_sent = FALSE;
 char *application_trigger = "";
-
 int update_client( ClientData clientData, Tcl_Interp *interp, int argc, char **argv) {
 
     if (debug_mode) {
@@ -194,13 +265,23 @@ void server_startup() {
     /* temporary variable */
     char s[10];
 
-    for(int i = 1; i <= 300; i++)
+    for(int i = 1; i <= 2048; i++)
         id_set.push_back(i);
 
     /* used address */
     struct sockaddr_in sin;
 
     int optVal;
+
+    /* Harmony server process ID */
+    hs_process_id = getppid();
+
+    printf("Harmony Server's Process-Id (PID) for this run: %d \n", hs_process_id);
+
+    FILE *hs_pid;
+    hs_pid = fopen("/hivehomes/rahulp/activeharmony/tutorial-2010/harmony/standalone/hs_process_id", "w+");
+    fprintf(hs_pid, "%d", hs_process_id);
+    fclose(hs_pid);
 
     int err;
     char * serv_port;
@@ -258,28 +339,24 @@ void server_startup() {
     Tk_MapWindow(Tk_MainWindow(tcl_inter));
 #endif  /*USE_TK*/
 
+
     if ((err=Tcl_EvalFile(tcl_inter, harmonyTclFile)) != TCL_OK){
         printf("Tcl Error %d ; %s %s \n",err, tcl_inter->result, harmonyTclFile);
         h_exit("TCL Interpreter Error ");
     }
 
-
     /*
       register update_client function with the Tcl interpretor
     */
     Tcl_CreateCommand(tcl_inter, "update_client", update_client, (ClientData)NULL, (Tcl_CmdDeleteProc *)NULL);
-
-
     /*
       Set the file descriptor set
     */
 
     FD_ZERO(&listen_set);
-
     FD_SET(listen_socket,&listen_set);
     socket_set.push_back(listen_socket);
     highest_socket=listen_socket;
-
 
     /***
         getthe fd that X is using for events
@@ -297,8 +374,6 @@ void server_startup() {
 #endif  /*USE_TK*/
 
 }
-
-
 
 /***
  *
@@ -349,7 +424,6 @@ void client_registration(HRegistMessage *m, int client_socket){
         socket_set.remove(cs);
         if (highest_socket==cs)
             highest_socket--;
-
     } else {
         /* generate id for the new client */
         id = id_set.front();
@@ -392,10 +466,10 @@ void get_appl_description(HDescrMessage *mesg, int client_socket){
 
     sprintf(strrchr(new_string, '}')+1, " %d", clientId[client_socket]);
 
-     if (debug_mode) {
-         printf("Message size: %d\n",mesg->get_message_size());
-     }
-
+    if (debug_mode) {
+        printf("Message size: %d\n",mesg->get_message_size());
+    }
+    
     if ((err=Tcl_Eval(tcl_inter,new_string))!=TCL_OK) {
         printf("Error %d interpreting the tcl description!\n",err);
         printf("%s\n",tcl_inter->result);
@@ -406,23 +480,21 @@ void get_appl_description(HDescrMessage *mesg, int client_socket){
     else {
         /* send confirmation to client */
         HRegistMessage *m = new HRegistMessage(HMESG_CONFIRM, 0);
-
         send_message(m,client_socket);
-
         delete m;
 
-
-        //    printf("Now get application name!\n");
-
         // add the information about the client in the clienInfo map
-
         // first just get the name of the application, so that we can link it
         // with the socket #
         char *startp, *endp;
 
         startp=new_string;
-        // get rid of begining spaces
-        while (*startp==' ') startp++;
+        // Skip past intro comments and/or whitespace
+        while (strspn(startp, " \t\n\r\f#")) {
+            startp = startp + strspn(startp, " \t\n\r\f");
+            if (*startp=='#')
+                while (*(startp++)!='\n');
+        }
         // go to first space
         while (*startp!=' ') startp++;
         // get rid of separating spaces
@@ -430,16 +502,20 @@ void get_appl_description(HDescrMessage *mesg, int client_socket){
         // startp points now to the first char in the name of the application
         endp=startp;
         while (*endp!=' ') endp++;
-        //    endp--;
         // endp points to the last char in the ame of the application
 
-        //    printf("Got begining and end of name!\n");
-
         char appName[256];
+        char temp_name[256];
 
         strncpy(appName, startp, (endp-startp));
-        sprintf(&appName[endp-startp], "_%d", clientId[client_socket]);
+        strncpy(temp_name, startp, (endp-startp));
+        sprintf(&temp_name[endp-startp], "");
 
+        code_timesteps[temp_name]=1;
+        last_code_req_timesteps[temp_name]=0;
+        last_code_req_responses[temp_name]=0;
+
+        sprintf(&appName[endp-startp], "_%d", clientId[client_socket]);
         if (debug_mode) {
             printf("Application name: %s\n", appName);
         }
@@ -470,12 +546,17 @@ void variable_registration(HDescrMessage *mesg, int client_socket){
     sprintf(ss2,"%s(value)",mesg->get_descr());
     sprintf(ss, "%s_bundle_%s", appName, ss2);
 
+    if(debug_mode)
+        printf("tcl string : %s \n", ss);
+
     if ((s=Tcl_GetVar(tcl_inter,ss,0))==NULL) {
 
         free(sss);
         operation_failed(client_socket);
         return;
     }
+    if(debug_mode)
+        printf("tcl value : %s \n", s);
 
     HUpdateMessage *m=new HUpdateMessage(HMESG_VAR_REQ,0);
     strtol(s,sss,10);
@@ -501,63 +582,329 @@ void variable_registration(HDescrMessage *mesg, int client_socket){
 
 }
 
+
+
 /***
  *
  * Return the value of the variable from the database
  *
  ***/
-void variable_request(HUpdateMessage *mesg, int client_socket){
+void variable_request(HUpdateMessage *mesg, int client_socket)
+{
 
-    char *s;
+    char* s;
+    char s_new[80];
     char ss[256], ss2[256];
+    char s_updt[128];
+    char *appName = clientName[client_socket];
 
+    char new_config[80];
+    char next_configuration[80];
+    int err;
+
+    char current_config[80];
+
+    char next_config[80];
+
+    char* return_value;
+
+    char new_res[100];
+    
     VarDef v;
-    for (int i=0; i<mesg->get_nr_vars();i++) {
 
-        sprintf(ss2,"%s(value)",mesg->get_var(i)->getName());
-        char  *appName = clientName[client_socket];
-        sprintf(ss, "%s_bundle_%s", appName, ss2);
-        s=Tcl_GetVar(tcl_inter,ss,0);
+    // construct the key using get_test_configuration (look at the database function)
+    // if the conf is in the database, either change the message type or construct a brand new message    
+    // object. (set its type to already_evaluated)... otherwise, do the usual
+    
+    sprintf(ss, "get_test_configuration %s", appName);
 
-        if (s==NULL) {
-            printf("Error getting value of variable!\n");
-            free(ss);
-            operation_failed(client_socket);
-            return;
-        }
+    if ((err = Tcl_Eval(tcl_inter, ss)) != TCL_OK) 
+    {
+      fprintf(stderr, "Error retreiving the current configuration: %d", err);
+      fprintf(stderr, "TCLres(perfUpdate-Err): %s\n", tcl_inter->result);
+      printf("FAILED HERE\n");
+      operation_failed(client_socket);
+      return;
+    } 
+    else
+    {
+      char *startp, *endp;
+      startp=appName;
+      endp=appName;
+      while (*endp!='_') endp++;
+       char temp_name[256];
+       strncpy(temp_name, startp, (endp-startp));
+       sprintf(&temp_name[endp-startp], "");
+       sprintf(current_config, "%s_%s", temp_name, tcl_inter->result);
+       printf("Checking the map for %s \n", current_config);
+    }
+    
+    ///////////////////////////////////////DATABASE CHECK/////////////////////////////////////
 
-        VarDef *v;
+    //check the database whether "current_config" is already available
+    string str_config = current_config;
+    
+    it=global_data.find(str_config);
+    
+    // this is the case where the performance is not in the database.
+    // if the iterator is at the end of the map, we never found the conf in the database.
+    //  so simply use the old code (from the point after setting the values of the variables).
 
-        switch (mesg->get_var(i)->getType()) {
-            case VAR_INT:
+    if(it == global_data.end())
+    {
+      //The database search has concluded till the end and did not find the configuration
+
+      printf("The following configuration has not seen before \n");
+
+
+      // step 1: whats happening here is that you are updating the values for the tunable parameters.
+      //  you get the values from the tcl backend using the Tcl_GetVar and you are setting the value of the
+      //  variables in the message to whatever value you get from the tcl backend.
+      for (int i=0; i<mesg->get_nr_vars();i++) 
+	{
+	  // get the name of the parameter. e.g. x or y ...
+	  sprintf(ss2,"%s(value)",mesg->get_var(i)->getName());
+    
+	  //char  *appName = clientName[client_socket];
+	  // constructing the tcl variable name: the way variables are represented in the backend is as follows:
+	  //  <appname>_<client socket>_bundle_<name of the variable>
+	  //  for c++ example: 
+	  //    appname is SimplexT
+	  //    name of the variables is x and y.
+	  //    if you are running 4 clients: client socket goes from 1 to 4.
+	  //   An example of the variable name in the backend will be:
+	  //    SimplexT_1_bundle_x
+	  // Now in the tcl backend, this variable has attributes:
+	  //  SimplexT_1_bundle_x(value)
+	  
+	  //Appending the Harmony server's process id to the message that is going to be sent to the client
+	  sprintf(ss, "%s_bundle_%s", appName, ss2);
+       
+	  if(debug_mode)
+            printf(" tcl value string: %s \n", ss);
+	   
+	  // you are invoking the tcl interpreter to parse this tcl command.
+	  s=Tcl_GetVar(tcl_inter,ss,0);
+        
+	  if(debug_mode)
+            printf("tcl value : %s \n", s);
+        
+	  if (s==NULL) 
+	    {
+	      printf("Error getting value of variable!\n");
+	      free(ss);
+	      operation_failed(client_socket);
+	      return;
+	    }
+        
+	  VarDef *v;
+	
+	  // get the VarDef object at position i in the message. and check its type.
+	  switch (mesg->get_var(i)->getType()) 
+	    {
+	      // for c++ example, this will be always int.
+              case VAR_INT:
                 /* is int */
+	        // update the value
                 mesg->get_var(i)->setValue(strtol(s,NULL,10));
                 break;
-            case VAR_STR:
+              case VAR_STR:
                 mesg->get_var(i)->setValue(s);
                 break;
-        }
+	    }
+	}
+   
+      sprintf(ss, "%s_simplex_time", appName);
 
-    }
+      if(debug_mode)
+        printf("Timestamp tcl string: %s \n", ss);
+      
+      s=Tcl_GetVar(tcl_inter,ss,0);
 
-    char  *appName = clientName[client_socket];
+      if(debug_mode)
+        printf("Timestamp app: %s \n", s);
 
-    sprintf(ss, "%s_simplex_time", appName);
-
-    s=Tcl_GetVar(tcl_inter,ss,0);
-
-    if (s==NULL) {
+      if (s==NULL) {
         printf("Error getting value of variable! ss:: %s \n", ss);
         free(ss);
         operation_failed(client_socket);
         return;
+      }
+
+      if(debug_mode)
+        printf("Value of the timestamp from the server: %s \n", s);
+
+      mesg->set_timestamp(strtol(s,NULL,10));
+
+      send_message(mesg, client_socket);
+      printf("Server is sending the message of type : %d \n", mesg->get_type());
+     
+      delete mesg;
+    
     }
+    else
+    {
+      // this is the case where the configuration->performance mapping exists in the database.
 
-    mesg->set_timestamp(strtol(s,NULL,10));
+      char* s_next;
+      char ss_next[256], ss1_next[256], ss2_next[256]; 
+      
+      char s_next_updt[128];
+      
+      printf("The following configuration has seen before \n");
 
-    send_message(mesg, client_socket);
+      printf("Server gets the unique configuration from the backend\n");
 
+      for (int i=0; i<mesg->get_nr_vars();i++) 
+      {
+
+	sprintf(ss_next, "get_next_configuration %s", appName);
+
+	 if((err = Tcl_Eval(tcl_inter, ss_next)) != TCL_OK)
+	   {
+	     fprintf(stderr, "Error retreiving the next configuration: %d", err);
+	     fprintf(stderr, "TCLres(perfUpdate-Err): %s\n", tcl_inter->result);
+	     printf("FAILED HERE\n");
+	     operation_failed(client_socket);
+	     return;
+	   }
+	 else
+	   {
+	     printf("The backend says the value is: %s \n", tcl_inter->result);
+	     char *next_startp, *next_endp;
+	     next_startp=appName;
+	     next_endp=appName;
+	     while(*next_endp!='_')next_endp++;
+	     char next_temp_name[256];
+	     strncpy(next_temp_name, next_startp, (next_endp-next_startp));
+	     sprintf(&next_temp_name[next_endp-next_startp], "");
+	     sprintf(next_config, "%s_%s", next_temp_name, tcl_inter->result);
+	     printf("Checking the map: %s \n", next_config);
+	   }
+
+	 //Maintaining the list of the new config associated to the appName
+	 appName_confs.insert(pair<string, string>(appName, next_config));
+      
+
+ 	 // OfflineT_1_bundle_TI(value)
+	 sprintf(ss1_next, "%s_bundle_%s(value)", appName, mesg->get_var(i)->getName());
+	 
+	 if(debug_mode)
+	   printf("Tcl value string: %s \n", ss1_next);
+
+	 //invoking the TCL interpreter to parse this tcl command
+	 s_next=Tcl_GetVar(tcl_inter,ss1_next,0);
+
+	 if(debug_mode)
+	   printf("Tcl value: %s \n", s_next);
+
+	 if(s_next==NULL)
+	 {
+	   printf("Error getting the value of variable!\n");
+	   free(ss1_next);
+	   operation_failed(client_socket);
+	   return;
+	 }
+
+	 //get the VarDef object at position i in the message and check its type
+	 switch(mesg->get_var(i)->getType())
+	 {
+	   //for c++ example this will be always int
+	   case VAR_INT:
+	     //is int
+	     //update the value
+	     mesg->get_var(i)->setValue(strtol(s_next,NULL,10));
+	     break;
+	   case VAR_STR:
+	     mesg->get_var(i)->setValue(s_next);
+	     break;
+	 }
+	 
+
+
+      }
+
+	
+    it2 = appName_confs.find(next_config);
+		 
+    if(it2 != it)
+    {
+      int updt_perf;
+
+      //The search has concluded till the end and did not find the configuration
+       sprintf(ss1_next, "%s_simplex_time", appName);
+
+       if(debug_mode)
+	    printf("Timestamp tcl string: %s \n", ss1_next);
+
+       s_next=Tcl_GetVar(tcl_inter, ss1_next, 0);
+
+       if(debug_mode)
+	   printf("Timestamp app: %s \n", s_next);
+
+       if (s_next==NULL) 
+       {
+	 printf("Error getting value of variable! ss1_next:: %s \n", ss1_next);
+	 free(ss1_next);
+	 operation_failed(client_socket);
+	 return;
+       }
+       
+       if(debug_mode)
+        printf("Value of the timestamp from the server: %s \n", s_next);
+      
+       mesg->set_timestamp(strtol(s_next,NULL,10));
+
+       //Appending the server's PID to the message and sending it to the client
+
+       send_message(mesg, client_socket);
+
+       delete mesg;
+    }
+    else
+    {
+          
+       //Extracting the performance form the database
+       //this performance has to come from the map
+       string updated_performance;
+       int updt_perf;
+       
+       //getting the perf from the map
+       updated_performance = (*it).second;
+
+       //This converts perf(string) to perf(int)
+       updt_perf = atoi(updated_performance.c_str());
+       printf("Performance from the database: %d \n", updt_perf);
+
+       sprintf(ss1_next, "%s_simplex_time", appName);
+
+       if(debug_mode)
+         printf("Timestamp tcl string: %s \n", ss1_next);
+
+       s_next=Tcl_GetVar(tcl_inter, ss1_next, 0);
+
+       if(debug_mode)
+         printf("Timestamp app: %s \n", s_next);
+
+       if(s_next==NULL) {
+         printf("Error getting value of variable! ss_next:: %s \n", ss_next);
+         free(ss1_next);
+         operation_failed(client_socket);
+         return;
+       }
+
+       if(debug_mode)
+         printf("Value of the timestamp from the server: %s \n", s_next);
+
+       mesg->set_timestamp(strtol(s_next,NULL,10));
+
+       send_message(mesg, client_socket);
+
+       delete mesg;
+    }
+   }
 }
+
 
 /*****
  *
@@ -574,19 +921,13 @@ void var_tcl_variable_request(HUpdateMessage *mesg, int client_socket){
     VarDef v;
 
 
-    if(debug_mode)
-        printf("received a tcl variable request \n");
-
-    for (int i=0; i<mesg->get_nr_vars();i++) {
+     for (int i=0; i<mesg->get_nr_vars();i++) {
         sprintf(ss2,"%s",mesg->get_var(i)->getName());
         char  *appName = clientName[client_socket];
         sprintf(ss, "%s_%s", appName, ss2);
-        if(debug_mode)
-            printf("tcl string:: %s \n", ss);
+	
         s=Tcl_GetVar(tcl_inter,ss,0);
 
-        if(debug_mode)
-            printf(" Tcl backend variable! %s\n",s);
         if (s==NULL) {
             printf("Error getting value of Tcl backend variable! \n");
             operation_failed(client_socket);
@@ -621,8 +962,6 @@ int file_exists (const char * fileName) {
   return 0;
 }
 
-int code_timestep = 1;
-
 /*
   Send a query to the code-server to see if code generation for current
   search iteration is done.
@@ -634,76 +973,72 @@ int code_timestep = 1;
      This method is useful when the machine that is running Active Harmony
      does not allow tcp connections to remote machines.
 */
-void check_code_completion_via_server(HUpdateMessage *mesg, int client_socket){
-        int err;
-    char ss[256], ss2[256];
-    char s_code[80];
-    int return_val = 0;
-    char tcl_result[80];
-    char *appName = clientName[client_socket];
-    sprintf(s_code, "code_completion_query %s", appName);
-
-    printf("%s \n", s_code);
-
-    if ((err = Tcl_Eval(tcl_inter, s_code)) != TCL_OK) {
-        fprintf(stderr, "Error getting code completion status: %d", err);
-        fprintf(stderr, "TCLres(perfUpdate-Err): %s\n", tcl_inter->result);
-        printf("FAILED HERE\n");
-        operation_failed(client_socket);
-        return;
-    } else
-    {
-        sprintf(tcl_result, "%s", tcl_inter->result);
-    }
-
-    return_val=atoi(tcl_result);
-
-    // retrieve the timestep
-    int timestep = *(int *)mesg->get_var(0)->getPointer();
-    printf("CODE GENERATION IS %d for timestep: %d \n", return_val, code_timestep);
-
-    //printf("timestep: %d \n", timestep);
-
-    mesg->get_var(0)->setValue(return_val);
-
-    send_message(mesg, client_socket);
-    delete mesg;
-}
 
 /*
   Check the code_complete.<timestep> file to see if the code generation is
   complete. This is used with the standalone version of the code generator.
 */
-
-void check_code_completion(HUpdateMessage *mesg, int client_socket){
-
+void check_code_completion(HUpdateMessage *mesg, int client_socket)
+{
     char *s;
     char ss[256], ss2[256];
+    char *appName = clientName[client_socket];
+    
+    char *startp, *endp;
+    startp=appName;
+    endp=appName;
+    while (*endp!='_') endp++;
+    char temp_name[256];
+    strncpy(temp_name, startp, (endp-startp));
+    sprintf(&temp_name[endp-startp], "");
 
     // retrieve the timestep
-    int timestep = *(int *)mesg->get_var(0)->getPointer();
+    int req_timestep = *(int *)mesg->get_var(0)->getPointer();
+    int code_timestep=code_timesteps[temp_name];
+    int last_code_req_timestep=last_code_req_timesteps[temp_name];
+    int last_code_req_response=last_code_req_responses[temp_name];
 
-
+    if(debug_mode)
+        printf("Code Request Timestep: %d last_code_req_timestep %d code_timestep: %d \n",
+           req_timestep,last_code_req_timestep,code_timestep);
+    
     int return_val=0;
-
-    // based on file system right now.
-    sprintf(ss, "/scratch0/code_flags/code_complete.%d", timestep);
-    if(file_exists(ss))
+    if(req_timestep > last_code_req_timestep)
     {
+        // based on file system right now.
+        sprintf(ss, "%s/code_complete.%s.%d",code_flags_path, temp_name, code_timestep);
+        if(debug_mode)
+            printf("Looking for %s \n", ss);
+        if(file_exists(ss))
+        {
+            if(debug_mode)
+                printf("code generation is complete for timestep: %d \n", code_timestep);
 
-        printf("CODE GENERATION IS COMPLETE for timestep: %d \n", timestep);
-        return_val=1;
-        std::remove(ss);
-        sprintf(ss, "/scratch0/code_flags/code_complete.%d", timestep+1);
-        std::remove(ss);
+            code_timesteps[temp_name]=code_timestep+1;
+            return_val=1;
+            last_code_req_response=return_val;
+            last_code_req_responses[temp_name]=return_val;
+            std::remove(ss);
+            sprintf(ss, "%s/code_complete.%s.%d",code_flags_path, temp_name, code_timestep+1);
+            printf("removing: %s \n", ss);
+            std::remove(ss);
+        } else
+        {
+            last_code_req_responses[temp_name]=0;
+        }
+        last_code_req_timesteps[temp_name]=req_timestep;
+    } else
+    {
+        return_val=last_code_req_responses[temp_name];
     }
-
-    //VarDef *v;
+    
     mesg->get_var(0)->setValue(return_val);
-
+    
     send_message(mesg, client_socket);
+
     delete mesg;
 }
+
 
 
 void database(HUpdateMessage *mesg, int client_socket){
@@ -713,59 +1048,64 @@ void database(HUpdateMessage *mesg, int client_socket){
       calling this function.
     */
 
-    int err;
-    char *appName = clientName[client_socket];
-    char curr_conf[80];
-    char s[80];
-    char* return_value;
+   int err;
+   char *appName = clientName[client_socket];
+   char curr_conf[80];
+   char s[80];
+   char* return_value;
 
 
     // tcl proc get_test_configuration appName returns the current
     // configuration being tested
-    sprintf(s, "get_test_configuration %s", appName);
+     sprintf(s, "get_test_configuration %s", appName);
+     if ((err = Tcl_Eval(tcl_inter, s)) != TCL_OK) {
+       fprintf(stderr, "Error retreiving the current configuration: %d", err);
+	 fprintf(stderr, "TCLres(perfUpdate-Err): %s\n", tcl_inter->result);
+	 printf("FAILED HERE\n");
+	 operation_failed(client_socket);
+	 return;
+     } else
+       {
+	 char *startp, *endp;
+	 startp=appName;
+	 endp=appName;
+	 while (*endp!='_') endp++;
+	 char temp_name[256];
+	 strncpy(temp_name, startp, (endp-startp));
+	 sprintf(&temp_name[endp-startp], "");
+	 sprintf(curr_conf, "%s_%s", temp_name, tcl_inter->result);
+	 }
 
-    if ((err = Tcl_Eval(tcl_inter, s)) != TCL_OK) {
-        fprintf(stderr, "Error retreiving the current configuration: %d", err);
-        fprintf(stderr, "TCLres(perfUpdate-Err): %s\n", tcl_inter->result);
-        printf("FAILED HERE\n");
-        operation_failed(client_socket);
-        return;
-    } else
-    {
-        sprintf(curr_conf, "%s", tcl_inter->result);
-    }
+     string str_conf = curr_conf;
+     it=global_data.find(str_conf);
+     if(it == global_data.end())
+       {
+       stringstream ss;
+	 ss.str("");
+	 ss << INTMAXVAL;
+	 return_value=(char*)ss.str().c_str();
+	 }
+     else
+       {
+       stringstream ss;
+	 ss.str("");
+	 ss << (*it).second;
+	 return_value = (char*)ss.str().c_str();
+	 }
 
-    string str_conf = curr_conf;
-    it=global_data.find(str_conf);
-    if(it == global_data.end())
-    {
-        stringstream ss;
-        ss.str("");
-        ss << INTMAXVAL;
-        return_value=(char*)ss.str().c_str();
-    }
-    else
-    {
-        stringstream ss;
-        ss.str("");
-        ss << (*it).second;
-        return_value = (char*)ss.str().c_str();
-    }
+     switch (mesg->get_var(0)->getType()) {
+       case VAR_INT:
+	   mesg->get_var(0)->setValue(atoi(return_value));
+	     break;
+	     case VAR_STR:
+	  mesg->get_var(0)->setValue(return_value);
+	     break;
+	     }
 
-    switch (mesg->get_var(0)->getType()) {
-        case VAR_INT:
-            mesg->get_var(0)->setValue(atoi(return_value));
-            break;
-        case VAR_STR:
-            mesg->get_var(0)->setValue(return_value);
-            break;
-    }
-
-    send_message(mesg, client_socket);
-    delete mesg;
+        send_message(mesg, client_socket);
+        delete mesg;
 
 }
-
 
 /***
  *
@@ -777,7 +1117,6 @@ void variable_set(HUpdateMessage *mesg, int client_socket){
     char *s;
     char *ss;
     int resint;
-
 
     for (int i=0; i<mesg->get_nr_vars();i++) {
 
@@ -801,8 +1140,7 @@ void variable_set(HUpdateMessage *mesg, int client_socket){
         sprintf(ss2, "%s_bundle_%s", appName, ss);
 
         char *res= "";
-        // for  some malloc problem, the following does not work
-        //    if (Tcl_VarEval(tcl_inter,"set ",ss2, " ", s, NULL)!=TCL_OK) {
+        
         if ((res = Tcl_SetVar2(tcl_inter, ss2, "value", s, TCL_GLOBAL_ONLY)) == NULL) {
             fprintf(stderr, "Error setting variable: %s", res);
             fprintf(stderr, "TCLres (varSet-Err): %s\n", tcl_inter->result);
@@ -811,7 +1149,6 @@ void variable_set(HUpdateMessage *mesg, int client_socket){
             operation_failed(client_socket);
             return;
         }
-        //fprintf(stderr, "TCLres(varSet-OK): %s ; %s ; %s\n", ss2, res, tcl_inter->result);
 
         char redraw_str[256];
         sprintf(redraw_str,"redraw_dependencies %s %s 0 0",mesg->get_var(i)->getName(), appName);
@@ -824,10 +1161,6 @@ void variable_set(HUpdateMessage *mesg, int client_socket){
             return;
         }
 
-        //I had to comment the scheduler part since it was not working properly
-        // Cristian
-
-        //#define SCHEDULER
 #ifdef SCHEDULER
 #ifdef notdef
         char *c;
@@ -847,19 +1180,15 @@ void variable_set(HUpdateMessage *mesg, int client_socket){
         char *event;
 
         if (!strcmp(mesg->get_var(i)->getName(), "AdaState")){
-            //fprintf(stderr, "%s\n", s);
             if (!strcmp(s, "APP_STARTED")) {
                 /* register application in scheduler */
-                //	printf("* START event\n");
                 event = StartEvent;
             }else{
                 /* call scheduler to take over */
-                //        printf("* SYNC event\n");
                 event = SyncEvent;
             }
         }
         else{
-            //        printf("* VAR event\n");
             event = VarEvent;
         }
 
@@ -883,11 +1212,6 @@ void variable_set(HUpdateMessage *mesg, int client_socket){
         c += 8;
         char *vname = c;
 
-        //    char *appName = scheduler.socket_to_app(client_socket);
-        //	char *sname = (char *)malloc(strlen(appName)+25);
-        //      sprintf(sname, "%s_bundle_AdaState", appName);
-        //    }
-
         if (!strcmp(vname, "AdaState")){
             if (!socket_to_app(sock)){
                 /* register application in scheduler */
@@ -908,15 +1232,12 @@ void variable_set(HUpdateMessage *mesg, int client_socket){
         free(ss);
     }
 
-    //  printf("Send Confirmation!\n");
-
     if (!update_sent) {
         HRegistMessage *m = new HRegistMessage(HMESG_CONFIRM,0);
         send_message(m, client_socket);
         delete m;
     }
     update_sent = FALSE;
-    //  printf("Set Variable Completed!\n");
 
 }
 
@@ -937,6 +1258,24 @@ void revoke_resources(char *appName) {
     free(clientName[clientInfo[appName]]);
 }
 
+
+void filter(map<string,string> &m, vector<string> & result, vector<string> &values,
+            string &condition)
+{
+    map<string,string>::iterator iter;
+    for(iter=m.begin();iter!=m.end();iter++)
+    {
+           string key=iter->first; 
+           size_t found=key.find(condition);
+           if (found!=string::npos) 
+           {
+               result.push_back(key);
+               values.push_back(iter->second);
+               m.erase(iter);
+           }
+    }
+
+}
 /***
  *
  * The client unregisters! Send back a confirmation message
@@ -944,62 +1283,88 @@ void revoke_resources(char *appName) {
  ***/
 void client_unregister(HRegistMessage *m, int client_socket) {
 
-    /* clear all the information related to the client */
+    char new_dir_name[512];
+    char new_pid_dir_name[512];
+    char default_file_ext[] = "default.so";
+    char appname_default[512];
+    struct dirent *drnt;
+    struct stat buff;
+    char strcomparison[512];
 
+    DIR *dr;
+    DIR *new_dr;
+
+    FILE *inFile;
+    FILE *outFile;
+
+    char sourceFile;
+    char destFile;
+    
+    int Byte;
+    int i;
+
+    char c[100];
+    char ch;
+
+    int renameFile=0;
+
+
+    /* clear all the information related to the client */
+    char *appName = clientName[client_socket];
     if(debug_mode)
     {
         printf("ENTERED CLIENT UNREGISTER!!!!!\n");
     }
+    
+    // derive the global appName
+    char *startp, *endp;
+    startp=appName;
+    endp=appName;
+    while (*endp!='_') endp++;
 
-    map<string,double>::iterator it;
+    char temp_name[128];
+    char temp[128];
 
-    char temp[256];
+    strncpy(temp_name, startp, (endp-startp));
+    sprintf(&temp_name[endp-startp], "");
 
-    sprintf(temp,"unique_points");
+    // unique_points filename
+    sprintf(temp,"unique_points.%s.dat", temp_name);
 
+    // configurations
+    vector<string> configurations;
 
-    if(global_data.size() !=0)
+    // corresponding performance values
+    vector<string> corresponding_values;
+    // filter the keys by global appName
+    string filter_text = temp_name;
+
+    // get the unique configurations for this application
+    filter(global_data,configurations, corresponding_values,filter_text);
+    int index=0;
+    FILE *pFile;
+    pFile = fopen (temp,"a");
+    char cmd[128];
+    sprintf(cmd,"----------------- \n");
+    if (pFile!=NULL)
     {
-        //print out all the confs stored in the map
-        FILE *pFile;
-        pFile = fopen (temp,"a");
-        char cmd[256];
-        sprintf(cmd,"-----------------\n");
-        if (pFile!=NULL)
-        {
-            fputs (cmd,pFile);
-        }
-        for ( it=global_data.begin() ; it != global_data.end(); it++ )
-        {
-            cout << (*it).first << " => " << (*it).second << endl;
-            string first_part=((*it).first);
-            char *char_star_first;
-            char *char_star_second;
-            char_star_first = new char[(*it).first.length() + 1];
-            strcpy(char_star_first, (*it).first.c_str());
-            if (pFile!=NULL)
-            {
-                fputs (char_star_first,pFile);
-                fprintf(pFile, " ==> ");
-                {
-                    stringstream ss;
-                    ss.str("");
-                    ss << (*it).second;
-                    fprintf(pFile," %s", ss.str().c_str());
-                }
-                fprintf(pFile," %d", (*it).second);
-                fputs("\n",pFile);
-            }
-        }
-        fclose (pFile);
-        global_data.clear();
+        fputs (cmd,pFile);
     }
+    for (index=0; index < configurations.size(); index++) 
+    {
+        fprintf(pFile, (configurations[index]).c_str());
+        fprintf(pFile, " ==> ");
+        fprintf(pFile, (corresponding_values[index]).c_str());
+        fprintf(pFile, " \n");
+    }
+    fclose(pFile);
 
-    /* first run the Tcl function to clear after the client */
+    /* run the Tcl function to clear after the client */
     if (Tcl_VarEval(tcl_inter,"harmony_cleanup ",clientName[client_socket], NULL)!=TCL_OK) {
         fprintf(stderr, "Error cleaning up after client! %d\n", tcl_inter->result);
     }
 
+    
     FD_CLR(client_socket, &listen_set);
     if (client_socket==*socketIterator)
         socketIterator++;
@@ -1008,18 +1373,98 @@ void client_unregister(HRegistMessage *m, int client_socket) {
         highest_socket--;
     clientSocket.erase(clientId[client_socket]);
     clientId.erase(client_socket);
-
+    
     if (m == NULL){
         /* revoke resources */
         revoke_resources(clientName[client_socket]);
     } else {
-        //printf("Send confimation !\n");
         HRegistMessage *mesg = new HRegistMessage(HMESG_CONFIRM,0);
-
+        
         /* send back the received message */
         send_message(mesg,client_socket);
         delete mesg;
     }
+
+
+    //After the completion of code generation and auto tuning, the server puts all the 
+    //newly generated files into a seperate folder. The new folder is named after the PID of
+    //the harmony server. This is mainly used for the cleaning purpose.
+
+    //Creating a new directory
+
+    sprintf(new_pid_dir_name, "harmonyPID_%d", hs_process_id);
+
+    sprintf(new_dir_name, "%s/harmonyPID_%d", path, hs_process_id);
+
+    sprintf(appname_default, "%s_%s", APPNAME, default_file_ext);
+
+    dr=opendir(path);
+   
+    if((mkdir(new_dir_name,00777))==0)
+    {
+       printf("The new directory [harmonyPID_%d] has been created \n", hs_process_id);
+    
+       //Moving all the files created by the code-server to the new folder
+    
+    	if(dr)
+    	{
+    	    while(drnt=readdir(dr))
+    	    {
+	      sprintf(strcomparison, "%s", drnt->d_name);
+	   
+	      if(strcmp(strcomparison, appname_default) != 0)
+	      {  
+	        if(strcmp(drnt->d_name, appname_default) !=0)
+	        {
+	      
+		  int x1, x2, x3;
+	  
+		  char newcmd[512];
+
+		  new_dr=opendir(new_dir_name);
+
+		  printf("%s", drnt->d_name);
+
+		  sprintf(newcmd, "cp /%s/* /%s", path, new_dir_name);
+
+		  printf("Calling System(%s)\n", newcmd);
+
+		  x1 = system(newcmd);
+
+		  printf("system() returned %d\n",x1);
+
+		  printf("calling system(%s)\n", newcmd);
+
+		  x2 = system(newcmd);
+		
+		  printf("system() returned %d\n",x2);
+
+		  sprintf(newcmd, "rm %s/%s", path, drnt->d_name);
+	    
+		  printf("calling system(%s)\n", newcmd);
+	    
+		  x3 = system(newcmd);
+
+		  printf("system() returned %d\n", x3);
+
+		}
+	      }
+	      else
+	      {
+		printf("Not allowed to copy %s to %s \n", drnt->d_name, new_dir_name);
+	      }
+	   }
+	   closedir(dr);
+	}
+	else
+	{
+	  printf("Cannot open directory [%s] \n", path);
+	}
+     }
+     else
+     {
+      printf("The directory [harmonyPID_%d] already exists \n", hs_process_id);
+     }
 }
 
 void performance_update_int(HUpdateMessage *m, int client_socket) {
@@ -1031,8 +1476,11 @@ void performance_update_int(HUpdateMessage *m, int client_socket) {
     char s[80];
     int performance = INTMAXVAL;
 
+    char perf_string[80];
+
     // get the current conf for this instance from the tcl backend.
     performance=*(int *)m->get_var(0)->getPointer();
+
     if(performance != INTMAXVAL)
     {
 
@@ -1046,16 +1494,25 @@ void performance_update_int(HUpdateMessage *m, int client_socket) {
             return;
         } else
         {
-            sprintf(curr_conf, "%s", tcl_inter->result);
+            char *startp, *endp;
+            startp=appName;
+            endp=appName;
+            while (*endp!='_') endp++;
+            char temp_name[256];
+            strncpy(temp_name, startp, (endp-startp));
+            sprintf(&temp_name[endp-startp], "");
+            sprintf(curr_conf, "%s_%s", temp_name, tcl_inter->result);
         }
 
+        sprintf(perf_string, "%d", performance);
         string str_conf = curr_conf;
-
-        if(performance != INTMAXVAL)
-            global_data.insert(pair<string, double>(str_conf, (double)performance));
+        global_data.insert(pair<string, string>(str_conf, (string)perf_string));
     }
 
-    sprintf(s, "updateObsGoodness %s %d %d", appName,performance, m->get_timestamp());
+    sprintf(s, "updateObsGoodness %s %d %d", appName, performance, m->get_timestamp());
+
+    if(debug_mode)
+        printf("goodness tcl string: %s \n", s);
 
     if ((err = Tcl_Eval(tcl_inter, s)) != TCL_OK) {
         fprintf(stderr, "Error setting performance function: %d", err);
@@ -1064,7 +1521,6 @@ void performance_update_int(HUpdateMessage *m, int client_socket) {
         operation_failed(client_socket);
         return;
     }
-
     send_message(m,client_socket);
 }
 
@@ -1079,8 +1535,6 @@ void performance_update_double(HUpdateMessage *m, int client_socket) {
     double performance = FLTMAXVAL;
 
     char* perf_dbl=(char*)(m->get_var(0)->getPointer());
-
-    printf("performance is: %s \n", perf_dbl);
 
     performance=atof(perf_dbl);
 
@@ -1099,18 +1553,25 @@ void performance_update_double(HUpdateMessage *m, int client_socket) {
             return;
         } else
         {
-            sprintf(curr_conf, "%s", tcl_inter->result);
+            char *startp, *endp;
+            startp=appName;
+            endp=appName;
+            while (*endp!='_') endp++;
+            char temp_name[256];
+            strncpy(temp_name, startp, (endp-startp));
+            sprintf(&temp_name[endp-startp], "");
+            sprintf(curr_conf, "%s_%s", temp_name, tcl_inter->result);
         }
 
         string str_conf = curr_conf;
-
-        if(performance != INTMAXVAL)
-            global_data.insert(pair<string, double>(str_conf, (double)performance));
+        string perf_num = perf_dbl;
+        global_data.insert(pair<string, string>(str_conf, perf_num));
     }
 
 
     sprintf(s, "updateObsGoodness %s %.15g %d", appName,performance, m->get_timestamp());
-
+    if(debug_mode)
+        printf("goodness tcl string: %s \n", s);
     if ((err = Tcl_Eval(tcl_inter, s)) != TCL_OK) {
         fprintf(stderr, "Error setting performance function: %d", err);
         fprintf(stderr, "TCLres(perfUpdate-Err): %s\n", tcl_inter->result);
@@ -1136,6 +1597,243 @@ void performance_update(HUpdateMessage *m, int client_socket) {
 }
 
 
+
+
+/* OLD Design
+ * Server after receiving the performance values from the client, sends the corresponding configuration
+ * back to the client. Client then queries the server whether it has seen the configuration before.
+ */
+
+
+//NEW DESIGN
+//Server checks the database whether the performance is already evaluated or not 
+
+void performance_already_evaluated_int(HUpdateMessage *m, int client_socket) 
+{
+   
+  int err;
+  FILE *f1;
+  char *appName = clientName[client_socket];
+  
+  char curr_conf[80];
+  char str_conf[80];
+  
+  int i;
+
+  char s[80];
+  int performance = INTMAXVAL;
+
+  char perf_string[80];
+
+  char new_res[100];
+
+  // get the current conf for this instance from the tcl backend.
+  performance=*(int *)m->get_var(0)->getPointer();
+
+  if(performance != INTMAXVAL)
+  {
+
+      sprintf(s, "get_test_configuration %s", appName);
+
+      if ((err = Tcl_Eval(tcl_inter, s)) != TCL_OK) 
+      {
+	fprintf(stderr, "Error retreiving the current configuration: %d", err);
+	fprintf(stderr, "TCLres(perfUpdate-Err): %s\n", tcl_inter->result);
+	printf("FAILED HERE\n");
+	operation_failed(client_socket);
+	return;
+      } 
+      else
+      {
+	  char *startp, *endp;
+	  startp=appName;
+	  endp=appName;
+	  while (*endp!='_') endp++;
+	  char temp_name[256];
+	  strncpy(temp_name, startp, (endp-startp));
+	  sprintf(&temp_name[endp-startp], "");
+	  sprintf(curr_conf, "%s_%s", temp_name, tcl_inter->result);
+      }
+
+      string str_conf = curr_conf;
+      sprintf(perf_string, "%d", performance);
+      global_data.insert(pair<string, string>(str_conf, (string)perf_string));
+
+  }
+  
+
+  //Server checks the database whether the conf has already been evaluated in the past
+  it=global_data.find(str_conf);
+
+  //searching the database
+  for (it = global_data.begin(); it != global_data.end(); ++it)
+  {
+    if(!str_conf)
+    {
+
+      performance_update_int(m, client_socket);
+
+      if(debug_mode)
+        printf("goodness tcl string: %s \n", s);
+
+      if ((err = Tcl_Eval(tcl_inter, s)) != TCL_OK)
+        {
+          fprintf(stderr, "Error setting performance function: %d", err);
+          fprintf(stderr, "TCLres(perfUpdate-Err): %s\n", tcl_inter->result);
+          printf("FAILED HERE\n");
+          operation_failed(client_socket);
+          return;
+        }
+      send_message(m,client_socket);
+    }
+    else
+    {
+	printf("The following configuration has already seen \n");
+
+	//For now using the update function again
+	performance_update_int(m, client_socket);
+
+	if(debug_mode)
+	  printf("goodness tcl string: %s \n", s);
+
+	if ((err = Tcl_Eval(tcl_inter, s)) != TCL_OK)
+	{
+          fprintf(stderr, "Error setting performance function: %d", err);
+          fprintf(stderr, "TCLres(perfUpdate-Err): %s\n", tcl_inter->result);
+          printf("FAILED HERE\n");
+          operation_failed(client_socket);
+          return;
+        }
+	send_message(m,client_socket);
+
+    }
+
+    send_message(m,client_socket);
+  
+   }
+
+}
+
+
+void performance_already_evaluated_double(HUpdateMessage *m, int client_socket)
+{
+
+  int err;
+  FILE *f1;
+  char *appName = clientName[client_socket];
+
+  char curr_conf[80];
+  char str_conf[80];
+
+  int i;
+
+  char s[80];
+  double performance = FLTMAXVAL;
+  
+  //get the current conf for this instance from the tcl backend
+  char* perf_dbl=(char*)(m->get_var(0)->getPointer());
+  
+  performance = atof(perf_dbl);
+
+  char perf_string[80];
+
+  char new_res[100];
+
+  if(performance != INTMAXVAL)
+  {
+
+      sprintf(s, "get_test_configuration %s", appName);
+
+      if ((err = Tcl_Eval(tcl_inter, s)) != TCL_OK)
+      {
+	fprintf(stderr, "Error retreiving the current configuration: %d", err);
+	fprintf(stderr, "TCLres(perfUpdate-Err): %s\n", tcl_inter->result);
+	printf("FAILED HERE\n");
+	operation_failed(client_socket);
+	return;
+      }
+      else
+      {
+        char *startp, *endp;
+        startp=appName;
+        endp=appName;
+        while (*endp!='_') endp++;
+        char temp_name[256];
+        strncpy(temp_name, startp, (endp-startp));
+        sprintf(&temp_name[endp-startp], "");
+        sprintf(curr_conf, "%s_%s", temp_name, tcl_inter->result);
+      }
+
+      string str_conf = curr_conf;
+      string perf_num = perf_dbl;
+      global_data.insert(pair<string, string>(str_conf, perf_num));
+
+  }
+
+  //Server checks the database whether the conf has already been evaluated in the past
+  it=global_data.find(str_conf);
+
+  //searching the database
+  for (it = global_data.begin(); it != global_data.end(); ++it)
+  {
+      if(!str_conf)
+      {
+
+      	printf("The following configuration has not seen before \n");
+       	printf("Updating the performance and sending the configuration to the client\n");
+
+       	performance_update_int(m, client_socket);
+
+       	if(debug_mode)
+       	  printf("goodness tcl string: %s \n", s);
+
+       	if ((err = Tcl_Eval(tcl_inter, s)) != TCL_OK)
+	{
+          fprintf(stderr, "Error setting performance function: %d", err);
+          fprintf(stderr, "TCLres(perfUpdate-Err): %s\n", tcl_inter->result);
+          printf("FAILED HERE\n");
+          operation_failed(client_socket);
+          return;
+        }
+	send_message(m,client_socket);
+      }
+      else
+      {
+	printf("The following configuration has already seen \n");
+
+	//For now using the update function again
+	performance_update_int(m, client_socket);
+
+	if(debug_mode)
+	  printf("goodness tcl string: %s \n", s);
+
+	if ((err = Tcl_Eval(tcl_inter, s)) != TCL_OK)
+	{
+	  fprintf(stderr, "Error setting performance function: %d", err);
+	  fprintf(stderr, "TCLres(perfUpdate-Err): %s\n", tcl_inter->result);
+	  printf("FAILED HERE\n");
+	  operation_failed(client_socket);
+	  return;
+	}
+      	send_message(m,client_socket);
+      }
+ 
+      send_message(m,client_socket);
+  }
+}
+
+// performance already evaluated function
+void performance_already_evaluated(HUpdateMessage *m, int client_socket) {
+  switch (m->get_var(0)->getType()) {
+          case VAR_INT:
+	    performance_already_evaluated_int(m,client_socket);
+	    break;
+          case VAR_STR:
+	    performance_already_evaluated_double(m,client_socket);
+	    break;
+    }
+}
+
 // not used anymore... but has some use for debugging. so keeping it intact.
 void performance_update_with_conf(HUpdateMessage *m, int client_socket) {
 
@@ -1151,8 +1849,6 @@ void performance_update_with_conf(HUpdateMessage *m, int client_socket) {
 
     string str_conf = conf;
     printf("configuration: %s \n", conf);
-
-    global_data.insert(pair<string, int>(str_conf, *(int *)m->get_var(0)->getPointer()));
 
     sprintf(s, "updateObsGoodness %s %d %d", appName,*(int *)m->get_var(0)->getPointer(), m->get_timestamp());
 
@@ -1187,13 +1883,11 @@ void process_message_from(int temp_socket){
 
     switch (m->get_type()) {
         case HMESG_DAEMON_REG:
-            //	daemon_registration(temp_addr, temp_addrlen);
             break;
         case HMESG_CLIENT_REG:
             client_registration((HRegistMessage *)m,temp_socket);
             break;
         case HMESG_NODE_DESCR:
-            // get_node_description(temp_addr,temp_addrlen);
             break;
         case HMESG_APP_DESCR:
             get_appl_description((HDescrMessage *)m, temp_socket);
@@ -1210,6 +1904,9 @@ void process_message_from(int temp_socket){
         case HMESG_PERF_UPDT:
             performance_update((HUpdateMessage *)m, temp_socket);
             break;
+        case HMESG_PERF_ALREADY_EVALUATED:
+	    performance_already_evaluated((HUpdateMessage *)m, temp_socket);
+	    break;
         case HMESG_TCLVAR_REQ:
             var_tcl_variable_request((HUpdateMessage *)m, temp_socket);
             break;
@@ -1229,11 +1926,9 @@ void process_message_from(int temp_socket){
             printf("Wrong message type!\n");
     }
 
-
     /* process Tk events */
     while (Tcl_DoOneEvent(TCL_DONT_WAIT)>0)
         ;
-
     in_process_message = FALSE;
 }
 
@@ -1246,7 +1941,7 @@ void process_message_from(int temp_socket){
  *
  ***/
 void main_loop() {
-
+ 
     struct sockaddr_in temp_addr;
     int temp_addrlen;
     int temp_socket;
@@ -1264,7 +1959,6 @@ void main_loop() {
 
     while (1) {
         listen_set_copy=listen_set;
-        //    printf("Select\n");
         active_sockets=select(highest_socket+1,&listen_set_copy, NULL, NULL, NULL);
         /* we have a communication request */
         for (socketIterator=socket_set.begin();socketIterator!=socket_set.end();socketIterator++) {
@@ -1300,17 +1994,22 @@ void main_loop() {
             if (Tcl_Eval(tcl_inter, line) != TCL_OK) {
                 printf("Tcl Error: %s\n", tcl_inter->result);
             } else {
-                //	printf("%s\n", tcl_inter->result);
             }
 
             fflush(stdout);
         }
 #endif
     }
+
+    
 }
 
 
-
+char* get_timestamp ()
+{
+  time_t now = time (NULL);
+  return asctime(localtime (&now));
+}
 
 /***
  *
@@ -1321,9 +2020,10 @@ void main_loop() {
  ***/
 int main(int argc, char **argv) {
 
+    time_t start_time;
+    time (&start_time);
+    hserver_start_timestamp=start_time;
     check_parameters(argc, argv);
-
     server_startup();
-
     main_loop();
 }

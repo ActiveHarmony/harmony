@@ -32,9 +32,9 @@
 #include <math.h>
 
 
-#include "hutil.h"
-#include "hmesgs.h"
-#include "hsockutil.h"
+#include "putil.h"
+#include "pmesgs.h"
+#include "psockutil.h"
 #include "StringTokenizer.h"
 
 /***

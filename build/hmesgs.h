@@ -46,54 +46,37 @@ using namespace std;
 
 /* no type */
 #define HMESG_NONE 0
-
 /* node description */
 #define HMESG_NODE_DESCR 1
-
 /* application description */
 #define HMESG_APP_DESCR 2
-
 /* daemon registration */
 #define HMESG_DAEMON_REG 3
-
 /* client registration */
 #define HMESG_CLIENT_REG 4
-
 /* variable registration */
 #define HMESG_VAR_DESCR 5
-
 /* variable value request */
 #define HMESG_VAR_REQ 6
-
 /* variable value set */
 #define HMESG_VAR_SET 7
-
 /* unregister client */
 #define HMESG_CLIENT_UNREG 8
-
 /* confirmation message needed for synchronization */
 #define HMESG_CONFIRM 9
-
 /* failure on server side */
 #define HMESG_FAIL 10
-
 /* the update of the performance metric. (observed Goodness) */
 #define HMESG_PERF_UPDT 11
-
 /* request probe/local tcl variables */
 #define  HMESG_PROBE_REQ 12
-
-#define  HMESG_TCLVAR_REQ 14
-
-#define  HMESG_TCLVAR_REQ_2 20
-
-#define HMESG_PROBE_SET 13
-
-#define HMESG_DATABASE 15
-
-#define HMESG_WITH_CONF 16
-
-#define HMESG_CODE_COMPLETION 17
+#define  HMESG_TCLVAR_REQ 13
+#define  HMESG_TCLVAR_REQ_2 14
+#define HMESG_PROBE_SET 15
+#define HMESG_DATABASE 16
+#define HMESG_WITH_CONF 17
+#define HMESG_CODE_COMPLETION 18
+#define HMESG_PERF_ALREADY_EVALUATED 19
 
 /*
  * define accepted variable types
@@ -192,9 +175,7 @@ class VarDef {
                 strcpy((char *)shadowp,(char *)v.varp);
                 break;
         }
-
     }
-
 
     // destructor
     ~VarDef() {
@@ -202,18 +183,12 @@ class VarDef {
         free(varp);
         free(shadowp);
     }
-
-
     // the equal operator
     // it might be useful later
     VarDef& operator=(const VarDef &v) {
-
         if (this!= &v) {
-
             setName(v.varName);
-
             setType(ntohl(v.varType));
-
             switch (getType()) {
                 case VAR_INT:
                     setValue(*((int *)v.varp));
@@ -226,8 +201,6 @@ class VarDef {
         return *this;
     }
 
-
-
     // set the value of the variable
     // if the variable is an int
     inline void setValue(int v){
@@ -238,10 +211,7 @@ class VarDef {
 
             setShadow(*(int *)varp);
         }
-
     }
-
-
     // set the shadow of the variable
     // if the variable is an int
     inline void setShadow(int v){
@@ -350,7 +320,8 @@ static const char *print_type[] = {"NONE",
                                    "PROBE_SET",
                                    "DATABASE",
                                    "WITH_CONF",
-                                   "CODE_COMPLETION"};
+                                   "CODE_COMPLETION"
+                                   "PERF_ALREADY_EVALUATED"};
 
 
 // the general message class
@@ -575,7 +546,6 @@ class HDescrMessage : public HMessage {
     unsigned short int descrlen;
     char *descr;
 
-
   public:
     // default constructor
     HDescrMessage():HMessage(){
@@ -596,7 +566,6 @@ class HDescrMessage : public HMessage {
         //    delete[] descr;
         free(descr);
     }
-
 
     // return description
     inline char *get_descr() {

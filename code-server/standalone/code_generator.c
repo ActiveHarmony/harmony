@@ -36,7 +36,9 @@ using namespace std;
 
 int nchildren = 1;
 int timestep = 1;
-
+/* global_data keeps track of all the configurations that we have 
+ * generated code for so far. 
+ */
 map<string,int> global_data;
 map<string,int>::iterator it;
 
@@ -46,7 +48,6 @@ typedef pair <int, int> Int_Pair;
 typedef struct {
     vector<int> parameters;
     int avail;
-    //string hostname;
     int rand_amount;
     int pid;
 } generator;
@@ -68,6 +69,8 @@ void get_parameters_from_file(vector<vec_of_intvec>& intvec, string filename);
 void get_code_generators (vector<string>& vec, string filename);
 void get_points_vector (string point, vec_of_intvec& code_parameters);
 string vector_to_string(vector<int> v);
+string vector_to_bash_array_local(vector<int> v);
+string vector_to_bash_array_remote(vector<int> v);
 string vector_to_string_demo(vector<int> v);
 void get_parameters_from_file(vec_of_intvec& intvec, string filename);
 vector<string> generator_vec;
@@ -79,6 +82,13 @@ void logger (string message);
 int get_num_code_generators(string filename);
 generator *gen_ptr;
 
+
+/*
+ * generators: These are the real work-horses. For each new configuration, we 
+ *  fork a new process to generate code. These processes die after the code
+ *  generation is complete. We block all the signals because we do not want to
+ *  interrupt any code generation activity.
+*/
 
 pid_t generator_make(int i, vector<int> params)
 {
@@ -94,12 +104,21 @@ pid_t generator_make(int i, vector<int> params)
     }
     generator_main(i, params); // child continues
 }
+
+// this gets the code generation parameters from the code manager and fires
+//  scripts to use the underlying code generation tool to generate the code.
+//  Scripts for different code and different code-generation utility need to
+//   be provided by the user.
+
 void generator_main(int i,vector<int> params) {
 
     // this is where the code generation happens
     //  make a call to chill_script.appname.sh
+    // Note that this appname has to match the appname specified in the client
+    //  tcl file.
      stringstream ss;
      ss.str("");
+
      // set which machine to use
      // first check to see if there is an underscore in the machine name.
      string generator_name = generator_vec.at(i);
@@ -110,26 +129,32 @@ void generator_main(int i,vector<int> params) {
         generator_name=generator_name.erase(found);
      }
      
+     /*
+       Different machines might be configured differently. So a check here should
+       made to make sure that the hostname matches uniformly across generator_hosts
+       file and hostname gathered here.
+     */
      // find out if this is a remote host
      bool flag=(generator_name==hostname);
      if(flag) {
        // local
        ss <<  " exec ";
-       ss << "$HOME/scratch/" <<  generator_vec.at(i);
+       ss << "$HOME/scratch/" <<  generator_vec.at(i) << "_" << appname;
      } else {
        // remote
        ss << "ssh  " << generator_name << " exec ";
-       ss << "\\$HOME/scratch/" <<  generator_vec.at(i);
+       ss << "\\$HOME/scratch/" <<  generator_vec.at(i) << "_" << appname;
      }
-     //ss << "ssh  " << generator_vec.at(i) << " exec ";
-     // full path to the script
-     //ss << "\\$HOME/scratch/" <<  generator_vec.at(i);
 
      ss << "/chill_script." << appname << ".sh ";
-     ss << vector_to_string(params);
-     //ss << vector_to_string(gen_ptr[i].parameters);
-     ss << generator_vec.at(i) << " " << hostname;
-     //cout << ss.str() << " " ;
+
+     if(flag) {
+       ss << vector_to_bash_array_local(params);
+     } else {
+       ss << vector_to_bash_array_remote(params);
+     }
+     ss << generator_vec.at(i) << "_" << appname << " " << hostname;
+     cout << ss.str() << " " ;
     
      int sys_return = system(ss.str().c_str());
      cout << ss.str() << " " << gen_ptr[i].pid << "  " << generator_name << " sys_return " << sys_return << "\n";
@@ -138,7 +163,7 @@ void generator_main(int i,vector<int> params) {
      exit(0);
 }
 
-
+string log_file;
 int main(int argc, char **argv)
 {
     int ppid = getpid();
@@ -147,30 +172,26 @@ int main(int argc, char **argv)
     int status, errno;
 
     if(argc != 2){
-      cout << "Usage: ./code_generator <num_code_generators>" << endl;
-      cout << " If <num_code_generators> is less than 1, we default to the value " << endl;
-      cout << " specified in num_code_generators file."<< endl;
+      cout << "Usage: ./code_generator <appname> " << endl;
+      cout << " <appname> is the name of the application, we are generating code for. " << endl;
       exit(0);
     }
 
-    // first argument is the number of code-generators to use
-    int num_generators=atoi(argv[1]);
-
-    // if this argument is less than 1, read the num_code_generators file
-    if(num_generators < 1)
-      {
-	num_generators=get_num_code_generators("num_code_generators");
-      }
-
-    cout << "num_generators: " << num_generators << endl; 
+    // first argument is the appname
+    appname=argv[1];
+    log_file="generation."+appname+".log";
+    cout << "generating code for: " << appname << endl;
+    
     int allpids[2];
     stringstream ss, ss2, ss3,log_message;
+
      // first get the list of available machines
-    ss << "generator_hosts_" << num_generators;
+    ss << "generator_hosts_" << appname;
     string filename=ss.str();
     ss.str("");
     cout << "generator host filename: " << filename << endl; 
     get_code_generators(generator_vec, filename);
+    int num_generators=generator_vec.size();
 
     cout << "The list of available machines: ";
     log_message << "---------------------------------------------------" << endl;
@@ -179,7 +200,7 @@ int main(int argc, char **argv)
     int nchildren = generator_vec.size();
     gen_ptr = (generator*)calloc(nchildren, sizeof(generator));
 
-    log_message << "Num Code Server: " << generator_vec.size();
+    log_message << "Num Code Servers: " << generator_vec.size();
    
     for(int i=0; i < generator_vec.size(); i++)
     {
@@ -188,7 +209,6 @@ int main(int argc, char **argv)
     }
     log_message << "\n";
     cout << "\n";
- 
     vec_of_intvec code_parameters;
     vec_of_intvec all_params;
     // main loop starts here
@@ -204,50 +224,37 @@ int main(int argc, char **argv)
         ss.str("");
         log_message.str("");
         // the file to watch
-        ss << confs_dir << "candidate_simplex." << timestep << ".dat";
+        ss << confs_dir << "candidate_simplex." << appname << "." << timestep << ".dat";
+	ss3.str("");
+	ss3 << confs_dir << "candidate_simplex." << appname << ".00.dat";
 
         log_message << "waiting to hear from harmony server ... \n";
         cout << ss.str() << "\n";
 	// spin-lock
-        while(!file_exists(ss.str().c_str())){
+        while(!file_exists(ss.str().c_str())
+	      && !file_exists(ss3.str().c_str())){
             sleep(1);
         }
+
+	if(file_exists(ss3.str().c_str())){
+	  std::remove(ss3.str().c_str());
+	  break;
+	}
+
 
         filename = ss.str();
         cout << "filename: " << filename << "\n";
 
         get_parameters_from_file(all_params, filename);
-        /*
-        for(int jj = 0; jj < all_params.size(); jj++)
-        {
-            print_vec(all_params.at(jj));
-        }
-        */
-
+      
         // populate the global database and remove the confs
         // that we have seen already
         populate_remove(all_params, code_parameters);
 
-
-        //get_points_vector(argv[1], code_parameters);
-        //cout << "Command Line arguments: " << argv[1] << "\n";
-
-
-        
         cout << "Code Transformation Parameters: size: " << code_parameters.size() << " \n";
         log_message << "Code Transformation Parameters received for iteration: " << timestep << "\n";
 	log_message << "# of unique confs for this iteration: " << code_parameters.size() << " \n";
-        /*
-        for(int i=0; i < code_parameters.size(); i++) {
-            cout << "[";
-            vector<int> temp_vector = code_parameters.at(i);
-            for (int j=0; j < temp_vector.size(); j++) {
-                cout << temp_vector.at(j) << " ";
-            }
-            cout << "] ";
-        }
-        cout << "\n";
-        */
+      
 	double time1__, time2__;
 	time1__=time_stamp();
         for (int i = 0; i < code_parameters.size(); i++)
@@ -303,51 +310,33 @@ int main(int argc, char **argv)
 	log_message.str("");
 	// delete the confs for which we have generated code already
 	ss.str("");
-	ss << confs_dir << "candidate_simplex." << timestep << ".dat";
+	ss << confs_dir << "candidate_simplex." << appname << "." << timestep << ".dat";
 	std::remove(ss.str().c_str());
 	
 
-	// transport the .so's to the destination system
-	// relying on bash script here. this might not be portable.
-	ss.str("");
-	ss << code_generator_base << appname << "/transport_files.sh";
-	int sys_return = system(ss.str().c_str());
 
-	// now unzip the file
-	//ss.str("");
-	//ss << "ssh tiwari@brood00 /hivehomes/tiwari/smg2000_harmony/test/unzip_new_code.sh";
-	//sys_return = system(ss.str().c_str());
-	//cout << " new code unzipped";
-
-        // first indicate that this round is complete
-        //ss.str("");
-        //ss << "touch /fs/spoon/tiwari/smg2000_code_generator/code_flags/code_complete." << timestep;
-        //system(ss.str().c_str());
+	/* unique to hopper
+	   generate Makefile
+	 */
 
 	ss.str("");
-	ss << code_flag_destination << "code_complete." << timestep;
+	ss << code_flag_destination << "code_complete." << appname << "." << timestep;
 	touch_remote_file(ss.str().c_str(), code_destination_host.c_str());
-	
-	//ss << "scp /fs/spoon/tiwari/smg2000_code_generator/code_flags/code_complete." << timestep 
-	//   << " tiwari@brood00:~/smg2000_harmony/harmony/bin/code_flags/";
-	//system(ss.str().c_str());
-
-
 	
         // clear the stream
         ss.str("");
         // increment the timestep
         timestep++;
         // the file to watch for
-	ss << confs_dir << "candidate_simplex." << timestep << ".dat";
+	ss << confs_dir << "candidate_simplex." << appname << "." << timestep << ".dat";
 	//        ss << "confs/candidate_simplex." << timestep << ".dat";
 
 	// if we see candidate_simplex.1.dat again, it means a new harmony tuning session has begun
 	ss2.str("");
-	ss2 << confs_dir << "candidate_simplex.1" << ".dat";
+	ss2 << confs_dir << "candidate_simplex." << appname << ".1" << ".dat";
 	 
 	ss3.str("");
-	ss3 << confs_dir << "candidate_simplex.00" << ".dat";
+	ss3 << confs_dir << "candidate_simplex." << appname << ".00" << ".dat";
 	cout << ss2.str() << "\n";
 	cout << ss3.str() << "\n";
         cout << ss.str() << "\n";
@@ -399,9 +388,7 @@ populate_remove(vec_of_intvec all_params, vec_of_intvec& code_parameters)
         {
             ss << temp.at(i) << " ";
         }
-        //string str=vector_to_string(temp);
-
-        //cout << "string from vector_to_string " << ss.str().c_str() << "\n";
+        
         pair< map<string,int>::iterator, bool > pr;
         pr=global_data.insert(pair<string, int>(ss.str(), 1));
         ss.str("");
@@ -449,29 +436,39 @@ get_num_code_generators(string filename)
   return atoi(line.c_str());
 }
 
+
 void
 get_code_generators (vector<string>& vec, string filename)
 {
     int num_lines=0;
     string line;
     ifstream myfile;
+    string machine_name;
+    string instances;
+    int num_instances;
 
     myfile.open(filename.c_str());
     if (myfile.is_open()) {
-        //while (! myfile.eof() ) {
         while(getline (myfile,line)) {
-            //getline (myfile,line);
             if(line.length() == 0) break;
-            vec.push_back(line);
+            Tokenizer strtok_space;
+            strtok_space.set(line, " ");
+            machine_name=strtok_space.next();
+            instances=strtok_space.next();
+            num_instances=atoi(instances.c_str());
+            for(int ii=1; ii<=num_instances; ii++) {
+              stringstream tmp;
+              tmp.str("");
+              tmp << machine_name << "_" << ii;
+              vec.push_back(tmp.str());
+            }
             num_lines++;
-	    
         }
         myfile.close();
-        //cout << "NUM_LINES READ: " << num_lines;
     }
-    else cout << "Unable to open file";
-    //return num_lines;
+    else cout << "Unable to open file: " << filename;
 }
+
 
 void
 get_parameters_from_file(vec_of_intvec& intvec, string filename)
@@ -512,20 +509,6 @@ process_point_line(string line, vector<int>& one_point)
     }
 
 }
-/*
-void
-process_point_line(string line, vector<int>& one_point)
-{
-    StringTokenizer strtok_space (line, " ");
-    while(strtok_space.hasMoreTokens())
-    {
-        int temp = strtok_space.nextIntToken();
-        //cout << temp << ", ";
-        one_point.push_back(temp);
-    }
-
-}
-*/
 
 string
 vector_to_string_demo(vector<int> v)
@@ -538,6 +521,31 @@ vector_to_string_demo(vector<int> v)
     {
         ss << vars[i] << "=" << v.at(i) << " ";
     }
+    return ss.str();
+}
+
+string
+vector_to_bash_array_remote(vector<int> v)
+{
+    stringstream ss;
+    ss << "\\\"";
+    for (int i = 0; i < v.size(); i++)
+    {
+        ss << v.at(i) << " ";
+    }
+    ss << "\\\" ";
+    return ss.str();
+}
+string
+vector_to_bash_array_local(vector<int> v)
+{
+    stringstream ss;
+    ss << "\"";
+    for (int i = 0; i < v.size(); i++)
+    {
+        ss << v.at(i) << " ";
+    }
+    ss << "\" ";
     return ss.str();
 }
 
@@ -616,28 +624,3 @@ get_points_vector (string point, vec_of_intvec& code_parameters)
     }
 }
 
-/*
-
-void
-get_points_vector (string point, vec_of_intvec& code_parameters)
-{
-
-    StringTokenizer strtok_colon (point, ":");
-
-
-    vector<int> temp_vector;
-    while (strtok_colon.hasMoreTokens())
-    {
-        StringTokenizer strtok_space (strtok_colon.nextToken(), " ");
-        while(strtok_space.hasMoreTokens())
-        {
-            int temp = strtok_space.nextIntToken();
-            //cout << temp << ", ";
-            temp_vector.push_back(temp);
-        }
-        code_parameters.push_back(temp_vector);
-        temp_vector.clear();
-
-    }
-}
-*/

@@ -8,9 +8,10 @@ The current supported platform is Linux only.
 
 bin/     : executables
 doc/     : documentation
-example/ : two demo examples.
+example/ : several demo examples
 nb/      : knowledge base source files used by library specification layer
-tcl/     : Tcl scripts used by the h_server
+tcl/     : Tcl scripts used by the h_server (this is where all the
+           search algorithms are implemented)
 build/	 : source files
 java/    : Java Harmony API
 
@@ -56,7 +57,13 @@ hconfig.tcl  hserver  libcreater
 
 To run the server:
 
-$ ./hserver
+$ ./hserver <search_algorithm> <enable_disable_graphics>
+If no command line parameter is specified, the default search algorithm
+is PRO. Otherwise, if the first parameter is:
+	1. harmony chooses PRO
+	2. Nelder Mead Simplex Algorithm
+	3. Random Algorithm
+	4. Brute Force Algorithm
 
 To run the example client you have to setup the environment variables:
 
@@ -98,3 +105,4 @@ OR
 $ mpiexec -np 8 ./example
 
 Try other examples as well.
+

@@ -85,9 +85,11 @@ proc combine_groups_method_2 { inits__ init_point group_info } {
     #unset inits__
     
     # first shuffle the incoming confs
-    foreach init__ $inits__ {
-        lappend shuffled_inits__ [rand_shuffle $init__]
-    }
+    ####foreach init__ $inits__ {
+   ####     lappend shuffled_inits__ [rand_shuffle $init__]
+   #### }
+    ####unset inits__
+    set shuffled_inits__ $inits__
     unset inits__
     
     # use the group_info variable to construct the indices list and to determine

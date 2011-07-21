@@ -32,6 +32,10 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <string>
+#include <map>
+#include <tcl.h>
+#include <tk.h>
 
 /***
  *
@@ -39,30 +43,18 @@
  *
  ***/
 #include "hutil.h"
-#include <tcl.h>
-#include <tk.h>
-
 #include "hmesgs.h"
 #include "hsockutil.h"
-
-#include <string>
-#include <map>
-
 /***
  *
  * define macros
  *
  ***/
-
 #define SERVER_PORT 1977
 #define BUFF_SIZE 1024
 
-/***
- *
- * define classes
- *
- ***/
-
+// change this variable to reflect where to look for code generation
+// completion flag.
+char code_flags_path[256]= "/scratch0/code_flags/";
 
 #endif /* __HSERVER_H__ */
- 

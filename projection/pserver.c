@@ -25,7 +25,7 @@
 */
 
 
-#include "hserver.h"
+#include "pserver.h"
 // ANN include file
 #include "ANN_init.h"
 #include "StringTokenizer.h"
@@ -420,7 +420,7 @@ void simplex_construction(HDescrMessage *mesg, int client_socket)
     strcpy(char_star, return_string.c_str());
     //FILE * pFile;
     FILE *pFile;
-    pFile = fopen ("/hivehomes/tiwari/blocking/harmony/bin/constructed_simplex.tcl","w");
+    pFile = fopen ("/hivehomes/tiwari/tutorial-2010/harmony/bin/constructed_simplex.tcl","w");
     if (pFile!=NULL)
     {
         fputs (char_star,pFile);

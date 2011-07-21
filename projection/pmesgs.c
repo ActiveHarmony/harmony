@@ -21,18 +21,17 @@
  *
  * Author: Cristian Tapus
  * History:
- *   Jan 5, 2001   - comments and updated by Cristian Tapus
- *   Nov 20, 2000  - changes made by Djean Perkovic
- *   Sept 23, 2000 - comments added
- *   July 12, 2000 - first version
- *   July 15, 2000 - comments and update added by Cristian Tapus
+ *   Jan  5, 2001 - comments and updated by Cristian Tapus
+ *   Nov 20, 2000 - changes made by Djean Perkovic
+ *   Sep 23, 2000 - comments added
+ *   Jul 15, 2000 - comments and update added by Cristian Tapus
+ *   Jul 12, 2000 - first version
  *
- *  Various modifications, fixes and additions by: Ananta Tiwari (2004-2010)
- *
+ *  Modified by: Ananta Tiwari
+ *   Added origVal variable and its associated modifications to the functions.
  *******************************/
 
-
-#include "hmesgs.h"
+#include "pmesgs.h"
 
 //using namespace std;
 
@@ -298,8 +297,16 @@ VarDef * HUpdateMessage::get_var(int n) {
 
 // adds a variable to the HUpdateMessage
 void HUpdateMessage::set_var(VarDef v) {
+    //printf("HUpdateMessage::set_var \n");
+    //printf("Set_Var!!!\n"); 
+
+    //printf("var: %s\n",v.getName());
+
     set_nr_vars(get_nr_vars()+1);
+
     var_list.push_back(v);
+
+    //printf("var pushed\n");
 }
 
 
@@ -375,6 +382,8 @@ int HUpdateMessage::deserialize(char *buf) {
     bl = HMessage::deserialize(buf);
 
     // printf("deserialization :: %s\n", &buf);
+    
+    
     // deserialize the timestamp
     memcpy(&tstamp,buf+bl, sizeof(unsigned long int));
     bl+=sizeof(unsigned long int);
@@ -421,7 +430,7 @@ void HUpdateMessage::print() {
 
     //  for(VarIterator=var_list.begin();VarIterator!=var_list.end();VarIterator++) {
     //    var=VarIterator;
-    for (int i=0;i<get_nr_vars();i++)
+    for (int i=0;i<get_nr_vars();i++) 
     {
         (get_var(i))->print();
     }

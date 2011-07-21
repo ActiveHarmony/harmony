@@ -126,67 +126,9 @@ proc print_matrix { points repeat_first tag } {
     }
 }
 
-#set filename [make_string "test_2_vars"]
-#set tree [construct_tree 2 1 $filename]
 
-#puts -nonewline "Projection for 51 63:: "
-#puts [projection $tree {51 63}]
-
-# 4N simplex
-# (+-xd,0), (0,+-yd), (+-2,2), (2,+-2)
-# 2d
-#set transform_matrix {{-7 0} {0 7} {7 0} {0 -7}}
 set transform_matrix {{-5 0} {-3 3} {0 5} {3 3} {5 0} {3 -3} {0 -5} {-3 -3}}
-#3d
-#set transform_matrix {{3 0 0} {0 3 0} {0 0 3} {-3 0 0} {0 -3 0} {0 0 -3} {1 1 1} {1 1 -1} {1 -1 1} {1 -1 -1} {-1 1 1} {-1 1 -1} {-1 -1 1} {-1 -1 -1}}
 set init_point {30 35}
 set replicated [replicate_rows 8 $init_point]
 set points [add_mat $replicated $transform_matrix]
 
-##print_matrix $points 1 "init: "
-#
-#set init_matrix $points
-#
-## calculate reflection
-#puts "----"
-#set wrt {30 40}
-#set ref_1 [reflect $wrt 2 $init_matrix]
-#print_matrix $ref_1 1 "ref_1: "
-#
-##
-#puts "----"
-#set wrt {35 49}
-#set ex_1 [expand $wrt 3 $ref_1]
-#print_matrix $ex_1 1 "ex_1: "
-#
-#puts "----"
-#set wrt {51 39}
-#set ref_2 [reflect $wrt 2 $ex_1]
-#print_matrix $ref_2 1 "ref_2: "
-#
-#
-#puts "----"
-#set wrt {51 39}
-#set shr_1 [shrink $wrt 2 $ex_1]
-#print_matrix $shr_1 1 "shr_1: "
-#
-#puts "----"
-#set wrt {51 39}
-#set shr_2 [shrink $wrt 2 $shr_1]
-#print_matrix $shr_2 1 "shr_2: "
-#
-#puts "----"
-#set wrt {51 39}
-#set shr_3 [shrink $wrt 2 $shr_2]
-#print_matrix $shr_3 1 "shr_3: "
-#
-#puts "----"
-#set wrt {51 39}
-#set shr_4 [shrink $wrt 2 $shr_3]
-#print_matrix $shr_4 1 "shr_4: "
-#puts "----"
-#
-#set wrt {51 39}
-#set shr_5 [shrink $wrt 2 $shr_4]
-#print_matrix $shr_5 1 "shr_5: "
-#puts "----"

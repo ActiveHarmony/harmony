@@ -84,6 +84,7 @@ HMessage * receive_message(int sock) {
     unsigned nbuflen;
 
 
+
     // first read the size of the size of the message, allocate the space and
     // then the message
     
@@ -98,7 +99,7 @@ HMessage * receive_message(int sock) {
     }
 
     /* modified by I-Hsin Nov.11 '02 to fix the packet fragmentation  */
-
+    //printf("Got the message size %d sock: %d \n", buflen, sock);
     char *p;
     int i=ntohl(nbuflen);
     p=(char *)buf;
@@ -108,6 +109,7 @@ HMessage * receive_message(int sock) {
             h_exit("Failed to receive message!");
         i-=buflen;
         p+=buflen;
+        //printf("stuck here \n");
     }
 
     switch (get_message_type(buf)) {
@@ -135,6 +137,8 @@ HMessage * receive_message(int sock) {
         case HMESG_DATABASE:
         case HMESG_WITH_CONF:
         case HMESG_CODE_COMPLETION:
+        case HMESG_PERF_ALREADY_EVALUATED:
+            //printf("The message type is: %d \n \n",get_message_type(buf) );
             m=new HUpdateMessage();
             buflend = ((HUpdateMessage *)m)->deserialize((char *)buf);
             break;

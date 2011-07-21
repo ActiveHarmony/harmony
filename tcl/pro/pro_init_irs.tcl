@@ -224,7 +224,7 @@ proc parallel_simplex_init {appName} {
     # SECOND PART :: Search specific parameters
     ###########################################################
     set space_dimension 5
-    set simplex_npoints 64
+    set simplex_npoints 8 
     set pro_max_iterations 1000
     set tolerance 50
 
@@ -298,7 +298,6 @@ proc parallel_simplex_init {appName} {
     set icsm_6_params(init_point) {30 30 30 4 4 }
     set icsm_6_params(init_distance) 20
     set icsm_6_params(use_exploration_point) 1
-    # ndm - new directions method
     set curr_new_dir_trial 1
     set max_new_dir_trial 5
 
@@ -311,7 +310,7 @@ proc parallel_simplex_init {appName} {
     #           curr_new_dir_distance : keeps track of how far we have looked
     #             so far. This is also a list and must be of length num_groups
     #           distance_step : how to increment or decrement the distance
-    set ndm_1_params(starting_distance) {1 1}
+    set ndm_1_params(starting_distance) {4 4 4 1 1}
     set ndm_1_params(curr_distance) {10 4}
     set ndm_1_params(distance_step) {1 1}
 
@@ -322,7 +321,7 @@ proc parallel_simplex_init {appName} {
     set ndm_3_params(how_many) 10
     set ndm_3_params(next_index) 0
 
-    set ndm_4_params(starting_distance) {4 4 4 1}
+    set ndm_4_params(starting_distance) {4 4 4 1 1}
     set ndm_4_params(curr_distance) {2}
     set ndm_4_params(distance_step) {2}
 

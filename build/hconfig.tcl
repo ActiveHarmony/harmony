@@ -22,11 +22,12 @@ global search_algorithm
 # 2. Nelder-Mead Simplex
 # 3. Random
 # 4. Brute Force
-set search_algorithm 1
+
+set search_algorithm 1 
 
 #### to disable client windows, set draw_har_windows variable to 0
 global draw_har_windows
-set draw_har_windows 0
+set draw_har_windows 1 
 
 ## load commons
 load ../tcl/common/round.so
@@ -61,15 +62,16 @@ if { $search_algorithm == 1 } {
 	## As a starting point, take a look at the generic init file provided with 
 	##  this distribution.
 	#source ../tcl/pro/pro_init_generic.tcl
+	source ../tcl/pro/pro_init_gemm.tcl
 	#source ../tcl/pro/pro_init_smg.tcl
-	source ../tcl/pro/pro_init_irs.tcl
+	#source ../tcl/pro/pro_init_irs.tcl
 } elseif { $search_algorithm == 2 } {
 	## Nelder Mead Simplex Algorithm
-	source ../tcl/simplex/parseApp.tcl
-	source ../tcl/simplex/drawApp.tk
-	source ../tcl/simplex/sched.tcl
-	source ../tcl/simplex/newparseApp.tcl
-	source ../tcl/simplex/newdrawApp.tk
+	source ../tcl/common/parseApp.tcl
+	source ../tcl/common/drawApp.tk
+	source ../tcl/common/newparseApp.tcl
+	source ../tcl/common/newdrawApp.tk
+	source ../tcl/common/utilities.tcl
 	source ../tcl/simplex/simplex.tcl
 
 	global init_simplex_method
@@ -77,24 +79,42 @@ if { $search_algorithm == 1 } {
 	# change this variable to either "max" (for default simplex construction
 	#   method or "user_defined" for user defined mode of simplex
 	#   construction.
-	set init_simplex_method "max"
+	set init_simplex_method "max" 
 
 } elseif { $search_algorithm == 3 } {
 	## random
-	source ../tcl/random/parseApp.tcl
-	source ../tcl/random/drawApp.tk
-	source ../tcl/random/sched.tcl
-	source ../tcl/random/newparseApp.tcl
-	source ../tcl/random/newdrawApp.tk
-	source ../tcl/random/random_method.tcl
+
+       global init_simplex_method
+
+        # change this variable to either "max" (for default simplex construction
+        #   method or "user_defined" for user defined mode of simplex
+        #   construction.
+        set init_simplex_method "max"
+
+       source ../tcl/common/utilities.tcl
+       source ../tcl/common/parseApp.tcl
+       source ../tcl/common/drawApp.tk
+       source ../tcl/common/newparseApp.tcl
+       source ../tcl/common/newdrawApp.tk
+       source ../tcl/random_seq/random_method.tcl
 
 } elseif { $search_algorithm == 4 } {
-	source ../tcl/brute_force/parseApp.tcl
-	source ../tcl/brute_force/drawApp.tk
-	source ../tcl/brute_force/sched.tcl
-	source ../tcl/brute_force/newparseApp.tcl
-	source ../tcl/brute_force/newdrawApp.tk
+	global init_simplex_method
+
+        # change this variable to either "max" (for default simplex construction
+        #   method or "user_defined" for user defined mode of simplex
+        #   construction.
+        set init_simplex_method "max"
+        #set init_simplex_method "user_defined"
+
+	source ../tcl/common/parseApp.tcl
+	source ../tcl/common/drawApp.tk
+	source ../tcl/common/newparseApp.tcl
+	source ../tcl/common/newdrawApp.tk
+	source ../tcl/common/utilities.tcl
+	source ../tcl/brute_force/brute_force_init.tcl
 	source ../tcl/brute_force/brute_force.tcl
+	
 
 }
 

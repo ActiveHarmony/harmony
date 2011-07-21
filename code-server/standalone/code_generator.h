@@ -16,7 +16,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <string>
+#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -25,17 +25,22 @@
 #include <sys/stat.h>
 
 using namespace std;
-string hostname("spoon");
-string user_home("/fs/spoon/tiwari/");
-string confs_dir(user_home+"scratch/"+ "confs/");
-string new_code_dir(user_home+"scratch/"+ "hosts/");
-string code_generator_base(user_home+"standalone/");
-string appname ("smg2000");
-string code_destination_host("brood00");
-string code_destination("tiwari@brood00:~/scratch/code");
-string code_flag_destination("/scratch0/code_flags/");
-string log_file("generation.log");
 
+// brood00
+string hostname("brood00");
+string user_home("/hivehomes/rahulp/");
+string confs_dir(user_home+"scratch/"+"confs/");
+string new_code_dir(user_home+"scratch/"+"hosts/");
+string code_generator_base(user_home+"activeharmony/"+"tutorial-2010/"+"harmony/"+"standalone/");
+string appname;
+string num_code_gen_loc(code_generator_base+"num_code_generators");
+
+
+//remote side : where do we need to transport the code
+// brood
+string code_destination_host("brood00");
+string code_destination("rahulp@brood00:~/scratch/code");
+string code_flag_destination("/scratch0/code_flags/");
 
 // might not be portable
 int scp_candidate(char* filename, char* destination)

@@ -224,7 +224,7 @@ proc parallel_simplex_init {appName} {
     # SECOND PART :: Search specific parameters
     ###########################################################
     set space_dimension 5
-    set simplex_npoints 64
+    set simplex_npoints 8
     set pro_max_iterations 1000
     set tolerance 10
 
@@ -262,7 +262,7 @@ proc parallel_simplex_init {appName} {
     set code_generation_params(cserver_connection) 0
     
     # method 2 parameters
-    set code_generation_params(code_generation_destination) "tiwari@buzz:/fs/buzz/tiwari/scratch/confs/"
+    set code_generation_params(code_generation_destination) "tiwari@spoon:/fs/spoon/tiwari/scratch/confs/"
 
     set initial_simplex_method 4
 
@@ -295,7 +295,6 @@ proc parallel_simplex_init {appName} {
     set icsm_6_params(init_point) {30 30 30 4 4 }
     set icsm_6_params(init_distance) 20
     set icsm_6_params(use_exploration_point) 1
-    # ndm - new directions method
     set curr_new_dir_trial 1
     set max_new_dir_trial 5
 

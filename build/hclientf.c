@@ -21,37 +21,65 @@
 #include <stdlib.h>
 #include "hclient.h"
 using namespace std;
-#define DEBUG
+#define DEBUG 1
+
+ifdef __cplusplus
+extern "C" {
+#endif
+
+    int f_harmony_startup(int sport = 0, char *shost = NULL, int use_sigs=0, int relocated = 0);
+
+    void f_harmony_end(int socketIndex = 0);
+
+    void f_harmony_application_setup(char *description, int socketIndex = 0);
+
+    void f_harmony_application_setup_file(char *fname, int socketIndex = 0);
+
+    void * f_harmony_add_variable(char *appName, char *bundleName, int type,
+                                  int socketIndex = 0, int local=0);
+
+    void f_harmony_set_variable(void *variable, int socketIndex = 0);
+
+    void f_harmony_set_all(int socketIndex = 0);
+
+    void * f_harmony_request_variable(char *variable, int socketIndex = 0);
+
+    void f_harmony_request_all(int socketIndex = 0, int pull=0);
+
+    // int metric
+    void f_harmony_performance_update_int(int value, int socketIndex = 0);
+
+    // double metric
+    void f_harmony_performance_update_double(double value, int socketIndex=0);
+
+    void * f_harmony_request_tcl_variable(char *variable, int socketIndex=0);
+
+    char* f_harmony_get_best_configuration(int socketIndex=0);
+
+    int f_harmony_check_convergence(int socketIndex=0);
+
+    int f_code_generation_complete(int socketIndex=0);
+
+    int f_harmony_code_generation_complete(int socketIndex=0);
+
+    void* f_harmony_database_lookup(int socketIndex=0);
+
+    void f_harmony_psuedo_barrier(int socketIndex=0);
+
+}
+
+
+
+
+
+
+
 /*
-  extern void harmony_startup(int use_sigs, int relocated = 0, int sport = 0,
-  char *shost = NULL);
-  extern void harmony_end();
-
-  extern void harmony_application_setup(char *description);
-
-  extern void harmony_application_setup_file(char *fname);
-
-  extern void * harmony_add_variable(char *appName, char *bundleName, int type,
-  int local = 0);
-  extern void harmony_set_variable(void *variable);
-
-  extern void harmony_set_all();
-
-  extern void harmony_request_variable(void *variable);
-
-  extern void harmony_request_all(int pull = 0);
-
-  extern void harmony_performance_update(int value);
-
-  extern int harmony_request_probe(char *variable, int type);
-
-  extern void harmony_set_probe_perf(char *variable, int value);
-*/
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-    extern int fcheck_point__(int *pn);
+    extern int f_check_point__(int *pn);
 
     extern void fharmony_startup__();
 
@@ -125,9 +153,9 @@ void fharmony_set_all__()
 
 void code_generation_complete__(int *iteration, int &target)
 {
-    int value = code_generation_complete(*iteration);
+    //int value = code_generation_complete(*iteration);
+    int value = code_generation_complete();
     printf("FROM HCLIENTF : %d \n", *iteration);
-    
     target=value;
 }
 
@@ -166,3 +194,4 @@ void fharmony_database_lookup__(double &target)
     target = value;
 }
 
+*/
