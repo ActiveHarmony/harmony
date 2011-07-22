@@ -1,2 +1,0 @@
-#!/bin/bash
-ssh  mashie exec /fs/spoon/tiwari/code_generator/hosts/mashie_3/chill_script.sh  33 14 2 0 5 3 mashie_3
