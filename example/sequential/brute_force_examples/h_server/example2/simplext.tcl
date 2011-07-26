@@ -25,4 +25,4 @@ harmonyApp SimplexT {
 }   }
     { obsGoodness -10 100}
   { predGoodness -10 -100}
-} 1
+}
