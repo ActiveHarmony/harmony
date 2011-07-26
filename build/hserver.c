@@ -23,15 +23,9 @@
  *
  ***/
 #include "hserver.h"
-#include <iostream>
-#include <assert.h>
-#include <sstream>
-#include <set>
-#include <deque>
-
 #include <dirent.h>
 #include <errno.h>
-#include<string.h>
+#include <string.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -133,14 +127,17 @@ struct dirent *dptr;
  * Check the arguments given to the server
  *
  ***/
+
+int draw_windows=0;
+
 void check_parameters(int argc, char **argv) {
 
     // by default, we use PRO search algorithm
     int search_algo=1;
 
     // by default, no windows are drawn
-    int draw_windows=0;
-
+    //  to disable Active Harmony server window, use "gmake server_no_tk" to build the framework.
+    draw_windows=0;
     if( argc >= 2 )
     {
 
@@ -156,22 +153,22 @@ void check_parameters(int argc, char **argv) {
     if(search_algo==1)
     {
         sprintf(harmonyTclFile,"hconfig.pro.tcl");
-        printf("using the PRO algorithm. Please make sure the parameters in \n");
-        printf("../tcl/pro_init_<appname>.tcl are defined properly.\n");
+        printf("[AH]: using the PRO algorithm. Please make sure the parameters in \n");
+        printf("[AH]: ../tcl/pro_init_<appname>.tcl are defined properly.\n");
     }
     if(search_algo==2)
     {
-        printf("using the Nelder Mead Simplex Algorithm. \n");
+        printf("[AH]: using the Nelder Mead Simplex Algorithm. \n");
         sprintf(harmonyTclFile,"hconfig.nm.tcl");
     }
     if(search_algo == 3)
     {
-        printf("using random Algorithm. \n");
+        printf("[AH]: using random Algorithm. \n");
         sprintf(harmonyTclFile,"hconfig.random.tcl");
     }
     if(search_algo == 4)
     {
-        printf("using brute force Algorithm. \n");
+        printf("[AH]: using brute force Algorithm. \n");
         sprintf(harmonyTclFile,"hconfig.brute.tcl");
     }
 }
@@ -194,10 +191,10 @@ char *application_trigger = "";
 int update_client( ClientData clientData, Tcl_Interp *interp, int argc, char **argv) {
 
     if (debug_mode) {
-        printf("************ Updating client!!! ****************\n");
-        printf("Variable : %s_bundle_%s has value %s\n",argv[1], argv[2], argv[3]);
-        printf("ClientInfo[%s]=%d\n",argv[1], clientInfo[argv[1]]);
-        printf("clientSignals[]=%d\n",clientSignals[clientInfo[argv[1]]]);
+        printf("[AH]: ************ Updating client!!! ****************\n");
+        printf("[AH]: Variable : %s_bundle_%s has value %s\n",argv[1], argv[2], argv[3]);
+        printf("[AH]: ClientInfo[%s]=%d\n",argv[1], clientInfo[argv[1]]);
+        printf("[AH]: clientSignals[]=%d\n",clientSignals[clientInfo[argv[1]]]);
     }
 
     if (!clientSignals[clientInfo[argv[1]]])
@@ -320,7 +317,7 @@ void server_startup() {
 
     /* Bind the socket to the desired port. */
     if (bind(listen_socket, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
-        h_exit("Error binding socket!");
+        h_exit("Error binding socket! Please check if there are previous \n instances of hserver still running.");
     }
 
     /* Now we have to initialize the Tcl interpreter */
@@ -332,7 +329,7 @@ void server_startup() {
 
 #ifdef USE_TK
     if ((err=Tk_Init(tcl_inter)) != TCL_OK) {
-        printf("Error message: %s\n",tcl_inter->result);
+        printf("[AH]: Error message: %s\n",tcl_inter->result);
         h_exit("Tk Init failed!");
     }
 
@@ -341,13 +338,14 @@ void server_startup() {
 
 
     if ((err=Tcl_EvalFile(tcl_inter, harmonyTclFile)) != TCL_OK){
-        printf("Tcl Error %d ; %s %s \n",err, tcl_inter->result, harmonyTclFile);
+        printf("[AH]: Tcl Error %d ; %s %s \n",err, tcl_inter->result, harmonyTclFile);
         h_exit("TCL Interpreter Error ");
     }
 
     /*
       register update_client function with the Tcl interpretor
     */
+    // TODO: do we still rely on update_client procedure?
     Tcl_CreateCommand(tcl_inter, "update_client", update_client, (ClientData)NULL, (Tcl_CmdDeleteProc *)NULL);
     /*
       Set the file descriptor set
@@ -370,7 +368,8 @@ void server_startup() {
     if (xfd>highest_socket)
         highest_socket=xfd;
 #else
-    FD_SET(0, &listen_set);
+    // 23rd May 2011: 0 is for stdin. So no need for this statement.
+    //FD_SET(0, &listen_set);
 #endif  /*USE_TK*/
 
 }
@@ -386,17 +385,16 @@ void daemon_registration(struct sockaddr_in address, int addr_len){
 
 /***
  *
- * Client registration adds the client information into the database
+ * Client registration adds the client information into the relevant maps
  *
  ***/
 void client_registration(HRegistMessage *m, int client_socket){
 
     if (debug_mode) {
-        printf("Client registration! (%d)\n", client_socket);
+        printf("[AH]: Client registration! (%d)\n", client_socket);
     }
 
     /* store information about the client into the local database */
-
     FD_SET(client_socket,&listen_set);
     socket_set.push_back(client_socket);
     if (client_socket>highest_socket)
@@ -433,11 +431,11 @@ void client_registration(HRegistMessage *m, int client_socket){
 
     clientId[client_socket] = id;
     if (debug_mode) {
-        printf("Send registration (id %d) confimation !\n", id);
+        printf("[AH]: Send registration (id %d) confimation !\n", id);
     }
 
     /* send the confirmation message with the client_id */
-
+    /* ACK */
     HRegistMessage *mesg=new HRegistMessage(HMESG_CLIENT_REG,client_socket);
     mesg->set_id(id);
     send_message(mesg, client_socket);
@@ -467,13 +465,13 @@ void get_appl_description(HDescrMessage *mesg, int client_socket){
     sprintf(strrchr(new_string, '}')+1, " %d", clientId[client_socket]);
 
     if (debug_mode) {
-        printf("Message size: %d\n",mesg->get_message_size());
+        printf("[AH]: Message size: %d\n",mesg->get_message_size());
     }
     
     if ((err=Tcl_Eval(tcl_inter,new_string))!=TCL_OK) {
-        printf("Error %d interpreting the tcl description!\n",err);
-        printf("%s\n",tcl_inter->result);
-        printf("[%s]\n",new_string);
+        printf("[AH]: Error %d interpreting the tcl description!\n",err);
+        printf("[AH]: %s\n",tcl_inter->result);
+        printf("[AH]: [%s]\n",new_string);
         free(new_string);
         operation_failed(client_socket);
     }
@@ -517,7 +515,7 @@ void get_appl_description(HDescrMessage *mesg, int client_socket){
 
         sprintf(&appName[endp-startp], "_%d", clientId[client_socket]);
         if (debug_mode) {
-            printf("Application name: %s\n", appName);
+            printf("[AH]: Application name: %s\n", appName);
         }
 
         // add info to the map
@@ -539,6 +537,7 @@ void variable_registration(HDescrMessage *mesg, int client_socket){
     char *s=NULL;
     char **sss=(char **)malloc(sizeof(char *));
 
+    // get the appName
     char  *appName = clientName[client_socket];
 
     // this is one of the most weirdest ways to name the variables!
@@ -547,7 +546,7 @@ void variable_registration(HDescrMessage *mesg, int client_socket){
     sprintf(ss, "%s_bundle_%s", appName, ss2);
 
     if(debug_mode)
-        printf("tcl string : %s \n", ss);
+        printf("[AH]: tcl string : %s \n", ss);
 
     if ((s=Tcl_GetVar(tcl_inter,ss,0))==NULL) {
 
@@ -556,7 +555,7 @@ void variable_registration(HDescrMessage *mesg, int client_socket){
         return;
     }
     if(debug_mode)
-        printf("tcl value : %s \n", s);
+        printf("[AH]: tcl value : %s \n", s);
 
     HUpdateMessage *m=new HUpdateMessage(HMESG_VAR_REQ,0);
     strtol(s,sss,10);
@@ -574,9 +573,7 @@ void variable_registration(HDescrMessage *mesg, int client_socket){
     }
 
     m->set_var(*v);
-
     send_message(m, client_socket);
-
     free(sss);
     delete m;
 
@@ -610,8 +607,6 @@ void variable_request(HUpdateMessage *mesg, int client_socket)
 
     char new_res[100];
     
-    VarDef v;
-
     // construct the key using get_test_configuration (look at the database function)
     // if the conf is in the database, either change the message type or construct a brand new message    
     // object. (set its type to already_evaluated)... otherwise, do the usual
@@ -681,24 +676,22 @@ void variable_request(HUpdateMessage *mesg, int client_socket)
 	  sprintf(ss, "%s_bundle_%s", appName, ss2);
        
 	  if(debug_mode)
-            printf(" tcl value string: %s \n", ss);
+            printf("[AH]: tcl value string: %s \n", ss);
 	   
 	  // you are invoking the tcl interpreter to parse this tcl command.
 	  s=Tcl_GetVar(tcl_inter,ss,0);
         
 	  if(debug_mode)
-            printf("tcl value : %s \n", s);
+            printf("[AH]: tcl value : %s \n", s);
         
 	  if (s==NULL) 
 	    {
-	      printf("Error getting value of variable!\n");
+	      printf("[AH]: Error getting value of variable!\n");
 	      free(ss);
 	      operation_failed(client_socket);
 	      return;
 	    }
-        
-	  VarDef *v;
-	
+
 	  // get the VarDef object at position i in the message. and check its type.
 	  switch (mesg->get_var(i)->getType()) 
 	    {
@@ -717,22 +710,22 @@ void variable_request(HUpdateMessage *mesg, int client_socket)
       sprintf(ss, "%s_simplex_time", appName);
 
       if(debug_mode)
-        printf("Timestamp tcl string: %s \n", ss);
+        printf("[AH]: Timestamp tcl string: %s \n", ss);
       
       s=Tcl_GetVar(tcl_inter,ss,0);
 
       if(debug_mode)
-        printf("Timestamp app: %s \n", s);
+        printf("[AH]: Timestamp app: %s \n", s);
 
       if (s==NULL) {
-        printf("Error getting value of variable! ss:: %s \n", ss);
+        printf("[AH]: Error getting value of variable! ss:: %s \n", ss);
         free(ss);
         operation_failed(client_socket);
         return;
       }
 
       if(debug_mode)
-        printf("Value of the timestamp from the server: %s \n", s);
+        printf("[AH]: Value of the timestamp from the server: %s \n", s);
 
       mesg->set_timestamp(strtol(s,NULL,10));
 
@@ -918,23 +911,24 @@ void var_tcl_variable_request(HUpdateMessage *mesg, int client_socket){
     char *s;
     char ss[256], ss2[256];
 
-    VarDef v;
-
+    if(debug_mode)
+        printf("[AH]: received a tcl variable request \n");
 
      for (int i=0; i<mesg->get_nr_vars();i++) {
         sprintf(ss2,"%s",mesg->get_var(i)->getName());
         char  *appName = clientName[client_socket];
         sprintf(ss, "%s_%s", appName, ss2);
-	
+	if(debug_mode)
+            printf("[AH]: tcl string:: %s \n", ss);
         s=Tcl_GetVar(tcl_inter,ss,0);
 
+        if(debug_mode)
+            printf("[AH]: Tcl backend variable! %s\n",s);
         if (s==NULL) {
-            printf("Error getting value of Tcl backend variable! \n");
+            printf("[AH]: Error getting value of Tcl backend variable! \n");
             operation_failed(client_socket);
             return;
         }
-
-        VarDef *v;
 
         switch (mesg->get_var(i)->getType()) {
             case VAR_INT:
@@ -944,9 +938,7 @@ void var_tcl_variable_request(HUpdateMessage *mesg, int client_socket){
                 mesg->get_var(i)->setValue(s);
                 break;
         }
-
     }
-
     send_message(mesg, client_socket);
     delete mesg;
 }
@@ -981,7 +973,7 @@ int file_exists (const char * fileName) {
 void check_code_completion(HUpdateMessage *mesg, int client_socket)
 {
     char *s;
-    char ss[256], ss2[256];
+    char ss[256];
     char *appName = clientName[client_socket];
     
     char *startp, *endp;
@@ -999,7 +991,7 @@ void check_code_completion(HUpdateMessage *mesg, int client_socket)
     int last_code_req_response=last_code_req_responses[temp_name];
 
     if(debug_mode)
-        printf("Code Request Timestep: %d last_code_req_timestep %d code_timestep: %d \n",
+        printf("[AH]: Code Request Timestep: %d last_code_req_timestep %d code_timestep: %d \n",
            req_timestep,last_code_req_timestep,code_timestep);
     
     int return_val=0;
@@ -1007,12 +999,12 @@ void check_code_completion(HUpdateMessage *mesg, int client_socket)
     {
         // based on file system right now.
         sprintf(ss, "%s/code_complete.%s.%d",code_flags_path, temp_name, code_timestep);
-        if(debug_mode)
-            printf("Looking for %s \n", ss);
+	//        if(debug_mode)
+            printf("[AH]: Looking for %s \n", ss);
         if(file_exists(ss))
         {
             if(debug_mode)
-                printf("code generation is complete for timestep: %d \n", code_timestep);
+                printf("[AH]: code generation is complete for timestep: %d \n", code_timestep);
 
             code_timesteps[temp_name]=code_timestep+1;
             return_val=1;
@@ -1020,7 +1012,7 @@ void check_code_completion(HUpdateMessage *mesg, int client_socket)
             last_code_req_responses[temp_name]=return_val;
             std::remove(ss);
             sprintf(ss, "%s/code_complete.%s.%d",code_flags_path, temp_name, code_timestep+1);
-            printf("removing: %s \n", ss);
+            printf("[AH]: removing: %s \n", ss);
             std::remove(ss);
         } else
         {
@@ -1040,6 +1032,10 @@ void check_code_completion(HUpdateMessage *mesg, int client_socket)
 }
 
 
+/*
+ * Check the global database to see if we have already evaluated a 
+ * configuration that we handed to a given client.
+*/
 
 void database(HUpdateMessage *mesg, int client_socket){
     /*
@@ -1061,7 +1057,7 @@ void database(HUpdateMessage *mesg, int client_socket){
      if ((err = Tcl_Eval(tcl_inter, s)) != TCL_OK) {
        fprintf(stderr, "Error retreiving the current configuration: %d", err);
 	 fprintf(stderr, "TCLres(perfUpdate-Err): %s\n", tcl_inter->result);
-	 printf("FAILED HERE\n");
+	 printf("[AH]: FAILED HERE\n");
 	 operation_failed(client_socket);
 	 return;
      } else
@@ -1313,7 +1309,7 @@ void client_unregister(HRegistMessage *m, int client_socket) {
     char *appName = clientName[client_socket];
     if(debug_mode)
     {
-        printf("ENTERED CLIENT UNREGISTER!!!!!\n");
+        printf("[AH]: ENTERED CLIENT UNREGISTER!!!!!\n");
     }
     
     // derive the global appName
@@ -1489,7 +1485,7 @@ void performance_update_int(HUpdateMessage *m, int client_socket) {
         if ((err = Tcl_Eval(tcl_inter, s)) != TCL_OK) {
             fprintf(stderr, "Error retreiving the current configuration: %d", err);
             fprintf(stderr, "TCLres(perfUpdate-Err): %s\n", tcl_inter->result);
-            printf("FAILED HERE\n");
+            printf("[AH]: FAILED HERE\n");
             operation_failed(client_socket);
             return;
         } else
@@ -1509,15 +1505,17 @@ void performance_update_int(HUpdateMessage *m, int client_socket) {
         global_data.insert(pair<string, string>(str_conf, (string)perf_string));
     }
 
+    // let the search backend know what we have received the performance
+    //  number from this client.
     sprintf(s, "updateObsGoodness %s %d %d", appName, performance, m->get_timestamp());
 
     if(debug_mode)
-        printf("goodness tcl string: %s \n", s);
+        printf("[AH]: goodness tcl string: %s \n", s);
 
     if ((err = Tcl_Eval(tcl_inter, s)) != TCL_OK) {
         fprintf(stderr, "Error setting performance function: %d", err);
         fprintf(stderr, "TCLres(perfUpdate-Err): %s\n", tcl_inter->result);
-        printf("FAILED HERE\n");
+        printf("[AH]: FAILED HERE: %d \n", __LINE__);
         operation_failed(client_socket);
         return;
     }
@@ -1528,7 +1526,6 @@ void performance_update_int(HUpdateMessage *m, int client_socket) {
 void performance_update_double(HUpdateMessage *m, int client_socket) {
 
     int err;
-    FILE *f1;
     char *appName = clientName[client_socket];
     char curr_conf[80];
     char s[80];
@@ -1548,7 +1545,7 @@ void performance_update_double(HUpdateMessage *m, int client_socket) {
         if ((err = Tcl_Eval(tcl_inter, s)) != TCL_OK) {
             fprintf(stderr, "Error retreiving the current configuration: %d", err);
             fprintf(stderr, "TCLres(perfUpdate-Err): %s\n", tcl_inter->result);
-            printf("FAILED HERE\n");
+            printf("[AH]: FAILED HERE %d \n", __LINE__);
             operation_failed(client_socket);
             return;
         } else
@@ -1571,11 +1568,11 @@ void performance_update_double(HUpdateMessage *m, int client_socket) {
 
     sprintf(s, "updateObsGoodness %s %.15g %d", appName,performance, m->get_timestamp());
     if(debug_mode)
-        printf("goodness tcl string: %s \n", s);
+        printf("[AH]: goodness tcl string: %s \n", s);
     if ((err = Tcl_Eval(tcl_inter, s)) != TCL_OK) {
         fprintf(stderr, "Error setting performance function: %d", err);
         fprintf(stderr, "TCLres(perfUpdate-Err): %s\n", tcl_inter->result);
-        printf("FAILED HERE\n");
+        printf("[AH]: FAILED HERE: %d \n", __LINE__);
         operation_failed(client_socket);
         return;
     }
@@ -1836,9 +1833,7 @@ void performance_already_evaluated(HUpdateMessage *m, int client_socket) {
 
 // not used anymore... but has some use for debugging. so keeping it intact.
 void performance_update_with_conf(HUpdateMessage *m, int client_socket) {
-
     int err;
-
     char *appName = clientName[client_socket];
     char s[512];
     char *conf = (char *)m->get_var(0)->getName();
@@ -1880,6 +1875,10 @@ void process_message_from(int temp_socket){
         in_process_message = FALSE;
         return;
     }
+
+    /*
+     *	Based on the message type sent by the clients, we do different things.
+     */
 
     switch (m->get_type()) {
         case HMESG_DAEMON_REG:
@@ -1923,12 +1922,15 @@ void process_message_from(int temp_socket){
             check_code_completion((HUpdateMessage *)m, temp_socket);
             break;
         default:
-            printf("Wrong message type!\n");
+            printf("[AH]: Wrong message type!\n");
     }
 
+#ifdef USE_TK
     /* process Tk events */
     while (Tcl_DoOneEvent(TCL_DONT_WAIT)>0)
         ;
+#endif
+
     in_process_message = FALSE;
 }
 
@@ -1960,16 +1962,22 @@ void main_loop() {
     while (1) {
         listen_set_copy=listen_set;
         active_sockets=select(highest_socket+1,&listen_set_copy, NULL, NULL, NULL);
+	//if(debug_mode)
+	printf("[AH]: Select:: Return value: %d \n", active_sockets);
         /* we have a communication request */
         for (socketIterator=socket_set.begin();socketIterator!=socket_set.end();socketIterator++) {
             if (FD_ISSET(*socketIterator, &listen_set_copy) && (*socketIterator!=listen_socket) && (*socketIterator!=xfd)) {
                 /* we have data from this connection */
                 process_message_from(*socketIterator);
+		if(debug_mode)
+		  printf("[AH]: processing message 1 \n");
             }
         }
         if (FD_ISSET(listen_socket, &listen_set_copy)) {
             /* we have a connection request */
             /* via George Teodoro*/
+	  if(debug_mode)
+	    printf("[AH]: processing message 2 \n");
             temp_addrlen = sizeof(temp_addr);
             if ((temp_socket = accept(listen_socket,(struct sockaddr *)&temp_addr, (unsigned int *)&temp_addrlen))<0) {
                 // have to investigate more
@@ -1980,12 +1988,24 @@ void main_loop() {
 
 #ifdef USE_TK
         if (FD_ISSET(xfd, &listen_set_copy)) {
+	  if(debug_mode)
+	    printf("[AH]: processing TK events \n");
             // we have to process Tk events
             while (Tcl_DoOneEvent(TCL_DONT_WAIT)>0)
                 ;
         }
 #else
+        /*
+          This section of the code is only needed if we want to use the
+          commandline interface of hserver as a tcl interpreter.
+	  This is useful for debugging sessions. The users can query the
+	  tcl backend with tcl commands. Uncomment this if you are debugging
+	  the backend.
+        */
+        /*
         if (FD_ISSET(xfd, &listen_set_copy)) {
+            printf("should never get here if not using TK \n");
+            
             char line[1024];
             int ret1 = read(0, line, sizeof(line));
             assert (ret1 >= 0);
@@ -1998,6 +2018,7 @@ void main_loop() {
 
             fflush(stdout);
         }
+        */
 #endif
     }
 

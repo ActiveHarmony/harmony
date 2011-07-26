@@ -16,21 +16,28 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
 #
+puts "server is reading the tcl files"
 global search_algorithm
 set search_algorithm 1 
 
 #### to disable client windows, set draw_har_windows variable to 0
 global draw_har_windows
-set draw_har_windows 1 
+set draw_har_windows 0 
 
 ## load commons
 load ../tcl/common/round.so
 # comment nearest_neighbor if you are not using ANN based projection
-load ../tcl/common/nearest_neighbor.so
+#load ../tcl/common/nearest_neighbor.so
+
 # comment code_server.so if you are not using dynamic code generation
 #load ../tcl/common/code_server.so
-source ../tcl/common/logo.tk
 
+if { $draw_har_windows == 1 } {
+	puts "drawing the logo"
+source ../tcl/common/logo.tk
+}
+
+puts "the backend files."
 source ../tcl/pro/parseApp_version_8.tcl
 source ../tcl/pro/drawApp.tk
 source ../tcl/pro/proparseApp_version_8.tcl
@@ -55,4 +62,6 @@ source ../tcl/pro/combine.tcl
 #source ../tcl/pro/pro_init_smg.tcl
 #source ../tcl/pro/pro_init_irs.tcl
 source ../tcl/pro/pro_init_gemm.tcl
+
+puts "done loading the tcl related files"
 

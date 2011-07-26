@@ -1,0 +1,7 @@
+q	p	FTOPT	LTOPT	
+2	8	double_transpose	transpose_based	
+4	4	double_transpose	transpose_based	
+8	2	double_transpose	transpose_based	
+2	8	double_transpose	distributed	
+4	4	double_transpose	distributed	
+8	2	double_transpose	distributed	

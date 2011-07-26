@@ -1,0 +1,51 @@
+#
+# PeriCSL Parser/Translator 
+#   README
+#
+# Ananta Tiwari
+# <tiwari@cs.umd.edu>
+#
+
+This is an early (beta) release of a parser for the PERI constraint language.
+The release comes with an automatic translator tool that emits the parsed 
+constraint language into the Python constraint language. The translator tool
+can easily be adapted to emit bits of other constraint languages. As such,
+this tool (and its underlying IR) can be used to interface to other search
+tools.
+
+Requirements:
+ANTLR v3, python constraint solver module
+
+- Download ANTLR v3 [http://www.antlr.org/download.html]
+    Put stringtemplate-3.2.jar, antlr-3.1.1.jar and antlr-3.1.1-runtime.jar
+    in your classpath.
+
+- Put periCSL.jar [comes bundled with this distribution in 
+    <install-dir>/lib directory] in your classpath
+
+- Put constraint module [http://labix.org/python-constraint] in your 
+    PYTHONPATH. 
+    [You do not need to do this if you are not interested in translating 
+    the search space description to python.]
+
+How to emit output in other target languages?
+You need to write a new template group file similar to periToPython.stg
+provided in this distribution. It is fairly easy to write and I have 
+heavily commented periToPython template to make writing new templates easy.
+
+To learn more on how ANTLR v3 and StringTemplates work together, I suggest
+the following tutorials:
+www.antlr.org/wiki/display/ST/Five+minute+Introduction
+www.antlr.org/wiki/display/ST/Group+Files
+
+Trying an example:
+$ java org.umd.periCSL.Translate -csl test_inputs/example1.txt \
+    -template periToPython.stg -out example1.py
+$ python example1.py
+
+There are other examples in test_inputs directory. I will provide more
+in later revisions of the tool.
+
+Please report all bugs/comments/issues to Ananta Tiwari
+<tiwari@cs.umd.edu>
+

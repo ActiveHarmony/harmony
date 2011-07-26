@@ -1,33 +1,31 @@
 OPTIMIZE =  
-GCC_LINUX = g++ -DLinux -DLINUX -Dlinux -Df2cFortran -w -DUSE_NON_CONST -DUSE_TK -g -pg 
+GCC_LINUX = g++ -DLinux -DLINUX -Dlinux -Df2cFortran -w -DUSE_NON_CONST -g -pg 
 LIBS_LINUX =   -lm -ldl  -lnsl -ltcl -ltk
 INCLUDE_LINUX =
-
-GCC_SOLARIS = g++ -DSOLARIS -DUSE_TK
-LIBS_SOLARIS = -L/usr/imports/lib -lsocket -lnsl -ltk8.0 -ltcl -lm -ldl -lX11
-INCLUDE_SOLARIS = -I/usr/imports/include
 
 GCC=$(GCC_LINUX)
 LIBS=$(LIBS_LINUX)
 INCLUDE=$(INCLUDE_LINUX)
 
-#GCC=$(GCC_SOLARIS)
-#LIBS=$(LIBS_SOLARIS)
-#INCLUDE=$(INCLUDE_SOLARIS)
-
-LIBOBJS= hclient.o hsockutil.o hutil.o hmesgs.o hclientc.o #hclientf.o
+LIBOBJS= hclient.o hsockutil.o hutil.o hmesgs.o hclientc.o
 AR= ar
 ARCREATE= cr
 
-all: server harmony.a parse
+all: hserver hserver_no_tk harmony.a parse swig_round_lib
 
-server: hserver.o hutil.o hsockutil.o hmesgs.o 
+hserver: hserver.o hutil.o hsockutil.o hmesgs.o 
 	$(GCC) -o hserver hserver.o hutil.o hsockutil.o hmesgs.o $(LIBS) $(INCLUDE)
 	cp hserver ../bin
-	#cp hconfig.tcl ../bin
+
+hserver_no_tk:  hserver_no_tk.o hutil.o hsockutil.o hmesgs.o
+	$(GCC) -o hserver_no_tk hserver_no_tk.o hutil.o hsockutil.o hmesgs.o $(LIBS) $(INCLUDE)
+	cp hserver_no_tk ../bin
+
+hserver_no_tk.o: hserver.c hserver.h hutil.h hdb.h hsockutil.h hmesgs.h
+	$(GCC) -c hserver.c -o hserver_no_tk.o $(INCLUDE)
 
 hserver.o: hserver.c hserver.h hutil.h hdb.h hsockutil.h hmesgs.h
-	$(GCC) -c hserver.c $(INCLUDE) 
+	$(GCC) -c -DUSE_TK hserver.c $(INCLUDE) 
 
 hutil.o: hutil.c hutil.h
 	$(GCC) -c hutil.c $(INCLUDE)
@@ -69,4 +67,7 @@ parse: y.tab.o lex.yy.c stack.o libcreater.c
 	cp libcreater ../bin
 
 clean:
-	rm -f core a.out lex.yy.c y.tab.* *.o parser libcreater y.output ../bin/libcreater *~ hserver harmony.a ../bin/hserver ../bin/hconfig.tcl
+	rm -f core a.out lex.yy.c y.tab.* *.o parser libcreater y.output ../bin/libcreater *~ hserver harmony.a ../bin/hserver ../bin/hconfig.tcl ../bin/hserver_no_tk hserver_no_tk
+
+swig_round_lib:
+	cd ../round_scp; gmake
