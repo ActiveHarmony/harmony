@@ -1,10 +1,10 @@
 OPTIMIZE =  
 GCC_LINUX = g++ -DLinux -DLINUX -Dlinux -Df2cFortran -w -DUSE_NON_CONST -DUSE_TK -g -pg 
-LIBS_LINUX =   -lm -ldl  -lnsl -ltcl -ltk
+LIBS_LINUX =   -lm -ldl  -lnsl -ltcl8.4 -ltk8.4
 INCLUDE_LINUX =
 
 GCC_SOLARIS = g++ -DSOLARIS -DUSE_TK
-LIBS_SOLARIS = -L/usr/imports/lib -lsocket -lnsl -ltk8.0 -ltcl -lm -ldl -lX11
+LIBS_SOLARIS = -L/usr/imports/lib -lsocket -lnsl -ltk8.4 -ltcl8.4 -lm -ldl -lX11
 INCLUDE_SOLARIS = -I/usr/imports/include
 
 GCC=$(GCC_LINUX)
@@ -21,10 +21,13 @@ ARCREATE= cr
 
 all: server harmony.a parse
 
-server: hserver.o hutil.o hsockutil.o hmesgs.o 
-	$(GCC) -o hserver hserver.o hutil.o hsockutil.o hmesgs.o $(LIBS) $(INCLUDE)
+server: hglobal_config.o hserver.o hutil.o hsockutil.o hmesgs.o 
+	$(GCC) -o hserver hglobal_config.o hserver.o hutil.o hsockutil.o hmesgs.o $(LIBS) $(INCLUDE)
 	cp hserver ../bin
 	#cp hconfig.tcl ../bin
+
+hglobal_config.o: hglobal_config.c hglobal_config.h
+	$(GCC) -c hglobal_config.c $(INCLUDE)
 
 hserver.o: hserver.c hserver.h hutil.h hdb.h hsockutil.h hmesgs.h
 	$(GCC) -c hserver.c $(INCLUDE) 
@@ -38,18 +41,16 @@ hsockutil.o: hsockutil.c hsockutil.h hutil.h hmesgs.h
 hmesgs.o: hmesgs.c hmesgs.h hutil.h
 	$(GCC) -c hmesgs.c $(INCLUDE) 
 
-
 harmony.a: $(LIBOBJS)
 	$(AR) $(ARCREATE) harmony.a $(LIBOBJS)
-
 
 hclient.o: hclient.c hclient.h hmesgs.h hsockutil.h hutil.h
 	$(GCC) -c hclient.c $(INCLUDE) 
 
-hclientf.o: hserver.o hutil.o hsockutil.o hmesgs.o hclient.o 
+hclientf.o: hclientf.c hclient.h hmesgs.h hutil.h hsockutil.h
 	$(GCC) -c hclientf.c $(INCLUDE)
 
-hclientc.o: hserver.o hutil.o hsockutil.o hmesgs.o hclient.o 
+hclientc.o: hclientc.c hclient.h hmesgs.h hutil.h hsockutil.h
 	$(GCC) -c hclientc.c $(INCLUDE)
 
 y.tab.c: grammar.y

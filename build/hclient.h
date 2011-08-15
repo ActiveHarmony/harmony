@@ -57,7 +57,6 @@
 /***
  * macro definition
  ***/
-#define SERVER_PORT 1977
 
 /*
  * the size of the buffer used to transfer data between server and client
@@ -163,6 +162,12 @@ int harmony_code_generation_complete(int socketIndex=0);
 void* harmony_database_lookup(int socketIndex=0);
 
 void harmony_psuedo_barrier(int socketIndex=0);
+
+
+/*
+ * Get the prefix directory paths for .so files 
+ */
+char* harmony_get_config_variable(char *);
 
 #endif /* __HCLIENT_H__ */
 

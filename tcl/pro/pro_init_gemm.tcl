@@ -254,13 +254,13 @@ proc parallel_simplex_init {appName} {
     set ann_params(num_groups) 1
     set ann_params(group_info) {3 2}
     set ann_params(use_diff_radius) 1
-    set ann_params(init_simplex_name) "/hivehomes/rahulp/activeharmony/tutorial-2010/harmony/bin/constructed_simplex.dat"
+    set ann_params(init_simplex_name) "/hivehomes/rahulp/activeharmony/bin/constructed_simplex.dat"
 
 
     # code generation related parameters
     set code_generation_params(generate_code) 1
     set code_generation_params(gen_method) 2
-
+    
     # method 1 parameters
     set code_generation_params(cserver_host) "brood00"
     set code_generation_params(cserver_port) 1977

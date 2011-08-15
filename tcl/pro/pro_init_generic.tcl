@@ -257,7 +257,7 @@ proc parallel_simplex_init {appName} {
     set ann_params(connected) 0
 
     # code generation related parameters
-    set code_generation_params(generate_code) 0
+    set code_generation_params(generate_code) 1
     set code_generation_params(gen_method) 2
 
     # method 1 parameters

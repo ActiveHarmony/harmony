@@ -34,8 +34,6 @@
 
 #include "hmesgs.h"
 
-//using namespace std;
-
 /***
  *
  * define functions used to pack, unpack message info

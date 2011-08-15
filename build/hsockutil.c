@@ -116,6 +116,9 @@ HMessage * receive_message(int sock) {
         case HMESG_APP_DESCR:
         case HMESG_NODE_DESCR:
         case HMESG_VAR_DESCR:
+	case HMESG_SO_PATH_PREFIX_RUN_DIR:
+	case HMESG_SO_PATH_PREFIX_DEF:
+        case HMESG_SO_PATH_PREFIX_CODE:
             m=new HDescrMessage();
             buflend = ((HDescrMessage *)m)->deserialize((char *)buf);
             break;
@@ -138,7 +141,7 @@ HMessage * receive_message(int sock) {
         case HMESG_WITH_CONF:
         case HMESG_CODE_COMPLETION:
         case HMESG_PERF_ALREADY_EVALUATED:
-            //printf("The message type is: %d \n \n",get_message_type(buf) );
+	    //printf("The message type is: %d \n \n",get_message_type(buf) );
             m=new HUpdateMessage();
             buflend = ((HUpdateMessage *)m)->deserialize((char *)buf);
             break;

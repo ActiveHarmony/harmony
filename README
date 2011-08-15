@@ -1,10 +1,9 @@
-
-This file contains a description of the files that are comprised in this 
+This file contains a description of the files that are comprised in this
 directory. It has a short description of each file, but it does not
-get into details of implementation, as this is (or should be!) done in 
-each file. 
+get into details of implementation, as this is (or should be!) done in
+each file.
 
-The current supported platform is Linux only. 
+The current supported platform is Linux only.
 
 bin/     : executables
 doc/     : documentation
@@ -12,23 +11,34 @@ example/ : several demo examples
 nb/      : knowledge base source files used by library specification layer
 tcl/     : Tcl scripts used by the h_server (this is where all the
            search algorithms are implemented)
-build/	 : source files
+build/   : source files
 java/    : Java Harmony API
+
+global_config - This is the global configuration file. All the changes like the type of Search Algorithm,
+		Configuration file, various Path variables required by the Code-Generator for transporting
+		the newly generated codes are made in this file.
+		(The main advantage of this configuration file is that a one time change as mentioned above
+		can be made and during the runtime, the application will take care. It also prevents the 
+		hassel to change different variables in different files.)
+
+hglobal_config.c - the implementation of the Global Configuration file
+
+hglobal_config.h - function prototypes for global configuration file and other definitions
 
 hclient.c - the implementation of the API functions of Harmony
 
 hclient.h - prototypes of the API functions
 
-hconfig.tcl - the tcl script that loads the functions that parse the RSL 
-		and take care of the tk interface
+hconfig.tcl - the tcl script that loads the functions that parse the RSL
+                and take care of the tk interface
 
 hdb.h - classes that are supposed to be used by the server to store information
-		about clients and nodes registered with the system.
+                about clients and nodes registered with the system.
 
-hmesgs.c - the implementation of functions that pack/unpack 
-		(serialize/deserialize) messages
+hmesgs.c - the implementation of functions that pack/unpack
+                (serialize/deserialize) messages
 
-hmesgs.h - the definition of message classes. 
+hmesgs.h - the definition of message classes.
 
 hserver.c - the implementation of the Harmony server
 
@@ -38,7 +48,8 @@ lsl_config.h - please modify this to the appropriate directory
 
 scan.l grammar.y - specify the syntax for the library specification language
 
-libcreater.c - the implementation of the library specification language precompiler
+libcreater.c - the implementation of the library specification language precomp\
+iler
 
 template.* - template data file used by libcreater
 
@@ -49,21 +60,28 @@ just do a:
 $ cd build
 $ make
 
-This will build the harmony server and the libcreater for you 
+This will build the harmony server and the libcreater for you
 
 $ cd ../bin
-$ ls 
+$ ls
 hconfig.tcl  hserver  libcreater
 
-To run the server:
+To extract the variable values from the global_config file you have to setup
+the path to the file as an environment variable.
+The following environment variable which contains the path to the "global_config" file.
+will be used by the "hglobal_config.c" file for extracting the different variable values.
+at bash:
+$ export HARMONY_CONFIG=/hivehomes/rahulp/activeharmony/build/global_config
 
+To run the server:
 $ ./hserver <search_algorithm> <enable_disable_graphics>
+
 If no command line parameter is specified, the default search algorithm
 is PRO. Otherwise, if the first parameter is:
-	1. harmony chooses PRO
-	2. Nelder Mead Simplex Algorithm
-	3. Random Algorithm
-	4. Brute Force Algorithm
+        1. harmony chooses PRO
+        2. Nelder Mead Simplex Algorithm
+        3. Random Algorithm
+        4. Brute Force Algorithm
 
 To run the example client you have to setup the environment variables:
 
@@ -78,7 +96,7 @@ $ setenv HARMONY_S_PORT 1977
 Of course, "localhost" is put just for demo purposes. You should set that
 variable to whatever hostname the server is running on. However, the port
 has to be 1977. Maybe in future versions the port number will be hardcoded
-in the client code. 
+in the client code.
 
 We provide a set of examples:
 To build and run the example client:
@@ -105,4 +123,6 @@ OR
 $ mpiexec -np 8 ./example
 
 Try other examples as well.
+
+
 

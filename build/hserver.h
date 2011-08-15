@@ -45,16 +45,12 @@
 #include "hutil.h"
 #include "hmesgs.h"
 #include "hsockutil.h"
+
 /***
  *
  * define macros
  *
  ***/
-#define SERVER_PORT 1977
 #define BUFF_SIZE 1024
-
-// change this variable to reflect where to look for code generation
-// completion flag.
-char code_flags_path[256]= "/scratch0/code_flags/";
 
 #endif /* __HSERVER_H__ */

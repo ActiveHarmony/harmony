@@ -69,14 +69,17 @@ using namespace std;
 /* the update of the performance metric. (observed Goodness) */
 #define HMESG_PERF_UPDT 11
 /* request probe/local tcl variables */
-#define  HMESG_PROBE_REQ 12
-#define  HMESG_TCLVAR_REQ 13
-#define  HMESG_TCLVAR_REQ_2 14
+#define HMESG_PROBE_REQ 12
+#define HMESG_TCLVAR_REQ 13
+#define HMESG_TCLVAR_REQ_2 14
 #define HMESG_PROBE_SET 15
 #define HMESG_DATABASE 16
 #define HMESG_WITH_CONF 17
 #define HMESG_CODE_COMPLETION 18
 #define HMESG_PERF_ALREADY_EVALUATED 19
+#define HMESG_SO_PATH_PREFIX_RUN_DIR 20
+#define HMESG_SO_PATH_PREFIX_DEF 21
+#define HMESG_SO_PATH_PREFIX_CODE 22
 
 /*
  * define accepted variable types
@@ -86,9 +89,8 @@ using namespace std;
 
 /*
  * define the maximum size of a string variable
- * for now we only define it 2048 chars but we might increase it in time
  */
-#define VAR_STR_SIZE 2048
+#define VAR_STR_SIZE 4096
 
 /***
  *
@@ -307,6 +309,7 @@ static const char *print_type[] = {"NONE",
                                    "APP_DESCR",
                                    "DAEMON_REG",
                                    "CLIENT_REG",
+				   "CODE_GEN_REG",
                                    "VAR_DESCR",
                                    "VAR_REQ",
                                    "VAR_SET",
@@ -320,9 +323,12 @@ static const char *print_type[] = {"NONE",
                                    "PROBE_SET",
                                    "DATABASE",
                                    "WITH_CONF",
-                                   "CODE_COMPLETION"
-                                   "PERF_ALREADY_EVALUATED"};
-
+                                   "CODE_COMPLETION",
+                                   "PERF_ALREADY_EVALUATED",
+                                   "SO_PATH_PREFIX_RUN_DIR",
+                                   "SO_PATH_PREFIX_DEF",
+                                   "SO_PATH_PREFIX_CODE"};
+                                 
 
 // the general message class
 class HMessage {
