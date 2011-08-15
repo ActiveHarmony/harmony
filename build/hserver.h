@@ -34,6 +34,14 @@
 #include <unistd.h>
 #include <string>
 #include <map>
+
+#include <cstdio>
+#include <cstdlib>
+#include <iostream>
+#include <assert.h>
+#include <sstream>
+#include <set>
+// tcl/tk
 #include <tcl.h>
 #include <tk.h>
 

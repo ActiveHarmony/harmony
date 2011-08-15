@@ -1,0 +1,42 @@
+
+
+search space pstswm {
+
+      
+      # parameter definitions     
+      parameter p int {
+        range [1:16:1];
+        default 4;
+      }
+
+      parameter q int {
+        range [1:16:1];
+        default 4;
+      }
+
+      parameter FTOPT string {
+                array ["distributed","single_transpose","double_transpose"];
+                default "distriuted";
+
+      }
+
+      parameter LTOPT string {
+                array ["distributed", "transpose_based"];
+                default "distributed";
+      }
+
+      constraint pq {
+                 p*q == 16;
+      }
+
+      constraint ftLT {
+                  (FTOPT == "double_transpose") or
+(FTOPT=="double_transpose" and LTOPT=="distributed");
+      }
+      
+      
+      #putting everything together
+      specification {
+        pq && ftLT;
+      }
+}

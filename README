@@ -60,7 +60,12 @@ just do a:
 $ cd build
 $ make
 
-This will build the harmony server and the libcreater for you
+[ if you want to run harmony without any TK windows, you can do a 
+make hserver_no_tk
+When running the version with no TK, please make sure that the client window
+drawing options are disabled in hconfig files.]
+
+This will build the harmony server and the libcreater for you 
 
 $ cd ../bin
 $ ls
