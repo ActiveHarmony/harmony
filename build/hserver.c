@@ -168,7 +168,7 @@ void check_parameters(int argc, char **argv) {
 
     // by default, no windows are drawn
     //  to disable Active Harmony server window, use "gmake server_no_tk" to build the framework.
-    int draw_windows=0;
+    draw_windows=0;
 
     if( argc >= 2 )
     {
@@ -373,6 +373,17 @@ void server_startup() {
     }
 
     Tk_MapWindow(Tk_MainWindow(tcl_inter));
+
+    if ((err=Tcl_Eval(tcl_inter, "set use_tk 1")) != TCL_OK){
+        printf("[AH]: Tcl Error %d ; %s \"set use_tk 1\"\n", err, tcl_inter->result);
+        h_exit("TCL Interpreter Error ");
+    }
+
+#else  /* !USE_TK */
+    if ((err=Tcl_Eval(tcl_inter, "set use_tk 0")) != TCL_OK){
+        printf("[AH]: Tcl Error %d ; %s \"set use_tk 0\"\n", err, tcl_inter->result);
+        h_exit("TCL Interpreter Error ");
+    }
 #endif  /*USE_TK*/
 
 

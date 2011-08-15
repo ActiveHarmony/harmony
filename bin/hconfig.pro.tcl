@@ -21,8 +21,9 @@ global search_algorithm
 set search_algorithm 1 
 
 #### to disable client windows, set draw_har_windows variable to 0
+#### Variable $use_tk is defined in hserver.c, depending on USE_TK macro.
 global draw_har_windows
-set draw_har_windows 0 
+set draw_har_windows $use_tk
 
 ## load commons
 load ../tcl/common/round.so
