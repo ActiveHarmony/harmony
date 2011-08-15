@@ -18,8 +18,8 @@ hserver: hglobal_config.o hserver.o hutil.o hsockutil.o hmesgs.o
 	$(GCC) -o hserver hglobal_config.o hserver.o hutil.o hsockutil.o hmesgs.o $(LIBS) $(INCLUDE)
 	cp hserver ../bin
 
-hserver_no_tk:  hserver_no_tk.o hutil.o hsockutil.o hmesgs.o
-	$(GCC) -o hserver_no_tk hserver_no_tk.o hutil.o hsockutil.o hmesgs.o $(LIBS) $(INCLUDE)
+hserver_no_tk:  hglobal_config.o hserver_no_tk.o hutil.o hsockutil.o hmesgs.o
+	$(GCC) -o hserver_no_tk hglobal_config.o hserver_no_tk.o hutil.o hsockutil.o hmesgs.o $(LIBS) $(INCLUDE)
 	cp hserver_no_tk ../bin
 
 hserver_no_tk.o: hserver.c hserver.h hutil.h hdb.h hsockutil.h hmesgs.h
