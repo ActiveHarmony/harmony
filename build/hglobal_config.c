@@ -1,3 +1,27 @@
+/*
+ * Copyright 2003-2011 Jeffrey K. Hollingsworth
+ *
+ * This file is part of Active Harmony.
+ *
+ * Active Harmony is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published
+ * by the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Active Harmony is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/***
+ *
+ * include user defined headers
+ *
+ ***/
 #include "hglobal_config.h"
 #include <iostream>
 #include<string.h>
@@ -16,52 +40,31 @@ char *first,*remainder,*context;
 char data[256];
 
 char *config_data[512];
-
 const int MAX=20;
-
 char *new_mem[MAX];
-
 const int arr_size_max = 1000;
 
 char server_port[512];
-
 char hs_config_file[512];
-
 char search_algo[512];
-
 char appname_tuning[512];
-
 char newcode_path[512];
-
 char hs_pid_path[512];
-
 char cgen[512];
-
 char cgenhosts[512];
-
 char Host_Name[512];
-
 char userhomepath[512];
-
 char confsdirpath[512];
-
 char cgenbasepath[512];
-
 char codegenloc[512];
-
 char codedesthostname[512];
-
 char codedestpath[512];
-
 char codeflagdest[512];
-
 char sopathprefix[512];
-
 char sopathprefixdef[512];
-
 char sopathprefixcode[512];
 
-
+/*******Reads the global configuration file*******/
 char *read_cfg_file()
 {
   char item[512];
@@ -209,7 +212,7 @@ char *read_cfg_file()
 
 }
 
-
+/*****Extracts the server's port number ******/
 char *server_portnum()
 {
   return server_port;
