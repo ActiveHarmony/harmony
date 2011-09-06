@@ -1,6 +1,6 @@
 OPTIMIZE =  
 GCC_LINUX = g++ -DLinux -DLINUX -Dlinux -Df2cFortran -w -DUSE_NON_CONST -g -pg 
-LIBS_LINUX =   -lm -ldl  -lnsl -ltcl -ltk
+LIBS_LINUX = -lm -ldl -lnsl -ltcl
 INCLUDE_LINUX =
 
 GCC=$(GCC_LINUX)
@@ -11,21 +11,17 @@ LIBOBJS= hclient.o hsockutil.o hutil.o hmesgs.o hclientc.o
 AR= ar
 ARCREATE= cr
 
-all: hserver hserver_no_tk harmony.a parse swig_round_lib
+all: hserver harmony.a parse swig_round_lib
 
-hserver: hserver.o hutil.o hsockutil.o hmesgs.o 
-	$(GCC) -o hserver hserver.o hutil.o hsockutil.o hmesgs.o $(LIBS) $(INCLUDE)
+hserver: hserver.o hutil.o hsockutil.o hmesgs.o httpsvr.o
+	$(GCC) -o hserver hserver.o hutil.o hsockutil.o hmesgs.o httpsvr.o $(LIBS) $(INCLUDE)
 	cp hserver ../bin
 
-hserver_no_tk:  hserver_no_tk.o hutil.o hsockutil.o hmesgs.o
-	$(GCC) -o hserver_no_tk hserver_no_tk.o hutil.o hsockutil.o hmesgs.o $(LIBS) $(INCLUDE)
-	cp hserver_no_tk ../bin
-
-hserver_no_tk.o: hserver.c hserver.h hutil.h hdb.h hsockutil.h hmesgs.h
-	$(GCC) -c hserver.c -o hserver_no_tk.o $(INCLUDE)
+harmony.a: $(LIBOBJS)
+	$(AR) $(ARCREATE) harmony.a $(LIBOBJS)
 
 hserver.o: hserver.c hserver.h hutil.h hdb.h hsockutil.h hmesgs.h
-	$(GCC) -c -DUSE_TK hserver.c $(INCLUDE) 
+	$(GCC) -c hserver.c -o hserver.o $(INCLUDE)
 
 hutil.o: hutil.c hutil.h
 	$(GCC) -c hutil.c $(INCLUDE)
@@ -36,10 +32,8 @@ hsockutil.o: hsockutil.c hsockutil.h hutil.h hmesgs.h
 hmesgs.o: hmesgs.c hmesgs.h hutil.h
 	$(GCC) -c hmesgs.c $(INCLUDE) 
 
-
-harmony.a: $(LIBOBJS)
-	$(AR) $(ARCREATE) harmony.a $(LIBOBJS)
-
+httpsvr.o: httpsvr.c httpsvr.h hserver.h hsockutil.h
+	$(GCC) -c httpsvr.c $(INCLUDE)
 
 hclient.o: hclient.c hclient.h hmesgs.h hsockutil.h hutil.h
 	$(GCC) -c hclient.c $(INCLUDE) 

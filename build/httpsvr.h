@@ -16,55 +16,13 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef __HSERVER_H__
-#define __HSERVER_H__
+#ifndef __HTTPSVR_H__
+#define __HTTPSVR_H__
 
-/***
- *
- * include system headers
- *
- ***/
-#include <stdlib.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/stat.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <unistd.h>
-#include <string>
-#include <map>
+extern int http_connection_limit;
 
-#include <cstdio>
-#include <cstdlib>
-#include <iostream>
-#include <assert.h>
-#include <sstream>
-#include <set>
+int http_init();
+void http_send_error(int fd, int status, const char *message);
+void handle_http_socket(int fd, int *close_fd);
 
-// tcl/tk
-#include <tcl.h>
-
-/***
- *
- * include user defined headers
- *
- ***/
-#include "hutil.h"
-#include "hmesgs.h"
-#include "hsockutil.h"
-
-/***
- *
- * define macros
- *
- ***/
-#define SERVER_PORT 1977
-#define BUFF_SIZE 1024
-
-extern char code_flags_path[];
-extern Tcl_Interp *tcl_inter;
-
-string history_since(unsigned int);
-
-#endif /* __HSERVER_H__ */
+#endif

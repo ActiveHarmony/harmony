@@ -42,11 +42,19 @@ using namespace std;
 /* the maximum buffer size for a message is 64K */
 #define MAX_BUFFER_SIZE 65535
 
+/* Magic number for messages between the harmony server and its clients. */
+#define HARMONY_MAGIC 0x001DEA00
+
 /***
  *
  * Here we define some useful functions to handle data communication
  *
  ***/
+
+/**
+ * Loop until all data has been writen to fd.
+ **/
+void socket_write(int fd, const void *data, unsigned datalen);
 
 /**
  * send a message on the given socket

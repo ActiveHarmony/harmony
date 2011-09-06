@@ -22,7 +22,6 @@
  * include user defined headers
  *
  ***/
-#include "hserver.h"
 #include <dirent.h>
 #include <errno.h>
 #include <string.h>
@@ -37,12 +36,20 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <map>
+
+#include "hserver.h"
+#include "httpsvr.h"
+
 using namespace std;
 /***
  *
  * Main variables
  *
  ***/
+// change this variable to reflect where to look for code generation
+// completion flag.
+char code_flags_path[256]= "/hivehomes/rchen/scratch/code_flags";
 
 /*
  * local variable
@@ -70,7 +77,7 @@ struct in_addr listen_addr;     /* Address on which the server listens. */
  */
 int listen_port;
 fd_set listen_set;
-list<int> socket_set;
+list<int> unknown_fds, harmony_fds, http_fds;
 int highest_socket;
 list<int>::iterator socketIterator;
 
@@ -115,6 +122,8 @@ map<string,string>::iterator it;
 map<string,string> appName_confs;
 map<string,string>::iterator it2;
 
+vector<string> coord_history;
+
 //Harmony server's Process ID info
 int hs_process_id;
 char *APPNAME = "gemm";
@@ -130,14 +139,22 @@ struct dirent *dptr;
 
 int draw_windows=0;
 
+string history_since(unsigned int last)
+{
+    stringstream ss;
+    unsigned int max = coord_history.size();
+
+    while (last < max) {
+        ss << "coord:" << coord_history[last++] << "|";
+    }
+    return ss.str();
+}
+
 void check_parameters(int argc, char **argv) {
 
     // by default, we use PRO search algorithm
     int search_algo=1;
 
-    // by default, no windows are drawn
-    //  to disable Active Harmony server window, use "gmake server_no_tk" to build the framework.
-    draw_windows=0;
     if( argc >= 2 )
     {
 
@@ -327,16 +344,6 @@ void server_startup() {
         h_exit("Tcl Init failed!");
     }
 
-#ifdef USE_TK
-    if ((err=Tk_Init(tcl_inter)) != TCL_OK) {
-        printf("[AH]: Error message: %s\n",tcl_inter->result);
-        h_exit("Tk Init failed!");
-    }
-
-    Tk_MapWindow(Tk_MainWindow(tcl_inter));
-#endif  /*USE_TK*/
-
-
     if ((err=Tcl_EvalFile(tcl_inter, harmonyTclFile)) != TCL_OK){
         printf("[AH]: Tcl Error %d ; %s %s \n",err, tcl_inter->result, harmonyTclFile);
         h_exit("TCL Interpreter Error ");
@@ -352,26 +359,10 @@ void server_startup() {
     */
 
     FD_ZERO(&listen_set);
-    FD_SET(listen_socket,&listen_set);
-    socket_set.push_back(listen_socket);
+    FD_SET(listen_socket, &listen_set);
     highest_socket=listen_socket;
 
-    /***
-        getthe fd that X is using for events
-    ***/
-#ifdef USE_TK
-    Display *UIMdisplay = Tk_Display (Tk_MainWindow(tcl_inter));
-    xfd = XConnectionNumber (UIMdisplay);
-
-    FD_SET(xfd,&listen_set);
-    socket_set.push_back(xfd);
-    if (xfd>highest_socket)
-        highest_socket=xfd;
-#else
-    // 23rd May 2011: 0 is for stdin. So no need for this statement.
-    //FD_SET(0, &listen_set);
-#endif  /*USE_TK*/
-
+    http_init();
 }
 
 /***
@@ -395,11 +386,6 @@ void client_registration(HRegistMessage *m, int client_socket){
     }
 
     /* store information about the client into the local database */
-    FD_SET(client_socket,&listen_set);
-    socket_set.push_back(client_socket);
-    if (client_socket>highest_socket)
-        highest_socket=client_socket;
-
     clientSignals[client_socket]=m->get_param();
     int id = m->get_id();
 
@@ -407,6 +393,7 @@ void client_registration(HRegistMessage *m, int client_socket){
         /* the client is relocating its communicating agent */
         /* the server dissacociates the old socket with the client, and
          * uses the new one instead */
+        printf("[AH]: Client id %d relocated\n", id);
 
         int cs = clientSocket[id];
         clientSocket[id] = client_socket;
@@ -416,10 +403,14 @@ void client_registration(HRegistMessage *m, int client_socket){
         clientName.erase(cs);
         clientName[client_socket] = appName;
 
+        /* This code sequence is problematic.  It might disrupt the loop
+         * inside main_loop() that iterates over harmony_fds.
+         * Find a way to move it into main_loop().
+         */
         FD_CLR(cs, &listen_set);
         if (cs==*socketIterator)
             socketIterator++;
-        socket_set.remove(cs);
+        harmony_fds.remove(cs);
         if (highest_socket==cs)
             highest_socket--;
     } else {
@@ -1279,6 +1270,8 @@ void filter(map<string,string> &m, vector<string> & result, vector<string> &valu
  ***/
 void client_unregister(HRegistMessage *m, int client_socket) {
 
+    int stashed_id;
+
     char new_dir_name[512];
     char new_pid_dir_name[512];
     char default_file_ext[] = "default.so";
@@ -1360,19 +1353,14 @@ void client_unregister(HRegistMessage *m, int client_socket) {
         fprintf(stderr, "Error cleaning up after client! %d\n", tcl_inter->result);
     }
 
-    
-    FD_CLR(client_socket, &listen_set);
-    if (client_socket==*socketIterator)
-        socketIterator++;
-    socket_set.remove(client_socket);
-    if (highest_socket==client_socket)
-        highest_socket--;
+    stashed_id = clientId[client_socket];
     clientSocket.erase(clientId[client_socket]);
     clientId.erase(client_socket);
     
     if (m == NULL){
         /* revoke resources */
         revoke_resources(clientName[client_socket]);
+
     } else {
         HRegistMessage *mesg = new HRegistMessage(HMESG_CONFIRM,0);
         
@@ -1381,6 +1369,9 @@ void client_unregister(HRegistMessage *m, int client_socket) {
         delete mesg;
     }
 
+    if (close(client_socket) < 0)
+        printf("Error closing harmony client %d socket %d.",
+               stashed_id, client_socket);
 
     //After the completion of code generation and auto tuning, the server puts all the 
     //newly generated files into a seperate folder. The new folder is named after the PID of
@@ -1503,6 +1494,17 @@ void performance_update_int(HUpdateMessage *m, int client_socket) {
         sprintf(perf_string, "%d", performance);
         string str_conf = curr_conf;
         global_data.insert(pair<string, string>(str_conf, (string)perf_string));
+
+        char *val = strchr(curr_conf, '_');
+        if (val) {
+            sprintf(s, "%u000,%s,%s,", time(NULL), ++val, perf_string);
+            for (val = s; *val != '\0'; ++val)
+                if (*val == '_')
+                    *val = ',';
+            strcat(s, appName);
+
+            coord_history.push_back(s);
+        }
     }
 
     // let the search backend know what we have received the performance
@@ -1563,6 +1565,17 @@ void performance_update_double(HUpdateMessage *m, int client_socket) {
         string str_conf = curr_conf;
         string perf_num = perf_dbl;
         global_data.insert(pair<string, string>(str_conf, perf_num));
+
+        char *val = strchr(curr_conf, '_');
+        if (val) {
+            sprintf(s, "%u000,%s,%s,", time(NULL), ++val, perf_dbl);
+            for (val = s; *val != '\0'; ++val)
+                if (*val == '_')
+                    *val = ',';
+            strcat(s, appName);
+
+            coord_history.push_back(s);
+        }
     }
 
 
@@ -1656,6 +1669,16 @@ void performance_already_evaluated_int(HUpdateMessage *m, int client_socket)
       sprintf(perf_string, "%d", performance);
       global_data.insert(pair<string, string>(str_conf, (string)perf_string));
 
+      char *val = strchr(curr_conf, '_');
+      if (val) {
+          sprintf(s, "%u000,%s,%s,", time(NULL), ++val, perf_string);
+          for (val = s; *val != '\0'; ++val)
+              if (*val == '_')
+                  *val = ',';
+          strcat(s, appName);
+
+          coord_history.push_back(s);
+      }
   }
   
 
@@ -1765,6 +1788,16 @@ void performance_already_evaluated_double(HUpdateMessage *m, int client_socket)
       string perf_num = perf_dbl;
       global_data.insert(pair<string, string>(str_conf, perf_num));
 
+      char *val = strchr(curr_conf, '_');
+      if (val) {
+          sprintf(s, "%u000,%s,%s,", time(NULL), ++val, perf_dbl);
+          for (val = s; *val != '\0'; ++val)
+              if (*val == '_')
+                  *val = ',';
+          strcat(s, appName);
+
+          coord_history.push_back(s);
+      }
   }
 
   //Server checks the database whether the conf has already been evaluated in the past
@@ -1862,7 +1895,7 @@ void performance_update_with_conf(HUpdateMessage *m, int client_socket) {
 
 
 int in_process_message = FALSE;
-void process_message_from(int temp_socket){
+void process_message_from(int temp_socket, int *close_fd){
 
     HMessage *m;
     assert(!in_process_message);
@@ -1872,6 +1905,9 @@ void process_message_from(int temp_socket){
     m=receive_message(temp_socket);
     if (m == NULL){
         client_unregister((HRegistMessage*)m, temp_socket);
+        if (close_fd != NULL)
+            *close_fd = 1;
+
         in_process_message = FALSE;
         return;
     }
@@ -1917,6 +1953,8 @@ void process_message_from(int temp_socket){
             break;
         case HMESG_CLIENT_UNREG:
             client_unregister((HRegistMessage *)m, temp_socket);
+            if (close_fd != NULL)
+                *close_fd = 1;
             break;
         case HMESG_CODE_COMPLETION:
             check_code_completion((HUpdateMessage *)m, temp_socket);
@@ -1925,15 +1963,70 @@ void process_message_from(int temp_socket){
             printf("[AH]: Wrong message type!\n");
     }
 
-#ifdef USE_TK
-    /* process Tk events */
-    while (Tcl_DoOneEvent(TCL_DONT_WAIT)>0)
-        ;
-#endif
-
     in_process_message = FALSE;
 }
 
+int handle_new_connection(int fd)
+{
+    unsigned int header;
+    struct sockaddr_in addr;
+    socklen_t addrlen = sizeof(addr);
+
+    int new_fd = accept(fd, (struct sockaddr *)&addr, &addrlen);
+    if (new_fd < 0) {
+        printf("Error accepting connection");
+        return -1;
+    }
+
+    /* The peer may not have sent data yet.  To prevent blocking, lets
+     * stash the new socket in the unknown_list until we know it has data.
+     */
+    unknown_fds.push_back(new_fd);
+    printf("[AH]: Accepted connection from %s as socket %d\n",
+           inet_ntoa(addr.sin_addr), new_fd);
+    return new_fd;
+}
+
+void handle_unknown_connection(int fd, int *close_fd)
+{
+    unsigned int header;
+    int readlen;
+
+    readlen = recv(fd, &header, sizeof(header), MSG_PEEK);
+    if (readlen < sizeof(header)) {
+        /* Error on recv, or insufficient data.  Close the connection. */
+        if (close(fd) < 0)
+            printf("Error on read, but error closing connection too.");
+        if (close_fd != NULL)
+            *close_fd = 1;
+        printf("[AH]: Can't determine type for socket %d.  Closing.\n", fd);
+
+    } else if (ntohl(header) == HARMONY_MAGIC) {
+        /* This is a communication socket from a harmony client. */
+        printf("[AH]: Socket %d is a harmony client.\n", fd);
+        harmony_fds.push_back(fd);
+
+    } else {
+        /* Consider this an HTTP communication socket. */
+        if (http_fds.size() < http_connection_limit) {
+            printf("[AH]: Socket %d is a http client.\n", fd);
+            http_fds.push_back(fd);
+
+        } else {
+            printf("[AH]: Socket %d is an http client, but we have too many already.  Closing.\n", fd);
+            http_send_error(fd, 503, NULL);
+
+            if (close(fd) < 0)
+                printf("Error closing HTTP connection.");
+            if (close_fd != NULL)
+                *close_fd = 1;
+        }
+    }
+
+    /* Do *not* remove fd from the unknown_list.  We might invalidate any
+     * iterators that are currently traversing this list.
+     */
+}
 
 /***
  *
@@ -1942,59 +2035,105 @@ void process_message_from(int temp_socket){
  * We only exit on Ctrl-C
  *
  ***/
-void main_loop() {
- 
-    struct sockaddr_in temp_addr;
-    int temp_addrlen;
-    int temp_socket;
+void main_loop()
+{
     int pid;
-
     int active_sockets;
-
+    int new_fd, close_fd;
     fd_set listen_set_copy;
 
-
-    /* do listening to the socket */
+    /* Start listening for new connections */
     if (listen(listen_socket, SOMAXCONN)) {
         h_exit("Listen to socket failed!");
     }
 
     while (1) {
         listen_set_copy=listen_set;
+        errno = 0;
         active_sockets=select(highest_socket+1,&listen_set_copy, NULL, NULL, NULL);
-	//if(debug_mode)
-	printf("[AH]: Select:: Return value: %d \n", active_sockets);
-        /* we have a communication request */
-        for (socketIterator=socket_set.begin();socketIterator!=socket_set.end();socketIterator++) {
-            if (FD_ISSET(*socketIterator, &listen_set_copy) && (*socketIterator!=listen_socket) && (*socketIterator!=xfd)) {
-                /* we have data from this connection */
-                process_message_from(*socketIterator);
-		if(debug_mode)
-		  printf("[AH]: processing message 1 \n");
+        if (active_sockets == -1) {
+            if (errno == EINTR) {
+                continue;
             }
+            printf("[AH]: Error during select(): %s\n", strerror(errno));
+            break;
         }
+	if (debug_mode)
+            printf("[AH]: Select:: Return value: %d \n", active_sockets);
+
+        /* Handle new connections */
         if (FD_ISSET(listen_socket, &listen_set_copy)) {
-            /* we have a connection request */
-            /* via George Teodoro*/
-	  if(debug_mode)
-	    printf("[AH]: processing message 2 \n");
-            temp_addrlen = sizeof(temp_addr);
-            if ((temp_socket = accept(listen_socket,(struct sockaddr *)&temp_addr, (unsigned int *)&temp_addrlen))<0) {
-                // have to investigate more
-                h_exit("Accepting connections failed!");
+            if (debug_mode)
+                printf("[AH]: processing connection request\n");
+            new_fd = handle_new_connection(listen_socket);
+            if (new_fd > 0) {
+                FD_SET(new_fd, &listen_set);
+                if (highest_socket < new_fd)
+                    highest_socket = new_fd;
             }
-            process_message_from(temp_socket);
         }
 
-#ifdef USE_TK
-        if (FD_ISSET(xfd, &listen_set_copy)) {
-	  if(debug_mode)
-	    printf("[AH]: processing TK events \n");
-            // we have to process Tk events
-            while (Tcl_DoOneEvent(TCL_DONT_WAIT)>0)
-                ;
+        /* Handle unknown connections (Unneeded if we switch to UDP) */
+        socketIterator = unknown_fds.begin();
+        while (socketIterator != unknown_fds.end()) {
+            close_fd = 0;
+            if (FD_ISSET(*socketIterator, &listen_set_copy)) {
+                if (debug_mode)
+                    printf("[AH]: determining connection type\n");
+                handle_unknown_connection(*socketIterator, &close_fd);
+                if (close_fd) {
+                    FD_CLR(*socketIterator, &listen_set);
+                }
+                socketIterator = unknown_fds.erase(socketIterator);
+
+            } else {
+                ++socketIterator;
+            }
         }
-#else
+
+        /* Handle harmony messages */
+        socketIterator = harmony_fds.begin();
+        while (socketIterator != harmony_fds.end()) {
+            close_fd = 0;
+            if (FD_ISSET(*socketIterator, &listen_set_copy)) {
+		if(debug_mode)
+                    if (clientId.count(*socketIterator) == 0) {
+                        printf("[AH]: processing harmony message from unregistered client on socket %d\n", *socketIterator);
+                    } else {
+                        printf("[AH]: processing harmony message from client %d\n", clientId[*socketIterator]);
+                    }
+                process_message_from(*socketIterator, &close_fd);
+            }
+
+            if (close_fd) {
+                FD_CLR(*socketIterator, &listen_set);
+                socketIterator = harmony_fds.erase(socketIterator);
+
+            } else {
+                ++socketIterator;
+            }
+        }
+
+        /* Handle http requests */
+        socketIterator = http_fds.begin();
+        while (socketIterator != http_fds.end()) {
+            close_fd = 0;
+            if (FD_ISSET(*socketIterator, &listen_set_copy)) {
+		if(debug_mode)
+                    printf("[AH]: processing http request on socket %d\n", *socketIterator);
+                handle_http_socket(*socketIterator, &close_fd);
+            }
+
+            if (close_fd) {
+                FD_CLR(*socketIterator, &listen_set);
+                socketIterator = http_fds.erase(socketIterator);
+
+            } else {
+                ++socketIterator;
+            }
+        }
+
+#if 0
         /*
           This section of the code is only needed if we want to use the
           commandline interface of hserver as a tcl interpreter.
