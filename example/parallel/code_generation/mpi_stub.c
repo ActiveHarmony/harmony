@@ -36,6 +36,8 @@
 
 // harmony
 #include "hclient.h"
+int rank = -1;
+int h_id = -1;
 
 #define SEARCH_MAX 400
 #define EXT_SUCCESS 1
@@ -112,7 +114,7 @@ double timer()
     struct timeval Tp;
     int stat;
     stat = gettimeofday (&Tp, &Tzp);
-    if (stat != 0) printf("Error return from gettimeofday: %d",stat);
+    if (stat != 0) printf("[r%d:h%d] Error return from gettimeofday: %d", rank, h_id, stat);
     return(Tp.tv_sec + Tp.tv_usec*1.0e-6);
 }
 
@@ -174,7 +176,7 @@ void update_so_eval()
     flib_eval=dlopen(so_filename, RTLD_LAZY);
     dlError = dlerror();
     if( dlError ) {
-        printf("cannot open .so file! %s \n", so_filename);
+        printf("[r%d:h%d] cannot open .so file! %s \n", rank, h_id, so_filename);
         exit(1);
     }
 
@@ -184,10 +186,10 @@ void update_so_eval()
     dlError = dlerror();
     if( dlError )
     {
-        printf("cannot find matmult !\n");
+        printf("[r%d:h%d] cannot find matmult !\n", rank, h_id);
         exit(1);
     }
-    printf("Evaluation candidate updated \n");
+    printf("[r%d:h%d] Evaluation candidate updated \n", rank, h_id);
 }
 
 // mm matrix initialization
@@ -213,7 +215,7 @@ int check_code_correctness()
         for (j=0; j<N; j++) {
             if(C[i][j] != C_orig[i][j])
             {
-                printf("C_orig[%d][%d]=%f, C[%d][%d]=%f don't match \n", i,j,C_orig[i][j],i,j,C[i][j]);
+                printf("[r%d:h%d] C_orig[%d][%d]=%f, C[%d][%d]=%f don't match \n", rank, h_id, i,j,C_orig[i][j],i,j,C[i][j]);
                 return_val=0;
                 break;
             }
@@ -232,14 +234,14 @@ int eval_code(int best)
         // CHANGE THIS
         code_so_best(&matrix_size, A, B, C);
         time_end=timer();
-        printf("That took: %f \n", time_end-time_start);
+        printf("[r%d:h%d] That took: %f \n", rank, h_id, time_end-time_start);
     } else
     {
         time_start=timer();
         // CHANGE THIS
         code_so_eval(&matrix_size, A, B, C);
         time_end=timer();
-        printf("That took: %f \n", time_end-time_start);
+        printf("[r%d:h%d] That took: %f \n", rank, h_id, time_end-time_start);
         check_code_correctness();
     }
     return ((int)((time_end-time_start)*perf_multiplier));
@@ -261,11 +263,11 @@ int eval_original()
     }
 
     sprintf(so_filename,"%s",path_prefix_def);
-    printf("Opening the default file: %s \n", so_filename);
+    printf("[r%d:h%d] Opening the default file: %s \n", rank, h_id, so_filename);
     flib_eval=dlopen(so_filename, RTLD_LAZY);
     dlError = dlerror();
     if( dlError ) {
-        printf("cannot open .so file! %s \n", so_filename);
+        printf("[r%d:h%d] cannot open .so file! %s \n", rank, h_id, so_filename);
         exit(1);
     }
 
@@ -275,13 +277,13 @@ int eval_original()
     dlError = dlerror();
     if( dlError )
     {
-        printf("cannot find matmult !\n");
+        printf("[r%d:h%d] cannot find matmult !\n", rank, h_id);
         exit(1);
     }
     time_start=timer();
     code_so_eval(&matrix_size, A, B, C_orig);
     time_end=timer();
-    printf("That took: %f \n", time_end-time_start);
+    printf("[r%d:h%d] That took: %f \n", rank, h_id, time_end-time_start);
     return ((int)((time_end-time_start)*perf_multiplier));
 }
 
@@ -292,16 +294,16 @@ int eval_original()
  */
 static int buffer[1];
 MPI_Status recv_status;
-int get_code_completion_status(int simplex_size, int rank)
+int get_code_completion_status(int simplex_size)
 {
     int return_val=0;
     // check if the code is ready for the new set of parameters
     // only rank 0 communicated directly with the harmony server
     if(rank == 0)
     {
-        printf("asking the server about the code status \n");
+        printf("[r%d:h%d] asking the server about the code status \n", rank, h_id);
         return_val = harmony_code_generation_complete();
-        printf("%d: code status %d \n", rank, return_val);
+        printf("[r%d:h%d] code status %d \n", rank, h_id, return_val);
         buffer[0] = return_val;
         // send this to other processors
         int proc_no=1;
@@ -310,17 +312,17 @@ int get_code_completion_status(int simplex_size, int rank)
         buffer[0]=0;
     } else
     {
-        printf("%d is waiting to hear from the 0 \n", rank);
+        printf("[r%d:h%d] waiting to hear from the 0 \n", rank, h_id);
         MPI_Recv(buffer, 1, MPI_INT, 0, TAG, MPI_COMM_WORLD, &recv_status);
         return_val=buffer[0];
-        printf("%d: code status %d \n", rank, return_val);
+        printf("[r%d:h%d] code status %d \n", rank, h_id, return_val);
         buffer[0]=0;
     }
     MPI_Barrier(MPI_COMM_WORLD); // let everyone catch up
     return return_val;
 }
 
-int check_convergence(int simplex_size, int rank)
+int check_convergence(int simplex_size)
 {
     int return_val=0;
     // check if the code is ready for the new set of parameters
@@ -328,7 +330,7 @@ int check_convergence(int simplex_size, int rank)
     if(rank == 0)
     {
         return_val = harmony_check_convergence();
-        printf("%d: search_done %d \n", rank, return_val);
+        printf("[r%d:h%d] search_done %d \n", rank, h_id, return_val);
         buffer[0] = return_val;
         // send this to other processors
         int proc_no=1;
@@ -337,10 +339,10 @@ int check_convergence(int simplex_size, int rank)
         buffer[0]=0;
     } else
     {
-        printf("%d is waiting to hear from the 0 \n", rank);
+        printf("[r%d:h%d] waiting to hear from the 0 \n", rank, h_id);
         MPI_Recv(buffer, 1, MPI_INT, 0, TAG, MPI_COMM_WORLD, &recv_status);
         return_val=buffer[0];
-        printf("%d: search status %d \n", rank, return_val);
+        printf("[r%d:h%d] search status %d \n", rank, h_id, return_val);
         buffer[0]=0;
     }
     MPI_Barrier(MPI_COMM_WORLD); // let everyone catch up
@@ -365,7 +367,7 @@ int penalty_factor()
 // driver
 int  main(int argc, char *argv[])
 {
-    int    rank, simplex_size, i;
+    int    simplex_size, i;
     char   *host_name;
     double time_initial, time_current, time;
     char  app_desc[128];
@@ -393,15 +395,15 @@ int  main(int argc, char *argv[])
 
     gethostname(host_name,80);
 
-    printf("sanity check, %s \n", host_name);
+    printf("[r%d:h%d] sanity check, %s \n", rank, h_id, host_name);
 
     /* Insert Harmony API calls. */
     /* initialize the harmony server */
     /* Using only one server */
-    harmony_startup();
+    h_id = harmony_startup();
 
     /* send in the application description to the server */
-    printf("sending the app description \n");
+    printf("[r%d:h%d] sending the app description \n", rank, h_id);
     sprintf(app_desc, "offline.tcl");
     harmony_application_setup_file("offline.tcl");
 
@@ -410,7 +412,7 @@ int  main(int argc, char *argv[])
      * multiplication program.
      */
     
-    printf("Adding harmony variables ... \n");
+    printf("[r%d:h%d] Adding harmony variables ... \n", rank, h_id);
     /* register the tunable varibles */
     // CHANGE THIS to reflect the parameters for different code versions.
     TI=(int *)harmony_add_variable(code_name_prefix,"TI",VAR_INT);
@@ -418,7 +420,7 @@ int  main(int argc, char *argv[])
     TK=(int *)harmony_add_variable(code_name_prefix,"TK",VAR_INT);
     UI=(int *)harmony_add_variable(code_name_prefix,"UI",VAR_INT);
     UJ=(int *)harmony_add_variable(code_name_prefix,"UJ",VAR_INT);
-    printf("entering \n");
+    printf("[r%d:h%d] entering \n", rank, h_id);
 
     // initialize the paths
     initialize_paths();
@@ -428,7 +430,7 @@ int  main(int argc, char *argv[])
     current_best_perf=perf;
     //MPI_Barrier(MPI_COMM_WORLD);
     /* send in the default performance */
-    printf("sending the default perf \n");
+    printf("[r%d:h%d] sending the default perf \n", rank, h_id);
     harmony_performance_update(perf);
     MPI_Barrier(MPI_COMM_WORLD);
     //harmony_request_all();
@@ -437,12 +439,12 @@ int  main(int argc, char *argv[])
     // of iterations
     while(!harmony_ended && search_iter < SEARCH_MAX)
     {
-        printf("iteration # %d \n", search_iter);
+        printf("[r%d:h%d] iteration # %d \n", rank, h_id, search_iter);
         search_iter++;
         new_performance=0;
 
         // see if the new code is ready
-        //if(get_code_completion_status(simplex_size, rank))
+        //if(get_code_completion_status(simplex_size))
         if(harmony_code_generation_complete())
         {
             harmony_request_all();
@@ -454,7 +456,7 @@ int  main(int argc, char *argv[])
             {
                 // update the best pointer
                 best_conf_from_server=harmony_get_best_configuration();
-                printf("Best Conf from server: %s \n", best_conf_from_server);
+                printf("[r%d:h%d] Best Conf from server: %s \n", rank, h_id, best_conf_from_server);
 
 		if(best_conf_from_server!=NULL && *best_conf_from_server!='\0')
                 {
@@ -466,7 +468,7 @@ int  main(int argc, char *argv[])
                 flib_best=dlopen(so_filename, RTLD_LAZY);
                 dlError = dlerror();
                 if( dlError ) {
-                    printf("cannot open .so file! %s \n", so_filename);
+                    printf("[r%d:h%d] cannot open .so file! %s \n", rank, h_id, so_filename);
                     exit(1);
                 }
 
@@ -475,20 +477,20 @@ int  main(int argc, char *argv[])
                 dlError = dlerror();
                 if( dlError )
                 {
-                    printf("cannot find %s !\n", symbol_name);
+                    printf("[r%d:h%d] cannot find %s !\n", rank, h_id, symbol_name);
                     exit(1);
                 }
             }
         }
         else
         {
-            printf("code generation is not complete \n");
+            printf("[r%d:h%d] code generation is not complete \n", rank, h_id);
             // code generation is not complete.
             // run the best variant
             perf=eval_code(1);
         }
 
-        printf("rank :%d, TI: %d,TJ: %d, TK: %d, UI: %d, UJ: %d, perf: %d \n", rank, *TI, *TJ, *TK, *UI, *UJ, perf);
+        printf("[r%d:h%d] TI: %d,TJ: %d, TK: %d, UI: %d, UJ: %d, perf: %d \n", rank, h_id, rank, *TI, *TJ, *TK, *UI, *UJ, perf);
 
         // does the perf that we just determined reflect the changes in the
         // parameter values? If it does, then send the performance to the server.
@@ -498,8 +500,8 @@ int  main(int argc, char *argv[])
         //MPI_Barrier(MPI_COMM_WORLD);
 
         // check if the search is done
-        printf("harmony_ended call \n");
-        harmony_ended=check_convergence(simplex_size, rank);
+        printf("[r%d:h%d] harmony_ended call \n", rank, h_id);
+        harmony_ended=check_convergence(simplex_size);
 
         if(harmony_ended)
         {
@@ -508,7 +510,7 @@ int  main(int argc, char *argv[])
             update_so_eval();
             perf=eval_code(0);
             
-	    printf("rank :%d, TI: %d,TJ: %d, TK: %d, UI: %d, UJ: %d, perf: %d", rank, *TI, *TJ, *TK, *UI, *UJ, perf);
+	    printf("[r%d:h%d] TI: %d,TJ: %d, TK: %d, UI: %d, UJ: %d, perf: %d", rank, h_id, rank, *TI, *TJ, *TK, *UI, *UJ, perf);
 
 	    // If we are using online tuning for real applications, we can
             // call the harmony_end() function here and continue execution
@@ -523,8 +525,8 @@ int  main(int argc, char *argv[])
     // final book-keeping messages
     time_current  = MPI_Wtime();
     time  = time_current - time_initial;
-    printf("%.3f rank=%i : machine=%s [# simplex_size=%i]\n",
-           time, rank, host_name, simplex_size);
+    printf("[r%d:h%d] %.3f: machine=%s [# simplex_size=%i]\n",
+           rank, h_id, time, host_name, simplex_size);
     MPI_Finalize();
     return 0;
 }

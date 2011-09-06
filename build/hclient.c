@@ -356,7 +356,7 @@ int harmony_startup(int sport, char *shost, int use_sigs, int relocated) {
 #endif
 
 	}
-    return currentHighestSocketIndex;
+    return hclient_id[socketIndex];
 }
 
 
