@@ -31,7 +31,6 @@
  * include user headers
  */
 #include "hmesgs.h"
-//#include "hutil.h"
 
 using namespace std;
 

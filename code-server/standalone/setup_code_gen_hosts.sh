@@ -28,7 +28,7 @@
 code_generator_host=$HOSTNAME
 
 # please set this to where the generator is installed
-code_generator_base="$HOME/activeharmony/tutorial-2010/harmony/standalone/"
+code_generator_base="$HOME/activeharmony/code-server/standalone/"
 
 # first argument to the script is the name of the application we are generating code for
 appname=$1

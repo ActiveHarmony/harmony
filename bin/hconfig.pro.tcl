@@ -20,22 +20,15 @@ puts "server is reading the tcl files"
 global search_algorithm
 set search_algorithm 1 
 
-#### to disable client windows, set draw_har_windows variable to 0
-global draw_har_windows
-set draw_har_windows 0 
-
 ## load commons
 load ../tcl/common/round.so
 # comment nearest_neighbor if you are not using ANN based projection
 #load ../tcl/common/nearest_neighbor.so
 
+global draw_har_windows
+set draw_har_windows 0
 # comment code_server.so if you are not using dynamic code generation
 #load ../tcl/common/code_server.so
-
-if { $draw_har_windows == 1 } {
-	puts "drawing the logo"
-source ../tcl/common/logo.tk
-}
 
 puts "the backend files."
 source ../tcl/pro/parseApp_version_8.tcl

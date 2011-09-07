@@ -23,7 +23,7 @@
  * certain changes. These changes have been marked by CHANGE THIS.
 */
 
-
+#include <string.h>
 
 #include <mpi.h>
 #include <sys/time.h>
@@ -44,7 +44,6 @@ int h_id = -1;
 #define EXT_FAILURE -1
 #define TAG 1234
 #define N 500
-//#define N 1000
 
 // code related variables
 /*
@@ -56,7 +55,8 @@ typedef void (*code_t)(void *, void *, void *, void *);
 char *symbol_name="gemm_";
 // This should match the name of the application that you have indicated in
 // .tcl file.
-char *code_name_prefix="gemm";
+
+char code_name_prefix[50]="gemm";
 
 code_t code_so_best;
 code_t code_so_eval;
@@ -69,7 +69,7 @@ char *dlError;
 
 char so_filename[128];
 int matrix_size=500;
-//int matrix_size=1000;
+
 
 /* matrix definitions for MM. If you would like to tune a different code,
  * please make appropriate changes here.
@@ -96,16 +96,20 @@ int perf_multiplier=10000;
 
 // new code location vars
 // CHANGE THIS (if needed)
-char path_prefix_def[128];
-char path_prefix_code[128];
-char path_prefix_run_dir[128];
+char path_prefix_def[256];
+char path_prefix_code[256];
+char path_prefix_run_dir[256];
 
 // CHANGE THIS (if needed)
 void initialize_paths()
 {
-    sprintf(path_prefix_run_dir,"/hivehomes/rahulp/activeharmony/tutorial-2010/harmony/example/parallel/code_generation");          
-    sprintf(path_prefix_def,"%s/%s_default.so",path_prefix_run_dir, code_name_prefix);
-    sprintf(path_prefix_code,"/hivehomes/rahulp/scratch/new_code/%s", code_name_prefix);
+
+  sprintf(path_prefix_run_dir, "%s", harmony_get_config_variable("path_prefix_run_dir"));
+
+  sprintf(path_prefix_def, "%s", harmony_get_config_variable("path_prefix_def"));
+
+  sprintf(path_prefix_code, "%s", harmony_get_config_variable("path_prefix_code"));
+
 }
 
 double timer()
@@ -118,6 +122,7 @@ double timer()
     return(Tp.tv_sec + Tp.tv_usec*1.0e-6);
 }
 
+
 /*
   Construct the full pathname for the new code variant.
  */
@@ -127,45 +132,6 @@ void construct_so_filename()
     
     sprintf(so_filename,"%s_%d_%d_%d_%d_%d.so", path_prefix_code, *TI, *TJ, *TK, *UI, *UJ);
 
- 
-    // extract only the appname and conf from the file name and getrid off the process id here
-    // the process id is used for the distinguishing purpose only.
-
-    //char *new_so_file = so_filename;
-    //char delimiter1[] = "_";
-    //char *first, *second, *third, *remainder1, *remainder3, *context1, *context2, *context3;
-    //int inputLength1 = strlen(new_so_file);
-    //char *inputCopy1 = (char*) calloc(inputLength1, sizeof(char));
-    //strncpy(inputCopy1, new_so_file, inputLength1);
-    //first = strtok_r(inputCopy1, delimiter1, &context1);
-    //remainder1 = context1;
-
-    //printf("The old file looks like thissssssssssssss: %s \n", so_filename);
-
-    //printf("The file looks like thissssssssssssss: %s \n", remainder1);
-        
-    //char *remainder2 = remainder1;
-    //char delimiter2[] = "/";
-    //int inputLength2 = strlen(remainder2);
-    //char *inputCopy2 = (char*) calloc(inputLength2, sizeof(char));
-    //strncpy(inputCopy2, remainder2, inputLength2);
-    //second = strtok_r(inputCopy2, delimiter2, &context2);
-    //remainder3 = context2;
-    
-    //printf("The file looks like thissssssssssssss: %s \n", remainder3);
-
-    //char *remainder4 = remainder3;
-    //char delimiter3[] = "_";
-    //int inputLength3 = strlen(remainder4);
-    //char *inputCopy3 = (char*) calloc(inputLength3, sizeof(char));
-    //strncpy(inputCopy3, remainder4, inputLength3);
-    //third = strtok_r(inputCopy3, delimiter3, &context3);
-    //remainder4 = context3;
-
-    //printf("The file looks like thissssssssssssss: %s \n", remainder4);
-
-    //sprintf(so_filename, "%s\n", remainder4);
-   
 }
 
 // update the evaluation pointer: This is called once the new code becomes available.
@@ -424,17 +390,16 @@ int  main(int argc, char *argv[])
 
     // initialize the paths
     initialize_paths();
-    
+       
     // evaluate the original version
     perf=eval_original();
     current_best_perf=perf;
-    //MPI_Barrier(MPI_COMM_WORLD);
+    
     /* send in the default performance */
     printf("[r%d:h%d] sending the default perf \n", rank, h_id);
     harmony_performance_update(perf);
     MPI_Barrier(MPI_COMM_WORLD);
-    //harmony_request_all();
-
+    
     // loop until the search does not converge or we run a predefined set
     // of iterations
     while(!harmony_ended && search_iter < SEARCH_MAX)
@@ -497,8 +462,6 @@ int  main(int argc, char *argv[])
         if(new_performance)
             harmony_performance_update(perf);
 
-        //MPI_Barrier(MPI_COMM_WORLD);
-
         // check if the search is done
         printf("[r%d:h%d] harmony_ended call \n", rank, h_id);
         harmony_ended=check_convergence(simplex_size);
@@ -517,7 +480,7 @@ int  main(int argc, char *argv[])
             // with the best performing candidate.
         }
         MPI_Barrier(MPI_COMM_WORLD);
-    } //while(search_iter < SEARCH_MAX);
+    }
 
     // end the session
     harmony_end();

@@ -30,8 +30,24 @@
 #include <vector>
 #include <map>
 
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <strings.h>
+#include <sys/socket.h>
+#include <string.h>
+#include <stdlib.h>
+#include <set>
+#include <assert.h>
+
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <errno.h>
+
+#define MAXRCVLEN 500
+
 #include "Tokenizer.h"
 #include "code_generator.h"
+
 using namespace std;
 
 int nchildren = 1;
@@ -62,6 +78,9 @@ double time_stamp()
   return time;
 }
 
+char* all_cg_paths();
+string code_destination_host;
+int harmony_port_num;
 
 typedef vector<vector<int> > vec_of_intvec;
 void process_point_line(string line, vector<int>& one_point);
@@ -82,6 +101,27 @@ void logger (string message);
 int get_num_code_generators(string filename);
 generator *gen_ptr;
 
+
+/*
+ * When the code generator registers with the harmony server it uses this function
+ *
+ * Params:
+ *  sport (int)    - the port of the server
+ *  shost (char *) - the host of the server
+ *  use_sigs (int) - the client will use signals if the value is 1
+ *                   the client will use polling if the value is 0
+ *                   the client will use sort of a polling if value is 2
+ *  relocated (int)- this checks if the client has been migrating lately
+ *                   the use of this variable is not very clear yet, but
+ *
+ * The return value is a handle that can be used to talk to different
+ * harmony servers (if the user is using different servers).
+ */
+void error(char *errmesg)
+{
+  perror(errmesg);
+  exit(0);
+}
 
 /*
  * generators: These are the real work-horses. For each new configuration, we 
@@ -116,6 +156,7 @@ void generator_main(int i,vector<int> params) {
     //  make a call to chill_script.appname.sh
     // Note that this appname has to match the appname specified in the client
     //  tcl file.
+
      stringstream ss;
      ss.str("");
 
@@ -134,8 +175,10 @@ void generator_main(int i,vector<int> params) {
        made to make sure that the hostname matches uniformly across generator_hosts
        file and hostname gathered here.
      */
+              
      // find out if this is a remote host
-     bool flag=(generator_name==hostname);
+     bool flag=(generator_name==code_destination_host.c_str());
+     
      if(flag) {
        // local
        ss <<  " exec ";
@@ -153,7 +196,8 @@ void generator_main(int i,vector<int> params) {
      } else {
        ss << vector_to_bash_array_remote(params);
      }
-     ss << generator_vec.at(i) << "_" << appname << " " << hostname;
+     ss << generator_vec.at(i) << "_" << appname << " " << code_destination_host.c_str();
+     
      cout << ss.str() << " " ;
     
      int sys_return = system(ss.str().c_str());
@@ -163,14 +207,98 @@ void generator_main(int i,vector<int> params) {
      exit(0);
 }
 
+//This function is used to retrieve the PATH variables from global_config file by communicating
+//with the Harmony Server.
+char *all_cg_paths()
+{
+
+  int soc_desc;
+  struct sockaddr_in soc_add;
+  int addrlen;
+  int new_soc;
+
+  int tr = 1;
+
+  int bytes;
+  char buffer[MAXRCVLEN + 1];
+
+  char *final_paths;
+  char *server_port;
+
+  int portnum;
+  
+  //create the master socket and check it worked
+  if ((soc_desc=socket(AF_INET,SOCK_STREAM,0))==0)
+  {
+    //if socket failed then display error and exit
+    perror("Create socket");
+    exit(EXIT_FAILURE);
+  }
+
+  //type of socket created
+  soc_add.sin_family = AF_INET;
+  soc_add.sin_addr.s_addr = INADDR_ANY;
+
+  // try to get the port info from the environment
+  server_port=getenv("HARMONY_S_PORT");
+  if (server_port != NULL)
+  {
+    portnum=atoi(server_port); 
+  }
+  else
+  {
+   // if the env var is not defined, use the default
+   portnum = SERVER_PORT;
+  }
+   
+  soc_add.sin_port = htons(portnum);
+
+  //make the port reusable
+  if (setsockopt(soc_desc, SOL_SOCKET, SO_REUSEADDR, &tr, sizeof(int)) < 0 ) 
+  {
+    perror("setsockopt");
+  }
+
+  // try to connect to the server
+  if (connect(soc_desc,(struct sockaddr *)&soc_add, sizeof(soc_add))<0)
+  {
+    perror("Connection failed!");
+
+    //shutdown master socket properly
+    close(soc_desc);
+  }
+  else
+  {
+    bytes = recv(soc_desc, buffer, MAXRCVLEN, 0);
+    buffer[bytes] = '\0';
+
+    puts("+++++++++++++Path values received from Harmony-Server+++++++++++++");
+    printf("%s\n", buffer);
+    puts("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
+
+    sprintf(final_paths, "%s", buffer);
+    
+    return final_paths;
+  
+    //shutdown master socket properly
+    close(soc_desc);
+  }
+}
+
 string log_file;
 int main(int argc, char **argv)
 {
-    int ppid = getpid();
+    string confs_dir;
+    string code_destination_path;
+    string code_flag_destination;
+    
     int parent=0, child=0, result, pid;
 
     int status, errno;
-
+   
+    istringstream paths_stream(all_cg_paths());
+    paths_stream >> code_destination_host >> confs_dir >> code_destination_path >> code_flag_destination >> harmony_port_num;
+    
     if(argc != 2){
       cout << "Usage: ./code_generator <appname> " << endl;
       cout << " <appname> is the name of the application, we are generating code for. " << endl;
@@ -207,12 +335,13 @@ int main(int argc, char **argv)
         cout << generator_vec.at(i) << " ";
         log_message << generator_vec.at(i) << " ";
     }
+
     log_message << "\n";
     cout << "\n";
     vec_of_intvec code_parameters;
     vec_of_intvec all_params;
-    // main loop starts here
 
+    // main loop starts here
     // update the log file
     logger(log_message.str());
     log_message.str("");
@@ -313,17 +442,14 @@ int main(int argc, char **argv)
 	ss << confs_dir << "candidate_simplex." << appname << "." << timestep << ".dat";
 	std::remove(ss.str().c_str());
 	
-
-
 	/* unique to hopper
 	   generate Makefile
 	 */
-
 	ss.str("");
 	ss << code_flag_destination << "code_complete." << appname << "." << timestep;
 	touch_remote_file(ss.str().c_str(), code_destination_host.c_str());
 	
-        // clear the stream
+	// clear the stream
         ss.str("");
         // increment the timestep
         timestep++;
@@ -356,11 +482,13 @@ int main(int argc, char **argv)
 	  // record some data? How many variants produced in total?
 	  global_data.clear();
 	}
-        code_parameters.clear();
+
+	code_parameters.clear();
         all_params.clear();
         printf("all done \n");
 
     } // mainloop
+
     return 1;
 }
 /*

@@ -16,52 +16,35 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef __HSERVER_H__
-#define __HSERVER_H__
 
-/***
- *
- * include system headers
- *
- ***/
+#include <sys/file.h>
+#include <string.h>
 #include <stdlib.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/stat.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <unistd.h>
-#include <string>
-#include <map>
 
-#include <cstdio>
-#include <cstdlib>
-#include <iostream>
-#include <assert.h>
-#include <sstream>
-#include <set>
+char *read_cfg_file();
+char *server_portnum();
+char *get_config_file();
+char *get_search_algorithm();
+char *get_application_name();
+char *get_new_code_path();
+char *get_hspid_path();
+char *code_generators();
+char *code_generator_hosts();
+char *host_name();
+char *user_home_path();
+char *confs_dir_path();
+char *code_generator_base_path();
+char *num_code_gen_loc_path();
+char *code_dest_host_path();
+char *code_destination_path();
+char *code_flag_dest_path();
+char *all_code_gen_paths();
+char *so_path_prefix_run();
+char *so_path_prefix_def();
+char *so_path_prefix_code();
 
-// tcl/tk
-#include <tcl.h>
 
-/***
- *
- * include user defined headers
- *
- ***/
-#include "hutil.h"
-#include "hmesgs.h"
-#include "hsockutil.h"
 
-/***
- *
- * define macros
- *
- ***/
-#define BUFF_SIZE 1024
 
-extern Tcl_Interp *tcl_inter;
-string history_since(unsigned int);
 
-#endif /* __HSERVER_H__ */
+

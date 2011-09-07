@@ -146,6 +146,9 @@ HMessage * receive_message(int sock) {
     case HMESG_APP_DESCR:
     case HMESG_NODE_DESCR:
     case HMESG_VAR_DESCR:
+    case HMESG_SO_PATH_PREFIX_RUN_DIR:
+    case HMESG_SO_PATH_PREFIX_DEF:
+    case HMESG_SO_PATH_PREFIX_CODE:
         m=new HDescrMessage();
         buflend = ((HDescrMessage *)m)->deserialize((char *)buf);
         break;

@@ -45,11 +45,11 @@
 #include <assert.h>
 #include <iostream>
 #include "hserver.h"
+
 using namespace std;
 
 /* Tcl Interpreter */
 Tcl_Interp *tcl_inter;
-
 char harmonyTclFile[256]="hconfig.pro.tcl";
 
 /* Map containing client AppName and socket */
@@ -360,6 +360,18 @@ int harmony_startup(int sport, char *shost, int use_sigs, int relocated) {
 }
 
 
+
+
+
+/*
+ * This function is used for extracting the path values from the "global_config" file
+ * using the harmony server. The clients that are running the application are not aware 
+ * of the "global_config" file. Hence uses hserver by sending the appropriate message to it
+ * and retrieves the path values.
+*/
+
+
+
 /*
  * When a program announces the server that it will end it calls this
  * function.
@@ -392,7 +404,7 @@ void harmony_end(int socketIndex){
  * Inform the Harmony server of the bundles and requirements of the
  * application.
  * If the user is using only one server, then there is no need to supply
- * the parameter (defualt to 0). Otherwise, to send specific application
+ * the parameter (default to 0). Otherwise, to send specific application
  * description to specific server, the handle returned by the startup
  * call has to be sent in as
  * a parameter.
@@ -1414,3 +1426,67 @@ char *str_replace(char const * const original,
     return returned;
  
 }
+
+char* harmony_get_config_variable(char *path_request_string)
+{
+
+  int socketIndex=0;
+  char *description;
+
+  if(strcmp(path_request_string, "path_prefix_run_dir")==0)
+  {
+    HDescrMessage *mesg = new HDescrMessage(HMESG_SO_PATH_PREFIX_RUN_DIR, description, strlen(description));
+    send_message(mesg,hclient_socket[socketIndex]);
+    delete mesg;  
+  }
+
+  else if(strcmp(path_request_string, "path_prefix_def")==0)
+  {
+    HDescrMessage *mesg = new HDescrMessage(HMESG_SO_PATH_PREFIX_DEF, description, strlen(description));
+    send_message(mesg,hclient_socket[socketIndex]);
+    delete mesg;
+  }
+
+  else if(strcmp(path_request_string, "path_prefix_code")==0)
+  {
+    HDescrMessage *mesg = new HDescrMessage(HMESG_SO_PATH_PREFIX_CODE, description, strlen(description));
+    send_message(mesg,hclient_socket[socketIndex]);
+    delete mesg;
+  }
+
+  // wait for confirmation
+  HMessage *m1 = receive_message(hclient_socket[socketIndex]);
+
+  if (m1->get_type()==HMESG_FAIL) 
+  {
+     // the server could not return the value of the variable
+     printf("The Server failed to return prefix dir path \n");
+     delete m1;
+  }
+  else if (m1->get_type()==HMESG_SO_PATH_PREFIX_RUN_DIR)
+  {
+    HDescrMessage* mesgdesc=(HDescrMessage *)m1;
+    char *pprdir = new char[mesgdesc->get_descrlen()+1];
+    strcpy(pprdir, mesgdesc->get_descr());
+    delete m1;
+    return pprdir;
+  }
+  else if (m1->get_type()==HMESG_SO_PATH_PREFIX_DEF)
+  {
+    HDescrMessage* mesgdesc=(HDescrMessage *)m1;
+    char *ppd = new char[mesgdesc->get_descrlen()+1];
+    strcpy(ppd, mesgdesc->get_descr());
+    delete m1;
+    return ppd;
+  }
+  else if (m1->get_type()==HMESG_SO_PATH_PREFIX_CODE) 
+  {        
+    HDescrMessage* mesgdesc=(HDescrMessage *)m1;
+    char *ppc = new char[mesgdesc->get_descrlen()+1];
+    strcpy(ppc, mesgdesc->get_descr());
+    delete m1;
+    return ppc;
+  }
+}
+
+
