@@ -1,0 +1,5 @@
+*.log
+hserver
+libcreater
+unique_points.*.dat
+gmon.out
