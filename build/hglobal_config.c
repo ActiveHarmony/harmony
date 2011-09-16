@@ -16,347 +16,228 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-/***
- *
- * include user defined headers
- *
- ***/
-#include "hglobal_config.h"
-#include <iostream>
-#include<string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <vector>
-using namespace std;
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <ctype.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include "hglobal_config.h"
 
-char global_cfg_path[256];
-char *cfg_path=getenv("HARMONY_CONFIG");
+/* Internal Function Prototypes */
+int cfg_load(const char *);
+int cfg_parse();
 
-FILE *global_cfg;
+/* Static global variables */
+struct keyval_t {
+    char *key;
+    char *val;
+};
 
-char delimiter[]="=\n";
-char *first,*remainder,*context;
-char data[256];
+static const char CONFIG_DEFAULT_FILENAME[] = "global_config";
+static const unsigned CONFIG_INITIAL_CAPACITY = 1;
 
-char *config_data[512];
-const int MAX=20;
-char *new_mem[MAX];
-const int arr_size_max = 1000;
+static struct keyval_t *cfg_pair = NULL;
+static unsigned cfg_pairlen = 0;
+static char *cfg_buf = NULL;
+static unsigned cfg_buflen;
 
-char server_port[512];
-char hs_config_file[512];
-char search_algo[512];
-char appname_tuning[512];
-char newcode_path[512];
-char hs_pid_path[512];
-char cgen[512];
-char cgenhosts[512];
-char Host_Name[512];
-char userhomepath[512];
-char confsdirpath[512];
-char cgenbasepath[512];
-char codegenloc[512];
-char codedesthostname[512];
-char codedestpath[512];
-char codeflagdest[512];
-char sopathprefix[512];
-char sopathprefixdef[512];
-char sopathprefixcode[512];
-
-/*******Reads the global configuration file*******/
-char *read_cfg_file()
+int cfg_init(const char *filename)
 {
-  char item[512];
-  char val[512];
-  first = item; 
-  context = val;
-  
-  if(cfg_path != NULL)
-  {
-    printf("The path set by the user for global_config file: %s\n", cfg_path);
-  }
-  else 
-  {
-    printf("The path has not been set for the global_config file \n");
-    printf("The application uses the default PATH value for global_config file \n");
-    cfg_path = "./global_config";
-    printf("The PATH used by the application is: %s \n", cfg_path);
-  } 
-
-  sprintf(global_cfg_path, "%s", cfg_path);
-  
-  global_cfg = fopen(global_cfg_path, "r");
-
-  while(!feof(global_cfg))
-  {
-    fgets(data, sizeof data, global_cfg);
-
-    if( strlen(data) > 0 && data[strlen(data)-1] == '\n')
-       data[strlen(data)-1] = 0;
-
-    if(data[0]!='#' && data[0]!=0)
-    {
-       
-      strcpy( item, strtok_r(data, delimiter, &remainder));
-      strcpy( val, strtok_r(NULL, delimiter,  &remainder)); 
-    }
-    else
-    {
-      continue;
+    if (filename == NULL) {
+        filename = getenv("HARMONY_CONFIG");
+        if (filename == NULL) {
+            printf("[AH]: HARMONY_CONFIG environment variable empty."
+                   "  Using default.\n");
+            filename = CONFIG_DEFAULT_FILENAME;
+        }
     }
 
-    if(!strcmp(first,"Server_Port"))
-    {
-      strcpy(server_port,context);
-    }
-    else if(!strcmp(first,"hs_configuration_file"))
-    {
-      strcpy(hs_config_file,context);
-    }
-    else if(!strcmp(first,"search_algorithm"))
-    {
-      strcpy(search_algo,context);
-    }
-    else if(!strcmp(first,"app_name_tuning"))
-    {
-      strcpy(appname_tuning,context);
-    }
-    else if(!strcmp(first,"new_code_path"))
-    {
-      strcpy(newcode_path,context);      
-    }
-    else if(!strcmp(first,"hspid_path"))
-    {
-      strcpy(hs_pid_path,context); 
-    }
-    else if(!strcmp(first,"total_code_generators"))
-    {
-      strcpy(cgen,context); 
-    }
-    else if(!strcmp(first,"total_generator_hosts"))
-    {
-      strcpy(cgenhosts,context); 
-    }
-    else if(!strcmp(first,"hostname"))
-    {
-      strcpy(Host_Name,context); 
-    }
-    else if(!strcmp(first,"user_home"))
-    {
-     strcpy(userhomepath,context); 
-    }
-    else if(!strcmp(first,"confs_dir"))
-    {
-      strcpy(confsdirpath,context); 
-    }
-    else if(!strcmp(first,"code_generator_base"))
-    {
-      strcpy(cgenbasepath,context); 
-    }
-    else if(!strcmp(first,"num_code_gen_loc"))
-    {
-      strcpy(codegenloc,context); 
-    }
-    else if(!strcmp(first,"hostname"))
-    {
-      strcpy(codedesthostname,context); 
-    }
-    else if(!strcmp(first,"code_dest_path"))
-    {
-      strcpy(codedestpath,context); 
-    }
-    else if(!strcmp(first,"code_flag_destination_path"))
-    {
-      strcpy(codeflagdest,context); 
-    }
-    else if(!strcmp(first,"path_prefix_run_dir"))
-    {
-      strcpy(sopathprefix,context); 
-    }
-    else if(!strcmp(first,"path_prefix_def"))
-    {
-      strcpy(sopathprefixdef,context); 
-    }
-    else if(!strcmp(first,"path_prefix_code"))
-    {
-      strcpy(sopathprefixcode,context); 
-    }
-  
-  } 
+    if (cfg_load(filename) < 0)
+        return -1;
+    if (cfg_parse() < 0)
+        return -1;
 
-     
-  fclose(global_cfg);
-
-  /*
-  printf("Server-Port %s\n", server_port);
-  printf("HS_CFG_FILE %s\n", hs_config_file);
-  printf("SEARCH ALGO %s\n", search_algo);
-  printf("APNAME %s\n", appname_tuning);
-  printf("NEWCODE PATH %s\n",newcode_path);
-  printf("HSPID_PATH %s\n", hs_pid_path);
-  printf("CGEN %s\n",cgen);
-  printf("CGHOSTS %s\n",cgenhosts);
-  printf("HOSTNAME :%s\n",Host_Name);
-  printf("UHOMEPATH: %s\n",userhomepath);
-  printf("CFSDIRPATH :%s\n",confsdirpath);
-  printf("CGBP :%s\n", cgenbasepath);
-  printf("CGLOC :%s\n",codegenloc);
-  printf("CDHN :%s\n", codedesthostname);
-  printf("CDP :%s\n", codedestpath);
-  printf("CFD :%s\n", codeflagdest);
-  printf("SPP :%s\n", sopathprefix);
-  printf("SPPDEF :%s\n", sopathprefixdef);
-  printf("SPPCODE :%s\n",sopathprefixcode);
-  */
-
+    return 0;
 }
 
-/*****Extracts the server's port number ******/
-char *server_portnum()
+char *cfg_get(const char *key)
 {
-  return server_port;
+    int i, cmp;
+
+    i = 0;
+    cmp = -1;
+    while (i < cfg_pairlen && cfg_pair[i].key != NULL && cmp < 0) {
+        cmp = strcmp(cfg_pair[i].key, key);
+        if (cmp == 0) {
+            return cfg_pair[i].val;
+        }
+        ++i;
+    }
+    return NULL;
 }
 
-/*****Extract the corresponding configuration file from "global_config" file.*****/
-char *get_config_file()
+/* Load the entire configturation file into memory. */
+int cfg_load(const char *filename)
 {
-  return hs_config_file;
+    unsigned count = 0;
+    int fd, retval;
+    struct stat sb;
+
+    if (cfg_buf != NULL) {
+        free(cfg_buf);
+    }
+
+    printf("[AH]: Loading config file '%s'\n", filename);
+    fd = open(filename, O_RDONLY);
+    if (fd == -1) {
+        printf("[AH]: Error opening file: %s\n", strerror(errno));
+        return -1;
+    }
+
+    /* Obtain file size */
+    if (fstat(fd, &sb) == -1) {
+        printf("[AH]: Error during fstat(): %s\n", strerror(errno));
+        return -1;
+    }
+    cfg_buflen = sb.st_size;
+
+    cfg_buf = (char *)malloc(cfg_buflen + 1); /* Make room for an extra char */
+    if (cfg_buf == NULL) {
+        printf("[AH]: Error during malloc(): %s\n", strerror(errno));
+        return -1;
+    }
+
+    do {
+        retval = read(fd, cfg_buf + count, cfg_buflen - count);
+        if (retval < 0) {
+            printf("[AH]: Error during read(): %s\n", strerror(errno));
+            return -1;
+        }
+        count += retval;
+    } while (count < cfg_buflen);
+    *(cfg_buf + cfg_buflen) = '\n';  /* Add a newline at the end of the file */
+
+    if (close(fd) != 0) {
+        printf("[AH]: Error during close(): %s. Ignoring.\n", strerror(errno));
+    }
+
+    return 0;
 }
 
-/*****Extract the search algorithm used to harmonize the application from the "global_config" file.*****/
-char *get_search_algorithm()
+/* Parse the config file. */
+int cfg_parse()
 {
-  return search_algo;
+    unsigned i, size, linenum;
+    char *eof, *head, *tail, *key, *val, *hash, *ptr;
+    void *alloc;
+
+    eof = cfg_buf + cfg_buflen;
+    size = 0;
+    linenum = 0;
+    head = cfg_buf;
+
+    /* Parse the pairs inside cfg_buf */
+    while (head < eof) {
+        ++linenum;
+
+        /* Find the next line boundary. */
+        tail = (char *)memchr(head, '\n', eof - head);
+        if (tail == NULL) {
+            tail = eof;
+        }
+        *tail = '\0';
+
+        /* Ignore comments. */
+        hash = (char *)memchr(head, '#', tail - head);
+        if (hash == NULL) {
+            hash = tail;
+        }
+
+        /* Trim the whitespace on the left side of the line. */
+        key = head;
+        while (key < hash && (*key == '\0' || isspace(*key)))
+            ++key;
+        if (key == hash) {
+            /* All whitespace line. Ignore it. */
+            head = tail + 1;
+            continue;
+        }
+
+        /* Find the equal sign. */
+        val = (char *)memchr(key, '=', hash - key);
+        if (val == NULL || val == key) {
+            printf("[AH]: Configuration error line %d: %.*s\n",
+                   linenum, tail - head, head);
+            return -1;
+        }
+
+        /* Trim the whitespace on the right side of the key string. */
+        ptr = val;
+        *(val++) = '\0';
+        while (*ptr == '\0' || isspace(*ptr))
+            *(ptr--) = '\0';
+
+        /* Force key strings to be lower-case and have underscores instead
+           of whitespace, */
+        while (ptr >= key) {
+            if (*ptr == '\0' || isspace(*ptr)) {
+                *(ptr--) = '_';
+            } else {
+                *(ptr--) = tolower(*ptr);
+            }
+        }
+
+        /* Trim the whitespace on the left side of the value string. */
+        while (val < hash && (*val == '\0' || isspace(*val)))
+            ++val;
+
+        /* Trim the whitespace on the right side of the value string. */
+        ptr = hash;
+        *ptr = '\0';
+        while (ptr > val && (*ptr == '\0' || isspace(*ptr)))
+            *(ptr--) = '\0';
+
+        /* Increase the capacity of the cfg_pair array, if needed. */
+        if (size >= cfg_pairlen) {
+            cfg_pairlen *= 2;
+            if (cfg_pairlen == 0) {
+                cfg_pairlen = CONFIG_INITIAL_CAPACITY;
+            }
+            alloc = realloc(cfg_pair, sizeof(struct keyval_t) * cfg_pairlen);
+            if (alloc == NULL) {
+                printf("[AH]: Error on realloc(): %s\n", strerror(errno));
+                return -1;
+            }
+            cfg_pair = (struct keyval_t *)alloc;
+        }
+
+        /* Insert the new configuration pair in sorted order. */
+        for (i = size; i > 0; --i) {
+            if (strcmp(cfg_pair[i - 1].key, key) < 0) {
+                break;
+            }
+            cfg_pair[i] = cfg_pair[i - 1];
+        }
+
+        if (i < size && strcmp(cfg_pair[i+1].key, key) == 0) {
+            printf("[AH]: Warning: Configuration key '%s'"
+                   " overwritten on line %d.\n", key, linenum);
+        }
+        cfg_pair[i].key = key;
+        cfg_pair[i].val = val;
+        ++size;
+
+        head = tail + 1;
+    }
+
+    /* Mark the end of valid data within the cfg_pair array. */
+    if (size < cfg_pairlen) {
+        cfg_pair[size].key = NULL;
+    }
+
+    return size;
 }
-
-/*****Extract the application name used for tuning from the "global_config" file.*****/
-char *get_application_name()
-{
-   return appname_tuning;
-}
-
-/*********Extract the path to the new codes that are being generated***********/
-/************* by the code generators from the "global_config" file.***********/
-char *get_new_code_path()
-{
-   return newcode_path;
-}
-
-/*****Extract the harmony server's PID path from the "global_config" file.*****/
-char *get_hspid_path()
-{ 
-  return hs_pid_path;
-}
-
-/*****Extract the "total_code_generators" from the "global_config" file.*****/
-char *code_generators()
-{
-  return cgen;
-}
-
-/*****Extract the "code_generator_hosts" from the "global_config" file.*****/
-char *code_generator_hosts()
-{
-  return cgenhosts;
-}
-
-/*****Extract the "total_code_generators" from the "global_config" file.*****/
-char *host_name()
-{
-   return Host_Name;
-}
-
-/*****Extract the "user_home" path from the "global_config" file.*****/
-char *user_home_path()
-{
-  return userhomepath;
-}
-
-/*****Extract the "confs_dir" path from the "global_config" file.*****/
-char *confs_dir_path()
-{
-  return confsdirpath;
-}
-
-/*****Extract the "code_generator_base" path from the "global_config" file.*****/
-char *code_generator_base_path()
-{
-  return cgenbasepath;
-}
-
-/*****Extract the "num_code_generators" from the "global_config" file.*****/
-char *num_code_gen_loc_path()
-{
-  return codegenloc;
-}
-
-/*****Extract the "num_code_generators" from the "global_config" file.*****/
-char *code_dest_host_name()
-{
-  return Host_Name;
-}
-
-/*****Extract the "num_code_generators" from the "global_config" file.*****/
-char *code_destination_path()
-{
-  return codedestpath;
-}
-
-/*****Extract the "code flags destination path" from the "global_config" file.*****/
-char *code_flag_dest_path()
-{
-  return codeflagdest;
-}
-
-/*****Extract all the code-generator related paths.*****/
-char *all_code_gen_paths()
-{
-  char p1[512], p2[512], p3[512], p4[512], p5[512], p6[512];
-
-  strcpy(p1, Host_Name);
-  strcpy(p2, confsdirpath);
-  strcpy(p3, codedestpath);
-  strcpy(p4, codeflagdest);
-  strcpy(p5, server_port);
-
-  sprintf(p6, "%s \n%s \n%s \n%s \n%s", p1, p2, p3, p4, p5);
-  
-  return p6;
-}
-
-
-/*****Extract the "path_prefix_run_dir" path from the "global_config" file.*****/
-char *so_path_prefix_run()
-{
-  return sopathprefix;
-}
-
-/*****Extract the "path_prefix_def" path from the "global_config" file.*****/
-char *so_path_prefix_def()
-{
-  return sopathprefixdef;
-}
-
-/*****Extract the "path_prefix_code" path from the "global_config" file.*****/
-char *so_path_prefix_code()
-{
-  return sopathprefixcode;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

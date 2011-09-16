@@ -144,77 +144,58 @@ string history_since(unsigned int last)
     return ss.str();
 }
 
-void check_parameters(int argc, char **argv) {
+int check_parameters(int argc, char **argv)
+{
+    char *ptr, *search_algo, *tcl_filename;
 
     // Gets the Search Algorithm and the config file 
     // that the user has selected in the hglobal_config file.
-    char *searching_algo;
-    
-    searching_algo = get_search_algorithm();
-
-    int search_algo;
-
-    for(int i=0; searching_algo[i] != '\0'; i++)
-    {
-      searching_algo[i] = tolower(searching_algo[i]);
+    search_algo = cfg_get("search_algorithm");
+    if (!search_algo) {
+        printf("[AH]: Error: Search algorithm unspecified.\n");
+        return -1;
     }
 
-    if(strcmp(searching_algo, "pro")==0)
-    {
-      search_algo = 1;
+    for (ptr = search_algo; *ptr != '\0'; ++ptr) {
+        *ptr = tolower(*ptr);
     }
-    else if(strcmp(searching_algo, "nelder mead")==0)
-    {
-      search_algo = 2;
-    }
-    else if(strcmp(searching_algo, "random")==0)
-    {
-      search_algo = 3;
-    }
-    else if(strcmp(searching_algo, "brute force")==0)
-    {
-      search_algo = 4;
-    }
-    else
-    {
-      printf("Please check the config file \n");
-      printf("No search algorithm has been entered \n");
+
+    if (strcmp(search_algo, "pro") == 0) {
+        printf("[AH]: Using the PRO search algorithm.  Please make sure\n");
+        printf("[AH]:   the parameters in ../tcl/pro_init_<appname>.tcl are"
+               " defined properly.\n");
+        sprintf(harmonyTclFile, "hconfig.pro.tcl");
+
+    } else if (strcmp(search_algo, "nelder mead") == 0) {
+        printf("[AH]: Using the Nelder Mead Simplex search algorithm.\n");
+        sprintf(harmonyTclFile, "hconfig.nm.tcl");
+
+    } else if (strcmp(search_algo, "random") == 0) {
+        printf("[AH]: Using random search algorithm.\n");
+        sprintf(harmonyTclFile,"hconfig.random.tcl");
+
+    } else if (strcmp(search_algo, "brute force") != 0) {
+        printf("[AH]: Using brute force search algorithm.\n");
+        sprintf(harmonyTclFile, "hconfig.brute.tcl");
+
+    } else {
+        printf("[AH]: Error: Invalid search algorithm '%s'\n", search_algo);
+        printf("[AH]: Valid entries are:\n"
+               "[AH]:\tPRO\n"
+               "[AH]:\tNelder Mead\n"
+               "[AH]:\tRandom\n"
+               "[AH]:\tBrute Force\n");
+        return -1;
     }
 
     // by default, no windows are drawn
     //  to disable Active Harmony server window, use "gmake server_no_tk" to build the framework.
     draw_windows=0;
 
-    if( argc >= 2 )
+    if( argc >= 3 )
     {
       // second argument is the graphics parameter
       draw_windows=atoi(argv[2]);
-    }
- 
-    if(search_algo==1)
-    {
-      printf("[AH]: using the PRO algorithm. Please make sure the parameters in \n");
-      printf("[AH]: ../tcl/pro_init_<appname>.tcl are defined properly.\n");
-      char* config_file=get_config_file();
-      sprintf(harmonyTclFile, "%s", config_file);
-    }
-    if(search_algo==2)
-    {
-      printf("[AH]: using the Nelder Mead Simplex Algorithm. \n");
-      char* config_file=get_config_file();
-      sprintf(harmonyTclFile, "%s", config_file);
-    }
-    if(search_algo == 3)
-    {
-      printf("[AH]: using random Algorithm. \n");
-      char* config_file=get_config_file();
-      sprintf(harmonyTclFile, "%s", config_file);
-    }
-    if(search_algo == 4)
-    {
-      printf("[AH]: using brute force Algorithm. \n");
-      char* config_file=get_config_file();
-      sprintf(harmonyTclFile, "%s", config_file);
     }
 }
 
@@ -322,8 +303,8 @@ void server_startup() {
 
     printf("\nHarmony Server's Process-Id (PID) for this run: %d \n", hs_process_id);
 
-   //Extracts the path where the PID file is located
-    PID_temp = get_hspid_path();
+    //Extracts the path where the PID file is located
+    PID_temp = cfg_get("hspid_path");
 
     FILE *hs_pid;
 
@@ -343,8 +324,8 @@ void server_startup() {
     } 
     else
     {
-      // if the env var is not defined, use the default
-      listen_port = atoi(server_portnum());
+        // if the env var is not defined, use the default
+        listen_port = atoi(cfg_get("server_port"));
     }
 
     /* create a listening socket */
@@ -1400,9 +1381,9 @@ void client_unregister(HRegistMessage *m, int client_socket) {
     //the harmony server. This is mainly used for the cleaning purpose.
 
     //Getting the name of the application that is tuned
-    APPname_temp = get_application_name();
+    APPname_temp = cfg_get("app_name_tuning");
 
-    sprintf(new_code_path, "%s", get_new_code_path());
+    sprintf(new_code_path, "%s", cfg_get("new_code_path"));
 
     //Creating the new directory
     sprintf(new_dir_name, "%s/harmonyPID_%d", new_code_path, hs_process_id);
@@ -1901,7 +1882,7 @@ void performance_update_with_conf(HUpdateMessage *m, int client_socket) {
 char* so_file_path_prefix_run_dir(HDescrMessage *mesg, int client_socket)
 {
   char *ppdir;  
-  ppdir = so_path_prefix_run();
+  ppdir = cfg_get("path_prefix_run_dir");
   HDescrMessage *m1 = new HDescrMessage(HMESG_SO_PATH_PREFIX_RUN_DIR, ppdir, strlen(ppdir));
   send_message(m1,client_socket);
   return ppdir;
@@ -1911,7 +1892,7 @@ char* so_file_path_prefix_run_dir(HDescrMessage *mesg, int client_socket)
 char* so_file_path_prefix_def(HDescrMessage *mesg, int client_socket)
 {
   char *ppdef;
-  ppdef = so_path_prefix_def();
+  ppdef = cfg_get("path_prefix_def");
   HDescrMessage *m1 = new HDescrMessage(HMESG_SO_PATH_PREFIX_DEF, ppdef, strlen(ppdef));
   send_message(m1,client_socket);
   return ppdef;
@@ -1921,7 +1902,7 @@ char* so_file_path_prefix_def(HDescrMessage *mesg, int client_socket)
 char* so_file_path_prefix_code(HDescrMessage *mesg, int client_socket)
 {  
   char *ppcode;  
-  ppcode = so_path_prefix_code();
+  ppcode = cfg_get("path_prefix_code");
   HDescrMessage *m1 = new HDescrMessage(HMESG_SO_PATH_PREFIX_CODE, ppcode, strlen(ppcode));
   send_message(m1,client_socket);
   return ppcode;
@@ -2074,7 +2055,6 @@ void handle_unknown_connection(int fd, int *close_fd)
 /*****Server retrieves the necessary paths from the global_config file and sends to the code-generator*****/
 void code_gen_paths()
 {
-
   int soc_desc;
   struct sockaddr_in soc_add;
   int addrlen;
@@ -2084,10 +2064,14 @@ void code_gen_paths()
 
   int portnum;
 
-  char *str1 = all_code_gen_paths();
   char message1[1024];
-  sprintf(message1, "%s", str1);
-   
+  snprintf(message1, sizeof(message1), "%s \n%s \n%s \n%s \n%s",
+           cfg_get("hostname"),
+           cfg_get("confs_dir"),
+           cfg_get("code_dest_path"),
+           cfg_get("code_flag_destination_path"),
+           cfg_get("server_port"));
+
   //create the master socket and check it worked
   if ((soc_desc=socket(AF_INET,SOCK_STREAM,0))==0)
   {
@@ -2109,7 +2093,7 @@ void code_gen_paths()
   else
   {
     // if the env var is not defined, use the default
-    portnum = atoi(server_portnum());
+      portnum = atoi(cfg_get("server_port"));
   }
 
   soc_add.sin_port = htons(portnum);
@@ -2317,16 +2301,23 @@ char* get_timestamp ()
  * It then initializes and goes for the main loop.
  *
  ***/
-int main(int argc, char **argv) {
-
+int main(int argc, char **argv)
+{
+    char *config_filename = NULL;
     time_t start_time;
     time (&start_time);
     hserver_start_timestamp=start_time;
 
-    //Reads the global_config file and retrieves the values assigned to 
-    //different variables in this file.
-    read_cfg_file();
+    /* Reads the global_config file and retrieves the values assigned to 
+       different variables in this file.
+     */
+    if (argc > 1)
+        config_filename = argv[1];
 
+    if (cfg_init(config_filename) < 0) {
+        printf("[AH]: Configuration error.  Exiting.\n");
+        return(-1);
+    }
     check_parameters(argc, argv);
 
     printf("\nThe Harmony Server waits for the connection request from the code-server \n");
@@ -2336,9 +2327,11 @@ int main(int argc, char **argv) {
     server_startup();
 
     //Retrieving the code generation completion flag from global_config file
-    char *cflagdp = code_flag_dest_path();
+    char *cflagdp = cfg_get("code_flag_destination_path");
     strncpy(code_flags_path, cflagdp, sizeof(code_flags_path)-1);
     code_flags_path[255] = '\0';
 
     main_loop();
+
+    return 0;
 }
