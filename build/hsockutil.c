@@ -32,12 +32,12 @@ using namespace std;
  ***/
 void socket_write(int fd, const void *data, unsigned datalen)
 {
-    unsigned count = 0;
     int retval;
+    unsigned count = 0;
 
     do {
         errno = 0;
-        retval = write(fd, data, datalen);
+        retval = write(fd, ((char *)data) + count, datalen - count);
         if (retval <= 0 && errno != EINTR)
             break;
         /*printf("Wrote: %.*s\n", retval, data);*/
