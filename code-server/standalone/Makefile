@@ -1,7 +1,11 @@
-OPTIMIZE = -O2
-GCC_LINUX = g++ -g -DLinux -DLINUX -Dlinux
-LIBS_LINUX =    -lm -ldl -lnsl -ltcl8.4 -ltk8.4  
-INCLUDE_LINUX = 
+TO_ROOT = ../..
+
+VPATH=$(TO_ROOT)/build
+
+OPTIMIZE = -O3
+LIBS_LINUX = -lm -ldl -lnsl -ltcl8.4 -ltk8.4
+INCLUDE_LINUX = -I$(TO_ROOT)/build
+GCC_LINUX = g++ -g -DLinux -DLINUX -Dlinux $(OPTIMIZE) $(INCLUDE_LINUX)
 
 GCC_SOLARIS = g++ -g -DSOLARIS -DUSE_TK
 LIBS_SOLARIS = -L/usr/imports/lib -lsocket -lnsl -ltk8.4 -ltcl8.4 -lm -ldl -lX11
@@ -17,16 +21,22 @@ INCLUDE=$(INCLUDE_LINUX)
 
 LIBOBJS= code_generator.o Tokenizer.o
 
-all: code_generator
+all: code_generator parse_host_file
 
 Tokenizer.o:
 	$(GCC) -c Tokenizer.cpp
 
-code_generator: code_generator.c Tokenizer.o code_generator.h parse_host_file.c
-	$(GCC) -o code_generator code_generator.c Tokenizer.o -O3
-	$(GCC) -o parse_host_file parse_host_file.c Tokenizer.o -O3
+$(TO_ROOT)/build/hglobal_config.o: hglobal_config.c hglobal_config.h
+	$(MAKE) -C $(TO_ROOT)/build hglobal_config.o
+
+code_generator.o: code_generator.c code_generator.h
+	$(GCC) -c $< -o $@
+
+code_generator: code_generator.o Tokenizer.o hglobal_config.o
+	$(GCC) $(INCLUDE) $(LIB) $^ -o $@
+
+parse_host_file: parse_host_file.c Tokenizer.o
+	$(GCC) $^ -o $@
 
 clean:
 	rm -f code_generator core.* *.o parse_host_file
-
-

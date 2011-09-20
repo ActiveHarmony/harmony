@@ -12,7 +12,7 @@ LIBOBJS= hclient.o hsockutil.o hutil.o hmesgs.o hclientc.o
 AR= ar
 ARCREATE= cr
 
-all: hserver harmony.a parse swig_round_lib
+all: hserver harmony.a libcreater swig_round_lib
 
 hserver: hserver.o hutil.o hsockutil.o hmesgs.o hglobal_config.o httpsvr.o
 	$(GCC) -o hserver hserver.o hutil.o hsockutil.o hmesgs.o hglobal_config.o httpsvr.o $(LIBS) $(INCLUDE)
@@ -60,12 +60,15 @@ y.tab.o: y.tab.c
 stack.o : stack.c stack.h
 	gcc -g -Wall -c $(OPTIMIZE) stack.c
 
-parse: y.tab.o lex.yy.c stack.o libcreater.c
+libcreater: y.tab.o lex.yy.c stack.o libcreater.c
 	gcc -g  y.tab.o lex.yy.c stack.o libcreater.c -DYYDEBUG $(OPTIMIZE) -o libcreater -w
 	cp libcreater ../bin
 
 clean:
-	rm -f core a.out lex.yy.c y.tab.* *.o parser libcreater y.output ../bin/libcreater *~ hserver harmony.a ../bin/hserver ../bin/hconfig.tcl ../bin/hserver_no_tk hserver_no_tk
+	rm -f core a.out *.o y.output harmony.a hserver ../bin/hserver libcreater ../bin/libcreater ../bin/hconfig.tcl
+
+distclean:
+	rm -f *~
 
 swig_round_lib:
 	cd ../round_scp; gmake
