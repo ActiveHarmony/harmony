@@ -96,20 +96,27 @@ int perf_multiplier=10000;
 
 // new code location vars
 // CHANGE THIS (if needed)
-char path_prefix_def[256];
-char path_prefix_code[256];
-char path_prefix_run_dir[256];
+static char *code_prefix;
+static char *default_so;
 
 // CHANGE THIS (if needed)
-void initialize_paths()
+int initialize_paths()
 {
+    code_prefix = harmony_get_config_variable("example_codegen_code_prefix");
+    if (!code_prefix) {
+        printf("[r%d:h%d] Error retrieving config key"
+               " 'example_codegen_code_prefix' from server\n", rank, h_id);
+        return -1;
+    }
 
-  sprintf(path_prefix_run_dir, "%s", harmony_get_config_variable("path_prefix_run_dir"));
+    default_so = harmony_get_config_variable("example_codegen_default_so");
+    if (!default_so) {
+        printf("[r%d:h%d] Error retrieving config key"
+               " 'example_codegen_default_so' from server\n", rank, h_id);
+        return -1;
+    }
 
-  sprintf(path_prefix_def, "%s", harmony_get_config_variable("path_prefix_def"));
-
-  sprintf(path_prefix_code, "%s", harmony_get_config_variable("path_prefix_code"));
-
+    return 0;
 }
 
 double timer()
@@ -118,10 +125,10 @@ double timer()
     struct timeval Tp;
     int stat;
     stat = gettimeofday (&Tp, &Tzp);
-    if (stat != 0) printf("[r%d:h%d] Error return from gettimeofday: %d", rank, h_id, stat);
+    if (stat != 0) printf("[r%d:h%d] Error return from gettimeofday: %d\n",
+                          rank, h_id, stat);
     return(Tp.tv_sec + Tp.tv_usec*1.0e-6);
 }
-
 
 /*
   Construct the full pathname for the new code variant.
@@ -129,9 +136,8 @@ double timer()
 // CHANGE THIS
 void construct_so_filename()
 {
-    
-    sprintf(so_filename,"%s_%d_%d_%d_%d_%d.so", path_prefix_code, *TI, *TJ, *TK, *UI, *UJ);
-
+    sprintf(so_filename, "%s_%d_%d_%d_%d_%d.so", code_prefix,
+            *TI, *TJ, *TK, *UI, *UJ);
 }
 
 // update the evaluation pointer: This is called once the new code becomes available.
@@ -142,7 +148,8 @@ void update_so_eval()
     flib_eval=dlopen(so_filename, RTLD_LAZY);
     dlError = dlerror();
     if( dlError ) {
-        printf("[r%d:h%d] cannot open .so file! %s \n", rank, h_id, so_filename);
+        printf("[r%d:h%d] cannot open .so file! %s \n",
+               rank, h_id, so_filename);
         exit(1);
     }
 
@@ -228,12 +235,14 @@ int eval_original()
         }
     }
 
-    sprintf(so_filename,"%s",path_prefix_def);
-    printf("[r%d:h%d] Opening the default file: %s \n", rank, h_id, so_filename);
+    sprintf(so_filename, "%s", default_so);
+    printf("[r%d:h%d] Opening the default file: %s \n",
+           rank, h_id, so_filename);
     flib_eval=dlopen(so_filename, RTLD_LAZY);
     dlError = dlerror();
     if( dlError ) {
-        printf("[r%d:h%d] cannot open .so file! %s \n", rank, h_id, so_filename);
+        printf("[r%d:h%d] Cannot open .so file! %s \n",
+               rank, h_id, so_filename);
         exit(1);
     }
 
@@ -368,6 +377,13 @@ int  main(int argc, char *argv[])
     /* Using only one server */
     h_id = harmony_startup();
 
+    // initialize the paths
+    if (initialize_paths() < 0) {
+        printf("[r%d:h%d] Error during initialization.\n", rank, h_id);
+        MPI_Finalize();
+        return -1;
+    }
+
     /* send in the application description to the server */
     printf("[r%d:h%d] sending the app description \n", rank, h_id);
     sprintf(app_desc, "offline.tcl");
@@ -377,7 +393,7 @@ int  main(int argc, char *argv[])
      * could be blocking factor and unrolling factor for matrix
      * multiplication program.
      */
-    
+
     printf("[r%d:h%d] Adding harmony variables ... \n", rank, h_id);
     /* register the tunable varibles */
     // CHANGE THIS to reflect the parameters for different code versions.
@@ -388,13 +404,10 @@ int  main(int argc, char *argv[])
     UJ=(int *)harmony_add_variable(code_name_prefix,"UJ",VAR_INT);
     printf("[r%d:h%d] entering \n", rank, h_id);
 
-    // initialize the paths
-    initialize_paths();
-       
     // evaluate the original version
     perf=eval_original();
     current_best_perf=perf;
-    
+
     /* send in the default performance */
     printf("[r%d:h%d] sending the default perf \n", rank, h_id);
     harmony_performance_update(perf);
@@ -421,11 +434,13 @@ int  main(int argc, char *argv[])
             {
                 // update the best pointer
                 best_conf_from_server=harmony_get_best_configuration();
-                printf("[r%d:h%d] Best Conf from server: %s \n", rank, h_id, best_conf_from_server);
+                printf("[r%d:h%d] Best Conf from server: %s \n",
+                       rank, h_id, best_conf_from_server);
 
 		if(best_conf_from_server!=NULL && *best_conf_from_server!='\0')
                 {
-		  sprintf(so_filename, "%s_%s.so", path_prefix_code, best_conf_from_server);
+		  sprintf(so_filename, "%s_%s.so",
+                          code_prefix, best_conf_from_server);
 
 	        }
 
@@ -433,7 +448,8 @@ int  main(int argc, char *argv[])
                 flib_best=dlopen(so_filename, RTLD_LAZY);
                 dlError = dlerror();
                 if( dlError ) {
-                    printf("[r%d:h%d] cannot open .so file! %s \n", rank, h_id, so_filename);
+                    printf("[r%d:h%d] cannot open .so file! %s \n",
+                           rank, h_id, so_filename);
                     exit(1);
                 }
 
@@ -442,7 +458,8 @@ int  main(int argc, char *argv[])
                 dlError = dlerror();
                 if( dlError )
                 {
-                    printf("[r%d:h%d] cannot find %s !\n", rank, h_id, symbol_name);
+                    printf("[r%d:h%d] cannot find %s !\n",
+                           rank, h_id, symbol_name);
                     exit(1);
                 }
             }

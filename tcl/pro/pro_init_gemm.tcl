@@ -267,8 +267,6 @@ proc parallel_simplex_init {appName} {
     set code_generation_params(cserver_connection) 0
 
     # method 2 parameters
-    set code_generation_params(code_generation_destination) "rahulp@brood00:/hivehomes/rahulp/scratch/confs/"
-   
     set initial_simplex_method 4
 
     # space exploration parameters

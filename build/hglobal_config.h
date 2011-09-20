@@ -19,7 +19,16 @@
 #ifndef __HGLOBAL_CONFIG__
 #define __HGLOBAL_CONFIG__
 
+typedef struct keyval {
+    char *key;
+    char *val;
+} keyval_t;
+
+extern keyval_t *cfg_pair;
+extern unsigned cfg_pairlen;
+
 int cfg_init(const char *);
 char *cfg_get(const char *);
+char *cfg_getlower(const char *);
 
 #endif

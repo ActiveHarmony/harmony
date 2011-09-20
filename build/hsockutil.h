@@ -66,5 +66,3 @@ void send_message(HMessage *, int sock);
 HMessage *receive_message(int sock);
 
 #endif /* ifndef _HSOCKUTIL_H__ */
-
-

@@ -167,7 +167,7 @@ void harmony_psuedo_barrier(int socketIndex=0);
 /*
  * Get the prefix directory paths for .so files 
  */
-char* harmony_get_config_variable(char *);
+char* harmony_get_config_variable(const char *, int socketIndex=0);
 
 #endif /* __HCLIENT_H__ */
 

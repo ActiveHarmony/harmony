@@ -1427,66 +1427,21 @@ char *str_replace(char const * const original,
  
 }
 
-char* harmony_get_config_variable(char *path_request_string)
+char *harmony_get_config_variable(const char *key, int socketIndex)
 {
+    HDescrMessage mesg(HMESG_CFG_REQ, key, strlen(key));
+    send_message(&mesg, hclient_socket[socketIndex]);
 
-  int socketIndex=0;
-  char *description;
+    /* Wait for reply. */
+    HMessage *reply = receive_message(hclient_socket[socketIndex]);
 
-  if(strcmp(path_request_string, "path_prefix_run_dir")==0)
-  {
-    HDescrMessage *mesg = new HDescrMessage(HMESG_SO_PATH_PREFIX_RUN_DIR, description, strlen(description));
-    send_message(mesg,hclient_socket[socketIndex]);
-    delete mesg;  
-  }
+    char *retval = NULL;
+    if (reply->get_type() == HMESG_CFG_REQ) {
+        HDescrMessage *msg = dynamic_cast<HDescrMessage *>(reply);
+        retval = (char *) malloc((msg->get_descrlen() + 1) * sizeof(char));
+        strcpy(retval, msg->get_descr());
+    }
+    delete reply;
 
-  else if(strcmp(path_request_string, "path_prefix_def")==0)
-  {
-    HDescrMessage *mesg = new HDescrMessage(HMESG_SO_PATH_PREFIX_DEF, description, strlen(description));
-    send_message(mesg,hclient_socket[socketIndex]);
-    delete mesg;
-  }
-
-  else if(strcmp(path_request_string, "path_prefix_code")==0)
-  {
-    HDescrMessage *mesg = new HDescrMessage(HMESG_SO_PATH_PREFIX_CODE, description, strlen(description));
-    send_message(mesg,hclient_socket[socketIndex]);
-    delete mesg;
-  }
-
-  // wait for confirmation
-  HMessage *m1 = receive_message(hclient_socket[socketIndex]);
-
-  if (m1->get_type()==HMESG_FAIL) 
-  {
-     // the server could not return the value of the variable
-     printf("The Server failed to return prefix dir path \n");
-     delete m1;
-  }
-  else if (m1->get_type()==HMESG_SO_PATH_PREFIX_RUN_DIR)
-  {
-    HDescrMessage* mesgdesc=(HDescrMessage *)m1;
-    char *pprdir = new char[mesgdesc->get_descrlen()+1];
-    strcpy(pprdir, mesgdesc->get_descr());
-    delete m1;
-    return pprdir;
-  }
-  else if (m1->get_type()==HMESG_SO_PATH_PREFIX_DEF)
-  {
-    HDescrMessage* mesgdesc=(HDescrMessage *)m1;
-    char *ppd = new char[mesgdesc->get_descrlen()+1];
-    strcpy(ppd, mesgdesc->get_descr());
-    delete m1;
-    return ppd;
-  }
-  else if (m1->get_type()==HMESG_SO_PATH_PREFIX_CODE) 
-  {        
-    HDescrMessage* mesgdesc=(HDescrMessage *)m1;
-    char *ppc = new char[mesgdesc->get_descrlen()+1];
-    strcpy(ppc, mesgdesc->get_descr());
-    delete m1;
-    return ppc;
-  }
+    return retval;
 }
-
-

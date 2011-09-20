@@ -17,8 +17,13 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <stdio.h>
+#include <strings.h>
+#include <string.h>
+#include <stdlib.h>
 #include <signal.h>
 #include <unistd.h>
+#include <assert.h>
+#include <errno.h>
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/wait.h>
@@ -29,36 +34,15 @@
 #include <sstream>
 #include <vector>
 #include <map>
-
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <strings.h>
-#include <sys/socket.h>
-#include <string.h>
-#include <stdlib.h>
 #include <set>
-#include <assert.h>
-
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <errno.h>
-
-#define MAXRCVLEN 500
 
 #include "Tokenizer.h"
 #include "code_generator.h"
+#include "hglobal_config.h"
 
 using namespace std;
 
-int nchildren = 1;
-int timestep = 1;
-/* global_data keeps track of all the configurations that we have 
- * generated code for so far. 
- */
-map<string,int> global_data;
-map<string,int>::iterator it;
-
-typedef pair <int, int> Int_Pair;
+typedef vector<vector<int> > vec_of_intvec;
 
 // generator typedef
 typedef struct {
@@ -78,50 +62,34 @@ double time_stamp()
   return time;
 }
 
-char* all_cg_paths();
-string code_destination_host;
-int harmony_port_num;
-
-typedef vector<vector<int> > vec_of_intvec;
+void generator_main(int, vector<int>);
+int codeserver_init(string &);
 void process_point_line(string line, vector<int>& one_point);
-void get_parameters_from_file(vector<vec_of_intvec>& intvec, string filename);
-void get_code_generators (vector<string>& vec, string filename);
+int parse_slave_list(vector<string> &vec, const char *hostlist);
 void get_points_vector (string point, vec_of_intvec& code_parameters);
 string vector_to_string(vector<int> v);
 string vector_to_bash_array_local(vector<int> v);
 string vector_to_bash_array_remote(vector<int> v);
 string vector_to_string_demo(vector<int> v);
-void get_parameters_from_file(vec_of_intvec& intvec, string filename);
-vector<string> generator_vec;
-vector<int> local_remote;
+void get_parameters_from_file(vec_of_intvec &intvec, string filename);
 int file_exists (const char * fileName);
-void populate_remove(vec_of_intvec all_params,vec_of_intvec& code_parameters);
+void populate_remove(vec_of_intvec &all_params, vec_of_intvec &code_params);
 void print_vec(vector<int>& a);
 void logger (string message);
-int get_num_code_generators(string filename);
-generator *gen_ptr;
-
+int touch_remote_file(string filename, string &host);
 
 /*
- * When the code generator registers with the harmony server it uses this function
- *
- * Params:
- *  sport (int)    - the port of the server
- *  shost (char *) - the host of the server
- *  use_sigs (int) - the client will use signals if the value is 1
- *                   the client will use polling if the value is 0
- *                   the client will use sort of a polling if value is 2
- *  relocated (int)- this checks if the client has been migrating lately
- *                   the use of this variable is not very clear yet, but
- *
- * The return value is a handle that can be used to talk to different
- * harmony servers (if the user is using different servers).
+ * Global Variable Declaration
  */
-void error(char *errmesg)
-{
-  perror(errmesg);
-  exit(0);
-}
+static int nchildren = 1;
+static int timestep = 1;
+static generator *gen_ptr = NULL;
+static vector<string> generator_vec;
+/* Configuration values passed in from the harmony server. */
+static string appname, conf_host, conf_dir, code_host,
+    code_dir, flag_host, flag_dir, slave_dir;
+/* global_data tracks all configurations we have generated code for so far. */
+static map<string,int> global_data;
 
 /*
  * generators: These are the real work-horses. For each new configuration, we 
@@ -132,11 +100,9 @@ void error(char *errmesg)
 
 pid_t generator_make(int i, vector<int> params)
 {
-
     pid_t pid;
 
-    void generator_main(int, vector<int>);
-    if((pid = fork()) > 0) {
+    if ( (pid = fork()) > 0) {
         gen_ptr[i].parameters=params;
         gen_ptr[i].avail=1;
         gen_ptr[i].pid=pid;
@@ -150,240 +116,130 @@ pid_t generator_make(int i, vector<int> params)
 //  Scripts for different code and different code-generation utility need to
 //   be provided by the user.
 
-void generator_main(int i,vector<int> params) {
-
+void generator_main(int i, vector<int> params)
+{
     // this is where the code generation happens
     //  make a call to chill_script.appname.sh
     // Note that this appname has to match the appname specified in the client
     //  tcl file.
 
-     stringstream ss;
-     ss.str("");
+    stringstream ss;
+    ss.str("");
 
-     // set which machine to use
-     // first check to see if there is an underscore in the machine name.
-     string generator_name = generator_vec.at(i);
-     size_t found;
-     found=generator_name.find("_");
-     if(found != -1)
-     {
+    // set which machine to use
+    // first check to see if there is an underscore in the machine name.
+    string generator_name = generator_vec.at(i);
+    size_t found;
+    found = generator_name.find("_");
+    if (found != -1)
+    {
         generator_name=generator_name.erase(found);
-     }
-     
-     /*
-       Different machines might be configured differently. So a check here should
-       made to make sure that the hostname matches uniformly across generator_hosts
-       file and hostname gathered here.
+    }
+
+    /* Different machines might be configured differently. So a check here
+     * should be made to make sure that the hostname matches uniformly across
+     * generator_hosts file and hostname gathered here.
      */
-              
-     // find out if this is a remote host
-     bool flag=(generator_name==code_destination_host.c_str());
-     
-     if(flag) {
-       // local
-       ss <<  " exec ";
-       ss << "$HOME/scratch/" <<  generator_vec.at(i) << "_" << appname;
-     } else {
-       // remote
-       ss << "ssh  " << generator_name << " exec ";
-       ss << "\\$HOME/scratch/" <<  generator_vec.at(i) << "_" << appname;
-     }
 
-     ss << "/chill_script." << appname << ".sh ";
+    // find out if this is a remote host
+    bool flag = (generator_name == conf_host);
 
-     if(flag) {
-       ss << vector_to_bash_array_local(params);
-     } else {
-       ss << vector_to_bash_array_remote(params);
-     }
-     ss << generator_vec.at(i) << "_" << appname << " " << code_destination_host.c_str();
-     
-     cout << ss.str() << " " ;
-    
-     int sys_return = system(ss.str().c_str());
-     cout << ss.str() << " " << gen_ptr[i].pid << "  " << generator_name << " sys_return " << sys_return << "\n";
+    if (!flag) {
+        // remote
+        ss << "ssh " << generator_name << " ";
+    }
+    ss << "exec " << slave_dir << "/" << generator_vec.at(i)
+       << "_" << appname << "/chill_script." << appname << ".sh ";
 
-     // error check not done yet.
-     exit(0);
-}
+    if (flag) {
+        ss << vector_to_bash_array_local(params);
+    } else {
+        ss << vector_to_bash_array_remote(params);
+    }
+    ss << generator_name << " "
+       << slave_dir << "/" << generator_vec.at(i) << "_" << appname << " "
+       << code_host << " "
+       << code_dir;
 
-//This function is used to retrieve the PATH variables from global_config file by communicating
-//with the Harmony Server.
-char *all_cg_paths()
-{
+    cout << "[CS]: Executing: " << ss.str() << endl;
+    int sys_return = system(ss.str().c_str());
+    cout << "[CS]: Returned: " << sys_return << endl;
 
-  int soc_desc;
-  struct sockaddr_in soc_add;
-  int addrlen;
-  int new_soc;
-
-  int tr = 1;
-
-  int bytes;
-  char buffer[MAXRCVLEN + 1];
-
-  char *final_paths;
-  char *server_port;
-
-  int portnum;
-  
-  //create the master socket and check it worked
-  if ((soc_desc=socket(AF_INET,SOCK_STREAM,0))==0)
-  {
-    //if socket failed then display error and exit
-    perror("Create socket");
-    exit(EXIT_FAILURE);
-  }
-
-  //type of socket created
-  soc_add.sin_family = AF_INET;
-  soc_add.sin_addr.s_addr = INADDR_ANY;
-
-  // try to get the port info from the environment
-  server_port=getenv("HARMONY_S_PORT");
-  if (server_port != NULL)
-  {
-    portnum=atoi(server_port); 
-  }
-  else
-  {
-   // if the env var is not defined, use the default
-   portnum = SERVER_PORT;
-  }
-   
-  soc_add.sin_port = htons(portnum);
-
-  //make the port reusable
-  if (setsockopt(soc_desc, SOL_SOCKET, SO_REUSEADDR, &tr, sizeof(int)) < 0 ) 
-  {
-    perror("setsockopt");
-  }
-
-  // try to connect to the server
-  if (connect(soc_desc,(struct sockaddr *)&soc_add, sizeof(soc_add))<0)
-  {
-    perror("Connection failed!");
-
-    //shutdown master socket properly
-    close(soc_desc);
-  }
-  else
-  {
-    bytes = recv(soc_desc, buffer, MAXRCVLEN, 0);
-    buffer[bytes] = '\0';
-
-    puts("+++++++++++++Path values received from Harmony-Server+++++++++++++");
-    printf("%s\n", buffer);
-    puts("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
-
-    sprintf(final_paths, "%s", buffer);
-    
-    return final_paths;
-  
-    //shutdown master socket properly
-    close(soc_desc);
-  }
+    // error check not done yet.
+    exit(0);
 }
 
 string log_file;
+stringstream log_message;
 int main(int argc, char **argv)
 {
-    string confs_dir;
-    string code_destination_path;
-    string code_flag_destination;
-    
-    int parent=0, child=0, result, pid;
+    stringstream ss;
+    int pid, status;
 
-    int status, errno;
-   
-    istringstream paths_stream(all_cg_paths());
-    paths_stream >> code_destination_host >> confs_dir >> code_destination_path >> code_flag_destination >> harmony_port_num;
-    
-    if(argc != 2){
-      cout << "Usage: ./code_generator <appname> " << endl;
-      cout << " <appname> is the name of the application, we are generating code for. " << endl;
-      exit(0);
+    if (argc != 2) {
+        cerr << "Usage: ./code_generator <codegen_conf_dir>\n";
+        cerr << " Where <codegen_conf_dir> should match the path specified"
+                " in the harmony server's configuration file.\n";
+        exit(-1);
     }
 
-    // first argument is the appname
-    appname=argv[1];
-    log_file="generation."+appname+".log";
-    cout << "generating code for: " << appname << endl;
-    
-    int allpids[2];
-    stringstream ss, ss2, ss3,log_message;
-
-     // first get the list of available machines
-    ss << "generator_hosts_" << appname;
-    string filename=ss.str();
-    ss.str("");
-    cout << "generator host filename: " << filename << endl; 
-    get_code_generators(generator_vec, filename);
-    int num_generators=generator_vec.size();
-
-    cout << "The list of available machines: ";
-    log_message << "---------------------------------------------------" << endl;
-    log_message << "The list of available machines: ";
-
-    int nchildren = generator_vec.size();
-    gen_ptr = (generator*)calloc(nchildren, sizeof(generator));
-
-    log_message << "Num Code Servers: " << generator_vec.size();
-   
-    for(int i=0; i < generator_vec.size(); i++)
-    {
-        cout << generator_vec.at(i) << " ";
-        log_message << generator_vec.at(i) << " ";
+    if (file_exists(argv[1]) != 2) {
+        cerr << argv[1] << " is not a valid directory.  Exiting.\n";
+        exit(-1);
     }
+    conf_dir = argv[1];
 
-    log_message << "\n";
-    cout << "\n";
     vec_of_intvec code_parameters;
     vec_of_intvec all_params;
 
     // main loop starts here
     // update the log file
-    logger(log_message.str());
-    log_message.str("");
 
-    // code generation loop
-    while(true) {
-
-        // read the parameters from parameter.timestep.dat file
+    string init_filename = conf_dir + "/harmony.init";
+    string next_filename;
+    while (true) {
+        /* Construct the next timestep filename. */
         ss.str("");
-        log_message.str("");
-        // the file to watch
-        ss << confs_dir << "candidate_simplex." << appname << "." << timestep << ".dat";
-	ss3.str("");
-	ss3 << confs_dir << "candidate_simplex." << appname << ".00.dat";
+        ss << conf_dir << "/candidate_simplex." << appname
+           << "." << timestep << ".dat";
+        next_filename = ss.str();
 
-        log_message << "waiting to hear from harmony server ... \n";
-        cout << ss.str() << "\n";
-	// spin-lock
-        while(!file_exists(ss.str().c_str())
-	      && !file_exists(ss3.str().c_str())){
-            sleep(1);
+        cout << "[CS]: Waiting to hear from harmony server..." << endl;
+        log_message << "[CS]: Waiting to hear from harmony server...\n";
+        while (!file_exists(init_filename.c_str()) &&
+               !file_exists(next_filename.c_str())) {
+            sleep (1);
         }
 
-	if(file_exists(ss3.str().c_str())){
-	  std::remove(ss3.str().c_str());
-	  break;
-	}
+        if (file_exists(init_filename.c_str())) {
+            cout << "[CS]: Harmony initialization file found." << endl;
+            if (codeserver_init(init_filename) < 0) {
+                cerr << "[CS]: Removing invalid configuration file.\n";
 
+            } else {
+                // record some data? How many variants produced in total?
+                global_data.clear();
+                timestep = 1;
+                cout << "[CS]: Beginning new code server session." << endl;
+            }
+            std::remove(init_filename.c_str());
+            continue;
+        }
 
-        filename = ss.str();
-        cout << "filename: " << filename << "\n";
+        cout << "[CS]: Filename: " << next_filename << endl;
+        get_parameters_from_file(all_params, next_filename);
 
-        get_parameters_from_file(all_params, filename);
-      
         // populate the global database and remove the confs
         // that we have seen already
         populate_remove(all_params, code_parameters);
 
-        cout << "Code Transformation Parameters: size: " << code_parameters.size() << " \n";
-        log_message << "Code Transformation Parameters received for iteration: " << timestep << "\n";
-	log_message << "# of unique confs for this iteration: " << code_parameters.size() << " \n";
-      
+        cout << "[CS]: Code Transformation Parameters: size: "
+             << code_parameters.size() << "\n";
+        log_message << "[CS]: Code Transformation Parameters for iteration: "
+                    << timestep << "\n";
+	log_message << "# of unique confs for this iteration: "
+                    << code_parameters.size() << " \n";
+
 	double time1__, time2__;
 	time1__=time_stamp();
         for (int i = 0; i < code_parameters.size(); i++)
@@ -392,105 +248,191 @@ int main(int argc, char **argv)
             //  resources
             if (i < nchildren) {
                 pid = generator_make(i, code_parameters.at(i));
-                log_message << generator_vec.at(i) << " : " << vector_to_string(code_parameters.at(i)) << "\n";
+                log_message << generator_vec.at(i) << " : "
+                            << vector_to_string(code_parameters.at(i)) << "\n";
                 logger(log_message.str());
                 log_message.str("");
+
             } else {
-                // if we have used all the resources at least once, we have to wait until someone
-                //   becomes free
-                int status;
-                int pid_done = waitpid(-1, &status,0);
+                // if we have used all the resources at least once,
+                // we have to wait until someone becomes free
+                int pid_done = waitpid(-1, &status, 0);
                 if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-                    cerr << "Process " << i << " (pid " << pid_done << ") failed" << endl;
+                    cerr << "[CS]: Process " << i
+                         << " (pid " << pid_done << ") failed.\n";
                     // handle this error separately
-		     exit(1);
+                    exit(1);
+
                 } else {
                     int ii;
                     for (ii = 0; ii < nchildren; ++ii) {
-                        if(pid_done == gen_ptr[ii].pid) {
+                        if (pid_done == gen_ptr[ii].pid) {
                             gen_ptr[ii].avail=1;
                             break;
-                        } 
+                        }
                     }
                     pid = generator_make(ii, code_parameters.at(i));
-                    log_message << generator_vec.at(ii) << " : " << vector_to_string(code_parameters.at(i)) << "\n";
+                    log_message << generator_vec.at(ii) << " : "
+                                << vector_to_string(code_parameters.at(i))
+                                << "\n";
                     logger(log_message.str());
                     log_message.str("");
                 }
             }
         }
 
-        /* finally wait for all children to finish
-           write out the indicator file (for now, this
-           should suffice, need to change this later).
-        */
-
-        // first retrieve the pids for the ones that could be
-        //  alive at this point of the code.
-
-        for(int i = 0; i < nchildren; i++) {
-            (waitpid(gen_ptr[i].pid, &status, 0));
+        /* Finally, wait for all children to finish. (for now, this
+           should suffice, need to change this later). */
+        for (int i = 0; i < nchildren; i++) {
+            waitpid(gen_ptr[i].pid, &status, 0);
         }
 	time2__=time_stamp();
 	double elapsed__=time2__-time1__;
-	log_message << "Total time for iteration "<< timestep << " : " << elapsed__ << endl;
-	log_message << "------------------" << endl;
+	log_message << "[CS]: Total time for iteration "<< timestep
+                    << " : " << elapsed__ << "\n------------------\n";
 	logger(log_message.str());
 	log_message.str("");
-	// delete the confs for which we have generated code already
+
+	/* Remove the conf file we just processed. */
+	std::remove(next_filename.c_str());
+
+        /* Inform the harmony server of newly generated code. */
 	ss.str("");
-	ss << confs_dir << "candidate_simplex." << appname << "." << timestep << ".dat";
-	std::remove(ss.str().c_str());
-	
-	/* unique to hopper
-	   generate Makefile
-	 */
-	ss.str("");
-	ss << code_flag_destination << "code_complete." << appname << "." << timestep;
-	touch_remote_file(ss.str().c_str(), code_destination_host.c_str());
-	
-	// clear the stream
-        ss.str("");
-        // increment the timestep
-        timestep++;
-        // the file to watch for
-	ss << confs_dir << "candidate_simplex." << appname << "." << timestep << ".dat";
-	//        ss << "confs/candidate_simplex." << timestep << ".dat";
-
-	// if we see candidate_simplex.1.dat again, it means a new harmony tuning session has begun
-	ss2.str("");
-	ss2 << confs_dir << "candidate_simplex." << appname << ".1" << ".dat";
-	 
-	ss3.str("");
-	ss3 << confs_dir << "candidate_simplex." << appname << ".00" << ".dat";
-	cout << ss2.str() << "\n";
-	cout << ss3.str() << "\n";
-        cout << ss.str() << "\n";
-        while(!file_exists(ss.str().c_str()) 
-	      && !file_exists(ss2.str().c_str()) 
-	      && !file_exists(ss3.str().c_str())) {
-	  sleep(1);
-	}
-
-	if(file_exists(ss3.str().c_str())){
-	  std::remove(ss3.str().c_str());
-	  break;
-	}
-
-	if(file_exists(ss2.str().c_str())){
-	  timestep=1;
-	  // record some data? How many variants produced in total?
-	  global_data.clear();
-	}
+	ss << flag_dir << "/code_complete." << appname << "." << timestep;
+	touch_remote_file(ss.str(), flag_host);
 
 	code_parameters.clear();
         all_params.clear();
-        printf("all done \n");
+        cout << "[CS]: Iteration complete." << endl;
 
+        // increment the timestep
+        timestep++;
     } // mainloop
 
     return 1;
 }
+
+int codeserver_init(string &filename)
+{
+    stringstream ss;
+    cfg_init(filename.c_str());  /* Errors during this call will show up
+                                    when we check code_dir and session. */
+
+    /* Configuration variable assignment needs to be an atomic operation.
+     * So, check that all variables exist, then assign them all.
+     */
+    char *session = cfg_get("harmony_session");
+    if (session == NULL) {
+        cerr << "[CS]: Error: harmony_session config directive missing.\n";
+        return -1;
+    }
+
+    if (cfg_get("app_name_tuning") == NULL) {
+        cerr << "[CS]: Error: app_name_tuning config directive missing.\n"
+             << "Please fix the harmony server's global config file.\n";
+        return -1;
+    }
+
+    if (cfg_get("codegen_conf_host") == NULL) {
+        cerr << "[CS]: Error: codegen_conf_host config directive missing.\n"
+             << "Please fix the harmony server's global config file.\n";
+        return -1;
+    }
+
+    if (cfg_get("codegen_code_host") == NULL) {
+        cerr << "[CS]: Error: codegen_code_host config directive missing.\n"
+             << "Please fix the harmony server's global config file.\n";
+        return -1;
+    }
+
+    if (cfg_get("codegen_code_dir") == NULL) {
+        cerr << "[CS]: Error: codegen_code_dir config directive missing.\n"
+             << "Please fix the harmony server's global config file.\n";
+        return -1;
+    }
+
+    if (cfg_get("codegen_flag_host") == NULL) {
+        cerr << "[CS]: Error: codegen_flag_host config directive missing.\n"
+             << "Please fix the harmony server's global config file.\n";
+        return -1;
+    }
+
+    if (cfg_get("codegen_flag_dir") == NULL) {
+        cerr << "[CS]: Error: codegen_flag_dir config directive missing.\n"
+             << "Please fix the harmony server's global config file.\n";
+        return -1;
+    }
+
+    if (cfg_get("codegen_slave_dir") == NULL) {
+        cerr << "[CS]: Error: codegen_slave_dir config directive missing.\n"
+             << "Please fix the harmony server's global config file.\n";
+        return -1;
+    }
+
+    if (parse_slave_list(generator_vec, cfg_get("codegen_slave_list")) < 0) {
+        cerr << "[CS]: Error: codegen_slave_list config directive invalid.\n"
+             << "Please fix the harmony server's global config file.\n";
+        return -1;
+    }
+    nchildren = generator_vec.size();
+
+    /* All configuration items are valid.  Begin atomic assignement. */
+    appname = cfg_get("app_name_tuning");
+    conf_host = cfg_get("codegen_conf_host");
+    code_host = cfg_get("codegen_code_host");
+    code_dir = cfg_get("codegen_code_dir");
+    flag_host = cfg_get("codegen_flag_host");
+    flag_dir = cfg_get("codegen_flag_dir");
+    slave_dir = cfg_get("codegen_slave_dir");
+
+    /* Initialize the application log file. */
+    ss.str("");
+    ss << "generation." << appname << ".log";
+    log_file = ss.str();
+    cout << "[CS]: Generating code for: " << appname << endl;
+
+    cout << "[CS]: The list of available machines:" << endl;
+    log_message << "[CS]: -------------------------------------------\n";
+    log_message << "[CS]: The list of available machines: ";
+
+    for(int i = 0; i < nchildren; ++i)
+    {
+        cout << generator_vec.at(i) << " ";
+        log_message << generator_vec.at(i) << " ";
+    }
+    cout << "\n";
+    log_message << "\n";
+
+    logger(log_message.str());
+    log_message.str("");
+
+    /* Initialize generator structure array. */
+    if (gen_ptr != NULL) {
+        free(gen_ptr);
+    }
+    gen_ptr = (generator*)calloc(nchildren, sizeof(generator));
+
+    /* Run the setup_code_gen_hosts.sh script. */
+    ss.str("");
+    ss << "/bin/sh setup_code_gen_hosts.sh " << appname <<  " "
+       << slave_dir << " " << conf_host;
+    for (int i = 0; i < nchildren; ++i) {
+        ss << " " << generator_vec[i];
+    }
+    if (system(ss.str().c_str()) != 0) {
+        cout << "[CS]: Error on system(" << ss.str() << ")" << endl;
+        return -1;
+    }
+
+    /* Respond to the harmony server. */
+    ss.str("");
+    ss << flag_dir << "/codeserver.init." << session;
+    touch_remote_file(ss.str(), code_host);
+    cout << "[CS]: Created harmony response flag (" << ss.str() << ")" << endl;
+
+    return 0;
+}
+
 /*
   Helpers
 */
@@ -504,9 +446,8 @@ void print_vec(vector<int>& a)
 }//print
 
 void
-populate_remove(vec_of_intvec all_params, vec_of_intvec& code_parameters)
+populate_remove(vec_of_intvec &all_params, vec_of_intvec &code_params)
 {
-
     for(int i=0; i < all_params.size(); i++)
     {
         vector<int> temp = all_params.at(i);
@@ -522,7 +463,7 @@ populate_remove(vec_of_intvec all_params, vec_of_intvec& code_parameters)
         ss.str("");
         if(pr.second)
         {
-            code_parameters.push_back(temp);
+            code_params.push_back(temp);
         }
     }
 }
@@ -542,61 +483,79 @@ logger (string message)
     out_file << message;
     out_file.flush();
     out_file.close();
-    
-
 }
-
 
 int
-get_num_code_generators(string filename)
+parse_slave_list(vector<string>& vec, const char *hostlist)
 {
-  string line;
-  ifstream myfile;
-  myfile.open(filename.c_str());
-  if (myfile.is_open()) {
-    getline(myfile,line);
-    if(line.length() == 0)
-      {
-	cout << "ERROR: Num code generators not defined. " << endl;
-	exit(0);
-      }	
-  }
-  return atoi(line.c_str());
-}
+    vector<string> tmp;
+    const char *end, *head, *tail, *host_ptr;
+    char *num_ptr;
+    string host;
+    unsigned num;
+    stringstream ss;
 
+    if (hostlist == NULL)
+        return -1;
 
-void
-get_code_generators (vector<string>& vec, string filename)
-{
-    int num_lines=0;
-    string line;
-    ifstream myfile;
-    string machine_name;
-    string instances;
-    int num_instances;
+    end = hostlist + strlen(hostlist);
+    head = hostlist;
+    while (head < end) {
+        host = "";
+        num = -1;
 
-    myfile.open(filename.c_str());
-    if (myfile.is_open()) {
-        while(getline (myfile,line)) {
-            if(line.length() == 0) break;
-            Tokenizer strtok_space;
-            strtok_space.set(line, " ");
-            machine_name=strtok_space.next();
-            instances=strtok_space.next();
-            num_instances=atoi(instances.c_str());
-            for(int ii=1; ii<=num_instances; ii++) {
-              stringstream tmp;
-              tmp.str("");
-              tmp << machine_name << "_" << ii;
-              vec.push_back(tmp.str());
-            }
-            num_lines++;
+        /* Find the entry boundary. */
+        tail = (char *)memchr(head, ',', end - head);
+        if (!tail) {
+            tail = end;
         }
-        myfile.close();
-    }
-    else cout << "Unable to open file: " << filename;
-}
 
+        /* Skip leading whitespace. */
+        while (head < tail && (head == '\0' || isspace(*head))) {
+            ++head;
+        }
+        host_ptr = head;
+
+        /* Find host boundary whitespace. */
+        while (head < tail && (head != '\0' && !isspace(*head))) {
+            ++head;
+        }
+        host = string(host_ptr, head++);
+
+        /* Find the unsigned integer after the host. */
+        errno = 0;
+        num = strtoul(head, &num_ptr, 0);
+        if (errno != 0) {
+            num = -1;
+            head = tail;
+        } else {
+            head = num_ptr;
+        }
+
+        /* Skip trailing whitespace. */
+        while (head < tail && (head == '\0' || isspace(*head))) {
+            ++head;
+        }
+
+        /* Error check */
+        if (host.empty() || num == -1 || head != tail) {
+            cerr << "[CS]: Error parsing slave host list ("
+                 << hostlist << ")\n";
+            return -1;
+        }
+
+        for (int i = 1; i <= num; ++i) {
+            ss.str("");
+            ss << host << "_" << i;
+            tmp.push_back(ss.str());
+        }
+        ++head;
+    }
+
+    /* Only modify vec if we know the input to be error free. */
+    vec = tmp;
+    return 0;
+}
 
 void
 get_parameters_from_file(vec_of_intvec& intvec, string filename)
@@ -690,20 +649,25 @@ vector_to_string(vector<int> v)
 }
 
 int
-file_exists (const char * fileName)
+file_exists (const char *fileName)
 {
     struct stat buf;
+    if (fileName == NULL) {
+        return 0;
+    }
+
     int i = stat ( fileName, &buf );
-    int size = buf.st_size;
-    /* File found */
-    if ( i == 0 && size > 0)
-    {
+    if (i != 0) {
+        return 0;
+
+    } else if (S_ISREG(buf.st_mode) && buf.st_size > 0) {
         return 1;
+
+    } else if (S_ISDIR(buf.st_mode)) {
+        return 2;
     }
     return 0;
-
 }
-
 
 // given a file name, this gives the total number of lines in the file.
 int
@@ -752,3 +716,9 @@ get_points_vector (string point, vec_of_intvec& code_parameters)
     }
 }
 
+int touch_remote_file(string filename, string &host)
+{
+    stringstream ss;
+    ss << "ssh " << host << " touch " << filename;
+    return system(ss.str().c_str());
+}

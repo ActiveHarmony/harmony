@@ -77,9 +77,7 @@ using namespace std;
 #define HMESG_WITH_CONF 17
 #define HMESG_CODE_COMPLETION 18
 #define HMESG_PERF_ALREADY_EVALUATED 19
-#define HMESG_SO_PATH_PREFIX_RUN_DIR 20
-#define HMESG_SO_PATH_PREFIX_DEF 21
-#define HMESG_SO_PATH_PREFIX_CODE 22
+#define HMESG_CFG_REQ 20
 
 /*
  * define accepted variable types
@@ -325,10 +323,7 @@ static const char *print_type[] = {"NONE",
                                    "WITH_CONF",
                                    "CODE_COMPLETION",
                                    "PERF_ALREADY_EVALUATED",
-                                   "SO_PATH_PREFIX_RUN_DIR",
-                                   "SO_PATH_PREFIX_DEF",
-                                   "SO_PATH_PREFIX_CODE"};
-                                 
+                                   "CFG_REQ"};
 
 // the general message class
 class HMessage {
@@ -541,8 +536,6 @@ class HUpdateMessage : public HMessage {
     void print();
 };
 
-
-
 // this class carries descriptions along the net
 // the purpose of defining the Description message class is
 // to be used when sending application descriptions and variable registration
@@ -560,7 +553,7 @@ class HDescrMessage : public HMessage {
     }
 
     // constructor given type of message, description and description length
-    HDescrMessage(int t, char *d, int l):HMessage(t){
+    HDescrMessage(int t, const char *d, int l):HMessage(t){
         descrlen=htons(l);
         //    descr=new char[l+1];
         descr = (char *)malloc(sizeof(char)*(l+1));
@@ -579,14 +572,14 @@ class HDescrMessage : public HMessage {
     }
 
     // set description inside the message given a string and its length
-    inline void set_descr(char *d, int l) {
+    inline void set_descr(const char *d, int l) {
         free(descr);
         set_descr(d,l,0);
     }
 
     // set description inside the message given a string and its length
     // but with the option of freeing the old one first.
-    inline void set_descr(char *d, int l, int erase) {
+    inline void set_descr(const char *d, int l, int erase) {
         if (!erase) {
             descrlen=htons(l);
             //descr=new char[l+1];
@@ -626,5 +619,4 @@ class HDescrMessage : public HMessage {
 
 };
 
-
-#endif  /* ifndef __HMESGS_H_ */
+#endif  /* ifndef __HMESGS_H__ */

@@ -16,34 +16,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
-#include <sys/time.h>
-#include <sys/file.h>
-#include <sys/stat.h>
+#ifndef __CODE_GENERATOR_H__
+#define __CODE_GENERATOR_H__
 
-using namespace std;
-
-string appname;
-
-#define SERVER_PORT 1977
-
-// might not be portable
-int scp_candidate(char* filename, char* destination)
-{
-  char cmd[256];
-  sprintf(cmd, "scp %s %s", filename, destination);
-  int sys_stat=system(cmd);
-  return sys_stat;
-}
-
-int touch_remote_file(const char* filename, const char* destination)
-{
-  char cmd[256];
-  sprintf(cmd, "ssh %s touch %s ", destination, filename);
-  printf("%s \n", cmd);
-  int sys_stat=system(cmd);
-  return sys_stat;
-}
+#endif

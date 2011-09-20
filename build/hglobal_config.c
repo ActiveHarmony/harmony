@@ -27,21 +27,18 @@
 #include <sys/stat.h>
 #include "hglobal_config.h"
 
-/* Internal Function Prototypes */
+/* Extern'ed variable declaration */
+keyval_t *cfg_pair = NULL;
+unsigned cfg_pairlen = 0;
+
+/* Internal function prototypes */
 int cfg_load(const char *);
 int cfg_parse();
 
 /* Static global variables */
-struct keyval_t {
-    char *key;
-    char *val;
-};
+static const char CONFIG_DEFAULT_FILENAME[] = "harmony.cfg";
+static const unsigned CONFIG_INITIAL_CAPACITY = 32;
 
-static const char CONFIG_DEFAULT_FILENAME[] = "global_config";
-static const unsigned CONFIG_INITIAL_CAPACITY = 1;
-
-static struct keyval_t *cfg_pair = NULL;
-static unsigned cfg_pairlen = 0;
 static char *cfg_buf = NULL;
 static unsigned cfg_buflen;
 
@@ -50,7 +47,7 @@ int cfg_init(const char *filename)
     if (filename == NULL) {
         filename = getenv("HARMONY_CONFIG");
         if (filename == NULL) {
-            printf("[AH]: HARMONY_CONFIG environment variable empty."
+            printf("HARMONY_CONFIG environment variable empty."
                    "  Using default.\n");
             filename = CONFIG_DEFAULT_FILENAME;
         }
@@ -80,6 +77,21 @@ char *cfg_get(const char *key)
     return NULL;
 }
 
+char *cfg_getlower(const char *key)
+{
+    char *str, *ptr;
+
+    str = cfg_get(key);
+    if (str == NULL) {
+        return NULL;
+    }
+
+    for (ptr = str; *ptr != '\0'; ++ptr) {
+        *ptr = tolower(*ptr);
+    }
+    return str;
+}
+
 /* Load the entire configturation file into memory. */
 int cfg_load(const char *filename)
 {
@@ -91,30 +103,30 @@ int cfg_load(const char *filename)
         free(cfg_buf);
     }
 
-    printf("[AH]: Loading config file '%s'\n", filename);
+    printf("Loading config file '%s'\n", filename);
     fd = open(filename, O_RDONLY);
     if (fd == -1) {
-        printf("[AH]: Error opening file: %s\n", strerror(errno));
+        printf("Error opening file: %s\n", strerror(errno));
         return -1;
     }
 
     /* Obtain file size */
     if (fstat(fd, &sb) == -1) {
-        printf("[AH]: Error during fstat(): %s\n", strerror(errno));
+        printf("Error during fstat(): %s\n", strerror(errno));
         return -1;
     }
     cfg_buflen = sb.st_size;
 
     cfg_buf = (char *)malloc(cfg_buflen + 1); /* Make room for an extra char */
     if (cfg_buf == NULL) {
-        printf("[AH]: Error during malloc(): %s\n", strerror(errno));
+        printf("Error during malloc(): %s\n", strerror(errno));
         return -1;
     }
 
     do {
         retval = read(fd, cfg_buf + count, cfg_buflen - count);
         if (retval < 0) {
-            printf("[AH]: Error during read(): %s\n", strerror(errno));
+            printf("Error during read(): %s\n", strerror(errno));
             return -1;
         }
         count += retval;
@@ -122,7 +134,7 @@ int cfg_load(const char *filename)
     *(cfg_buf + cfg_buflen) = '\n';  /* Add a newline at the end of the file */
 
     if (close(fd) != 0) {
-        printf("[AH]: Error during close(): %s. Ignoring.\n", strerror(errno));
+        printf("Error during close(): %s. Ignoring.\n", strerror(errno));
     }
 
     return 0;
@@ -170,7 +182,7 @@ int cfg_parse()
         /* Find the equal sign. */
         val = (char *)memchr(key, '=', hash - key);
         if (val == NULL || val == key) {
-            printf("[AH]: Configuration error line %d: %.*s\n",
+            printf("Configuration error line %d: %.*s\n",
                    linenum, tail - head, head);
             return -1;
         }
@@ -207,12 +219,12 @@ int cfg_parse()
             if (cfg_pairlen == 0) {
                 cfg_pairlen = CONFIG_INITIAL_CAPACITY;
             }
-            alloc = realloc(cfg_pair, sizeof(struct keyval_t) * cfg_pairlen);
+            alloc = realloc(cfg_pair, sizeof(keyval_t) * cfg_pairlen);
             if (alloc == NULL) {
-                printf("[AH]: Error on realloc(): %s\n", strerror(errno));
+                printf("Error on realloc(): %s\n", strerror(errno));
                 return -1;
             }
-            cfg_pair = (struct keyval_t *)alloc;
+            cfg_pair = (keyval_t *)alloc;
         }
 
         /* Insert the new configuration pair in sorted order. */
@@ -224,7 +236,7 @@ int cfg_parse()
         }
 
         if (i < size && strcmp(cfg_pair[i+1].key, key) == 0) {
-            printf("[AH]: Warning: Configuration key '%s'"
+            printf("Warning: Configuration key '%s'"
                    " overwritten on line %d.\n", key, linenum);
         }
         cfg_pair[i].key = key;

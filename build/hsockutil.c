@@ -146,9 +146,7 @@ HMessage * receive_message(int sock) {
     case HMESG_APP_DESCR:
     case HMESG_NODE_DESCR:
     case HMESG_VAR_DESCR:
-    case HMESG_SO_PATH_PREFIX_RUN_DIR:
-    case HMESG_SO_PATH_PREFIX_DEF:
-    case HMESG_SO_PATH_PREFIX_CODE:
+    case HMESG_CFG_REQ:
         m=new HDescrMessage();
         buflend = ((HDescrMessage *)m)->deserialize((char *)buf);
         break;
@@ -179,5 +177,6 @@ HMessage * receive_message(int sock) {
         h_exit("Wrong message type!\n");
     }
 
+    free(buf);
     return m;
 }

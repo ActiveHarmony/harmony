@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 #
 # Copyright 2003-2011 Jeffrey K. Hollingsworth
 #
@@ -18,8 +18,6 @@
 # along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-_host_name_=$HOSTNAME
-
 # command line arguments
 # first argument to this script file is the code-generation parameters.
 #  code generation parameters are passed in as bash array. Each array
@@ -35,36 +33,39 @@ _host_name_=$HOSTNAME
 
 code_parameters=$1
 
-# The second argument to this script is the working directory for this
-#  instance of the generator. Recall that we can have multiple generators and
-#  each generator has its own directory, which is set up by setup_generator_hosts.sh
-#  script file.
-WORK_DIR=$HOME/scratch/$2
+# The second and third arguments to this script are the slave hostname and
+#  working directory for this instance of the generator. Recall that we can
+#  have multiple generators and each generator has its own directory, which
+#  is set up by setup_generator_hosts.sh script file.
+slave_host=$2
+slave_dir=$3
 
-# The third argument is the code_generator_host (which is the name of the machine
-#  where the code-generator driver is running).
-code_generator_host=$3
+# The fourth and fifth arguments are the host and path name for the
+#  destination of any code that we will generate.  This doesn't necessarily
+#  have to be our master code server.
+code_host=$4
+code_dir=$5
 
 # cd into the work_directory
-cd $WORK_DIR
+cd $slave_dir
 
 # read in the properties file
-source code.properties
+. ./code.properties
 echo "appname is $appname"
 
 # some house-cleaning stuff. getting rid of old files.
 rm -rf ${file_prefix}.so *.so *.exe ${file_prefix}_modified.${file_suffix} temp.script ${file_prefix}.lxf
 
 # generate a new CHiLL script using the transformation parameters
-source generate_temp_script.sh $code_parameters
+. ./generate_temp_script.sh $code_parameters
 echo "generate_temp_script.sh $code_parameters"
 
 # Run chill and the post-processor
 #  The modified file is saved as ${file_prefix}_modified.${file_suffix}
-# Here I am using a particular version of CHiLL. If you want to use a particular version
-#  rather than the default, then:
+# Here I am using a particular version of CHiLL. If you want to use a
+#  particular version rather than the default, then:
 
-if [ $use_default_chill -eq 1 ]; then
+if [ "$use_default_chill" -eq "1" ]; then
     # we have exported the path to the chill, so we know where it is.
     chill temp.script
 else
@@ -72,11 +73,11 @@ else
 fi
 
 # generate the code from lxf
-if [ ${file_suffix} = f ]; then
+if [ "${file_suffix}" = "f" ]; then
     s2f ${file_prefix}.lxf > ${file_prefix}_modified.${file_suffix}
 fi
 
-if [ ${file_suffix} = c ]; then
+if [ "${file_suffix}" = "c" ]; then
     s2c ${file_prefix}.lxf > ${file_prefix}_modified.${file_suffix}
 fi
 
@@ -100,22 +101,22 @@ fi
 echo "Got here without errors"
 
 # Compilation.
-if [ ${file_suffix} = f ]; then
+if [ "${file_suffix}" = "f" ]; then
     echo "compiling using fortran"
     $FC_COMMAND -c -fpic ${file_prefix}_modified.${file_suffix}
 fi
 
-if [ ${file_suffix} = c ]; then
+if [ "${file_suffix}" = "c" ]; then
     $CC_COMMAND -c -fpic ${file_prefix}_modified.${file_suffix}
 fi
 # output filename
 out_file=${__out_file_prefix}.${output_file_suffix}
 echo "compiling shared $out_file"
 
-if [ $output_file_suffix = so ]; then
+if [ "$output_file_suffix" = "so" ]; then
     $CC_COMMAND -shared -lc -o $out_file ${file_prefix}_modified.o
 fi
-if [ $output_file_suffix = exe ]; then
+if [ "$output_file_suffix" = "exe" ]; then
     # assumption is we know what the driver file is.
     $CC_COMMAND -o $out_file ${driver_filename} ${file_prefix}_modified.o
 fi
@@ -123,19 +124,14 @@ fi
 # finally move this file to appropriate location. Remember that if you are
 #  using remote hosts for code generation, this has to be scp rather than 
 #  mv
-if [ $use_remote_hosts -eq 0 ]; then
-    # keep the file around for future reference or error checking
-    mv $out_file ../new_code_${appname}/
-    cp ../new_code_${appname}/${out_file} ../new_code/
+if [ "$use_remote_hosts" -eq "0" ]; then
+    mv $out_file ../new_code_$appname/
+    cp ../new_code_$appname/$out_file $code_dir
 else
-    # keep the file around for future reference or error checking
-    mv $out_file ../new_code_${appname}/
-    # only scp if this is a remote host
-    if [ $_host_name_ == code_generator_host ]; then
-	mv $out_file ../new_code_${appname}/
-	cp ../new_code_${appname}/$out_file ../new_code/
+    mv $out_file ../new_code_$appname/
+    if [ "$code_host" = "$slave_host" ]; then
+        cp ../new_code_$appname/$out_file $code_dir
     else
-	# we have to scp the code to the code_generator_host
-	scp ../new_code_${appname}/$out_file ${username}@${code_generator_host}:~/scratch/new_code/
+	scp ../new_code_$appname/$out_file $code_host:$code_dir/
     fi
 fi

@@ -30,7 +30,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 
-//PID
+#include <time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -40,10 +40,15 @@
 
 #include "hserver.h"
 #include "httpsvr.h"
-//Global Config 
 #include "hglobal_config.h"
 
 using namespace std;
+
+/*
+ * Function prototypes
+ */
+int codegen_init();
+
 /***
  *
  * Main variables
@@ -123,7 +128,7 @@ int hs_process_id;
 char new_code_path[256];
 
 //Code-generation completion flag
-char code_flags_path[256];
+char *flag_dir;
 
 /***
  *
@@ -146,18 +151,14 @@ string history_since(unsigned int last)
 
 int check_parameters(int argc, char **argv)
 {
-    char *ptr, *search_algo, *tcl_filename;
+    char *search_algo, *tcl_filename;
 
     // Gets the Search Algorithm and the config file 
     // that the user has selected in the hglobal_config file.
-    search_algo = cfg_get("search_algorithm");
-    if (!search_algo) {
+    search_algo = cfg_getlower("search_algorithm");
+    if (search_algo == NULL) {
         printf("[AH]: Error: Search algorithm unspecified.\n");
         return -1;
-    }
-
-    for (ptr = search_algo; *ptr != '\0'; ++ptr) {
-        *ptr = tolower(*ptr);
     }
 
     if (strcmp(search_algo, "pro") == 0) {
@@ -283,9 +284,9 @@ int update_client( ClientData clientData, Tcl_Interp *interp, int argc, char **a
  * Start the server by initializing sockets and everything else that is needed
  *
  ***/
-void server_startup() {
-
-    char* PID_temp;
+int server_startup()
+{
+    char *PID_temp, *codeserver_type;
 
     /* temporary variable */
     char s[10];
@@ -325,7 +326,7 @@ void server_startup() {
     else
     {
         // if the env var is not defined, use the default
-        listen_port = atoi(cfg_get("server_port"));
+        listen_port = atoi(cfg_get("harmony_port"));
     }
 
     /* create a listening socket */
@@ -372,14 +373,31 @@ void server_startup() {
     */
     // TODO: do we still rely on update_client procedure?
     Tcl_CreateCommand(tcl_inter, "update_client", update_client, (ClientData)NULL, (Tcl_CmdDeleteProc *)NULL);
-    /*
-      Set the file descriptor set
-    */
 
+    /*
+     * Set the file descriptor set
+     */
     FD_ZERO(&listen_set);
     FD_SET(listen_socket, &listen_set);
     highest_socket=listen_socket;
 
+    /* Establish connection to the code server, if requested. */
+    codeserver_type = cfg_getlower("codegen");
+    if (codeserver_type == NULL || strcmp(codeserver_type, "none") == 0) {
+        /* No code server requested. */
+
+    } else if (strcmp(codeserver_type, "standard") == 0) {
+        /* TCP-based code server requested. */
+        assert(0 && "TCP-based code server not yet tested/implemented.");
+
+    } else if (strcmp(codeserver_type, "standalone") == 0) {
+        /* File/SSH based code server requested. */
+        if (codegen_init() < 0) {
+            return -1;
+        }
+    }
+
+    /* Initialize the HTTP user interface. */
     http_init();
 }
 
@@ -1002,17 +1020,19 @@ void check_code_completion(HUpdateMessage *mesg, int client_socket)
     if(debug_mode)
         printf("[AH]: Code Request Timestep: %d last_code_req_timestep %d code_timestep: %d \n",
            req_timestep,last_code_req_timestep,code_timestep);
-    
+
     int return_val=0;
     if(req_timestep > last_code_req_timestep)
     {
         // based on file system right now.
-        sprintf(ss, "%s/code_complete.%s.%d",code_flags_path, temp_name, code_timestep);
-	//        if(debug_mode)
+        sprintf(ss, "%s/code_complete.%s.%d",
+                flag_dir, temp_name, code_timestep);
+
+	//if (debug_mode)
             printf("[AH]: Looking for %s \n", ss);
-        if(file_exists(ss))
+        if (file_exists(ss))
         {
-            if(debug_mode)
+            if (debug_mode)
                 printf("[AH]: code generation is complete for timestep: %d \n", code_timestep);
 
             code_timesteps[temp_name]=code_timestep+1;
@@ -1020,26 +1040,26 @@ void check_code_completion(HUpdateMessage *mesg, int client_socket)
             last_code_req_response=return_val;
             last_code_req_responses[temp_name]=return_val;
             std::remove(ss);
-            sprintf(ss, "%s/code_complete.%s.%d",code_flags_path, temp_name, code_timestep+1);
+            sprintf(ss, "%s/code_complete.%s.%d",
+                    flag_dir, temp_name, code_timestep+1);
             printf("[AH]: removing: %s \n", ss);
             std::remove(ss);
-        } else
-        {
+
+        } else {
             last_code_req_responses[temp_name]=0;
         }
         last_code_req_timesteps[temp_name]=req_timestep;
-    } else
-    {
+
+    } else {
         return_val=last_code_req_responses[temp_name];
     }
-    
+
     mesg->get_var(0)->setValue(return_val);
-    
+
     send_message(mesg, client_socket);
 
     delete mesg;
 }
-
 
 /*
  * Check the global database to see if we have already evaluated a 
@@ -1359,7 +1379,7 @@ void client_unregister(HRegistMessage *m, int client_socket) {
     stashed_id = clientId[client_socket];
     clientSocket.erase(clientId[client_socket]);
     clientId.erase(client_socket);
-    
+
     if (m == NULL){
         /* revoke resources */
         revoke_resources(clientName[client_socket]);
@@ -1383,14 +1403,14 @@ void client_unregister(HRegistMessage *m, int client_socket) {
     //Getting the name of the application that is tuned
     APPname_temp = cfg_get("app_name_tuning");
 
-    sprintf(new_code_path, "%s", cfg_get("new_code_path"));
+    sprintf(new_code_path, "%s", cfg_get("code_archive_dir"));
 
     //Creating the new directory
     sprintf(new_dir_name, "%s/harmonyPID_%d", new_code_path, hs_process_id);
     sprintf(appname_default, "%s_%s", APPname_temp, default_file_ext);
 
-    dr=opendir(new_code_path);  
-    
+    dr=opendir(new_code_path);
+
     if((mkdir(new_dir_name,00777))==0)
     {
       printf("The new directory [harmonyPID_%d] has been created \n", hs_process_id);
@@ -1878,35 +1898,20 @@ void performance_update_with_conf(HUpdateMessage *m, int client_socket) {
  * Return the .so files path variables from the global_config file
  *
  ****/
-
-char* so_file_path_prefix_run_dir(HDescrMessage *mesg, int client_socket)
+void send_cfg_message(HDescrMessage *mesg, int client_socket)
 {
-  char *ppdir;  
-  ppdir = cfg_get("path_prefix_run_dir");
-  HDescrMessage *m1 = new HDescrMessage(HMESG_SO_PATH_PREFIX_RUN_DIR, ppdir, strlen(ppdir));
-  send_message(m1,client_socket);
-  return ppdir;
-  delete m1;
-}
+    char *cfg_val;
+    HDescrMessage reply;
 
-char* so_file_path_prefix_def(HDescrMessage *mesg, int client_socket)
-{
-  char *ppdef;
-  ppdef = cfg_get("path_prefix_def");
-  HDescrMessage *m1 = new HDescrMessage(HMESG_SO_PATH_PREFIX_DEF, ppdef, strlen(ppdef));
-  send_message(m1,client_socket);
-  return ppdef;
-  delete m1;
-}
+    cfg_val = cfg_get(mesg->get_descr());
+    if (cfg_val == NULL) {
+        reply.set_type(HMESG_FAIL);
 
-char* so_file_path_prefix_code(HDescrMessage *mesg, int client_socket)
-{  
-  char *ppcode;  
-  ppcode = cfg_get("path_prefix_code");
-  HDescrMessage *m1 = new HDescrMessage(HMESG_SO_PATH_PREFIX_CODE, ppcode, strlen(ppcode));
-  send_message(m1,client_socket);
-  return ppcode;
-  delete m1;    
+    } else {
+        reply.set_type(HMESG_CFG_REQ);
+        reply.set_descr(cfg_val, strlen(cfg_val), 0);
+    }
+    send_message(&reply, client_socket);
 }
 
 int in_process_message = FALSE;
@@ -1974,14 +1979,8 @@ void process_message_from(int temp_socket, int *close_fd){
         case HMESG_CODE_COMPLETION:
             check_code_completion((HUpdateMessage *)m, temp_socket);
             break;
-	case HMESG_SO_PATH_PREFIX_RUN_DIR:
-	    so_file_path_prefix_run_dir((HDescrMessage *)m, temp_socket);
-	    break;
-	case HMESG_SO_PATH_PREFIX_DEF:
-	    so_file_path_prefix_def((HDescrMessage *)m, temp_socket);
-	    break;
-	case HMESG_SO_PATH_PREFIX_CODE:
-	    so_file_path_prefix_code((HDescrMessage *)m, temp_socket);
+        case HMESG_CFG_REQ:
+            send_cfg_message((HDescrMessage *)m, temp_socket);
 	    break;
 	default:
             printf("[AH]: Wrong message type!\n");
@@ -2052,106 +2051,95 @@ void handle_unknown_connection(int fd, int *close_fd)
      */
 }
 
-/*****Server retrieves the necessary paths from the global_config file and sends to the code-generator*****/
-void code_gen_paths()
+/* Establish connection with the code server. */
+int codegen_init()
 {
-  int soc_desc;
-  struct sockaddr_in soc_add;
-  int addrlen;
-  int new_soc, tr;
+    int i, fd, retval, err;
+    char tmp_filename[] = "/tmp/harmony.tmp.XXXXXX";
+    char buf[1024], *conf_host, *conf_dir;
+    time_t session;
+    FILE *fds;
 
-  char *server_port;
+    flag_dir = cfg_get("codegen_flag_dir");
+    if (!flag_dir) {
+        printf("[AH]: Configuration error: codegen_flag_dir unspecified.\n");
+        return -1;
+    }
 
-  int portnum;
+    conf_host = cfg_get("codegen_conf_host");
+    if (!conf_host) {
+        printf("[AH]: Configuration error: codegen_conf_host unspecified.\n");
+        return -1;
+    }
 
-  char message1[1024];
-  snprintf(message1, sizeof(message1), "%s \n%s \n%s \n%s \n%s",
-           cfg_get("hostname"),
-           cfg_get("confs_dir"),
-           cfg_get("code_dest_path"),
-           cfg_get("code_flag_destination_path"),
-           cfg_get("server_port"));
+    snprintf(buf, sizeof(buf), "set codegen_conf_host %s", conf_host);
+    if ( (err = Tcl_Eval(tcl_inter, buf)) != TCL_OK) {
+        fprintf(stderr, "Error setting global codegen_conf_host: %d", err);
+        fprintf(stderr, "TCLres(perfUpdate-Err): %s\n", tcl_inter->result);
+        return -1;
+    }
 
-  //create the master socket and check it worked
-  if ((soc_desc=socket(AF_INET,SOCK_STREAM,0))==0)
-  {
-    //if socket failed then display error and exit
-    perror("Create socket");
-    exit(EXIT_FAILURE);
-  }
+    conf_dir = cfg_get("codegen_conf_dir");
+    if (!conf_dir) {
+        printf("[AH]: Configuration error: codegen_conf_dir unspecified.\n");
+        return -1;
+    }
 
-  //type of socket created
-  soc_add.sin_family = AF_INET;
-  soc_add.sin_addr.s_addr = INADDR_ANY;
+    snprintf(buf, sizeof(buf), "set codegen_conf_dir %s", conf_dir);
+    if ( (err = Tcl_Eval(tcl_inter, buf)) != TCL_OK) {
+        fprintf(stderr, "Error setting global codegen_conf_dir: %d", err);
+        fprintf(stderr, "TCLres(perfUpdate-Err): %s\n", tcl_inter->result);
+        return -1;
+    }
 
-  // try to get the port info from the environment
-  server_port=getenv("HARMONY_S_PORT");
-  if (server_port != NULL)
-  {
-      portnum=atoi(server_port);
-  }
-  else
-  {
-    // if the env var is not defined, use the default
-      portnum = atoi(cfg_get("server_port"));
-  }
+    fd = mkstemp(tmp_filename);
+    if (fd == -1) {
+        printf("[AH]: Error creating temporary file: %s\n", strerror(errno));
+        return -1;
+    }
 
-  soc_add.sin_port = htons(portnum);
+    fds = fdopen(fd, "w+");
+    if (fds == NULL) {
+        printf("[AH]: Error during fdopen(): %s\n", strerror(errno));
+        unlink(tmp_filename);
+        close(fd);
+        return -1;
+    }
 
-  //make the port reusable
-  if (setsockopt(soc_desc, SOL_SOCKET, SO_REUSEADDR, &tr, sizeof(int)) < 0 ) 
-  {
-    perror("setsockopt");
-  }
+    if (time(&session) == ((time_t)-1)) {
+        printf("[AH]: Error during time(): %s\n", strerror(errno));
+        return -1;
+    }
 
-  //bind the socket to port
-  if (bind(soc_desc,(struct sockaddr *)&soc_add,sizeof(soc_add))<0)
-  {
-    // if bind failed then display error message and exit
-    perror("bind");
-    exit(EXIT_FAILURE);
-  }
+    fprintf(fds, "harmony_session=%ld\n", session);
+    for (i = 0; i < cfg_pairlen && cfg_pair[i].key != NULL; ++i) {
+        fprintf(fds, "%s=%s\n", cfg_pair[i].key, cfg_pair[i].val);
+    }
+    fclose(fds);
 
-  //server listens to the client on this socket
-  if (listen(soc_desc,3)<0)
-  {
-    //if listen failed then display error and exit
-    perror("listen");
-    exit(EXIT_FAILURE);
-  }
+    snprintf(buf, sizeof(buf), "scp %s %s:%s/harmony.init",
+             tmp_filename, conf_host, conf_dir);
 
-  //accept one connection, wait if no connection pending
-  addrlen=sizeof(soc_add);
-  if ((new_soc=accept(soc_desc,(struct sockaddr *)&soc_add,(unsigned int *)&addrlen))<0)
-  {
-    //if accept failed to return a socket descriptor, display error and exit
-    perror("accept");
-    exit(EXIT_FAILURE);
-  }
+    retval = system(buf);
+    unlink(tmp_filename);
+    if (retval != 0) {
+        printf("[AH]: Error on system(\"%s\")\n", buf);
+        return -1;
+    }
 
-  //inform user of socket number - used in send and receive commands 
-  printf("New socket is %d\n",new_soc);
+    snprintf(buf, sizeof(buf), "%s/codeserver.init.%ld",
+             cfg_get("codegen_flag_dir"), session);
+    printf("[AH]: Awaiting response from code server (%s).\n", buf);
+    while (!file_exists(buf)) {
+        /* Spin until the code server responds correctly. */
+        sleep(1);
+    }
+    unlink(buf);
 
-  //transmit message to new connection
-  if (send(new_soc,message1,strlen(message1),0)!=strlen(message1))
-  {
-    //if send failed to send all the message, display error and exit
-    perror("send");
-    exit(EXIT_FAILURE);
+    printf("[AH]: Connection to code server established.\n");
 
-    //shutdown master socket properly
-    close(soc_desc);
-  }
-  else
-  {
-    puts("All path values have been sent to code-generator");
-    close(new_soc);
-
-    //shutdown master socket properly
-    close(soc_desc);
-  }
-   
-} 
+    return 0;
+}
 
 /***
  *
@@ -2285,7 +2273,6 @@ void main_loop()
         */
 #endif
     }
-    
 }
 
 char* get_timestamp ()
@@ -2314,23 +2301,19 @@ int main(int argc, char **argv)
     if (argc > 1)
         config_filename = argv[1];
 
-    if (cfg_init(config_filename) < 0) {
+    if (cfg_init(config_filename)    < 0 ||
+        check_parameters(argc, argv) < 0) {
+
         printf("[AH]: Configuration error.  Exiting.\n");
-        return(-1);
+        return -1;
     }
-    check_parameters(argc, argv);
 
-    printf("\nThe Harmony Server waits for the connection request from the code-server \n");
+    if (server_startup() < 0) {
+        printf("[AH]: Could not start server.  Exiting.\n");
+        return -1;
+    }
 
-    code_gen_paths();
-
-    server_startup();
-
-    //Retrieving the code generation completion flag from global_config file
-    char *cflagdp = cfg_get("code_flag_destination_path");
-    strncpy(code_flags_path, cflagdp, sizeof(code_flags_path)-1);
-    code_flags_path[255] = '\0';
-
+    /* Begin the main harmony loop. */
     main_loop();
 
     return 0;

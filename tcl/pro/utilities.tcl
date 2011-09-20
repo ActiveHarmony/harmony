@@ -404,11 +404,14 @@ proc logging { str appName flag } {
 
 proc write_candidate_simplex { appName } {
     upvar #0 candidate_simplex c_points
-    upvar #0 simplex_iteration iteration
-    upvar #0 code_generation_params(code_generation_destination) code_generation_dest
-    
-    set fname [open "/tmp/candidate_simplex.$appName.$iteration.dat" "w"]
- 
+    upvar #0 simplex_iteration iter
+    upvar #0 codegen_conf_host c_host
+    upvar #0 codegen_conf_dir c_path
+
+    set tmp_filename ""
+    append tmp_filename "/tmp/harmony-tmp." [pid] "." [clock clicks]
+    set fname [open $tmp_filename "w"]
+
     set i 0
     set out_str ""
     foreach point $c_points {
@@ -420,11 +423,10 @@ proc write_candidate_simplex { appName } {
     }
     puts $fname $out_str
     close $fname
-    
-    set filename_ "/tmp/candidate_simplex.$appName.$iteration.dat"
-   
-    scp_candidate $filename_ $code_generation_dest
 
+    set dst_filename "$c_host:$c_path/candidate_simplex.$appName.$iter.dat"
+    scp_candidate $tmp_filename $dst_filename
+    file delete $tmp_filename
 }
 
 proc send_candidate_simplex { appName } {
