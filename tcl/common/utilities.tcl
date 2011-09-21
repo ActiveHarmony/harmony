@@ -105,7 +105,7 @@ proc write_candidate_simplex { appName } {
     puts $fname $out_str
     close $fname
     set filename_ "/tmp/candidate_simplex.$g_name.$iteration.dat"
-    scp_candidate $filename_ $code_generation_dest
+    exec "scp" $filename_ $code_generation_dest
     incr iteration 1
 }
 

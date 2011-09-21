@@ -22,7 +22,6 @@
 
 source "matrix.tcl"
 load ./nearest_neighbor.so
-load ./round.so
 
 proc reflect { wrt coeff points } {
     set ref_matrix {}

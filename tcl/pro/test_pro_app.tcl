@@ -27,7 +27,6 @@ source pro_init.tcl
 source initial_simplex_construction.tcl
 source ./random_uniform.tcl
 load ./nearest_neighbor.so
-load ./round.so
 source ./utilities.tcl
 source ./matrix.tcl
 source ./pro_transformations.tcl

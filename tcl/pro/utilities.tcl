@@ -425,7 +425,7 @@ proc write_candidate_simplex { appName } {
     close $fname
 
     set dst_filename "$c_host:$c_path/candidate_simplex.$appName.$iter.dat"
-    scp_candidate $tmp_filename $dst_filename
+    exec "scp" $tmp_filename $dst_filename
     file delete $tmp_filename
 }
 

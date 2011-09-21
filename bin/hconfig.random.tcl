@@ -24,7 +24,7 @@ global draw_har_windows
 set draw_har_windows 1 
 
 ## load commons
-load ../tcl/common/round.so
+
 # comment nearest_neighbor if you are not using ANN based projection
 #load ../tcl/common/nearest_neighbor.so
 # comment code_server.so if you are not using dynamic code generation

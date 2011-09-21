@@ -12,7 +12,7 @@ LIBOBJS= hclient.o hsockutil.o hutil.o hmesgs.o hclientc.o
 AR= ar
 ARCREATE= cr
 
-all: hserver harmony.a libcreater swig_round_lib
+all: hserver harmony.a libcreater
 
 hserver: hserver.o hutil.o hsockutil.o hmesgs.o hglobal_config.o httpsvr.o
 	$(GCC) -o hserver hserver.o hutil.o hsockutil.o hmesgs.o hglobal_config.o httpsvr.o $(LIBS) $(INCLUDE)
@@ -69,6 +69,3 @@ clean:
 
 distclean:
 	rm -f *~
-
-swig_round_lib:
-	cd ../round_scp; gmake

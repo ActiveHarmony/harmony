@@ -21,7 +21,7 @@ global search_algorithm
 set search_algorithm 1 
 
 ## load commons
-load ../tcl/common/round.so
+
 # comment nearest_neighbor if you are not using ANN based projection
 #load ../tcl/common/nearest_neighbor.so
 

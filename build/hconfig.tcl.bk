@@ -42,7 +42,6 @@ source ../tcl/projection.tcl
 source ../tcl/combine.tcl
 
 load ../tcl/nearest_neighbor.so
-load ../tcl/round.so
 
 #### to disable client windows, set draw_har_windows variable to 0
 global draw_har_windows
