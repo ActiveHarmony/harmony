@@ -304,17 +304,6 @@ int server_startup()
 
     printf("\nHarmony Server's Process-Id (PID) for this run: %d \n", hs_process_id);
 
-    //Extracts the path where the PID file is located
-    PID_temp = cfg_get("hspid_path");
-
-    FILE *hs_pid;
-
-    hs_pid = fopen(PID_temp, "w+");
-
-    fprintf(hs_pid, "%d", hs_process_id);
-
-    fclose(hs_pid);
-
     int err;
     char * serv_port;
     // try to get the port info from the environment
