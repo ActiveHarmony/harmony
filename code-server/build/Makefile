@@ -1,5 +1,5 @@
 OPTIMIZE = -O2
-GCC_LINUX = g++ -g -DLinux -DLINUX -Dlinux
+GCC_LINUX = g++ -g -fPIC -DLinux -DLINUX -Dlinux
 LIBS_LINUX =    -lm -ldl  -lnsl #-L/hivehomes/tiwari/ann_1.1.1/lib -lANN
 INCLUDE_LINUX = #-I/hivehomes/tiwari/ann_1.1.1/include/
 

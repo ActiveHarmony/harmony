@@ -39,6 +39,6 @@ rm -rf all_code_${appname}.tar.bz2
 
 
 # brood
-ssh rahulp@brood00 tar -xjf /hivehomes/rahulp/scratch/code/all_code_${appname}.tar.bz2 -C /scratch/code/
-ssh rahulp@brood00 rm /hivehomes/rahulp/scratch/code/all_code_${appname}.tar.bz2
+ssh rahulp@brood00 tar -xjf /hivehomes/rahulp/scratch/code/all_code_${appname}.tar.bz2 -C /scratch/code/ # PHI_REMOVE_SYMBOL
+ssh rahulp@brood00 rm /hivehomes/rahulp/scratch/code/all_code_${appname}.tar.bz2 # PHI_REMOVE_SYMBOL
 
