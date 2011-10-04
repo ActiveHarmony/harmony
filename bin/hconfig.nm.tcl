@@ -21,7 +21,7 @@ set search_algorithm 2
 
 #### to disable client windows, set draw_har_windows variable to 0
 global draw_har_windows
-set draw_har_windows 0
+set draw_har_windows 1 
 
 ## load commons
 
@@ -29,7 +29,7 @@ set draw_har_windows 0
 #load ../tcl/common/nearest_neighbor.so
 # comment code_server.so if you are not using dynamic code generation
 #load ../tcl/common/code_server.so
-#source ../tcl/common/logo.tk
+source ../tcl/common/logo.tk
 
 ## Nelder Mead Simplex Algorithm
 source ../tcl/common/parseApp.tcl

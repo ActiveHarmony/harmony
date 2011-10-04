@@ -1,8 +1,7 @@
-#WRKDIR=/hivehomes/tiwari/harmony_pro_release/example/fortran_example
-WRKDIR=$(PWD)
+WRKDIR=/hivehomes/tiwari/harmony_pro_release/example/fortran_example
 DIR=$(WRKDIR)
 
-SHELL=/bin/bash
+SHELL=/bin/ksh
 
 EXE=$(DIR)/l3d.x
 HARMONY=/hivehomes/tiwari/harmony_pro_release

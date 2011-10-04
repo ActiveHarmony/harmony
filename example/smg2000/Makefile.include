@@ -13,8 +13,7 @@
 #CC = gcc #-g -pg
 #debug
 # carver
-#CC = mpicc -w -I${HOME}/tutorial-2010/harmony/build -O3
-CC = mpicc -w -O3 -I$(HARMONY_ROOT)/include
+CC = mpicc -w -I${HOME}/tutorial-2010/harmony/build -O3
 #hopper
 #===============================================================================
 
@@ -33,8 +32,7 @@ CC = mpicc -w -O3 -I$(HARMONY_ROOT)/include
 # macro INIT_ONLY turns the solve phase off.
 INCLUDE_CFLAGS = -DTIMER_USE_MPI -DHYPRE_TIMING -DUSE_DLOPEN -DUSE_NON_CONST
 #INCLUDE_CFLAGS += -DPOSTHARMONY 
-INCLUDE_CFLAGS += -DACTIVE_HARMONY -D_CARVER_ #-DINIT_ONL 
-INCLUDE_CFLAGS += -I$(HARMONY_ROOT)/include
+INCLUDE_CFLAGS += -DACTIVE_HARMONY -D_CARVER_ #-DINIT_ONLY
 
 #INCLUDE_CFLAGS = -O0 -g -DHYPRE_SEQUENTIAL -DHYPRE_TIMING -DUSE_DLOPEN -DBLCR_CHECKPOINTING
 #INCLUDE_CFLAGS = -O0 -g -DHYPRE_SEQUENTIAL -DHYPRE_TIMING -DBLCR_CHECKPOINTING
@@ -43,7 +41,7 @@ INCLUDE_CFLAGS += -I$(HARMONY_ROOT)/include
 # set link flags here
 # -lcr is needed for BLCR
 #  -ldl for dlopen() etc
-#INCLUDE_LFLAGS = -lm -ldl ${HOME}/tutorial-2010/harmony/build/harmony.a -lstdc++
-INCLUDE_LFLAGS = -lm -ldl $(HARMONY_ROOT)/lib/harmony.a -lstdc++
+INCLUDE_LFLAGS = -lm -ldl ${HOME}/tutorial-2010/harmony/build/harmony.a -lstdc++
 #INCLUDE_LFLAGS = -g -lm -lcr
-#INCLUDE_LFLAGS = -pg -lm 
+#INCLUDE_LFLAGS = -pg -lm
+  

@@ -1,8 +1,0 @@
-# This file contains a list of bugs to be fixed
-
-hserver:
-  1. BUG: hserver cannot fild hconfig.*.tcl if not run in bin dir
-     SOL: Add a config directory and set it as default
-     [NOT Solved]    
-
-  2.  
