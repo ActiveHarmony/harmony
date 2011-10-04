@@ -8,7 +8,7 @@ GCC=$(GCC_LINUX)
 LIBS=$(LIBS_LINUX)
 INCLUDE=$(INCLUDE_LINUX)
 
-LIBOBJS= hclient.o hsockutil.o hutil.o hmesgs.o hclientc.o
+LIBOBJS= hclient.o hsockutil.o hutil.o hmesgs.o hclientc.o hclientf.o
 AR= ar
 ARCREATE= cr
 
