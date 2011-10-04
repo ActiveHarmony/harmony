@@ -29,7 +29,6 @@ set draw_har_windows 1
 #load ../tcl/common/nearest_neighbor.so
 # comment code_server.so if you are not using dynamic code generation
 #load ../tcl/common/code_server.so
-source ../tcl/common/logo.tk
 
 global init_simplex_method
 
@@ -40,13 +39,7 @@ set init_simplex_method "max"
 #set init_simplex_method "user_defined"
 
 source ../tcl/common/parseApp.tcl
-source ../tcl/common/drawApp.tk
 source ../tcl/common/newparseApp.tcl
-source ../tcl/common/newdrawApp.tk
 source ../tcl/common/utilities.tcl
 source ../tcl/brute_force/brute_force_init.tcl
 source ../tcl/brute_force/brute_force.tcl
-	
-
-
-

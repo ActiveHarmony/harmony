@@ -26,7 +26,7 @@ proc brute_force {appName} {
     if { $this_perf < $best_perf_so_far } {
         set best_perf_so_far $this_perf
         # collect the values
-        upvar #0 ${appName}_brute_force_bundles bundles
+        upvar #0 ${appName}_bundles bundles
         upvar #0 best_coordinate_so_far best_point
         set temp_ls {}
         foreach bun $bundles {
@@ -50,23 +50,22 @@ proc brute_force {appName} {
 }
 
 proc brute_force_modify {appName param} {
-    upvar #0 ${appName}_brute_force_bundles bundles
+    upvar #0 ${appName}_bundles bundles
     set bun [lindex $bundles $param]
     puts "Brute force Modify: $bun"
-    upvar #0 ${appName}_brute_force_values brutef
+
     upvar #0 ${appName}_bundle_${bun}(value) bunv
     upvar #0 ${appName}_bundle_${bun}(minv) minv
     upvar #0 ${appName}_bundle_${bun}(maxv) maxv
     upvar #0 ${appName}_bundle_${bun}(stepv) stepv
     upvar #0 ${appName}_bundle_${bun} $bun
-    
+
     set overflow 0 
-    
     if {$bunv == $maxv} {
         incr overflow
     } else {
         set bunv [expr $bunv+$stepv]
-        redraw_dependencies $bun $appName 0 0
+        #redraw_dependencies $bun $appName 0 0
     }
     puts "Param value: $bunv"
     if {$overflow > 0} {
@@ -76,8 +75,15 @@ proc brute_force_modify {appName param} {
         } else {
             brute_force_modify $appName [expr $param+1]
             set bunv $minv
-            redraw_dependencies $bun $appName 0 0
+            #redraw_dependencies $bun $appName 0 0
         }
+    }
+
+    # Update any dependant local variables, if they exist.
+    upvar #0 ${appName}_bundle_${bun}(deplocals) deplocals
+    foreach dep $deplocals {
+        upvar #0 $dep dep_bun
+        set dep_bun(value) $bunv
     }
 }
 

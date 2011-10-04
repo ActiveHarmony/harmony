@@ -193,7 +193,7 @@ proc harmonyApp {simple_name app_desc socket} {
   }
   puts ""
 
-  drawharmonyApp $name
+  #drawharmonyApp $name
   
   # now we have to see if we created global bundles and draw them
   set aName [string range $name 0 [expr [string last "_" $name]-1]]
@@ -204,9 +204,9 @@ proc harmonyApp {simple_name app_desc socket} {
   puts "Exists? [info exists ${aName}_bundles]"
   puts "Exists? [info exists ${aName}_draw]"
   
-  if {[info exists ${aName}_bundles] && ![info exists ${aName}_draw]} {
-      drawharmonyApp $aName
-  }
+  #if {[info exists ${aName}_bundles] && ![info exists ${aName}_draw]} {
+  #    drawharmonyApp $aName
+  #}
 }
 
 

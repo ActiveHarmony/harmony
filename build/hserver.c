@@ -175,7 +175,7 @@ int check_parameters(int argc, char **argv)
         printf("[AH]: Using random search algorithm.\n");
         sprintf(harmonyTclFile,"hconfig.random.tcl");
 
-    } else if (strcmp(search_algo, "brute force") != 0) {
+    } else if (strcmp(search_algo, "brute force") == 0) {
         printf("[AH]: Using brute force search algorithm.\n");
         sprintf(harmonyTclFile, "hconfig.brute.tcl");
 
@@ -1164,6 +1164,7 @@ void variable_set(HUpdateMessage *mesg, int client_socket){
             return;
         }
 
+/*
         char redraw_str[256];
         sprintf(redraw_str,"redraw_dependencies %s %s 0 0",mesg->get_var(i)->getName(), appName);
         if ((resint = Tcl_Eval(tcl_inter, redraw_str))==TCL_ERROR) {
@@ -1174,6 +1175,7 @@ void variable_set(HUpdateMessage *mesg, int client_socket){
             operation_failed(client_socket);
             return;
         }
+*/
 
 #ifdef SCHEDULER
 #ifdef notdef

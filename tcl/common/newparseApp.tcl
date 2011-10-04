@@ -163,11 +163,11 @@ proc updateObsGoodness {appName value timestamp args} {
 
         incr time
 
-        lappend coords $time [canvasyCoord $appName $value]
-        upvar #0 draw_har_windows draw_windows
-        if { $draw_windows == 1 } {
-            drawharmonyObsGoodness $appName
-        }
+        #lappend coords $time [canvasyCoord $appName $value]
+        #upvar #0 draw_har_windows draw_windows
+        #if { $draw_windows == 1 } {
+        #    drawharmonyObsGoodness $appName
+        #}
 
         writeBundlesToDisk $appName
     }
@@ -267,12 +267,12 @@ proc updateObsGoodness {appName value timestamp args} {
 
             incr time
 
-            lappend coords $time [canvasyCoord $appName $nvalue]
-
-            upvar #0 draw_har_windows draw_windows
-            if { $draw_windows == 1 } {
-                drawharmonyObsGoodness $appName
-            }
+            #lappend coords $time [canvasyCoord $appName $nvalue]
+            #
+            #upvar #0 draw_har_windows draw_windows
+            #if { $draw_windows == 1 } {
+            #    drawharmonyObsGoodness $appName
+            #}
 
             writeBundlesToDisk $appName
             upvar #0 search_algorithm search_algo
@@ -372,14 +372,14 @@ proc harmony_cleanup {appName} {
 
     upvar #0 ${appName}_bundles bundles
 
-    foreach bun $bundles {
-        upvar #0 ${appName}_bundle_${bun}(isglobal) isglobal
-        set isglobal 0
-        update_bundle_isglobal $bun $appName
-    }
-
-    upvar #0 ${appName}_obsGoodness(isglobal) isglobal
-    set isglobal 0
-    update_perf_isglobal $appName
+#    foreach bun $bundles {
+#        upvar #0 ${appName}_bundle_${bun}(isglobal) isglobal
+#        set isglobal 0
+#        update_bundle_isglobal $bun $appName
+#    }
+#
+#    upvar #0 ${appName}_obsGoodness(isglobal) isglobal
+#    set isglobal 0
+#    update_perf_isglobal $appName
 
 }

@@ -16,6 +16,76 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
 #
+proc http_status { } {
+    set retval ""
+
+    global current_appName
+    if { [info exists current_appName] == 1 } {
+        append retval "app:" $current_appName "|"
+
+        upvar #0 ${current_appName}_bundles bundles
+        if { [string length $bundles] > 0 } {
+            set varlist ""
+            foreach var [split $bundles " "] {
+                if { [string length $var] > 0 } {
+                    append varlist $var ","
+                }
+            }
+            append retval "var:" [string trimright $varlist ","] "|"
+        }
+
+        global best_coordinate_so_far
+        global best_perf_so_far
+        if { [info exists best_coordinate_so_far] &&
+             [string length $best_coordinate_so_far] > 0 &&
+             [info exists best_perf_so_far] &&
+             [string length $best_perf_so_far] > 0 } {
+
+            set best_coord ""
+            foreach val [split $best_coordinate_so_far " "] {
+                if { [string length $val] > 0 } {
+                    append best_coord "," $val
+                }
+            }
+            append retval "coord:best" $best_coord "," $best_perf_so_far "|"
+        }
+
+    } else {
+        append retval "app:\[No Application Connected\]";
+    }
+
+    return $retval
+}
+
+# Small helper function used completely for debugging.
+# It should be removed at some point in the future.
+proc var_to_string { args } {
+    set return_string ""
+    
+    foreach arg $args {
+        foreach varName [split $arg " "] {
+            append return_string $varName
+            upvar $varName var
+
+            if { [array exists var] == 1 } {
+                append return_string " {\n"
+                foreach index [array names var] {
+                    append return_string "\t" $index " => " $var($index) "\n"
+                }
+                append return_string "}\n"
+
+            } elseif { [info exists var] == 1 } {
+                append return_string " => " $var "\n"
+
+            } else {
+                append return_string " does not exist.\n"
+            }
+        }
+    }
+
+    return $return_string
+}
+
 proc list_to_string { ls } {
     set return_string ""
     foreach elem $ls {
