@@ -19,7 +19,7 @@
 
 # this has nothing to do with the Simplex method used to solve linear 
 # programs. This is a method for the minimization of a function of n 
-# variables, which depende on the comnparions of function values at the
+# variables, which depende on the comparisons of function values at the
 # (n+1) vertices of a general simplex, followed by the replacement of the 
 # vertex with the highest value by another point.
 #

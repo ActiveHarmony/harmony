@@ -1,0 +1,4 @@
+1. Removed the dependencies on tcl/tk in the examples since the tcl scripts are not processed locally 
+2. Added an include directory 
+3. Added a lib diretory in the parallel example directory since some of the examples could not find libaio.so (there might be additional dependencies...)
+4. Run the check_todo.sh script in the root level to find all things marked to be changed or deleted

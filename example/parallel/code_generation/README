@@ -1,5 +1,8 @@
 This is an mpi based example.
 
+# PHI_REMOVE_SYMBOL
+We couldn't find the libaio here 
+
 Since the application here has six tunable parameters, the mpi application has to be run on at least
 7 processors. Please make sure the parameters in pro_init_<appname>.tcl (in <harmony_dir>/tcl/pro/
 directory) are defined appropriately.

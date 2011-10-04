@@ -1,0 +1,6 @@
+#!/bin/bash
+echo Setting up the environment for Active Harmony client
+export HARMONY_ROOT=$PWD
+#export HARMONY_CONFIG=$HARMONY_ROOT/bin/global_config
+export HARMONY_S_HOST=localhost
+export HARMONY_S_PORT=1977
