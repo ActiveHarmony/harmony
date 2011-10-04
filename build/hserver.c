@@ -123,8 +123,6 @@ map<string,string>::iterator it2;
 
 vector<string> coord_history;
 
-//Harmony server's Process ID info
-int hs_process_id;
 char new_code_path[256];
 
 //Code-generation completion flag
@@ -298,11 +296,6 @@ int server_startup()
     struct sockaddr_in sin;
 
     int optVal;
-
-    /* Harmony server process ID */
-    hs_process_id = getppid();
-
-    printf("\nHarmony Server's Process-Id (PID) for this run: %d \n", hs_process_id);
 
     int err;
     char * serv_port;
@@ -1386,73 +1379,6 @@ void client_unregister(HRegistMessage *m, int client_socket) {
     if (close(client_socket) < 0)
         printf("Error closing harmony client %d socket %d.",
                stashed_id, client_socket);
-
-    //After the completion of code generation and auto tuning, the server puts all the 
-    //newly generated files into a seperate folder. The new folder is named after the PID of
-    //the harmony server. This is mainly used for the cleaning purpose.
-
-    //Getting the name of the application that is tuned
-    APPname_temp = cfg_get("app_name_tuning");
-
-    sprintf(new_code_path, "%s", cfg_get("code_archive_dir"));
-
-    //Creating the new directory
-    sprintf(new_dir_name, "%s/harmonyPID_%d", new_code_path, hs_process_id);
-    sprintf(appname_default, "%s_%s", APPname_temp, default_file_ext);
-
-    dr=opendir(new_code_path);
-
-    if((mkdir(new_dir_name,00777))==0)
-    {
-      printf("The new directory [harmonyPID_%d] has been created \n", hs_process_id);
-
-      //Moving all the files created by the code-server to the new folder
-    
-      if(dr)
-      {
-	while(drnt=readdir(dr))
-	{
-	  sprintf(strcomparison, "%s", drnt->d_name);
-         
-	  if(strcmp(strcomparison, appname_default) != 0)
-	  {  
-	    if(strcmp(drnt->d_name, appname_default) !=0)
-	    {
-	      int x1, x2, x3;
-	      char newcmd[512];
-
-	      new_dr=opendir(new_dir_name);
-	      printf("%s", drnt->d_name);
-	      sprintf(newcmd, "cp /%s/* /%s", new_code_path, new_dir_name);
-	      printf("Calling System(%s)\n", newcmd);
-	      x1 = system(newcmd);
-	      printf("system() returned %d\n",x1);
-	      printf("calling system(%s)\n", newcmd);
-	      x2 = system(newcmd);
-	      printf("system() returned %d\n",x2);
-	      sprintf(newcmd, "rm %s/%s", new_code_path, drnt->d_name);
-	      printf("calling system(%s)\n", newcmd);
-	      x3 = system(newcmd);
-	      printf("system() returned %d\n", x3);
-	    }
-	  }
-	  else
-          {
-            printf("Not allowed to copy %s to %s \n", drnt->d_name, new_dir_name);
-          }
-        }
-        closedir(dr);
-      }
-      else
-      {
-        printf("Cannot open directory [%s] \n", new_code_path);
-      }
-    }
-    else
-    {
-      printf("The directory [harmonyPID_%d] already exists \n", hs_process_id);
-    }
-  
 }
 
 void performance_update_int(HUpdateMessage *m, int client_socket) {
