@@ -100,6 +100,8 @@ int harmony_startup(int sport=0, char *shost=NULL, int use_sigs=0, int relocated
  */
 void harmony_end(int socketIndex=0);
 
+int harmony_get_client_id(int socketIndex=0);
+
 /*
  * Inform the Harmony server of the bundles and requirements of the application
  */
