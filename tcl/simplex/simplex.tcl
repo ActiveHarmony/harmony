@@ -351,8 +351,6 @@ proc low_high_index {appName} {
 
 proc collect_bundles {appName indx} {
     global ${appName}_simplex_points 
-    
-    global ${appName}_simplex_points($indx)
 
     upvar #0 ${appName}_bundles bundles
 
