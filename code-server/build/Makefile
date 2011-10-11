@@ -7,13 +7,21 @@ GCC_SOLARIS = g++ -g -DSOLARIS -DUSE_TK
 LIBS_SOLARIS = -L/usr/imports/lib -lsocket -lnsl -ltk8.0 -ltcl -lm -ldl -lX11
 INCLUDE_SOLARIS = -I/usr/imports/include -I/hivehomes/tiwari/ann_1.1.1/include/
 
-GCC=$(GCC_LINUX)
-LIBS=$(LIBS_LINUX)
-INCLUDE=$(INCLUDE_LINUX)
+# Support for OSX (tested in Lion)
+LIBS_OSX = -lm -ldl -ltcl8.5 -ltk8.5
+INCLUDE_OSX = -I$(TO_ROOT)/build 
+GCC_OSX = llvm-g++ $(OPTIMIZE) $(INCLUDE_OSX) -fPIC -DLinux -DLINUX -Dlinux
 
-#GCC=$(GCC_SOLARIS)
-#LIBS=$(LIBS_SOLARIS)
-#INCLUDE=$(INCLUDE_SOLARIS)
+OS_NOM = $(shell uname -s)
+ifeq ($(OS_NOM), Darwin)
+  GCC=$(GCC_OSX)
+  LIBS=$(LIBS_OSX)
+  INCLUDE=$(INCLUDE_OSX)
+else
+  GCC=$(GCC_LINUX)
+  LIBS=$(LIBS_LINUX)
+  INCLUDE=$(INCLUDE_LINUX)
+endif
 
 LIBOBJS= code-client.o hsockutil.o hutil.o hmesgs.o Tokenizer.o
 AR= ar

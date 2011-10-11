@@ -2,7 +2,8 @@ TO_ROOT = ../..
 
 VPATH=$(TO_ROOT)/build
 
-OPTIMIZE = -O3
+OPTIMIZE = -ggdb -pg
+
 LIBS_LINUX = -lm -ldl -lnsl -ltcl8.4 -ltk8.4
 INCLUDE_LINUX = -I$(TO_ROOT)/build
 GCC_LINUX = g++ -g -DLinux -DLINUX -Dlinux $(OPTIMIZE) $(INCLUDE_LINUX)
@@ -11,9 +12,21 @@ GCC_SOLARIS = g++ -g -DSOLARIS -DUSE_TK
 LIBS_SOLARIS = -L/usr/imports/lib -lsocket -lnsl -ltk8.4 -ltcl8.4 -lm -ldl -lX11
 INCLUDE_SOLARIS = -I/usr/imports/include -I/hivehomes/rahulp/ann_1.1.1/include/
 
-GCC=$(GCC_LINUX)
-LIBS=$(LIBS_LINUX)
-INCLUDE=$(INCLUDE_LINUX)
+# Support for OSX (tested in Lion)
+LIBS_OSX = -lm -ldl -ltcl8.5 -ltk8.5
+INCLUDE_OSX = -I$(TO_ROOT)/build
+GCC_OSX = llvm-g++ $(OPTIMIZE) $(INCLUDE_OSX)
+
+OS_NOM = $(shell uname -s)
+ifeq ($(OS_NOM), Darwin)
+  GCC=$(GCC_OSX)
+  LIBS=$(LIBS_OSX)
+  INCLUDE=$(INCLUDE_OSX)
+else
+  GCC=$(GCC_LINUX)
+  LIBS=$(LIBS_LINUX)
+  INCLUDE=$(INCLUDE_LINUX)
+endif
 
 #GCC=$(GCC_SOLARIS)
 #LIBS=$(LIBS_SOLARIS)
