@@ -1,4 +1,0 @@
-hserver.c:
-- server_startup:
-  1. Did not check whether the hspid_path we got from the global configuration file harmony.cfg is valid
-     which generates a segmentation fault 

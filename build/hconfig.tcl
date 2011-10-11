@@ -23,7 +23,7 @@ global search_algorithm
 # 3. Random
 # 4. Brute Force
 
-set search_algorithm 2
+set search_algorithm 1 
 
 #### to disable client windows, set draw_har_windows variable to 0
 global draw_har_windows

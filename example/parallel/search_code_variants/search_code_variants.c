@@ -17,14 +17,14 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/** # PHI_REMOVE_SYMBOL an ancient code
- * This example illustrates the use of Active harmony to search a parameter
+/* This example illustrates the use of Active harmony to search a parameter
  * space for a parameterized compiler transformation framework. 
  * The underlying optimization algorithm is modified version of Nelder-Mead
  * Simplex algorithm. A more effective search algorithm (Parallel Rank
  * Ordering) is in the development phase. Please refer to our SC'05 paper 
  * (can be accessed through Active Harmony's Webpage)
- * to get preliminary idea on this algorithm. 
+ * to get preliminary idea on this algorithm.
+
  */
 
 #include <math.h>

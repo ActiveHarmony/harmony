@@ -18,8 +18,8 @@
 #
 harmonyApp SimplexT {
   { harmonyBundle x {
-      int {0 19 1}
+      int {0 19 1} global
 }   }
-  { obsGoodness -1000 1000}
+  { obsGoodness -1000 1000 global }
   { predGoodness -300 -100}
 } 8

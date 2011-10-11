@@ -187,7 +187,7 @@ proc harmonyApp {simple_name app_desc socket} {
   }
   puts ""
 
-  drawharmonyApp $name
+  #drawharmonyApp $name
   
   # now we have to see if we created global bundles and draw them
   set aName [string range $name 0 [expr [string last "_" $name]-1]]
@@ -198,9 +198,9 @@ proc harmonyApp {simple_name app_desc socket} {
   puts "Exists? [info exists ${aName}_bundles]"
   puts "Exists? [info exists ${aName}_draw]"
   
-  if {[info exists ${aName}_bundles] && ![info exists ${aName}_draw]} {
-      drawharmonyApp $aName
-  }
+  #if {[info exists ${aName}_bundles] && ![info exists ${aName}_draw]} {
+  #    drawharmonyApp $aName
+  #}
 }
 
 
@@ -346,7 +346,7 @@ proc harmonyBundle {name bundle_desc appName} {
 	  set ${appName}_bundle_${name}(nr_opt) $nv
 
 	  # the value is the first of the options
-	  global ${appName}_bundle_${name}(value)
+	  global ${appName}_bundle_${name}
 	  set ${appName}_bundle_${name}(value) [car [cadr $bundle_desc]]
 
 	  #determine dependencies
@@ -402,7 +402,7 @@ proc harmonyBundle {name bundle_desc appName} {
   if {[caddr $bundle_desc]=="global"} {
       #we have a global description
       
-      global ${appName}_bundle_${name}(isglobal)
+      global ${appName}_bundle_${name}
       set ${appName}_bundle_${name}(isglobal) 1
 
       #for this we need to create a new global bundle
@@ -438,7 +438,7 @@ proc harmonyBundle {name bundle_desc appName} {
       set isglobl -1
 
   } else {
-      global ${appName}_bundle_${name}(isglobal)
+      global ${appName}_bundle_${name}
       set ${appName}_bundle_${name}(isglobal) 0
   }
 

@@ -356,7 +356,7 @@ int harmony_startup(int sport, char *shost, int use_sigs, int relocated) {
 #endif
 
 	}
-    return hclient_id[socketIndex];
+    return socketIndex;
 }
 
 
@@ -399,6 +399,13 @@ void harmony_end(int socketIndex){
 	close(hclient_socket[socketIndex]);
 }
 
+int harmony_get_client_id(int socketIndex)
+{
+    if (socketIndex >= hclient_id.size()) {
+        return -1;
+    }
+    return hclient_id[socketIndex];
+}
 
 /*
  * Inform the Harmony server of the bundles and requirements of the
@@ -886,7 +893,7 @@ void harmony_performance_update(double value, int socketIndex)
  * get the value of any tcl backend variable - for ex. next_iteration
  *  this handles int variables. NOT EXPOSED.
  */
-void* harmony_request_tcl_variable_(char *variable, int socketIndex){
+void* harmony_request_tcl_variable(char *variable, int socketIndex){
     // define the VarDef
     if (debug_mode)
         printf("tcl_request: %d %s \n", socketIndex, variable);
@@ -936,13 +943,13 @@ void harmony_psuedo_barrier(int socketIndex)
 {
     int next_iteration=0;
     // psuedo barrier using: DO NOT USE THIS FOR ONLINE TUNING
-    next_iteration=atoi((char*)harmony_request_tcl_variable_("next_iteration", socketIndex));
+    next_iteration=atoi((char*)harmony_request_tcl_variable("next_iteration", socketIndex));
     if(debug_mode)
         printf("%d \n ", next_iteration);
     while(next_iteration != 1)
     {
         sleep(1);
-        next_iteration=atoi((char*)harmony_request_tcl_variable_("next_iteration", socketIndex));
+        next_iteration=atoi((char*)harmony_request_tcl_variable("next_iteration", socketIndex));
     }
 }
 
@@ -953,7 +960,7 @@ void harmony_psuedo_barrier(int socketIndex)
 */
 char* harmony_get_best_configuration(int socketIndex)
 {
-    char* return_val = (char*)harmony_request_tcl_variable_("best_coord_so_far", socketIndex);
+    char* return_val = (char*)harmony_request_tcl_variable("best_coord_so_far", socketIndex);
     char* underscore_sep=str_replace(return_val," ", "_");
     // make sure you free the return val in the client side.
     return underscore_sep;
@@ -969,7 +976,7 @@ int harmony_check_convergence(int socketIndex)
     char temporary[15]="search_done";
     if (debug_mode)
         printf("calling the tcl_var_req %d \n", socketIndex);
-    void *return_val=harmony_request_tcl_variable_("search_done",socketIndex);
+    void *return_val=harmony_request_tcl_variable("search_done",socketIndex);
 
     if (debug_mode)
         printf("harmony_check_convergence: %s \n", (char*)return_val);

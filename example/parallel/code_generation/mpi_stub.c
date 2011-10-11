@@ -37,6 +37,7 @@
 // harmony
 #include "hclient.h"
 int rank = -1;
+int h_desc = -1;
 int h_id = -1;
 
 #define SEARCH_MAX 400
@@ -277,7 +278,7 @@ int get_code_completion_status(int simplex_size)
     if(rank == 0)
     {
         printf("[r%d:h%d] asking the server about the code status \n", rank, h_id);
-        return_val = harmony_code_generation_complete();
+        return_val = harmony_code_generation_complete(h_desc);
         printf("[r%d:h%d] code status %d \n", rank, h_id, return_val);
         buffer[0] = return_val;
         // send this to other processors
@@ -304,7 +305,7 @@ int check_convergence(int simplex_size)
     // only rank 0 communicated directly with the harmony server
     if(rank == 0)
     {
-        return_val = harmony_check_convergence();
+        return_val = harmony_check_convergence(h_desc);
         printf("[r%d:h%d] search_done %d \n", rank, h_id, return_val);
         buffer[0] = return_val;
         // send this to other processors
@@ -375,7 +376,8 @@ int  main(int argc, char *argv[])
     /* Insert Harmony API calls. */
     /* initialize the harmony server */
     /* Using only one server */
-    h_id = harmony_startup();
+    h_desc = harmony_startup();
+    h_id = harmony_get_client_id(h_desc);
 
     // initialize the paths
     if (initialize_paths() < 0) {
@@ -423,9 +425,9 @@ int  main(int argc, char *argv[])
 
         // see if the new code is ready
         //if(get_code_completion_status(simplex_size))
-        if(harmony_code_generation_complete())
+        if(harmony_code_generation_complete(h_desc))
         {
-            harmony_request_all();
+            harmony_request_all(h_desc);
             update_so_eval();
             perf=eval_code(0)+penalty_factor();
             new_performance=1;
@@ -433,7 +435,7 @@ int  main(int argc, char *argv[])
 	    if(perf < current_best_perf)
             {
                 // update the best pointer
-                best_conf_from_server=harmony_get_best_configuration();
+                best_conf_from_server=harmony_get_best_configuration(h_desc);
                 printf("[r%d:h%d] Best Conf from server: %s \n",
                        rank, h_id, best_conf_from_server);
 
@@ -486,7 +488,7 @@ int  main(int argc, char *argv[])
         if(harmony_ended)
         {
             // get the final set of parameters
-            harmony_request_all();
+            harmony_request_all(h_desc);
             update_so_eval();
             perf=eval_code(0);
             
@@ -500,7 +502,7 @@ int  main(int argc, char *argv[])
     }
 
     // end the session
-    harmony_end();
+    harmony_end(h_desc);
 
     // final book-keeping messages
     time_current  = MPI_Wtime();

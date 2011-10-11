@@ -1,6 +1,6 @@
 OPTIMIZE = -O2
 GCC_LINUX = g++ -g -DLinux -DLINUX -Dlinux -w
-LIBS_LINUX =    -lm -ldl  -lnsl -L/hivehomes/tiwari/ann_1.1.1/lib -lANN # PHI_REMOVE_SYMBOL dependency on ann to be removed, add our own ann repo here
+LIBS_LINUX =    -lm -ldl  -lnsl -L/hivehomes/tiwari/ann_1.1.1/lib -lANN
 INCLUDE_LINUX = -I/hivehomes/tiwari/ann_1.1.1/include/
 
 GCC=$(GCC_LINUX)

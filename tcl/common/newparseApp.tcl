@@ -56,8 +56,6 @@ proc obsGoodness {min max args} {
   #define global variable AppName_obsGoodness
 
     global ${appName}_obsGoodness
-
-    global ${appName}_obsGoodness(isglobal)
     if {[lindex $args 0]=="global"} {
 	set ${appName}_obsGoodness(isglobal) 1
 	# now we also have to create it in the global window
@@ -139,9 +137,6 @@ proc writeTableHeadToDisk {appName} {
 proc updateObsGoodness {appName value timestamp args} {
 
     global ${appName}_obsGoodness
-    global ${appName}_obsGoodness(value)
-    global ${appName}_obsGoodness(isglobal)
-
     upvar #0 ${appName}_obsGoodness(time) time
     upvar #0 ${appName}_obsGoodness(coordinates) coords
     upvar #0 ${appName}_obsGoodness(value) Gvalue
@@ -163,11 +158,11 @@ proc updateObsGoodness {appName value timestamp args} {
 
         incr time
 
-        lappend coords $time [canvasyCoord $appName $value]
-        upvar #0 draw_har_windows draw_windows
-        if { $draw_windows == 1 } {
-            drawharmonyObsGoodness $appName
-        }
+        #lappend coords $time [canvasyCoord $appName $value]
+        #upvar #0 draw_har_windows draw_windows
+        #if { $draw_windows == 1 } {
+        #    drawharmonyObsGoodness $appName
+        #}
 
         writeBundlesToDisk $appName
     }
@@ -227,7 +222,7 @@ proc updateObsGoodness {appName value timestamp args} {
         upvar #0 ${appName}_obsGoodness(deplocals) deplocals
         set i 0
         foreach depend $deplocals {
-            global ${appName}_obsGoodness(queue_${depend})
+            global ${appName}_obsGoodness
             upvar #0 ${appName}_obsGoodness(queue_${depend}) qdepend
             # here we want to collect at least ... x (x=2) performance values
             # from each instance that is declared global
@@ -267,12 +262,12 @@ proc updateObsGoodness {appName value timestamp args} {
 
             incr time
 
-            lappend coords $time [canvasyCoord $appName $nvalue]
-
-            upvar #0 draw_har_windows draw_windows
-            if { $draw_windows == 1 } {
-                drawharmonyObsGoodness $appName
-            }
+            #lappend coords $time [canvasyCoord $appName $nvalue]
+            #
+            #upvar #0 draw_har_windows draw_windows
+            #if { $draw_windows == 1 } {
+            #    drawharmonyObsGoodness $appName
+            #}
 
             writeBundlesToDisk $appName
             upvar #0 search_algorithm search_algo
@@ -372,14 +367,14 @@ proc harmony_cleanup {appName} {
 
     upvar #0 ${appName}_bundles bundles
 
-    foreach bun $bundles {
-        upvar #0 ${appName}_bundle_${bun}(isglobal) isglobal
-        set isglobal 0
-        update_bundle_isglobal $bun $appName
-    }
-
-    upvar #0 ${appName}_obsGoodness(isglobal) isglobal
-    set isglobal 0
-    update_perf_isglobal $appName
+#    foreach bun $bundles {
+#        upvar #0 ${appName}_bundle_${bun}(isglobal) isglobal
+#        set isglobal 0
+#        update_bundle_isglobal $bun $appName
+#    }
+#
+#    upvar #0 ${appName}_obsGoodness(isglobal) isglobal
+#    set isglobal 0
+#    update_perf_isglobal $appName
 
 }

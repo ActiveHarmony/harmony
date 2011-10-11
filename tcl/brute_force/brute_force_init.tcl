@@ -18,11 +18,11 @@
 #
 proc brute_force_init {appName} {
     
-    global ${appName}_brute_force_bundles
+    global ${appName}_bundles
     upvar #0 ${appName}_bundles bundles
     global ${appName}_simplex_time
-    set ${appName}_brute_force_bundles $bundles
-    upvar #0 ${appName}_brute_force_bundles brutefb
+    set ${appName}_bundles $bundles
+    upvar #0 ${appName}_bundles brutefb
     set ${appName}_simplex_time 0
     global ${appName}_search_done
     set ${appName}_search_done 0

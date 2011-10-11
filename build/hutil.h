@@ -25,7 +25,6 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdarg.h>
 
 using namespace std;
 
@@ -41,6 +40,6 @@ using namespace std;
  *
  ***/
 void h_exit(char *errmesg);
-void fh_exit(FILE* fp, const char* errmsg_fmt, ...);
+
 
 #endif /* __HUTIL_H__ */

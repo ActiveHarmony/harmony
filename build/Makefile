@@ -1,6 +1,7 @@
 OPTIMIZE = -ggdb -pg
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 GCC_LINUX = g++ -DLinux -DLINUX -Dlinux -Df2cFortran -w -DUSE_NON_CONST $(OPTIMIZE) 
 LIBS_LINUX = -lm -ldl -lnsl -ltcl8.4
 INCLUDE_LINUX =
@@ -27,18 +28,20 @@ endif
 =======
 GCC_LINUX = g++ -DLinux -DLINUX -Dlinux -Df2cFortran -w -DUSE_NON_CONST -ggdb -pg 
 LIBS_LINUX = -lm -ldl -lnsl -ltcl8.4
+=======
+GCC_LINUX = g++ -DLinux -DLINUX -Dlinux -Df2cFortran -w -DUSE_NON_CONST -g -pg 
+LIBS_LINUX = -lm -ldl -lnsl -ltcl
+>>>>>>> 9d34714306753b9b899d97c39d9815d92287dcec
 INCLUDE_LINUX =
 
 GCC=$(GCC_LINUX)
-LIBS=$(LIBS_LINUX) 
+LIBS=$(LIBS_LINUX)
 INCLUDE=$(INCLUDE_LINUX)
 >>>>>>> 22e93c7fc3be0b7cbab23ec29d18949cc1217a94
 
-LIBOBJS= hclient.o hsockutil.o hutil.o hmesgs.o hclientc.o
+LIBOBJS= hclient.o hsockutil.o hutil.o hmesgs.o hclientc.o hclientf.o
 AR= ar
 ARCREATE= cr
-
-EXPORT_INCLUDE=hclient.h hmesgs.h hsockutil.h hutil.h hclientc.h 
 
 all: hserver harmony.a libcreater
 
@@ -46,11 +49,8 @@ hserver: hserver.o hutil.o hsockutil.o hmesgs.o hglobal_config.o httpsvr.o
 	$(GCC) -o hserver hserver.o hutil.o hsockutil.o hmesgs.o hglobal_config.o httpsvr.o $(LIBS) $(INCLUDE)
 	cp hserver ../bin
 
-# PHI_REMOVE_SYMBOL try to create a dyld library
 harmony.a: $(LIBOBJS)
-	$(AR) $(ARCREATE) $@ $(LIBOBJS)
-	cp $(EXPORT_INCLUDE) ../include/.
-	cp $@ ../lib/.
+	$(AR) $(ARCREATE) harmony.a $(LIBOBJS)
 
 hglobal_config.o: hglobal_config.c hglobal_config.h
 	$(GCC) -c hglobal_config.c $(INCLUDE)

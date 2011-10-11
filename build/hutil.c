@@ -23,7 +23,6 @@
  *
  ***/
 #include "hutil.h"
-
 using namespace std;
 /***
  *
@@ -35,11 +34,3 @@ void h_exit(char *errmesg){
   exit(1);
 }
 
-void fh_exit(FILE* fp, const char* errmsg_fmt, ...)
-{
-  va_list args;
-  va_start(args, errmsg_fmt);
-  vfprintf(fp, errmsg_fmt, args);
-  va_end(args);
-  exit(1);
-}
