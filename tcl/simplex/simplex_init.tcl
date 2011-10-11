@@ -86,4 +86,9 @@ proc simplex_init {appName} {
     set ${appName}_code_generation_params(code_generation_destination) "rahulp@armour:/fs/spoon/rahulp/scratch/confs/"
     set  ${appName}_search_done 0
     set ${appName}_next_iteration 1
+
+    global ${appName}_time
+    if {![info exists ${appName}_time]} {
+        set ${appName}_time 0
+    }
 }

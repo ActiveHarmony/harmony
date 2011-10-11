@@ -350,8 +350,7 @@ proc low_high_index {appName} {
 
 
 proc collect_bundles {appName indx} {
-    global ${appName}_simplex_points 
-
+    global ${appName}_simplex_points
     upvar #0 ${appName}_bundles bundles
 
     set bundle_list {}
@@ -413,8 +412,6 @@ proc compute_centroid {appName} {
 proc set_bundles_to_new_values {appName values} {
     
     upvar #0 ${appName}_bundles bundles
-    
-    
     global temporary
 
     set ok 0
@@ -424,9 +421,10 @@ proc set_bundles_to_new_values {appName values} {
 	    set i 0
 	    foreach bun $bundles {
 		upvar #0 ${appName}_bundle_${bun}(value) bunv
-		upvar \#0 ${appName}_bundle_${bun}(minv) minv
-		upvar \#0 ${appName}_bundle_${bun}(maxv) maxv
+		upvar #0 ${appName}_bundle_${bun}(minv) minv
+		upvar #0 ${appName}_bundle_${bun}(maxv) maxv
 		upvar #0 ${appName}_bundle_${bun}(stepv) stepv
+		upvar #0 ${appName}_bundle_${bun}(deplocals) deps
 		upvar #0 ${appName}_bundle_${bun} $bun
 		if {$i < [llength $values]} {
 		    set closestv [closest_value ${appName}_bundle_${bun} [lindex $values $i]]
@@ -437,7 +435,18 @@ proc set_bundles_to_new_values {appName values} {
 		    } else {
 			set ${bun}(value) $closestv
 		    }
-		    redraw_dependencies $bun $appName 0 0
+
+                    # Update any dependant local variables, if they exist.
+                    if { [info exists deps] } {
+                        foreach dep $deps {
+                            upvar #0 $dep dep_bun
+                            set dep_bun(value) $bunv
+                        }
+                    }
+
+                    global ${appName}_time
+                    incr ${appName}_time
+#		    redraw_dependencies $bun $appName 0 0
 		    incr i
 		}
 	    }
@@ -473,9 +482,9 @@ proc too_similar_values {temp appName} {
 
     upvar #0 ${appName}_simplex_npoints npoints
     upvar #0 ${appName}_simplex_points points
-    upvar \#0 ${appName}_simplex_low low
-    upvar \#0 ${appName}_simplex_high high
-    upvar \#0 ${appName}_simplex_centroid centroid
+    upvar #0 ${appName}_simplex_low low
+    upvar #0 ${appName}_simplex_high high
+    upvar #0 ${appName}_simplex_centroid centroid
 
     set diffs {}
     for {set i 0} {$i < [llength $centroid]} {incr i} {
@@ -506,9 +515,9 @@ proc too_similar_values {temp appName} {
 proc too_similar_values_2 {temp appName} {
     upvar #0 ${appName}_simplex_npoints npoints
     upvar #0 ${appName}_simplex_points points
-    upvar \#0 ${appName}_simplex_low low
-    upvar \#0 ${appName}_simplex_high high
-    upvar \#0 ${appName}_simplex_centroid centroid
+    upvar #0 ${appName}_simplex_low low
+    upvar #0 ${appName}_simplex_high high
+    upvar #0 ${appName}_simplex_centroid centroid
 
     for {set i 0} {$i < [llength $centroid]} {incr i} {
 	if {([lindex $temp $i] == [lindex $points($low(index)) $i]) && \
@@ -553,7 +562,7 @@ proc set_ith_bundle_to_given_value {appName indx value} {
     upvar #0 ${appName}_bundle_${bun}(value) bunv
     upvar #0 ${appName}_bundle_${bun}(maxv) maxv
     upvar #0 ${appName}_bundle_${bun}(minv) minv
-   
+    upvar #0 ${appName}_bundle_${bun}(deplocals) deps
     upvar #0 ${appName}_bundle_${bun} $bun
 
     switch -- $value {
@@ -581,7 +590,18 @@ proc set_ith_bundle_to_given_value {appName indx value} {
 	    set ${bun}(value) [closest_value ${appName}_bundle_${bun} $value]
 	}
     }
-    redraw_dependencies $bun $appName 0 0
+
+    # Update any dependant local variables, if they exist.
+    if { [info exists deps] } {
+        foreach dep $deps {
+            upvar #0 $dep dep_bun
+            set dep_bun(value) $bunv
+        }
+    }
+
+    global ${appName}_time
+    incr ${appName}_time
+#    redraw_dependencies $bun $appName 0 0
 }
 
 

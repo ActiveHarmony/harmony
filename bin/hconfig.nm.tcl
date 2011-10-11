@@ -29,13 +29,10 @@ set draw_har_windows 1
 #load ../tcl/common/nearest_neighbor.so
 # comment code_server.so if you are not using dynamic code generation
 #load ../tcl/common/code_server.so
-source ../tcl/common/logo.tk
 
 ## Nelder Mead Simplex Algorithm
 source ../tcl/common/parseApp.tcl
-source ../tcl/common/drawApp.tk
 source ../tcl/common/newparseApp.tcl
-source ../tcl/common/newdrawApp.tk
 source ../tcl/common/utilities.tcl
 source ../tcl/simplex/simplex.tcl
 source ../tcl/simplex/simplex_init.tcl
@@ -46,4 +43,3 @@ global init_simplex_method
 #   construction.
 #set init_simplex_method "min" 
 set init_simplex_method "max"
-
