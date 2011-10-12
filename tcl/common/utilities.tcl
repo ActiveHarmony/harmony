@@ -23,16 +23,30 @@ proc http_status { } {
     if { [info exists current_appName] == 1 } {
         append retval "app:" $current_appName "|"
 
+        set varlist ""
+        set ignore_list {}
         upvar #0 ${current_appName}_bundles bundles
-        if { [string length $bundles] > 0 } {
-            set varlist ""
-            foreach var [split $bundles " "] {
-                if { [string length $var] > 0 } {
-                    append varlist $var ","
+        if { [info exists bundles] } {
+            foreach var [split $bundles] {
+                append varlist "g:" $var ","
+
+                lappend ignore_list $var
+                upvar #0 ${current_appName}_bundle_${var}(deplocals) locals
+                if { [info exists locals] } {
+                    lappend ignore_list [split $locals]
                 }
             }
-            append retval "var:" [string trimright $varlist ","] "|"
         }
+
+        foreach bundle [info globals *_bundles] {
+            upvar #0 $bundle bun
+            foreach var [split $bun] {
+                if { [lsearch -exact $ignore_list $var] == -1 } {
+                    append varlist "l:" $var ","
+                }
+            }
+        }
+        append retval "var:" [string trimright $varlist ","] "|"
 
         global best_coordinate_so_far
         global best_perf_so_far
@@ -43,9 +57,7 @@ proc http_status { } {
 
             set best_coord ""
             foreach val [split $best_coordinate_so_far " "] {
-                if { [string length $val] > 0 } {
-                    append best_coord "," $val
-                }
+                append best_coord "," $val
             }
             append retval "coord:best" $best_coord "," $best_perf_so_far "|"
         }
@@ -55,6 +67,16 @@ proc http_status { } {
     }
 
     return $retval
+}
+
+proc get_http_test_coord { appName } {
+    set out_str $appName
+    upvar #0 ${appName}_bundles buns
+    foreach bun $buns {
+        upvar #0 ${appName}_bundle_${bun}(value) v
+        append out_str "," $bun ":" $v
+    }
+    return $out_str
 }
 
 # Small helper function used completely for debugging.

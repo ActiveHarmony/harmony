@@ -69,7 +69,9 @@ function date2Str(milliseconds) {
 
 var best_coord = new Array();
 var coords = new Array();
+var chartDataIdx;
 var varList;
+var tableColMap;
 
 var refreshInterval = 5000;
 function refresh() {
@@ -135,11 +137,20 @@ function refresh() {
 
 function updateChartData(arr) {
     var timestamp = parseInt(arr[0]) + UTCoff;
-    var perf = parseFloat(arr.slice(-2, -1));
+    var perf = parseFloat(arr.slice(-1));
     viewData[0].push([timestamp, perf]);
 
-    for (var i = 1; i < viewData.length; ++i) {
-        viewData[i].push([parseFloat(arr[i]), perf]);
+    for (var i = 2; i < arr.length - 1; ++i) {
+        var sep = arr[i].search(":");
+        if (sep == -1) {
+            continue;
+        }
+        var key = arr[i].substr(0, sep);
+        var val = arr[i].substr(++sep);
+        var idx = tableColMap[key];
+
+        viewData[idx].push([parseFloat(val), perf]);
+        chartDataIdx[idx][viewData[idx].length - 1]= coords.length - 1;
     }
 }
 
@@ -185,9 +196,22 @@ function updateDataTable() {
         if (idx >= 0) {
             var coord = coords[idx];
 
-            tableBody.rows[i].cells[0].innerHTML = coord.slice(-1);
-            for (var j = 1; j < cols; ++j) {
-                tableBody.rows[i].cells[j].innerHTML = coord[j];
+            tableBody.rows[i].cells[0].innerHTML = coord[1];
+            for (var j = 1; j < cols-1; ++j) {
+                tableBody.rows[i].cells[j].innerHTML = "";
+            }
+            tableBody.rows[i].cells[cols-1].innerHTML = coord.slice(-1);
+
+            for (var j = 2; j < coord.length; ++j) {
+                var sep = coord[j].search(":");
+                if (sep == -1) {
+                    continue;
+                }
+                var key = coord[j].substr(0, sep);
+                var val = coord[j].substr(++sep);
+                var col = tableColMap[key];
+
+                tableBody.rows[i].cells[col].innerHTML = val;
             }
             --idx;
 
@@ -210,21 +234,27 @@ function updateVarList(vars) {
     v_select.length = 1;
 
     var v_arr = vars.split(",").sort();
+    tableColMap = new Object();
+    chartDataIdx = new Array(v_arr.length + 1);
+
     for (var i = 0; i < v_arr.length; ++i) {
         var col = document.createElement("td");
-        col.innerHTML = v_arr[i];
+        col.innerHTML = v_arr[i].substr(2);
         tableHead.rows[0].appendChild(col);
 
         var option = document.createElement("option");
-        option.text = v_arr[i];
+        option.text = v_arr[i].substr(2);
         v_select.add(option, null);
 
         viewData.push(new Array());
+        chartDataIdx[i] = new Array();
+        tableColMap[v_arr[i].substr(2)] = i + 1;
     }
 
     var col = document.createElement("td");
     col.innerHTML = "Performance";
     tableHead.rows[0].appendChild(col);
+    chartDataIdx[v_arr.length] = new Array();
 
     currVars = vars;
     updateDataTableDimensions();
@@ -293,7 +323,19 @@ function drawChart() {
 }
 
 function labelString(idx) {
-    return coords[idx].slice(-1) + " [" +
-           coords[idx].slice(1, -1).join(", ") + "] = " +
-           coords[idx].slice(-2, -1);
+    var chartNum = document.getElementById("view_list").selectedIndex;
+    var coord;
+    if (chartNum == 0) {
+        coord = coords[idx];
+    } else {
+        coord = coords[ chartDataIdx[chartNum][idx] ];
+    }
+
+    var retval = "Node:";
+    for (var i = 1; i < coord.length - 1; ++i) {
+        retval += coord[i] + "<br>";
+    }
+    retval += "Performance:" + coord.slice(-1);
+
+    return retval;
 }

@@ -1422,16 +1422,15 @@ void performance_update_int(HUpdateMessage *m, int client_socket) {
         string str_conf = curr_conf;
         global_data.insert(pair<string, string>(str_conf, (string)perf_string));
 
-        char *val = strchr(curr_conf, '_');
-        if (val) {
-            sprintf(s, "%u000,%s,%s,", time(NULL), ++val, perf_string);
-            for (val = s; *val != '\0'; ++val)
-                if (*val == '_')
-                    *val = ',';
-            strcat(s, appName);
-
-            coord_history.push_back(s);
+        sprintf(s, "get_http_test_coord %s", appName);
+        if ((err = Tcl_Eval(tcl_inter, s)) != TCL_OK) {
+            fprintf(stderr, "get_http_test_coord() error: %d (%s)\n",
+                    err, tcl_inter->result);
+            operation_failed(client_socket);
+            return;
         }
+        sprintf(s, "%u000,%s,%s", time(NULL), tcl_inter->result, perf_string);
+        coord_history.push_back(s);
     }
 
     // let the search backend know what we have received the performance
@@ -1493,16 +1492,15 @@ void performance_update_double(HUpdateMessage *m, int client_socket) {
         string perf_num = perf_dbl;
         global_data.insert(pair<string, string>(str_conf, perf_num));
 
-        char *val = strchr(curr_conf, '_');
-        if (val) {
-            sprintf(s, "%u000,%s,%s,", time(NULL), ++val, perf_dbl);
-            for (val = s; *val != '\0'; ++val)
-                if (*val == '_')
-                    *val = ',';
-            strcat(s, appName);
-
-            coord_history.push_back(s);
+        sprintf(s, "get_http_test_coord %s", appName);
+        if ((err = Tcl_Eval(tcl_inter, s)) != TCL_OK) {
+            fprintf(stderr, "get_http_test_coord() error: %d (%s)\n",
+                    err, tcl_inter->result);
+            operation_failed(client_socket);
+            return;
         }
+        sprintf(s, "%u000,%s,%s", time(NULL), tcl_inter->result, perf_dbl);
+        coord_history.push_back(s);
     }
 
 
@@ -1587,16 +1585,15 @@ void performance_already_evaluated_int(HUpdateMessage *m, int client_socket)
       sprintf(perf_string, "%d", performance);
       global_data.insert(pair<string, string>(str_conf, (string)perf_string));
 
-      char *val = strchr(curr_conf, '_');
-      if (val) {
-          sprintf(s, "%u000,%s,%s,", time(NULL), ++val, perf_string);
-          for (val = s; *val != '\0'; ++val)
-              if (*val == '_')
-                  *val = ',';
-          strcat(s, appName);
-
-          coord_history.push_back(s);
+      sprintf(s, "get_http_test_coord %s", appName);
+      if ((err = Tcl_Eval(tcl_inter, s)) != TCL_OK) {
+          fprintf(stderr, "get_http_test_coord() error: %d (%s)\n",
+                  err, tcl_inter->result);
+          operation_failed(client_socket);
+          return;
       }
+      sprintf(s, "%u000,%s,%s", time(NULL), tcl_inter->result, perf_string);
+      coord_history.push_back(s);
   }
   
 
@@ -1706,16 +1703,15 @@ void performance_already_evaluated_double(HUpdateMessage *m, int client_socket)
       string perf_num = perf_dbl;
       global_data.insert(pair<string, string>(str_conf, perf_num));
 
-      char *val = strchr(curr_conf, '_');
-      if (val) {
-          sprintf(s, "%u000,%s,%s,", time(NULL), ++val, perf_dbl);
-          for (val = s; *val != '\0'; ++val)
-              if (*val == '_')
-                  *val = ',';
-          strcat(s, appName);
-
-          coord_history.push_back(s);
+      sprintf(s, "get_http_test_coord %s", appName);
+      if ((err = Tcl_Eval(tcl_inter, s)) != TCL_OK) {
+          fprintf(stderr, "get_http_test_coord() error: %d (%s)\n",
+                  err, tcl_inter->result);
+          operation_failed(client_socket);
+          return;
       }
+      sprintf(s, "%u000,%s,%s", time(NULL), tcl_inter->result, perf_dbl);
+      coord_history.push_back(s);
   }
 
   //Server checks the database whether the conf has already been evaluated in the past
