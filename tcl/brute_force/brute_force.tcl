@@ -81,9 +81,11 @@ proc brute_force_modify {appName param} {
 
     # Update any dependant local variables, if they exist.
     upvar #0 ${appName}_bundle_${bun}(deplocals) deplocals
-    foreach dep $deplocals {
-        upvar #0 $dep dep_bun
-        set dep_bun(value) $bunv
+    if { [info exists deplocals] } {
+        foreach dep $deplocals {
+            upvar #0 $dep dep_bun
+            set dep_bun(value) $bunv
+        }
     }
 }
 
