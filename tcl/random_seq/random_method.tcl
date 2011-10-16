@@ -48,6 +48,8 @@ proc random_method {appName} {
         upvar #0 ${appName}_bundle_${bun}(minv) minv
         upvar #0 ${appName}_bundle_${bun}(maxv) maxv
         upvar #0 ${appName}_bundle_${bun}(domain) domain
+        upvar #0 ${appName}_bundle_${bun}(deplocals) deps
+
         parr $domain
         set idx_upper [expr [llength $domain]-1]
         puts "upper bound on index: $idx_upper"
@@ -56,7 +58,14 @@ proc random_method {appName} {
             set idx  [random_uniform 0 $idx_upper 1]
         }
         set bunv [lindex $domain $idx]
-        redraw_dependencies $bun $appName 0 0
+
+        # Update any dependant local variables, if they exist.
+        if { [info exists deps] } {
+            foreach dep $deps {
+                upvar #0 $dep dep_bun
+                set dep_bun(value) $bunv
+            }
+        }
     }
     global ${appName}_simplex_time
     incr ${appName}_simplex_time 
