@@ -25,20 +25,18 @@ set search_algorithm 1
 # comment nearest_neighbor if you are not using ANN based projection
 #load ../tcl/common/nearest_neighbor.so
 
-global draw_har_windows
-set draw_har_windows 0
 # comment code_server.so if you are not using dynamic code generation
 #load ../tcl/common/code_server.so
 
 puts "the backend files."
+source ../tcl/common/utilities.tcl
+source ../tcl/pro/utilities.tcl
+
 source ../tcl/pro/parseApp_version_8.tcl
-source ../tcl/pro/drawApp.tk
 source ../tcl/pro/proparseApp_version_8.tcl
-source ../tcl/pro/newdrawApp.tk
 source ../tcl/pro/pro.tcl
 source ../tcl/pro/initial_simplex_construction.tcl
 source ../tcl/pro/random_uniform.tcl
-source ../tcl/pro/utilities.tcl
 source ../tcl/pro/matrix.tcl
 source ../tcl/pro/pro_transformations.tcl
 source ../tcl/pro/projection.tcl

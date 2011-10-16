@@ -446,7 +446,6 @@ proc set_bundles_to_new_values {appName values} {
 
                     global ${appName}_time
                     incr ${appName}_time
-#		    redraw_dependencies $bun $appName 0 0
 		    incr i
 		}
 	    }
@@ -601,7 +600,6 @@ proc set_ith_bundle_to_given_value {appName indx value} {
 
     global ${appName}_time
     incr ${appName}_time
-#    redraw_dependencies $bun $appName 0 0
 }
 
 

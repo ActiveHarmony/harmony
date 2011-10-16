@@ -134,8 +134,6 @@ char *flag_dir;
  *
  ***/
 
-int draw_windows=0;
-
 string history_since(unsigned int last)
 {
     stringstream ss;
@@ -185,16 +183,6 @@ int check_parameters(int argc, char **argv)
                "[AH]:\tRandom\n"
                "[AH]:\tBrute Force\n");
         return -1;
-    }
-
-    // by default, no windows are drawn
-    //  to disable Active Harmony server window, use "gmake server_no_tk" to build the framework.
-    draw_windows=0;
-
-    if( argc >= 3 )
-    {
-      // second argument is the graphics parameter
-      draw_windows=atoi(argv[2]);
     }
 }
 

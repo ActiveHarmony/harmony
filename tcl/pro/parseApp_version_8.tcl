@@ -176,36 +176,6 @@ proc harmonyApp {simple_name app_desc socket} {
 	    }
 	}
   }
-
-  upvar #0 ${name}_bundles bundles
-  upvar #0 ${name}_nodes nodes
-  upvar #0 ${name}_others others
-
-  foreach bun $bundles {
-      upvar #0 ${name}_bundle_${bun}(depend) depend
-  }
-
-  upvar #0 draw_har_windows draw_windows
-
-  set ${name}_visible_height 400
-    set ${name}_visible_width 500
-    set ${name}_scroll_height 400
-    set ${name}_scroll_width 500
-
-  if { $draw_windows == 1 } {
-      drawharmonyApp $name
-  }
-
-  # now we have to see if we created global bundles and draw them
-  set aName [string range $name 0 [expr [string last "_" $name]-1]]
-  global ${aName}_bundles
-  global ${aName}_draw
-  if { $draw_windows == 1 } {
-      if {[info exists ${aName}_bundles] && ![info exists ${aName}_draw]} {
-          puts "drawing the app $aName"
-          drawharmonyApp $aName
-      }
-  }
 }
 
 

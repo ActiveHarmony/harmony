@@ -109,7 +109,6 @@ proc updateObsGoodness {appName value timestamp args} {
     upvar #0 ${appName}_obsGoodness(coordinates) coords
     upvar #0 ${appName}_obsGoodness(value) Gvalue
     upvar #0 ${appName}_obsGoodness(isglobal) isglobal
-    upvar #0 draw_har_windows draw_windows
     upvar #0 ${appName}_performance perf_this
     set perf_this $value
 
@@ -119,15 +118,7 @@ proc updateObsGoodness {appName value timestamp args} {
         set ${appName}_obsGoodness(value) $value
 	puts "got the value from obsgoodness"
         incr time
-	puts "appending lappend"
-        lappend coords $time [canvasyCoord $appName $value]
-	puts "done appending"
-        #puts "coords $coords"
-        if { $draw_windows == 1 } {
-	    puts "drawing"
-            drawharmonyObsGoodness $appName
-	    puts "done drawing"
-        }
+
 	puts "writing to a file"
         writeBundlesToDisk $appName
 	puts "done writing"
@@ -213,14 +204,6 @@ proc updateObsGoodness {appName value timestamp args} {
             incr time
 
             # check if best performance so far is defined already?
-            upvar #0 best_coordinate_so_far disp_low_point
-            upvar #0 best_perf_so_far best_perf_so_far
-            lappend coords $time [canvasyCoord $appName $best_perf_so_far]
-
-            upvar #0 draw_har_windows draw_windows
-            if { $draw_windows == 1 } {
-                drawharmonyObsGoodness $appName
-            }
             writeBundlesToDisk $appName
 	    puts "calling pro"
             pro $appName

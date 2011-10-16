@@ -42,7 +42,7 @@
 #include <sstream>
 #include <set>
 
-// tcl/tk
+// tcl
 #include <tcl.h>
 
 /***

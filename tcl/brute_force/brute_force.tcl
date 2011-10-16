@@ -65,7 +65,6 @@ proc brute_force_modify {appName param} {
         incr overflow
     } else {
         set bunv [expr $bunv+$stepv]
-        #redraw_dependencies $bun $appName 0 0
     }
     puts "Param value: $bunv"
     if {$overflow > 0} {
@@ -75,7 +74,6 @@ proc brute_force_modify {appName param} {
         } else {
             brute_force_modify $appName [expr $param+1]
             set bunv $minv
-            #redraw_dependencies $bun $appName 0 0
         }
     }
 

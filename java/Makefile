@@ -16,5 +16,4 @@ clean:
 	\rm -f *.class Harmony.h *.so a.out core
 
 libharmonyapi.so: harmonyclient.c #api.c hclient.o hsockutil.o hutil.o hmesgs.o
-	g++ -g -o $@ -fPIC -shared $? -I${JAVA_HOME}/include -I${JAVA_HOME}/include/linux -lm -ldl -lnsl -ltcl -ltk 
-
+	g++ -g -o $@ -fPIC -shared $? -I${JAVA_HOME}/include -I${JAVA_HOME}/include/linux -lm -ldl -lnsl -ltcl

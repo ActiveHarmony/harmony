@@ -30,8 +30,6 @@ build/hglobal_config.h - function prototypes for global configuration file and
                          other definitions
 build/hclient.c - the implementation of the API functions of Harmony
 build/hclient.h - prototypes of the API functions
-build/hconfig.tcl - the tcl script that loads the functions that parse the RSL
-                    and take care of the tk interface
 build/hdb.h - classes that are supposed to be used by the server to store
               information about clients and nodes registered with the system.
 build/hmesgs.c - the implementation of functions that pack/unpack

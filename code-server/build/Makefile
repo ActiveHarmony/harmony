@@ -3,8 +3,8 @@ GCC_LINUX = g++ -g -DLinux -DLINUX -Dlinux
 LIBS_LINUX =    -lm -ldl  -lnsl #-L/hivehomes/tiwari/ann_1.1.1/lib -lANN
 INCLUDE_LINUX = #-I/hivehomes/tiwari/ann_1.1.1/include/
 
-GCC_SOLARIS = g++ -g -DSOLARIS -DUSE_TK
-LIBS_SOLARIS = -L/usr/imports/lib -lsocket -lnsl -ltk8.0 -ltcl -lm -ldl -lX11
+GCC_SOLARIS = g++ -g -DSOLARIS
+LIBS_SOLARIS = -L/usr/imports/lib -lsocket -lnsl -ltcl -lm -ldl -lX11
 INCLUDE_SOLARIS = -I/usr/imports/include -I/hivehomes/tiwari/ann_1.1.1/include/
 
 GCC=$(GCC_LINUX)

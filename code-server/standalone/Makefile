@@ -3,12 +3,12 @@ TO_ROOT = ../..
 VPATH=$(TO_ROOT)/build
 
 OPTIMIZE = -O3
-LIBS_LINUX = -lm -ldl -lnsl -ltcl8.4 -ltk8.4
+LIBS_LINUX = -lm -ldl -lnsl -ltcl8.4
 INCLUDE_LINUX = -I$(TO_ROOT)/build
 GCC_LINUX = g++ -g -DLinux -DLINUX -Dlinux $(OPTIMIZE) $(INCLUDE_LINUX)
 
-GCC_SOLARIS = g++ -g -DSOLARIS -DUSE_TK
-LIBS_SOLARIS = -L/usr/imports/lib -lsocket -lnsl -ltk8.4 -ltcl8.4 -lm -ldl -lX11
+GCC_SOLARIS = g++ -g -DSOLARIS
+LIBS_SOLARIS = -L/usr/imports/lib -lsocket -lnsl -ltcl8.4 -lm -ldl -lX11
 INCLUDE_SOLARIS = -I/usr/imports/include -I/hivehomes/rahulp/ann_1.1.1/include/
 
 GCC=$(GCC_LINUX)

@@ -16,98 +16,6 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
 #
-proc http_status { } {
-    set retval ""
-
-    global current_appName
-    if { [info exists current_appName] == 1 } {
-        append retval "app:" $current_appName "|"
-
-        set varlist ""
-        set ignore_list {}
-        upvar #0 ${current_appName}_bundles bundles
-        if { [info exists bundles] } {
-            foreach var [split $bundles] {
-                append varlist "g:" $var ","
-
-                lappend ignore_list $var
-                upvar #0 ${current_appName}_bundle_${var}(deplocals) locals
-                if { [info exists locals] } {
-                    lappend ignore_list [split $locals]
-                }
-            }
-        }
-
-        foreach bundle [info globals *_bundles] {
-            upvar #0 $bundle bun
-            foreach var [split $bun] {
-                if { [lsearch -exact $ignore_list $var] == -1 } {
-                    append varlist "l:" $var ","
-                }
-            }
-        }
-        append retval "var:" [string trimright $varlist ","] "|"
-
-        global best_coordinate_so_far
-        global best_perf_so_far
-        if { [info exists best_coordinate_so_far] &&
-             [string length $best_coordinate_so_far] > 0 &&
-             [info exists best_perf_so_far] &&
-             [string length $best_perf_so_far] > 0 } {
-
-            set best_coord ""
-            foreach val [split $best_coordinate_so_far " "] {
-                append best_coord "," $val
-            }
-            append retval "coord:best" $best_coord "," $best_perf_so_far "|"
-        }
-
-    } else {
-        append retval "app:\[No Application Connected\]";
-    }
-
-    return $retval
-}
-
-proc get_http_test_coord { appName } {
-    set out_str $appName
-    upvar #0 ${appName}_bundles buns
-    foreach bun $buns {
-        upvar #0 ${appName}_bundle_${bun}(value) v
-        append out_str "," $bun ":" $v
-    }
-    return $out_str
-}
-
-# Small helper function used completely for debugging.
-# It should be removed at some point in the future.
-proc var_to_string { args } {
-    set return_string ""
-    
-    foreach arg $args {
-        foreach varName [split $arg " "] {
-            append return_string $varName
-            upvar $varName var
-
-            if { [array exists var] == 1 } {
-                append return_string " {\n"
-                foreach index [array names var] {
-                    append return_string "\t" $index " => " $var($index) "\n"
-                }
-                append return_string "}\n"
-
-            } elseif { [info exists var] == 1 } {
-                append return_string " => " $var "\n"
-
-            } else {
-                append return_string " does not exist.\n"
-            }
-        }
-    }
-
-    return $return_string
-}
-
 proc signal_go { appName expand_best_local } {
     puts "inside signal_go"
     upvar #0 ${appName}_procs deplocals1
@@ -150,13 +58,6 @@ proc signal_all_done { appName best_so_far } {
     set points $temp
     assign_values_to_bundles $appName $points
 
-}
-
-proc user_puts { message } {
-    upvar #0 debug_mode debug_
-    if { $debug_ == 1 } {
-        puts $message
-    }
 }
 
 proc set_label_texts { appName iteration } {
@@ -234,14 +135,6 @@ proc print_matrix { points repeat_first tag } {
 
 proc cdr {l} { return [lrange $l 1 end]}
 
-proc list_to_string { ls } {
-    set return_string ""
-    foreach elem $ls {
-        append return_string $elem " "
-    }
-    return $return_string
-}
-
 proc get_candidate_configuration { appName } {
     set out_str ""
     upvar #0 candidate_simplex c_points
@@ -258,18 +151,6 @@ proc get_candidate_configuration { appName } {
     return $out_str 
 }
 
-proc get_test_configuration { appName } {
-    set out_str ""
-    upvar #0 ${appName}_bundles buns
-    foreach bun $buns {
-        upvar #0 ${appName}_bundle_${bun}(value) v
-        append out_str $v "_"
-    }
-    set out_str [string range $out_str 0 [expr [string length $out_str] -2]]
-    append $out_str "\0"
-    return $out_str
-}
-
 proc get_next_configuration_dep { appName } {
      set out_str ""
      upvar #0 ${appName}_bundles buns
@@ -281,39 +162,6 @@ proc get_next_configuration_dep { appName } {
      append $out_str "\0"
      return $out_str
 }
-
-# unique configuration
-proc get_next_configuration { appName } {
-
-     set min 0
-
-     set out_str ""
-
-     #creating the list of the bundles
-     #set bundle_list[list]
-
-     upvar #0 ${appName}_bundles buns
-
-     foreach bun $buns {
-
-	 upvar #0 ${appName}_bundle_${bun}(domain) domain
-
-	 set idx_upper [expr [llength $domain]]
-
-	 set range [expr {$idx_upper-$min}]
-	 
-	 set idx [expr {int($min+$range*rand())}]
-
-	 append out_str $idx "_"
-
-     }
-
-     set out_str [string range $out_str 0 [expr [string length $out_str] -2]]
-     append $out_str "\0"
-     return $out_str
-    
-}
-
 
 proc get_next_configuration_by_name { appName varName } {
     set min 1
@@ -380,21 +228,6 @@ proc round_towards_min { wrt point step } {
     return $temp_ind
 }
 
-# apply fun to all the elements in the list
-proc map {fun ls} {
-    set res {}
-    foreach element $ls {lappend res [$fun $element]}
-    return $res
- }
-
-proc list_to_string { ls } {
-    set return_string ""
-    foreach elem $ls {
-        append return_string $elem " "
-    }
-    return $return_string
-}
-
 # the name says it all
 proc print_all_bundles {appName} {
     upvar #0 ${appName}_bundles bundles
@@ -434,14 +267,12 @@ proc write_candidate_simplex { appName } {
     append tmp_filename "/tmp/harmony-tmp." [pid] "." [clock clicks]
     set fname [open $tmp_filename "w"]
 
-    set i 0
     set out_str ""
     foreach point $c_points {
          foreach elem $point {
 	     append out_str " " $elem
 	 }
          append out_str "\n"
-         incr i
     }
     puts $fname $out_str
     close $fname

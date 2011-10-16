@@ -164,12 +164,3 @@ proc random_uniform { pmin pmax number } {
 
     return $result
 }
-proc tack_on { ls_1  ls_2 } {
-    set index 0
-    set out_list {}
-    foreach elem $ls_1 {
-        lappend out_list [join [list $elem [lindex $ls_2 $index]]]
-        incr index
-    }
-    return $out_list
-}

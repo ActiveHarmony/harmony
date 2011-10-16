@@ -19,10 +19,6 @@
 global search_algorithm
 set search_algorithm 4 
 
-#### to disable client windows, set draw_har_windows variable to 0
-global draw_har_windows
-set draw_har_windows 1 
-
 ## load commons
 
 # comment nearest_neighbor if you are not using ANN based projection
