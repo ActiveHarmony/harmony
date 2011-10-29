@@ -123,8 +123,12 @@ class VarDef {
 
     // constructor that takes as params the variable name and its type
     VarDef(char *vN, int vT) {
-        varName=(char *)malloc(strlen(vN));
-        strcpy(varName,vN);
+        if (vN) {
+            varName=(char *)malloc(strlen(vN)+1);
+            strcpy(varName,vN);
+        } else {
+            varName=NULL;
+        }
         varType=htonl(vT);
         varp=NULL;
         shadowp=NULL;
@@ -155,33 +159,42 @@ class VarDef {
 
         //printf("vardef varName %s varNameLength %d\n", (char*)v.varName,strlen(v.varName));
 
-        varName=(char *)malloc(strlen(v.varName));
-        strcpy(varName,v.varName);
+        if (v.varName) {
+            varName=(char *)malloc(strlen(v.varName)+1);
+            strcpy(varName,v.varName);
+        } else {
+            varName = NULL;
+        }
 
         varType=v.varType;
 
-        switch (getType()) {
-            case VAR_INT:
+        if (v.varp) {
+            switch (getType()) {
+              case VAR_INT:
                 varp=(int *)malloc(sizeof(int));
                 *((int *)varp)=*((int *)v.varp);
                 shadowp=(int *)malloc(sizeof(int));
                 *((int *)shadowp)=*((int *)v.varp);
                 break;
-            case VAR_STR:
+              case VAR_STR:
                 assert(strlen((char *)v.varp) < VAR_STR_SIZE);
                 varp = (char*)malloc(VAR_STR_SIZE);
                 strcpy((char *)varp,(char *)v.varp);
                 shadowp = (char*)malloc(VAR_STR_SIZE);
                 strcpy((char *)shadowp,(char *)v.varp);
                 break;
+            }
+        } else {
+            varp = NULL;
+            shadowp = NULL;
         }
     }
 
     // destructor
     ~VarDef() {
-        free(varName);
-        free(varp);
-        free(shadowp);
+        if (varName) free(varName);
+        if (varp) free(varp);
+        if (shadowp) free(shadowp);
     }
     // the equal operator
     // it might be useful later
@@ -280,7 +293,7 @@ class VarDef {
     // set the name of the variable
     inline void setName(const char *vN) 
     {
-        varName=(char *)realloc(varName, strlen(vN));
+        varName=(char *)realloc(varName, strlen(vN)+1);
         strcpy(varName,vN);
     }
 
