@@ -82,8 +82,10 @@ using namespace std;
 /*
  * define accepted variable types
  */
-#define VAR_INT 0
-#define VAR_STR 1
+#define VAR_UNKNOWN -1
+#define VAR_INT      0
+#define VAR_STR      1
+#define VAR_REAL     2
 
 /*
  * define the maximum size of a string variable
@@ -101,114 +103,167 @@ using namespace std;
 // that are registered with Harmony
 class VarDef {
   private:
-    // the name of the variable
-    char *varName;
-    // the variable type: VAR_INT or VAR_STR
-    unsigned long int varType;
-    // the pointer to the value of the variable
-    void *varp;
-    // the pointer to the shadow value of the variable
-    void *shadowp;
-    // the size of variable (string length)
+    int type;          // Variable type.
+    char *name;        // Variable name.
+    int is_internal;   // Flag to specify if ptr was allocated internally.
+    void *ptr;         // Pointer to internal or external value.
+    void *shadow;      // Pointer to internal shadow value.
+    unsigned int size; // Length of data.
 
   public:
-
     // the default constructor
-    VarDef() {
-        varName=NULL;
-        varType=htonl(5);
-        varp=NULL;
-        shadowp=NULL;
+    VarDef()
+    {
+        type = VAR_UNKNOWN;
+        name = NULL;
+        is_internal = 1;
+        ptr = NULL;
+        shadow = NULL;
     }
 
     // constructor that takes as params the variable name and its type
-    VarDef(char *vN, int vT) {
+    VarDef(const char *vN, int vT)
+    {
+        type = vT;
         if (vN) {
-            varName=(char *)malloc(strlen(vN)+1);
-            strcpy(varName,vN);
-        } else {
-            varName=NULL;
+            name = (char *)malloc(strlen(vN) + 1);
+            strcpy(name, vN);
         }
-        varType=htonl(vT);
-        varp=NULL;
-        shadowp=NULL;
+        else {
+            name = NULL;
+        }
+
+        is_internal = 1;
+        ptr = NULL;
+        shadow = NULL;
     }
 
     // this method is local and will only be used to allocate memory
     // for the variables. It is a conveninent way to reuse code
-    void alloc (){
+    void alloc()
+    {
         switch (getType()) {
-            case VAR_INT:
-                varp=(int *)malloc(sizeof(int));
-                shadowp=(int *)malloc(sizeof(int));
-                break;
-            case VAR_STR:
-                printf("check point alloc: hmesgs.h:\n");
-                varp = (char*)malloc(VAR_STR_SIZE);
-                shadowp = (char*)malloc(VAR_STR_SIZE);
-                *(char*)varp = '\0';
-                *(char*)shadowp = '\0';
-                break;
+        case VAR_UNKNOWN:
+            assert(0 && "Invalid VarDef type for alloc().");
+            break;
+        case VAR_INT:
+            if (ptr == NULL && is_internal) {
+                ptr = malloc(sizeof(int));
+            }
+            if (shadow == NULL) {
+                shadow = malloc(sizeof(int));
+            }
+            size = sizeof(int);
+            break;
+        case VAR_STR:
+            break;
+        case VAR_REAL:
+            if (ptr == NULL && is_internal) {
+                ptr = malloc(sizeof(double));
+            }
+            if (shadow == NULL) {
+                shadow = malloc(sizeof(double));
+            }
+            size = sizeof(double);
+            break;
         }
+        is_internal = 1;
     }
 
-
-
     // copy constructor
-    VarDef(const VarDef& v) {
+    VarDef(const VarDef& v)
+    {
+        type = v.type;
 
-        //printf("vardef varName %s varNameLength %d\n", (char*)v.varName,strlen(v.varName));
-
-        if (v.varName) {
-            varName=(char *)malloc(strlen(v.varName)+1);
-            strcpy(varName,v.varName);
+        if (v.name) {
+            name = (char *)malloc(strlen(v.name)+1);
+            strcpy(name, v.name);
         } else {
-            varName = NULL;
+            name = NULL;
         }
 
-        varType=v.varType;
+        is_internal = v.is_internal;
 
-        if (v.varp) {
-            switch (getType()) {
-              case VAR_INT:
-                varp=(int *)malloc(sizeof(int));
-                *((int *)varp)=*((int *)v.varp);
-                shadowp=(int *)malloc(sizeof(int));
-                *((int *)shadowp)=*((int *)v.varp);
+        if (v.ptr) {
+            switch (type) {
+            case VAR_INT:
+                if (is_internal) {
+                    ptr = malloc(sizeof(int));
+                    *((int *)ptr) = *((int *)v.ptr);
+                }
+                else {
+                    ptr = v.ptr;
+                }
+                shadow = malloc(sizeof(int));
+                *((int *)shadow) = *((int *)ptr);
+                size = sizeof(int);
                 break;
-              case VAR_STR:
-                assert(strlen((char *)v.varp) < VAR_STR_SIZE);
-                varp = (char*)malloc(VAR_STR_SIZE);
-                strcpy((char *)varp,(char *)v.varp);
-                shadowp = (char*)malloc(VAR_STR_SIZE);
-                strcpy((char *)shadowp,(char *)v.varp);
+            case VAR_STR:
+                assert(strlen((char *)v.ptr) < VAR_STR_SIZE);
+                if (is_internal) {
+                    ptr = malloc(VAR_STR_SIZE);
+                    strcpy((char *)ptr, (char *)v.ptr);
+                }
+                else {
+                    ptr = v.ptr;
+                }
+                shadow = malloc(VAR_STR_SIZE);
+                strcpy((char *)shadow, (char *)ptr);
+                size = VAR_STR_SIZE;
+                break;
+            case VAR_REAL:
+                if (is_internal) {
+                    ptr = malloc(sizeof(double));
+                    *((double *)ptr) = *((double *)v.ptr);
+                }
+                else {
+                    ptr = v.ptr;
+                }
+                shadow = malloc(sizeof(double));
+                *((double *)shadow) = *((double *)ptr);
+                size = sizeof(double);
                 break;
             }
         } else {
-            varp = NULL;
-            shadowp = NULL;
+            ptr = NULL;
+            shadow = NULL;
         }
     }
 
     // destructor
-    ~VarDef() {
-        if (varName) free(varName);
-        if (varp) free(varp);
-        if (shadowp) free(shadowp);
+    ~VarDef()
+    {
+        if (name) free(name);
+        if (ptr && is_internal) free(ptr);
+        if (shadow) free(shadow);
     }
+
     // the equal operator
     // it might be useful later
-    VarDef& operator=(const VarDef &v) {
-        if (this!= &v) {
-            setName(v.varName);
-            setType(ntohl(v.varType));
-            switch (getType()) {
-                case VAR_INT:
-                    setValue(*((int *)v.varp));
-                    break;
-                case VAR_STR:
-                    setValue((char *)v.varp);
-                    break;
+    VarDef &operator=(const VarDef &v)
+    {
+        if (this != &v) {
+            setName(v.name);
+            type = v.type;
+            size = v.size;
+            is_internal = v.is_internal;
+            if (!is_internal) {
+                ptr = v.ptr;
+            }
+            else if (v.ptr) {
+                ptr = malloc(size);
+                memcpy(ptr, v.ptr, size);
+            }
+            else {
+                ptr = NULL;
+            }
+
+            if (v.shadow) {
+                shadow = malloc(size);
+                memcpy(shadow, v.shadow, size);
+            }
+            else {
+                shadow = NULL;
             }
         }
         return *this;
@@ -216,85 +271,126 @@ class VarDef {
 
     // set the value of the variable
     // if the variable is an int
-    inline void setValue(int v){
-        if (getType()==VAR_INT) {
-            if (varp == NULL)
-                varp = (int*)malloc(sizeof(int));
-            *((int *)varp)=v;
+    inline void setValue(int v)
+    {
+        if (type == VAR_INT) {
+            if (ptr == NULL)
+                ptr = malloc(sizeof(int));
+            *((int *)ptr) = v;
 
-            setShadow(*(int *)varp);
+            setShadow(v);
         }
     }
+
     // set the shadow of the variable
     // if the variable is an int
-    inline void setShadow(int v){
-        if (getType()==VAR_INT) {
-            if (shadowp == NULL)
-                shadowp = (int*)malloc(sizeof(int));
-
-            *((int *)shadowp)=v;
+    inline void setShadow(int v)
+    {
+        if (type == VAR_INT) {
+            if (shadow == NULL)
+                shadow = malloc(sizeof(int));
+            *((int *)shadow) = v;
         }
     }
 
     // set the value of the variable
     // if the variable is a string
-    inline void setValue(char *s) {
-        if (getType()==VAR_STR) {
-            if (varp == NULL)
-                varp = (char*)malloc(VAR_STR_SIZE);
-            assert (strlen(s) < VAR_STR_SIZE);
-            strcpy((char *)varp,s);
-            setShadow((char *)varp);
+    inline void setValue(const char *s)
+    {
+        if (type == VAR_STR) {
+            if (ptr == NULL)
+                ptr = malloc(VAR_STR_SIZE);
+            assert(strlen(s) < VAR_STR_SIZE);
+            strcpy((char *)ptr, s);
+
+            setShadow(s);
         }
     }
 
     // set the shadow of the variable
     // if the variable is a string 
-   inline void setShadow(char *s) {
-        if (getType()==VAR_STR) {
-            if (shadowp == NULL)
-                shadowp = (char*)malloc(VAR_STR_SIZE);
+   inline void setShadow(const char *s)
+   {
+        if (type == VAR_STR) {
+            if (shadow == NULL)
+                shadow = malloc(VAR_STR_SIZE);
 
-            assert (strlen(s) < VAR_STR_SIZE);
-            strcpy((char *)shadowp,s);
+            assert(strlen(s) < VAR_STR_SIZE);
+            strcpy((char *)shadow, s);
         }
     }
-    // return the pointer to the value of the variable
-    inline void *getPointer() 
+
+    // set the value of the variable
+    // if the variable is a real number
+    inline void setValue(double v)
     {
-        return varp;
+        if (type == VAR_REAL) {
+            if (ptr == NULL)
+                ptr = malloc(sizeof(double));
+            *((double *)ptr) = v;
+
+            setShadow(v);
+        }
+    }
+
+    // set the shadow of the variable
+    // if the variable is a real number
+    inline void setShadow(double v)
+    {
+        if (type == VAR_REAL) {
+            if (shadow == NULL)
+                shadow = malloc(sizeof(double));
+            *((double *)shadow) = v;
+        }
+    }
+
+    // return the pointer to the value of the variable
+    inline void *getPointer()
+    {
+        return ptr;
+    }
+
+    // return the pointer to the value of the variable
+    inline void setPointer(void *external_ptr)
+    {
+        ptr = external_ptr;
+        is_internal = 0;
     }
 
     // return the pointer to the shadow of the variable
-    inline void *getShadow() 
+    inline void *getShadow()
     {
-        return shadowp;
-    }
-    // return the type of the variable
-    int getType() 
-    {
-        return ntohl(varType);
+        return shadow;
     }
 
+    // return the type of the variable
+    int getType()
+    {
+        return type;
+    }
 
     // set the type of the variable
-    inline void setType(const int vt) 
+    inline void setType(int vt)
     {
-        varType=htonl(vt);
+        type = vt;
     }
 
-
     // get the name of the variable
-    inline char *getName() 
+    inline char *getName()
     {
-        return varName;
+        return name;
     }
 
     // set the name of the variable
-    inline void setName(const char *vN) 
+    inline void setName(const char *vN)
     {
-        varName=(char *)realloc(varName, strlen(vN)+1);
-        strcpy(varName,vN);
+        int len = 0;
+        if (vN != NULL) {
+            len = strlen(vN) + 1;
+        }
+
+        name = (char *)realloc(name, len);
+        strncpy(name, vN, len);
     }
 
     // serialize the variable content
@@ -306,7 +402,6 @@ class VarDef {
     // print the variable content
     // for debugging purposes only
     void print();
-
 };
 
 /***
@@ -567,10 +662,10 @@ class HDescrMessage : public HMessage {
 
     // constructor given type of message, description and description length
     HDescrMessage(int t, const char *d, int l):HMessage(t){
-        descrlen=htons(l);
-        //    descr=new char[l+1];
-        descr = (char *)malloc(sizeof(char)*(l+1));
-        strcpy(descr,d);
+        descrlen = htons(l);
+        descr = (char *)malloc(sizeof(char) * (l+1));
+        strncpy(descr, d, l);
+        descr[l] = '\0';
     }
 
     // destructor

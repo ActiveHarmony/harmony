@@ -33,149 +33,248 @@
 #ifndef __HCLIENT_H__
 #define __HCLIENT_H__
 
-/***
- * include other headers
- ***/
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-#include <sys/file.h>
-#include <sys/stat.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <fcntl.h>
-#include <netdb.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <signal.h>
+typedef struct hdesc_t hdesc_t;
 
-#include "hutil.h"
-#include "hmesgs.h"
-#include "hsockutil.h"
+typedef enum harmony_iomethod_t {
+    HARMONY_IO_POLL,
+    HARMONY_IO_ASYNC,
 
-/***
- * macro definition
- ***/
+    HARMONY_DATA_MAX
+} harmony_iomethod_t;
 
-/*
- * the size of the buffer used to transfer data between server and client
- */
-#define BUFFER_SIZE 1024
-#define MAX_VAR_NAME BUFFER_SIZE
+typedef enum bundle_scope_t {
+    BUNDLE_SCOPE_GLOBAL,
+    BUNDLE_SCOPE_LOCAL,
 
-/*
- * define truth values
- */
-#define false 0
-#define true 1
+    BUNDLE_SCOPE_MAX
+} bundle_scope_t;
 
+typedef enum vartype_t {
+    VARTYPE_UNKNOWN = -1,
+    VARTYPE_INT     =  0,
+    VARTYPE_STR     =  1,
+    VARTYPE_REAL    =  2
+} vartype_t;
 
-/***
- * function definitions
- ***/
-
-/*
- * When a program registers with the harmony server it uses this function
+/* ----------------------------------------------------------------------------
+ * Initialize a Harmony descriptor.
  *
- * Parms:
- *  use_sigs (int) - the client will use signals if the value is 1
- *		     the client will use polling if the value is 0
- * 		     the client will use sort of a polling if value is 2
- *  relocated (int)-
- *  sport (int)    - the port of the server 
- *  shost (char *) - the host of the server
- * Return:
- * integer
- */
-int harmony_startup(int sport=0, char *shost=NULL, int use_sigs=0, int relocated=0);
-
-/*
- * When a program announces the server that it will end it calls this
- * function
+ * Each Harmony session requires a unique harmony descriptor.  An application
+ * name is required to distinguish client groups on the server.  The iomethod
+ * parameter determines if the client will receive new configurations from
+ * the server asynchronously (via signals), or by polling (via the
+ * harmony_fetch function).
+ *
  * Params:
- * 
- * Return
- None
- */
-void harmony_end(int socketIndex=0);
-
-int harmony_get_client_id(int socketIndex=0);
-
-/*
- * Inform the Harmony server of the bundles and requirements of the application
- */
-void harmony_application_setup(char *description, int socketIndex=0);
-
-void harmony_application_setup_file(char *fname, int socketIndex=0);
-
-/*
- * Bind a local variable with a harmony bundle 
- */
-void * harmony_add_variable(char *appName, char *bundleName, int type, 
-                            int socketIndex=0, int local=0);
-
-
-/*
- * Send to the server the value of a bound variable
- */
-void harmony_set_variable(void *variable, int socketIndex = 0);
-
-
-/*
- * Update bound variables on server'side.
- */
-void harmony_set_all(int socketIndex=0);
-
-
-/*
- * Get the value of a bound variable
+ *   name     - Client application name
+ *   iomethod - Client/Server communication method
  *
- * I decided to remove the function from the API since I want the user to
- * use the request_all function that plays the role of a barrier
+ * Returns a harmony handle on success, and -1 otherwise.
  */
-void * harmony_request_variable(char *variable, int socketIndex=0);
+hdesc_t *harmony_init(const char *name, harmony_iomethod_t iomethod);
 
+/* ----------------------------------------------------------------------------
+ * Connect to the Harmony server.
+ *
+ * Establishes a connection with the harmony server.  If host is NULL or port
+ * is 0, the environment variable HARMONY_S_HOST or HARMONY_S_PORT will be
+ * used, respectively.
+ *
+ * All variables must be registered prior to calling this function.
+ *
+ * Params:
+ *   hdesc - Harmony handle returned from harmony_init()
+ *   host  - Host of the server
+ *   port  - Port of the server
+ *
+ * Returns a harmony handle on success, and -1 otherwise.
+ */
+int harmony_connect(hdesc_t *hdesc, const char *host, int port);
 
+/* ----------------------------------------------------------------------------
+ * Re-connect to the Harmony server.
+ *
+ * Use this function to migrate a harmony client, and continue its processing
+ * elsewhere.  An additional client id is necessary to inform the server which
+ * client is being migrated.
+ *
+ * Params:
+ *   hdesc - Harmony handle returned from harmony_init()
+ *   host  - Host of the server
+ *   port  - Port of the server
+ *   cid   - Original ID of client
+ *
+ * Returns a harmony handle on success, and -1 otherwise.
+ */
+int harmony_reconnect(hdesc_t *hdesc, const char *host, int port, int cid);
+
+/* ----------------------------------------------------------------------------
+ * Close the connection to the Harmony server.
+ *
+ * Params:
+ *   hdesc - Harmony handle returned from harmony_init()
+ *
+ * Returns 0 on success, and -1 otherwise.
+ */
+int harmony_disconnect(hdesc_t *hdesc);
+
+/* ----------------------------------------------------------------------------
+ * Query the server's key/value configuration system.
+ *
+ * Requests the value associated with the parameter key on the Harmony server.
+ * Heap memory is allocated for the result string.
+ *
+ * It is the caller's responsibility to free the result string.
+ *
+ * Params:
+ *   hdesc - Harmony handle returned from harmony_init()
+ *   key   - Config key to search for on the server
+ *
+ * Returns a c-style string on success, and NULL otherwise.
+ */
+char *harmony_query(hdesc_t *hdesc, const char *key);
+
+/* ----------------------------------------------------------------------------
+ * Fetch a new configuration from the Harmony server.
+ *
+ * If a new configuration is available, this function will update the values of
+ * all registered variables.  Otherwise, it will configure the system to run
+ * with the best known configuration thus far.
+ *
+ * Params:
+ *   hdesc - Harmony handle returned from harmony_init()
+ *
+ * Returns 0 if no registered variables were modified, 1 if any registered
+ * variables were modified, and -1 otherwise.
+ */
+int harmony_fetch(hdesc_t *hdesc);
+
+/* ----------------------------------------------------------------------------
+ * Retrieve the best known configuration thus far from the Harmony server.
+ *
+ * The result is a heap memory allocated string consisting of the values of
+ * the registered variables (in the order they were registered), joined by
+ * underscores.
+ *
+ * It is the caller's responsibility to free the result string.
+ *
+ * Params:
+ *   hdesc - Harmony handle returned from harmony_init()
+ *
+ * Returns a c-style string on success, and NULL otherwise.
+ */
+char *harmony_best_config(hdesc_t *hdesc);
+
+/* ----------------------------------------------------------------------------
+ * Report the performance of a configuration to the Harmony server.
+ *
+ * Params:
+ *   hdesc - Harmony handle returned from harmony_init()
+ *   value - Performance measured for the current configuration
+ *
+ * Returns 0 on success, and -1 otherwise.
+ */
+int harmony_report(hdesc_t *hdesc, double value);
+
+/* ----------------------------------------------------------------------------
+ * Retrieve the convergence state of the current search.
+ *
+ * Params:
+ *   hdesc - Harmony handle returned from harmony_init()
+ *
+ * Returns 1 if the search has converged, 0 if it has not, and -1 otherwise.
+ */
+int harmony_converged(hdesc_t *hdesc);
+
+/* ----------------------------------------------------------------------------
+ * Allocate memory for and register a new Harmony variable.
+ *
+ * Params:
+ *   hdesc - Harmony handle returned from harmony_init()
+ *   type  - Specifies if the variable is an integer, real number, etc.
+ *   scope - Specifies how this variable is shared among other harmony clients
+ *   name  - Name associated with this variable
+ *
+ * Returns a pointer to the newly allocated heap memory on success,
+ * and NULL otherwise.
+ */
 /*
- * Get the current value of all the bound variables
+void *harmony_allocate(hdesc_t *hdesc, vartype_t type,
+                       bundle_scope_t scope, const char *name);
+*/
+/* ----------------------------------------------------------------------------
+ * Register a variable with the Harmony system.
+ *
+ * Params:
+ *   hdesc - Harmony handle returned from harmony_init()
+ *   name  - Name to associate with this variable
+ *   ptr   - Pointer to the pre-existing client variable
+ *   min   - Minimum range value (inclusive)
+ *   max   - Maximum range value (inclusive)
+ *   step  - Minimum search increment/decrement
+ *
+ * Returns 0 on success and -1 otherwise.
  */
-int harmony_request_all(int socketIndex=0, int pull=0);
+int harmony_register_int(hdesc_t *hdesc, const char *name, void *ptr,
+                         int min, int max, int step);
 
-/*
- * Send the performance function result to the harmony server
+/* ----------------------------------------------------------------------------
+ * Register a variable with the Harmony system.
+ *
+ * Params:
+ *   hdesc - Harmony handle returned from harmony_init()
+ *   name  - Name to associate with this variable
+ *   ptr   - Pointer to the pre-existing client variable
+ *   min   - Minimum range value (inclusive)
+ *   max   - Maximum range value (inclusive)
+ *   step  - Minimum search increment/decrement
+ *
+ * Returns 0 on success and -1 otherwise.
  */
-// int metric
-void harmony_performance_update(int value, int socketIndex=0);
-// double metric
-void harmony_performance_update(double value, int socketIndex=0);
+int harmony_register_real(hdesc_t *hdesc, const char *name, void *ptr,
+                          double min, double max, double step);
 
-
-void* harmony_request_tcl_variable(char *variable, int socketIndex=0);
-
-char* harmony_get_best_configuration(int socketIndex=0);
-
-int harmony_check_convergence(int socketIndex=0);
-
-int code_generation_complete(int socketIndex=0);
-
-int harmony_code_generation_complete(int socketIndex=0);
-
-void* harmony_database_lookup(int socketIndex=0);
-
-void harmony_psuedo_barrier(int socketIndex=0);
-
-
-/*
- * Get the prefix directory paths for .so files 
+/* ----------------------------------------------------------------------------
+ * Register a variable with the Harmony system.
+ *
+ * Params:
+ *   hdesc - Harmony handle returned from harmony_init()
+ *   name  - Name to associate with this variable
+ *   ptr   - Pointer to the pre-existing client variable
+ *
+ * Returns 0 on success and -1 otherwise.
  */
-char* harmony_get_config_variable(const char *, int socketIndex=0);
+int harmony_register_enum(hdesc_t *hdesc, const char *name, void *ptr);
+
+/* ----------------------------------------------------------------------------
+ * Add a member to the Harmony variable's enumeration set.
+ *
+ * Params:
+ *   hdesc - Harmony handle returned from harmony_init()
+ *   name  - Name of the Harmony variable to constrain
+ *   value - Name of the enumeration member to add
+ *
+ * Returns 0 on success, and -1 otherwise.
+ */
+int harmony_range_enum(hdesc_t *hdesc, const char *name, const char *value);
+
+/* ----------------------------------------------------------------------------
+ * Unregister a variable from the Harmony system.
+ *
+ * Params:
+ *   hdesc - Harmony handle returned from harmony_init()
+ *   name  - Name of the Harmony variable to unregister
+ *
+ * Returns 0 on success, and -1 otherwise.
+ */
+int harmony_unregister(hdesc_t *hdesc, const char *name);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* __HCLIENT_H__ */
-
-
-
-
-
-
-

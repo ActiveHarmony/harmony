@@ -240,7 +240,7 @@ int update_client( ClientData clientData, Tcl_Interp *interp, int argc, char **a
 
         switch (vartype) {
             case VAR_INT:
-                v->setValue(strtol(argv[va+1],NULL, 10));
+                v->setValue(atoi(argv[va+1]));
                 break;
             case VAR_STR:
                 v->setValue(argv[va+1]);
@@ -562,7 +562,7 @@ void variable_registration(HDescrMessage *mesg, int client_socket){
     if (strlen(*sss)==0) {
         /* is int */
         v=new VarDef(mesg->get_descr(),VAR_INT);
-        v->setValue(strtol(s,NULL,10));
+        v->setValue(atoi(s));
     }
     else {
         v=new VarDef(mesg->get_descr(),VAR_STR);
@@ -696,7 +696,7 @@ void variable_request(HUpdateMessage *mesg, int client_socket)
               case VAR_INT:
                 /* is int */
 	        // update the value
-                mesg->get_var(i)->setValue(strtol(s,NULL,10));
+                mesg->get_var(i)->setValue(atoi(s));
                 break;
               case VAR_STR:
                 mesg->get_var(i)->setValue(s);
@@ -803,7 +803,7 @@ void variable_request(HUpdateMessage *mesg, int client_socket)
 	   case VAR_INT:
 	     //is int
 	     //update the value
-	     mesg->get_var(i)->setValue(strtol(s_next,NULL,10));
+	     mesg->get_var(i)->setValue(atoi(s_next));
 	     break;
 	   case VAR_STR:
 	     mesg->get_var(i)->setValue(s_next);
@@ -929,7 +929,7 @@ void var_tcl_variable_request(HUpdateMessage *mesg, int client_socket){
 
         switch (mesg->get_var(i)->getType()) {
             case VAR_INT:
-                mesg->get_var(i)->setValue(strtol(s,NULL,10));
+                mesg->get_var(i)->setValue(atoi(s));
                 break;
             case VAR_STR:
                 mesg->get_var(i)->setValue(s);
@@ -1439,23 +1439,19 @@ void performance_update_int(HUpdateMessage *m, int client_socket) {
 }
 
 // performance update function
-void performance_update_double(HUpdateMessage *m, int client_socket) {
-
+void performance_update_double(HUpdateMessage *m, int client_socket)
+{
     int err;
     char *appName = clientName[client_socket];
     char curr_conf[80];
     char s[80];
-    double performance = FLTMAXVAL;
-
-    char* perf_dbl=(char*)(m->get_var(0)->getPointer());
-
-    performance=atof(perf_dbl);
+    double performance = *(double *)(m->get_var(0)->getPointer());
+    char perf_dbl[80];
+    sprintf(perf_dbl, "%.17lg", performance);
 
     // get the current conf for this instance from the tcl backend.
-
-    if(performance != INTMAXVAL)
+    if(performance != FLTMAXVAL)
     {
-
         sprintf(s, "get_test_configuration %s", appName);
 
         if ((err = Tcl_Eval(tcl_inter, s)) != TCL_OK) {
@@ -1464,8 +1460,8 @@ void performance_update_double(HUpdateMessage *m, int client_socket) {
             printf("[AH]: FAILED HERE %d \n", __LINE__);
             operation_failed(client_socket);
             return;
-        } else
-        {
+        }
+        else {
             char *startp, *endp;
             startp=appName;
             endp=appName;
@@ -1491,8 +1487,7 @@ void performance_update_double(HUpdateMessage *m, int client_socket) {
         coord_history.push_back(s);
     }
 
-
-    sprintf(s, "updateObsGoodness %s %.15g %d", appName,performance, m->get_timestamp());
+    sprintf(s, "updateObsGoodness %s %.17lg %d", appName,performance, m->get_timestamp());
     if(debug_mode)
         printf("[AH]: goodness tcl string: %s \n", s);
     if ((err = Tcl_Eval(tcl_inter, s)) != TCL_OK) {
@@ -1513,7 +1508,7 @@ void performance_update(HUpdateMessage *m, int client_socket) {
         case VAR_INT:
             performance_update_int(m,client_socket);
             break;
-        case VAR_STR:
+        case VAR_REAL:
             performance_update_double(m,client_socket);
             break;
     }
@@ -1651,20 +1646,16 @@ void performance_already_evaluated_double(HUpdateMessage *m, int client_socket)
   int i;
 
   char s[80];
-  double performance = FLTMAXVAL;
+  double performance = *(double *)m->get_var(0)->getPointer();
   
   //get the current conf for this instance from the tcl backend
-  char* perf_dbl=(char*)(m->get_var(0)->getPointer());
-  
-  performance = atof(perf_dbl);
-
-  char perf_string[80];
+  char perf_dbl[80];
+  sprintf(perf_dbl, "%.17lg", performance);
 
   char new_res[100];
 
-  if(performance != INTMAXVAL)
+  if(performance != FLTMAXVAL)
   {
-
       sprintf(s, "get_test_configuration %s", appName);
 
       if ((err = Tcl_Eval(tcl_inter, s)) != TCL_OK)

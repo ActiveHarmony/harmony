@@ -44,121 +44,155 @@ static int debug_mode;
 
 // serialize the Variable definition
 // this class is defined in the hmesgs.h file
-int VarDef::serialize(char *buf) {
-    int buflen=0;
+int VarDef::serialize(char *buf)
+{
+    int buflen = 0;
+    char *localbuf;
     unsigned int temp;
 
     // first serialize the variable type, which is an int and can
-    // be one of the following: VAR_INT or VAR_STR
-    memcpy(buf+buflen, &varType, sizeof(unsigned long int));
-    buflen+=sizeof(unsigned long int);
+    // be one of the following: VAR_INT, VAR_STR, VAR_REAL.
+    assert(type != VAR_UNKNOWN);
+    temp = htonl(type);
+    memcpy(buf + buflen, &temp, sizeof(unsigned long int));
+    buflen += sizeof(unsigned long int);
 
     // then serialize the name of the variable.
     // when serializing strings put the length of the string first and
     // then the string itself
-    temp=htonl(strlen(varName));
-    memcpy(buf+buflen, &temp, sizeof(unsigned long int));
-    buflen+=sizeof(unsigned long int);
-    memcpy(buf+buflen, varName, strlen(varName));
-    buflen+=strlen(varName);
+    temp = htonl(strlen(name));
+    memcpy(buf + buflen, &temp, sizeof(unsigned long int));
+    buflen += sizeof(unsigned long int);
+    memcpy(buf + buflen, name, strlen(name));
+    buflen += strlen(name);
 
     // finally put the value of the variable into the buffer.
     // if the type is int, just add it to the buffer
     // if type is string, first add the length and then the string itself
-    switch (getType()) {
-        case VAR_INT:
-            temp=htonl(*((int *)getPointer()));
-            memcpy(buf+buflen, &temp, sizeof(unsigned long int));
-            buflen+=sizeof(unsigned long int);
-            break;
-        case VAR_STR:
-            temp=htonl(strlen((char *)getPointer()));
-            memcpy(buf+buflen, &temp, sizeof(unsigned long int));
-            buflen+=sizeof(unsigned long int);
-            memcpy(buf+buflen, getPointer(), strlen((char *)getPointer()));
-            buflen+=strlen((char *)getPointer());
+    switch (type) {
+    case VAR_INT:
+        temp = htonl(*((int *)ptr));
+        memcpy(buf + buflen, &temp, sizeof(unsigned long int));
+        buflen += sizeof(unsigned long int);
+        break;
+    case VAR_STR:
+        temp = htonl(strlen((char *)ptr));
+        memcpy(buf + buflen, &temp, sizeof(unsigned long int));
+        buflen += sizeof(unsigned long int);
+        memcpy(buf + buflen, ptr, strlen((char *)ptr));
+        buflen += strlen((char *)ptr);
+        break;
+    case VAR_REAL:
+        temp = snprintf(NULL, 0, "%la", *(double *)ptr);
+        localbuf = (char *) malloc(temp + 1);
+        if (localbuf == NULL) {
+            perror("Memory allocation error.");
+        }
+        sprintf(localbuf, "%la", *(double *)ptr);
+
+        memcpy(buf + buflen, &temp, sizeof(unsigned long int));
+        buflen += sizeof(unsigned long int);
+        memcpy(buf + buflen, localbuf, temp);
+        buflen += temp;
+
+        free(localbuf);
     }
 
     return buflen;
-
 }
-
 
 // deserialize the content of a variable
 // use the same order as above
-int VarDef::deserialize(char *buf) {
-    int bl=0;
-    int t,tv, sl, ssl;
-    char *s, *ss;
+int VarDef::deserialize(char *buf)
+{
+    int bl = 0;
+    int t, tv, sl;
+    char *s;
+    double d;
 
     //printf("VarDef: deserealization \n");
 
-    memcpy(&t,buf+bl,sizeof(unsigned long int));
-    bl+=sizeof(unsigned long int);
-    setType(ntohl(t));
-
+    memcpy(&t, buf + bl, sizeof(unsigned long int));
+    bl += sizeof(unsigned long int);
+    type = ntohl(t);
 
     //printf("VarDef:: deserialization:: type done \n");
-    
-    memcpy(&tv,buf+bl,sizeof(unsigned long int));
-    bl+=sizeof(unsigned long int);
+
+    memcpy(&tv, buf + bl, sizeof(unsigned long int));
+    bl += sizeof(unsigned long int);
     sl = ntohl(tv);
 
     //printf("VarDef:: deserialization:: tv done \n");
 
-    s=(char *)malloc(sl+1);
-    memcpy(s,buf+bl,sl);
-    bl+=sl;
-    s[sl]='\0';
-    setName(s);
+    name = (char *)realloc(name, sl + 1);
+    memcpy(name, buf + bl, sl);
+    name[sl] = '\0';
+    bl += sl;
 
     //printf("VarDef:: deserialization:: characters copying done \n");
-    
 
-    switch (getType()) {
-        case VAR_INT:
-            //printf("VarDef:: deserialization:: VAR_INT \n");
-            memcpy(&tv, buf+bl,sizeof(unsigned long int));
-            bl+=sizeof(unsigned long int);
-            setValue(ntohl(tv));
-            //printf("this is where it fails: \n");
-            break;
-        case VAR_STR:
-            memcpy(&tv,buf+bl,sizeof(unsigned long int));
-            bl+=sizeof(unsigned long int);
-            ssl=ntohl(tv);
-            ss=(char *)malloc(ssl+1);
-            strncpy(ss,buf+bl,ssl);
-            bl+=ssl;
-            ss[ssl]='\0';
-            setValue(ss);
-            free(ss);
-            break;
+    switch (type) {
+    case VAR_INT:
+        //printf("VarDef:: deserialization:: VAR_INT \n");
+        memcpy(&tv, buf + bl, sizeof(unsigned long int));
+        bl += sizeof(unsigned long int);
+        setValue((int)ntohl(tv));
+        //printf("this is where it fails: \n");
+        break;
+    case VAR_STR:
+        memcpy(&tv, buf + bl, sizeof(unsigned long int));
+        bl += sizeof(unsigned long int);
+        sl = ntohl(tv);
+        s = (char *)malloc(sl+1);
+        s[sl] = '\0';
+        strncpy(s, buf + bl, sl);
+        bl += sl;
+        setValue(s);
+        free(s);
+        break;
+    case VAR_REAL:
+        memcpy(&tv, buf + bl, sizeof(unsigned long int));
+        bl += sizeof(unsigned long int);
+
+        s = (char *) malloc(tv + 1);
+        if (s == NULL) {
+            perror("Memory allocation error");
+        }
+        memcpy(s, buf + bl, tv);
+        s[tv] = '\0';
+
+        sscanf(s, "%la", &d);
+        setValue(d);
+        free(s);
+
+        bl += tv;
+        break;
     }
-
-    free(s);
 
     return bl;
 }
 
-
-
 // this is a function used for debug purposes. It prints the info
 // about the variable
-void VarDef::print() {
-    //printf("Variable %s has type %d and value ",getName(), getType() );
-    switch (getType()) {
-        case VAR_INT:
-            fprintf(stderr, "\n %d ; shadow %d", *((int *)getPointer()),*((int *)getShadow()), *((int*)getPointer()));
-            break;
-        case VAR_STR:
-            fprintf(stderr, " [%s] ; shadow [%s], val [%s]",(char *)getPointer(), (char *)getShadow(), (char*)getPointer());
+void VarDef::print()
+{
+    printf("Var [Name:%s Type:%d Size:%d", name, type, size);
+    switch (type) {
+    case VAR_INT:
+        printf("Value:%d (@ 0x%lx) Shadow:%d (@ 0x%lx)",
+               *(int *)ptr, ptr, *(int *)shadow, shadow);
+        break;
+    case VAR_STR:
+        printf("Value:\"%s\" (@ 0x%lx) Shadow:\"%s\" (@ 0x%lx)",
+               ptr, ptr, shadow, shadow);
+        break;
+    case VAR_REAL:
+        printf("Value:%lf (@ 0x%lx) Shadow:%lf (@ 0x%lx)",
+               *(double *)ptr, ptr, *(double *)shadow, shadow);
+        break;
     }
-    //fprintf(stderr, "\n");
-    //fprintf(stderr, "Pointers: %p ; %p ; %p ; %p\n",getPointer(), getShadow(), getName(), &varType);
+    printf("]\n");
 }
-
-
 
 // serialize the general message class
 int HMessage::serialize(char *buf) {
@@ -327,6 +361,11 @@ int HUpdateMessage::get_message_size() {
             case VAR_STR:
                 len+=sizeof(unsigned long int); //strlen
                 len+=strlen((char *)var.getPointer()); // size of the string
+                break;
+            case VAR_REAL:
+                // Add the double value as a string.  (C99 required)
+                len+=sizeof(unsigned long int); //strlen
+                len+=snprintf(NULL, 0, "%la", *(double *)var.getPointer());
                 break;
         }
     }

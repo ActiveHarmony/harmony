@@ -16,136 +16,123 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <string.h>
 #include "hclient.h"
-#include "hmesgs.h"
+#include <stdlib.h>
+#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void harmony_startup_f(int *socketIndex)
+#if 0
+int harmony_connect_(char *host, int *port, int *use_sigs,
+                     int *relocated, int *hdesc)
 {
-    *socketIndex = harmony_startup();
+    *hdesc = harmony_connect(host, *port, *use_sigs, *relocated);
+    return (*hdesc >= 0 ? 0 : -1);
 }
 
-void harmony_get_client_id_f(int *socketIndex, int *id)
+int harmony_disconnect_(int *hdesc)
 {
-    *id = harmony_get_client_id(*socketIndex);
+    return harmony_disconnect(*hdesc);
 }
 
-void harmony_startup_args_f(int *sport, char *shost, int *use_sigs,
-                            int *relocated, int *socketIndex)
+int harmony_query_server_config_(int *hdesc, const char *key,
+                                 char *value, long len)
 {
-    *socketIndex = harmony_startup(*sport, shost, *use_sigs, *relocated);
+    int retval;
+    char *newstr;
+    retval = harmony_query_server_config(*hdesc, key, &newstr);
+    strncpy(value, newstr, len);
+    free(newstr);
+
+    return retval;
 }
 
-void harmony_end_f(int *socketIndex)
+int harmony_application_setup_(int *hdesc, char *description)
 {
-    harmony_end(*socketIndex);
+    return harmony_application_setup(*hdesc, description);
 }
 
-void harmony_application_setup_f(char *description, int *socketIndex)
+int harmony_application_setup_file_(int *hdesc, char *fname)
 {
-    harmony_application_setup(description, *socketIndex);
+    return harmony_application_setup_file(*hdesc, fname);
 }
 
-void harmony_application_setup_file_f(char *fname, int *socketIndex)
+long harmony_add_variable_(int *hdesc, char *appName, char *bundleName,
+                           int *type, int *local)
 {
-    harmony_application_setup_file(fname, *socketIndex);
+    return (long)harmony_add_variable(*hdesc, appName, bundleName,
+                                      *type, *local);
 }
 
-void harmony_add_variable_int_f(int *socketIndex, char *appName,
-                                char *bundleName, int *local, int *var)
+int harmony_set_variable_int_(int *hdesc, long *var)
 {
-    void *tmp = harmony_add_variable(appName, bundleName, VAR_INT,
-                                     *socketIndex, *local);
-    *var = *((int *)tmp);
+    return harmony_set_variable(*hdesc, (void *)(*var));
 }
 
-void harmony_add_variable_str_f(int *socketIndex, char *appName,
-                                char *bundleName, int *local,
-                                char *var, int len)
+int harmony_set_all_(int *hdesc)
 {
-    void *tmp = harmony_add_variable(appName, bundleName, VAR_INT,
-                                     *socketIndex, *local);
-    var = (char *)tmp;
-    len = strlen(var);
+    return harmony_set_all(*hdesc);
 }
 
-void harmony_set_variable_int_f(int *socketIndex, int *variable)
+void harmony_request_variable_int_(int *hdesc, char *name, int *var)
 {
-    harmony_set_variable(variable, *socketIndex);
+    *var = *(int *)harmony_request_variable(*hdesc, name);
 }
 
-void harmony_set_all_f(int *socketIndex)
+void harmony_request_variable_double_(int *hdesc, char *name, double *var)
 {
-    harmony_set_all(*socketIndex);
+    *var = *(double *)harmony_request_variable(*hdesc, name);
 }
 
-void harmony_request_variable_f(int *socketIndex, char *name, int *var)
+int harmony_request_all_(int *hdesc, int *pull)
 {
-    void *tmp = harmony_request_variable(name, *socketIndex);
-    *var = *((int *)tmp);
+    return harmony_request_all(*hdesc, *pull);
 }
 
-void harmony_request_all_f(int *socketIndex, int *pull, int *var)
+int harmony_performance_update_int_(int *hdesc, int *value)
 {
-    *var = harmony_request_all(*socketIndex, *pull);
+    return harmony_performance_update_int(*hdesc, *value);
 }
 
-void harmony_performance_update_int_f(int *socketIndex, int *value)
+int harmony_performance_update_double_(int *hdesc, double *value)
 {
-    harmony_performance_update(*value, *socketIndex);
+    return harmony_performance_update_double(*hdesc, *value);
 }
 
-void harmony_performance_update_double_f(int *socketIndex, double *value)
+int harmony_get_best_configuration_(int *hdesc, char *ret, long len)
 {
-    harmony_performance_update(*value, *socketIndex);
+    char *newstr = harmony_get_best_configuration(*hdesc);
+    if (newstr) {
+        strncpy(ret, newstr, len);
+        free(newstr);
+        return 0;
+    }
+    return -1;
 }
 
-void harmony_request_tcl_variable_f(int *socketIndex, char *name, int *result)
+void harmony_check_convergence_(int *hdesc, int *retval)
 {
-    void *tmp = harmony_request_tcl_variable(name, *socketIndex);
-    *result = *((int *)tmp);
+    *retval = harmony_check_convergence(*hdesc);
 }
 
-/* These functions are not fortran compatible.  Find another way.
-void harmony_get_best_configuration_f(int *socketIndex, char *ret)
+int harmony_code_generation_complete_(int *hdesc)
 {
-    return harmony_get_best_configuration(*socketIndex);
+    return harmony_code_generation_complete(*hdesc);
 }
 
-void *harmony_database_lookup_f(int socketIndex=0)
+long harmony_database_lookup_(int *hdesc)
 {
-    return harmony_database_lookup(socketIndex);
+    return (long)harmony_database_lookup(*hdesc);
 }
 
-char *harmony_get_config_variable_f(const char *key, int socketIndex=0)
+int harmony_pseudo_barrier_(int *hdesc)
 {
-    return harmony_get_config_variable(key, socketIndex);
-}
-*/
-
-void harmony_check_convergence_f(int *socketIndex, int *result)
-{
-    *result = harmony_check_convergence(*socketIndex);
+    return harmony_pseudo_barrier(*hdesc);
 }
 
-void code_generation_complete_f(int *socketIndex, int *result)
-{
-    *result = code_generation_complete(*socketIndex);
-}
-
-void harmony_code_generation_complete_f(int *socketIndex, int *result)
-{
-    *result = harmony_code_generation_complete(*socketIndex);
-}
-
-void harmony_psuedo_barrier_f(int *socketIndex)
-{
-    harmony_psuedo_barrier(*socketIndex);
-}
+#endif
 
 #ifdef __cplusplus
 }

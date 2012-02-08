@@ -8,7 +8,7 @@ GCC=$(GCC_LINUX)
 LIBS=$(LIBS_LINUX)
 INCLUDE=$(INCLUDE_LINUX)
 
-LIBOBJS= hclient.o hsockutil.o hutil.o hmesgs.o hclientc.o hclientf.o
+LIBOBJS= hclient.o hsockutil.o hutil.o hmesgs.o hclientf.o
 AR= ar
 ARCREATE= cr
 
@@ -44,9 +44,6 @@ hclient.o: hclient.c hclient.h hmesgs.h hsockutil.h hutil.h
 
 hclientf.o: hclientf.c hclient.h hmesgs.h hutil.h hsockutil.h
 	$(GCC) -c hclientf.c $(INCLUDE)
-
-hclientc.o: hclientc.c hclient.h hmesgs.h hutil.h hsockutil.h
-	$(GCC) -c hclientc.c $(INCLUDE)
 
 y.tab.c: grammar.y
 	yacc -v -d grammar.y

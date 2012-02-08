@@ -1,18 +1,12 @@
+To run this example using PRO as the underlying search algorithm,
+first make sure the parameters in the pro_init_generic.tcl (in
+<harmony_dir>/tcl/pro/) are defined properly. Most important ones are
+the space_dimension and npoints parameters. space_dimension for this
+example should be 2 (since we have two tunable parameters) and the
+npoints parameter should be set to how many copies of this example you
+want to run simultaneoualy. To run eight copies (which means the
+simplex size will be 8), set the npoints parameter to 8.
 
+To run eight copies of the example: (in bash)
 
-This example also illustrates the use of performance database. This is particularly useful when the user
-is trying to minimize the number of new evaluations during offline tuning.
-
-To tun this example using PRO as the underlying search algorithm, first make sure the parameters in the
-pro_init_generic.tcl (in <harmony_dir>/tcl/pro/) are defined properly. Most important ones are the 
-space_dimension and npoints parameters. space_dimension for this example should be 2 (since we have
-two tunable parameters) and the npoints parameter should be set to how many copies of this example you 
-want to run simultaneoualy. To run eight copies (which means the simplex size will be 8), set the 
-npoints parameter to 8.
-
-To run eight copies of the example:
-(in bash)
-
-for i in $(seq 1 1 8); do ./example & done
-
-
+    for i in $(seq 1 1 8); do ./example & done
