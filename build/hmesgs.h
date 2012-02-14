@@ -415,7 +415,7 @@ static const char *print_type[] = {"NONE",
                                    "APP_DESCR",
                                    "DAEMON_REG",
                                    "CLIENT_REG",
-				   "CODE_GEN_REG",
+/*				   "CODE_GEN_REG",  */
                                    "VAR_DESCR",
                                    "VAR_REQ",
                                    "VAR_SET",

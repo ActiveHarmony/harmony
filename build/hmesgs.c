@@ -176,22 +176,22 @@ int VarDef::deserialize(char *buf)
 // about the variable
 void VarDef::print()
 {
-    printf("Var [Name:%s Type:%d Size:%d", name, type, size);
+    fprintf(stderr, "Var [Name:%s Type:%d Size:%d", name, type, size);
     switch (type) {
     case VAR_INT:
-        printf("Value:%d (@ 0x%lx) Shadow:%d (@ 0x%lx)",
+        fprintf(stderr, " Value:%d (@ 0x%lx) Shadow:%d (@ 0x%lx)",
                *(int *)ptr, ptr, *(int *)shadow, shadow);
         break;
     case VAR_STR:
-        printf("Value:\"%s\" (@ 0x%lx) Shadow:\"%s\" (@ 0x%lx)",
+        fprintf(stderr, " Value:\"%s\" (@ 0x%lx) Shadow:\"%s\" (@ 0x%lx)",
                ptr, ptr, shadow, shadow);
         break;
     case VAR_REAL:
-        printf("Value:%lf (@ 0x%lx) Shadow:%lf (@ 0x%lx)",
+        fprintf(stderr, " Value:%lf (@ 0x%lx) Shadow:%lf (@ 0x%lx)",
                *(double *)ptr, ptr, *(double *)shadow, shadow);
         break;
     }
-    printf("]\n");
+    fprintf(stderr, "]\n");
 }
 
 // serialize the general message class
@@ -227,7 +227,8 @@ int HMessage::deserialize(char *buf) {
 // function used for debugging purposes that prints the type of the
 // message
 void HMessage::print() {
-    fprintf(stderr, "Message type: %s %d\n",print_type[get_type()], get_type());
+    fprintf(stderr, "Message type: %s %d\n",
+            print_type[get_type()], get_type());
     //printf("Message type: %s %d\n",print_type[get_type()], get_type());
 }
 
@@ -311,7 +312,7 @@ int HDescrMessage::deserialize(char *buf) {
 
 // print info about the description message
 void HDescrMessage::print() {
-    //HMessage::print();
+    HMessage::print();
     fprintf(stderr, "Description has size %d: [%s]\n",get_descrlen(),get_descr());
 }
 
