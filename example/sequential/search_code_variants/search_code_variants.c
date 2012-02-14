@@ -128,9 +128,13 @@ int main(int argc, char **argv)
 
         perf = application(param_1, param_2, param_3,
                            param_4, param_5, param_6);
-        printf("%d, %d, %d, %d, %d, %d = %d\n",
-               param_1, param_2, param_3,
-               param_4, param_5, param_6, perf);
+
+        if (hresult > 0) {
+            /* Only print performance if new values were fetched. */
+            printf("%d, %d, %d, %d, %d, %d = %d\n",
+                   param_1, param_2, param_3,
+                   param_4, param_5, param_6, perf);
+        }
 
         /* update the performance result */
         if (harmony_report(hd, perf) < 0) {

@@ -236,6 +236,7 @@ proc pro_algorithm {appName} {
 
     # increment the iteration variable
     upvar #0 simplex_iteration iteration
+
     set log ""
     logging [append log "PRO iteration: " $iteration] $appName 0
     incr iteration
@@ -350,7 +351,7 @@ proc pro_algorithm {appName} {
             }
             upvar #0 sorted_perfs sorted
             set wrt [lindex $points $sim_low(index)]
-            set c_points [transform_simplex 2 $wrt $points $appName]
+            set c_points [transform_simplex 2 $wrt $c_points $appName]
             if { $debug_ == 1 } {
                 puts "simplex transformed"
             }

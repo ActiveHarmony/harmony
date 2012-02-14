@@ -1112,6 +1112,11 @@ int harmony_fetch(hdesc_t *hdesc)
     m = dynamic_cast<HUpdateMessage *>(mesg);
     assert(m && "Server returned wrong message type!");
 
+    if (hdesc->timestamp > -1 && hdesc->timestamp == m->get_timestamp()) {
+        /* The timestamp hasn't changed since last fetch. No update.*/
+        return 0;
+    }
+
     /* Updating the timestamp */
     hdesc->timestamp = m->get_timestamp();
 

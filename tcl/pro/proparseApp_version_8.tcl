@@ -111,6 +111,7 @@ proc updateObsGoodness {appName value timestamp args} {
     upvar #0 ${appName}_obsGoodness(isglobal) isglobal
     upvar #0 ${appName}_performance perf_this
     set perf_this $value
+    set samples_per_proc 1
 
     puts "check point 1"
 
@@ -130,6 +131,13 @@ proc updateObsGoodness {appName value timestamp args} {
 
     if {$isglobal==1} {
 	
+        global ${appName}_simplex_time
+        upvar #0 ${appName}_simplex_time stime
+        if {$timestamp < $stime} {
+            puts "skipping stale performance report"
+            return
+        }
+
         set aName [string range $appName 0 [expr [string last "_" $appName]-1]]
         # send the values to the global instance
         updateObsGoodness $aName $value $timestamp $appName
@@ -155,29 +163,38 @@ proc updateObsGoodness {appName value timestamp args} {
     } else {
         # this is the case when the performance is global
         # first we have to add the new value to its queue
-        if {[llength $args]} {
-            set depend [lindex $args 0]
-            upvar #0 ${appName}_obsGoodness(queue_${depend}_obsGoodness) q_${depend}
-            lappend q_${depend} $value
-	    puts -nonewline "q_{depend} array : "
-	    parr q_${depend}
-        } else {
+        if {[llength $args] == 0} {
+            puts "returning because args length == 0"
             return
         }
 
+        set depend [lindex $args 0]
+        upvar #0 ${appName}_obsGoodness(queue_${depend}_obsGoodness) q_${depend}
+        if {[llength [set q_${depend}]] == $samples_per_proc} {
+            # Ignore any additional performance values
+            puts "returning because args q_${depend} == $samples_per_proc"
+            return
+        }
+
+        puts "appending to q_${depend}"
+        lappend q_${depend} $value
+        puts -nonewline "q_{depend} array : "
+        parr q_${depend}
+
         # next we have to check if we have received a value from all the
         # currently declared global instances.
+        global ${appName}_obsGoodness
         upvar #0 ${appName}_obsGoodness(deplocals) deplocals
         set i 0
         foreach depend $deplocals {
-            global ${appName}_obsGoodness
             upvar #0 ${appName}_obsGoodness(queue_${depend}) qdepend
-            # here we want to collect at least ... x (x=1) performance values
-            # from each instance that is declared global
+            # We want to collect at least x performance values (where
+            # x == $samples_per_proc) from each instance that is declared
+            # global
             # if we want to increase the number of samples we can do it
             # puts $depend
             # parr ${appName}_obsGoodness
-            if {[llength $qdepend]==1} {
+            if {[llength $qdepend] == $samples_per_proc} {
                 incr i
                 upvar #0 ${args}_next_iteration next
                 set next 0

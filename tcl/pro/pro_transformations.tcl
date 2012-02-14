@@ -96,8 +96,8 @@ proc reflect { wrt points } {
     set ref_matrix {}
     foreach point $points {
         set point_negated [scale_vect -1 $point]
-        #set axpy__ [axpy_vect 2 $wrt $point_negated]
-	set axpy__ [axpy_vect 2 $point_negated $wrt]
+        set axpy__ [axpy_vect 2 $wrt $point_negated]
+	#set axpy__ [axpy_vect 2 $point_negated $wrt]
         lappend ref_matrix $axpy__
     }
 
