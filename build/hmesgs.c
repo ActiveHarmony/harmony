@@ -31,8 +31,30 @@
  *
  *******************************/
 
-
 #include "hmesgs.h"
+
+static const char *print_type[] = {"NONE",
+                                   "NODE_DESCR",
+                                   "APP_DESCR",
+                                   "DAEMON_REG",
+                                   "CLIENT_REG",
+/*				   "CODE_GEN_REG",  */
+                                   "VAR_DESCR",
+                                   "VAR_REQ",
+                                   "VAR_SET",
+                                   "CLIENT_UNREG",
+                                   "CONFIRM",
+                                   "FAIL",
+                                   "PERF_UPDT",
+                                   "PROBE_REQ",
+                                   "TCLVAR_REQ",
+                                   "TCLVAR_REQ_2",
+                                   "PROBE_SET",
+                                   "DATABASE",
+                                   "WITH_CONF",
+                                   "CODE_COMPLETION",
+                                   "PERF_ALREADY_EVALUATED",
+                                   "CFG_REQ"};
 
 /***
  *

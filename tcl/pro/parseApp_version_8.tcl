@@ -176,6 +176,8 @@ proc harmonyApp {simple_name app_desc socket} {
 	    }
 	}
   }
+
+  return $simple_name
 }
 
 

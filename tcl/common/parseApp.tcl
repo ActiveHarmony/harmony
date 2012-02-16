@@ -201,6 +201,7 @@ proc harmonyApp {simple_name app_desc socket} {
   #if {[info exists ${aName}_bundles] && ![info exists ${aName}_draw]} {
   #    drawharmonyApp $aName
   #}
+  return $simple_name
 }
 
 
@@ -441,8 +442,6 @@ proc harmonyBundle {name bundle_desc appName} {
       global ${appName}_bundle_${name}
       set ${appName}_bundle_${name}(isglobal) 0
   }
-
-
 }
 
 proc computeNode {name appName} {

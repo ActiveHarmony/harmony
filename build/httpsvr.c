@@ -29,7 +29,7 @@
 #include "hsockutil.h"
 
 #define HTTP_ENDL "\r\n"
-int http_connection_limit = 32;
+unsigned int http_connection_limit = 32;
 
 enum content_t { CONTENT_HTML, CONTENT_JAVASCRIPT, CONTENT_CSS };
 struct memfile_t {

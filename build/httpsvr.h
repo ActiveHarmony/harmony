@@ -19,7 +19,7 @@
 #ifndef __HTTPSVR_H__
 #define __HTTPSVR_H__
 
-extern int http_connection_limit;
+extern unsigned int http_connection_limit;
 
 int http_init();
 void http_send_error(int fd, int status, const char *message);
