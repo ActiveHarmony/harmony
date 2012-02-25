@@ -38,6 +38,7 @@
 #include "hmesgs.h"
 #include "hsockutil.h"
 
+#include <ctype.h>
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
