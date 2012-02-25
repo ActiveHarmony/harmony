@@ -608,7 +608,7 @@ void variable_request(HUpdateMessage *mesg, int client_socket)
         if (debug_mode)
             printf("[AH]: Timestamp value from the server: %s\n", retval);
 
-        mesg->set_timestamp(strtol(tclbuf, NULL, 10));
+        mesg->set_timestamp(strtol(retval, NULL, 10));
 
         send_message(mesg, client_socket);
         printf("Server is sending the message of type: %d\n",
