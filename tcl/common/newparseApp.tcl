@@ -172,10 +172,20 @@ proc updateObsGoodness {appName value timestamp args} {
     # global instance
 
     if {$isglobal==1} {
+        upvar #0 ${appName}_simplex_time stime
+        if {$timestamp < $stime} {
+            puts "skipping stale result"
+        }
+
         set aName [string range $appName 0 [expr [string last "_" $appName]-1]]
         # send the values to the global instance
         puts "Sending the value $value to the global instance $aName"
         updateObsGoodness $aName $value $timestamp $appName
+
+        global ${aName}_simplex_time
+        upvar #0 ${aName}_simplex_time global_stime
+        set ${appName}_simplex_time $global_stime
+
     } elseif {$isglobal==0} {
 
         # this describes the case when the performance goes local
@@ -201,6 +211,7 @@ proc updateObsGoodness {appName value timestamp args} {
                 brute_force $appName
             }
             send_candidate_simplex $appName
+
         } else {
             # performance does not reflect changes in params
         }

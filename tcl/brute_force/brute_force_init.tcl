@@ -18,24 +18,24 @@
 #
 proc brute_force_init {appName} {
     
-    global ${appName}_bundles
-    upvar #0 ${appName}_bundles bundles
     global ${appName}_simplex_time
-    set ${appName}_bundles $bundles
-    upvar #0 ${appName}_bundles brutefb
     set ${appName}_simplex_time 0
+
     global ${appName}_search_done
     set ${appName}_search_done 0
+
     global int_max_value
     set int_max_value 2147483647
+
     global best_perf_so_far
-    global best_coordinate_so_far
     set best_perf_so_far $int_max_value
+
+    global best_coordinate_so_far
     set best_coordinate_so_far {}
 
     global ${appName}_code_timestep
-    set  ${appName}_code_timestep 1
-    
+    set ${appName}_code_timestep 1
+
     # code generation related parameters
     global ${appName}_code_generation_params
     set ${appName}_code_generation_params(generate_code) 0
@@ -49,7 +49,9 @@ proc brute_force_init {appName} {
     # method 2 parameters
     set ${appName}_code_generation_params(code_generation_destination) "rahulp@armour:/fs/armour/rahulp/scratch/confs/"
 
-    foreach bun $brutefb {
+    global ${appName}_bundles
+    upvar #0 ${appName}_bundles bundles
+    foreach bun $bundles {
         upvar #0 ${appName}_bundle_${bun}(value) bunv
         upvar #0 ${appName}_bundle_${bun}(minv) minv
         upvar #0 ${appName}_bundle_${bun} $bun
@@ -57,9 +59,6 @@ proc brute_force_init {appName} {
         puts $minv
         set bunv $minv
     }
-    global ${appName}_simplex_time
-    global ${appName}_time
-    upvar #0 ${appName}_time time
-    incr ${appName}_simplex_time
 
+    global ${appName}_time
 }
