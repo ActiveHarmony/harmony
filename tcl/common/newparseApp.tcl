@@ -184,7 +184,7 @@ proc updateObsGoodness {appName value timestamp args} {
 
         global ${aName}_simplex_time
         upvar #0 ${aName}_simplex_time global_stime
-        set ${appName}_simplex_time $global_stime
+        set stime $global_stime
 
     } elseif {$isglobal==0} {
 
