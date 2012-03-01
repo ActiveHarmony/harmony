@@ -32,18 +32,6 @@ proc random_init {appName} {
     global ${appName}_max_search_iterations
     set ${appName}_max_search_iterations 100
 
-    global ${appName}_code_generation_params
-    set ${appName}_code_generation_params(generate_code) 0
-    set ${appName}_code_generation_params(gen_method) 2
-
-    # method 1 parameters
-    set ${appName}_code_generation_params(cserver_host) "armour"
-    set ${appName}_code_generation_params(cserver_port) 2002
-    set ${appName}_code_generation_params(cserver_connection) 0
-
-    # method 2 parameters
-    set ${appName}_code_generation_params(code_generation_destination) "rahulp@armour:/fs/armour/rahulp/scratch/confs/"
-
     upvar #0 ${appName}_bundles bundles
     global ${appName}_simplex_time
     set ${appName}_simplex_time 1

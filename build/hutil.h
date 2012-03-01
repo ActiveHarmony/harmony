@@ -39,7 +39,7 @@ using namespace std;
  * Exit and write a message to stderr
  *
  ***/
-void h_exit(char *errmesg);
+void h_exit(const char *errmesg);
 
 
 #endif /* __HUTIL_H__ */

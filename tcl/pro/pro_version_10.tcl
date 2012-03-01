@@ -57,24 +57,25 @@ proc pro { appName } {
 
     # Do we need dynamic code generation? If yes, make the connection
     #  to the code server here.
-    upvar #0 code_generation_params(cserver_connection) c_connection
-    upvar #0 code_generation_params(generate_code) g_code
-    upvar #0 code_generation_params(cserver_port) cserver_port
-    upvar #0 code_generation_params(cserver_host) cserver_host
-    upvar #0 code_generation_params(gen_method) gen_code_method
+    global code_generation_params
+    upvar #0 code_generation_params(enabled) cs_enabled
+    upvar #0 code_generation_params(type) cs_type
+    upvar #0 code_generation_params(host) cs_host
+    upvar #0 code_generation_params(port) cs_port
+    upvar #0 code_generation_params(connected) cs_connected
 
-    if { $g_code == 1 } {
-        if { $gen_code_method == 1 } {
-            if { $c_connection == 0 } {
-                set c_status [codeserver_startup $cserver_host $cserver_port]
+    if { $cs_enabled == 1 } {
+        if { $cs_type == 1 } {
+            if { $cs_connected == 0 } {
+                set c_status [codeserver_startup $cs_host $cs_port]
                 if { $c_status == 0 } {
                     puts -nonewline "Connection to the code server at "
-                    puts -nonewline $cserver_host
+                    puts -nonewline $cs_host
                     puts -nonewline " and port "
-                    puts -nonewline $cserver_port
+                    puts -nonewline $cs_port
                     puts "failed"
                 } else {
-                    set c_connection 1
+                    set cs_connected 1
                     puts "Requesting code generation"
                     # debug
                     #generate_code "2 2 2 1 3 : 1 2 1 2 1 | 3 3 3 3 3"
@@ -131,8 +132,6 @@ proc explore_space { appName } {
     upvar #0 candidate_simplex c_points
     upvar #0 ${appName}_procs procs
     upvar #0 simplex_iteration iteration
-    upvar #0 code_generation_params(generate_code) g_code
-    upvar #0 code_generation_params(gen_method) gen_code_method
     upvar #0 debug_mode debug_
     upvar #0 save_to_best_file save_best
     upvar #0 best_perf_so_far best_perf_so_far
@@ -182,9 +181,12 @@ proc explore_space { appName } {
     assign_values_to_bundles $appName $c_points
     incr rand_iterations -1
 
+    global code_generation_params
+    upvar #0 code_generation_params(enabled) cs_enabled
+    upvar #0 code_generation_params(type) cs_type
 
-    if { $g_code == 1 } {
-        if { $gen_code_method == 1 } {
+    if { $cs_enabled == 1 } {
+        if { $cs_type == 1 } {
             send_candidate_simplex $appName
         } else {
             write_candidate_simplex $appName
@@ -216,8 +218,6 @@ proc pro_algorithm {appName} {
     upvar #0 tolerance tolerance
     upvar #0 simplex_npoints size
     upvar #0 space_dimension dim
-    upvar #0 code_generation_params(generate_code) g_code
-    upvar #0 code_generation_params(gen_method) gen_code_method
     upvar #0 include_last_random_simplex include_last
     upvar #0 best_perf_so_far best_perf_so_far
     upvar #0 best_coordinate_so_far best_coord_so_far
@@ -550,8 +550,11 @@ proc pro_algorithm {appName} {
 
     logging "------------------------" $appName 0
 
-    if { $g_code == 1 } {
-        if { $gen_code_method == 1 } {
+    global code_generation_params
+    upvar #0 code_generation_params(enabled) cs_enabled
+    upvar #0 code_generation_params(type) cs_type
+    if { $cs_enabled == 1 } {
+        if { $cs_type == 1 } {
             send_candidate_simplex $appName
         } else {
             write_candidate_simplex $appName

@@ -29,7 +29,7 @@ using namespace std;
  * Exit and send a mesage to stderr
  *
  ***/
-void h_exit(char *errmesg){
+void h_exit(const char *errmesg){
   perror(errmesg);
   exit(1);
 }

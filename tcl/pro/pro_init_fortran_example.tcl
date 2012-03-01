@@ -251,17 +251,6 @@ proc parallel_simplex_init {appName} {
     #               start of the search algorithm
 
 
-    set code_generation_params(generate_code) 0
-    set code_generation_params(gen_method) 2
-
-    # method 1 parameters
-    set code_generation_params(cserver_host) "spoon"
-    set code_generation_params(cserver_port) 2002
-    set code_generation_params(cserver_connection) 0
-
-    # method 2 parameters
-    set code_generation_params(code_generation_destination) "tiwari@spoon:/fs/spoon/tiwari/code-server/standalone/bin/confs"
-
     set ann_params(use_ann) 0
     set ann_params(pserver_host) "brood00"
     set ann_params(pserver_port) 2077
@@ -270,17 +259,16 @@ proc parallel_simplex_init {appName} {
     #set ann_params(group_info) {6}
     #set ann_params(use_diff_radius) 0
 
-    set initial_simplex_method 6
-
     # space exploration parameters
     set space_explore_params(num_iterations) 3
     set space_explore_params(random_step) 0
     set space_explore_params(best_perf)  $int_max_value
     set space_explore_params(best_point) {}
-    
 
     # initial simplex params
-    #  method 1 params
+    set initial_simplex_method 6
+
+    # method 1 params
     set icsm_1_params(init_point) {50 20 20 4 4}
     set icsm_1_params(init_distance) {4 3}
     set icsm_1_params(num_neighbors) 1000

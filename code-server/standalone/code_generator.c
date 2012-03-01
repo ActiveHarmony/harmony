@@ -177,8 +177,8 @@ int main(int argc, char **argv)
     int pid, status;
 
     if (argc != 2) {
-        cerr << "Usage: ./code_generator <codegen_conf_dir>\n";
-        cerr << " Where <codegen_conf_dir> should match the path specified"
+        cerr << "Usage: ./code_generator <codegen_path>\n";
+        cerr << " Where <codegen_path> should match the path specified"
                 " in the harmony server's configuration file.\n";
         exit(-1);
     }
@@ -333,20 +333,20 @@ int codeserver_init(string &filename)
         return -1;
     }
 
-    if (cfg_get("codegen_conf_host") == NULL) {
-        cerr << "[CS]: Error: codegen_conf_host config directive missing.\n"
+    if (cfg_get("codegen_host") == NULL) {
+        cerr << "[CS]: Error: codegen_host config directive missing.\n"
+             << "Please fix the harmony server's global config file.\n";
+        return -1;
+    }
+
+    if (cfg_get("codegen_path") == NULL) {
+        cerr << "[CS]: Error: codegen_path config directive missing.\n"
              << "Please fix the harmony server's global config file.\n";
         return -1;
     }
 
     if (cfg_get("codegen_code_host") == NULL) {
         cerr << "[CS]: Error: codegen_code_host config directive missing.\n"
-             << "Please fix the harmony server's global config file.\n";
-        return -1;
-    }
-
-    if (cfg_get("codegen_code_dir") == NULL) {
-        cerr << "[CS]: Error: codegen_code_dir config directive missing.\n"
              << "Please fix the harmony server's global config file.\n";
         return -1;
     }
@@ -378,7 +378,7 @@ int codeserver_init(string &filename)
 
     /* All configuration items are valid.  Begin atomic assignement. */
     appname = cfg_get("app_name_tuning");
-    conf_host = cfg_get("codegen_conf_host");
+    conf_host = cfg_get("codegen_host");
     code_host = cfg_get("codegen_code_host");
     code_dir = cfg_get("codegen_code_dir");
     flag_host = cfg_get("codegen_flag_host");

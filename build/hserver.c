@@ -127,8 +127,25 @@ char *flag_dir;
  * Other global variables
  */
 int update_sent = FALSE;
-char *application_trigger = "";
+const char *application_trigger = "";
 
+/*
+ * Helper Functions
+ */
+int set_tcl_var(const char *varName, const char *newValue)
+{
+    if (Tcl_SetVar(tcl_inter, varName, newValue, TCL_GLOBAL_ONLY) == NULL)
+    {
+        fprintf(stderr, "Error setting Tcl var %s to %s: %s\n",
+                varName, newValue, tcl_inter->result);
+        return -1;
+    }
+    return 0;
+}
+
+/*
+ *
+ */
 string history_since(unsigned int last)
 {
     stringstream ss;
@@ -213,7 +230,6 @@ int server_startup()
 {
     /* used address */
     struct sockaddr_in sin;
-    char *codeserver_type;
     int err, optval;
 
     /* try to get the port info from the environment */
@@ -283,27 +299,14 @@ int server_startup()
     highest_socket = listen_socket;
 
     /* Establish connection to the code server, if requested. */
-    codeserver_type = cfg_getlower("codegen");
-    if (codeserver_type == NULL || strcmp(codeserver_type, "none") == 0)
-    {
-        /* No code server requested. */
-    }
-    else if (strcmp(codeserver_type, "standard") == 0)
-    {
-        /* TCP-based code server requested. */
-        assert(0 && "TCP-based code server not yet tested/implemented.");
-    }
-    else if (strcmp(codeserver_type, "standalone") == 0)
-    {
-        /* File/SSH based code server requested. */
-        if (codegen_init() < 0)
-        {
-            return -1;
-        }
-    }
+    if (codegen_init() < 0)
+        return -1;
 
     /* Initialize the HTTP user interface. */
-    return http_init();
+    if (http_init() < 0)
+        return -1;
+
+    return 0;
 }
 
 /***
@@ -960,7 +963,7 @@ void database(HUpdateMessage *mesg, int client_socket)
 void variable_set(HUpdateMessage *mesg, int client_socket)
 {
     char *cliName = clientName[client_socket];
-    char tclvar[256], buf[80];
+    char varname[256], buf[80];
     char *value;
     char *retval;
 
@@ -978,14 +981,10 @@ void variable_set(HUpdateMessage *mesg, int client_socket)
             break;
         }
 
-        snprintf(tclvar, sizeof(tclvar), "%s_bundle_%s",
+        snprintf(varname, sizeof(varname), "%s_bundle_%s(value)",
                  cliName, mesg->get_var(i)->getName());
-
-        retval = Tcl_SetVar2(tcl_inter, tclvar, "value", value,
-                             TCL_GLOBAL_ONLY);
-        if (retval == NULL) {
-            fprintf(stderr, "Error setting variable %s(value): %s\n",
-                    tclvar, tcl_inter->result);
+        if (set_tcl_var(varname, value) < 0)
+        {
             operation_failed(client_socket);
             return;
         }
@@ -1745,99 +1744,130 @@ void handle_unknown_connection(int fd, int *close_fd)
 /* Establish connection with the code server. */
 int codegen_init()
 {
-    int fd, retval, err;
+    int fd, retval;
     char tmp_filename[] = "/tmp/harmony.tmp.XXXXXX";
-    char buf[1024], *conf_host, *conf_dir;
+    const char *cs_type, *cs_user, *cs_host, *cs_port, *cs_path;
+    char buf[1024], cs_user_param[128] = {0}, cs_port_param[16] = {0};
     time_t session;
     FILE *fds;
 
-    flag_dir = cfg_get("codegen_flag_dir");
-    if (!flag_dir)
+    cs_type = cfg_getlower("codegen");
+    if (cs_type == NULL || strcmp(cs_type, "none") == 0)
     {
-        printf("[AH]: Configuration error: codegen_flag_dir unspecified.\n");
-        return -1;
+        /* No code server requested. */
+        return set_tcl_var("code_generation_params(enabled)", "0");
     }
 
-    conf_host = cfg_get("codegen_conf_host");
-    if (!conf_host)
+    if (strcmp(cs_type, "standard") == 0)
     {
-        printf("[AH]: Configuration error: codegen_conf_host unspecified.\n");
-        return -1;
+        /* TCP-based code server requested. */
+        assert(0 && "TCP-based code server not yet tested/implemented.");
     }
-
-    snprintf(buf, sizeof(buf), "set codegen_conf_host %s", conf_host);
-    if ( (err = Tcl_Eval(tcl_inter, buf)) != TCL_OK)
+    else if (strcmp(cs_type, "standalone") == 0)
     {
-        fprintf(stderr, "Error %d setting global codegen_conf_host: %s\n",
-                err, tcl_inter->result);
-        return -1;
-    }
+        cs_user = cfg_get("codegen_user");
+        cs_host = cfg_get("codegen_host");
+        cs_port = cfg_get("codegen_port");
+        cs_path = cfg_get("codegen_path");
+        flag_dir = cfg_get("codegen_flag_dir");
 
-    conf_dir = cfg_get("codegen_conf_dir");
-    if (!conf_dir)
-    {
-        printf("[AH]: Configuration error: codegen_conf_dir unspecified.\n");
-        return -1;
-    }
+        if (cs_host == NULL)
+        {
+            fprintf(stderr, "Config error: codegen_host unspecified.\n");
+            return -1;
+        }
+        if (cs_path == NULL)
+        {
+            fprintf(stderr, "Config error: codegen_path unspecified.\n");
+            return -1;
+        }
+        if (flag_dir == NULL)
+        {
+            fprintf(stderr, "Config error: codegen_flag_dir unspecified.\n");
+            return -1;
+        }
 
-    snprintf(buf, sizeof(buf), "set codegen_conf_dir %s", conf_dir);
-    if ( (err = Tcl_Eval(tcl_inter, buf)) != TCL_OK)
-    {
-        fprintf(stderr, "Error %d setting global codegen_conf_dir: %s\n",
-                err, tcl_inter->result);
-        return -1;
-    }
+        if (cs_user != NULL && *cs_user != '\0')
+            snprintf(cs_user_param, sizeof(cs_user_param), "%s@", cs_user);
 
-    fd = mkstemp(tmp_filename);
-    if (fd == -1)
-    {
-        printf("[AH]: Error creating temporary file: %s\n", strerror(errno));
-        return -1;
-    }
+        if (cs_port != NULL && *cs_port != '\0')
+            snprintf(cs_port_param, sizeof(cs_port_param), "-P %s", cs_port);
 
-    fds = fdopen(fd, "w+");
-    if (fds == NULL)
-    {
-        printf("[AH]: Error during fdopen(): %s\n", strerror(errno));
+        /* Set the associated Tcl global variables. */
+        if (set_tcl_var("code_generation_params(enabled)", "1")        < 0 ||
+            set_tcl_var("code_generation_params(type)",    "2")        < 0 ||
+            set_tcl_var("code_generation_params(user)", cs_user_param) < 0 ||
+            set_tcl_var("code_generation_params(host)", cs_host)       < 0 ||
+            set_tcl_var("code_generation_params(port)", cs_port_param) < 0 ||
+            set_tcl_var("code_generation_params(path)", cs_path))
+        {
+            return -1;
+        }
+
+        /* Temporarily create and send a file to the code server */
+        fd = mkstemp(tmp_filename);
+        if (fd == -1)
+        {
+            fprintf(stderr, "Error creating temporary file: %s\n",
+                    strerror(errno));
+            return -1;
+        }
+
+        fds = fdopen(fd, "w+");
+        if (fds == NULL)
+        {
+            fprintf(stderr, "Error during fdopen(): %s\n", strerror(errno));
+            unlink(tmp_filename);
+            close(fd);
+            return -1;
+        }
+
+        if (time(&session) == ((time_t)-1))
+        {
+            fprintf(stderr, "Error during time(): %s\n", strerror(errno));
+            return -1;
+        }
+
+        fprintf(fds, "harmony_session=%ld\n", session);
+        for (unsigned i = 0; i < cfg_pairlen && cfg_pair[i].key != NULL; ++i)
+        {
+            fprintf(fds, "%s=%s\n", cfg_pair[i].key, cfg_pair[i].val);
+        }
+        fclose(fds);
+
+        snprintf(buf, sizeof(buf), "scp %s %s %s%s:%s/harmony.init",
+                 cs_port_param, tmp_filename, cs_user_param, cs_host, cs_path);
+
+        retval = system(buf);
         unlink(tmp_filename);
-        close(fd);
+        if (retval != 0)
+        {
+            fprintf(stderr, "Error on system(\"%s\")\n", buf);
+            return -1;
+        }
+
+        snprintf(buf, sizeof(buf), "%s/codeserver.init.%ld",
+                 cfg_get("codegen_flag_dir"), session);
+        printf("[AH]: Awaiting response from code server (%s).\n", buf);
+        while (!file_exists(buf))
+        {
+            /* Spin until the code server responds correctly. */
+            sleep(1);
+        }
+        unlink(buf);
+
+        printf("[AH]: Connection to code server established.\n");
+    }
+    else
+    {
+        fprintf(stderr, "Configuration error: invalid codegen value.\n"
+                "  Valid values are:\n"
+                "\tNone\n"
+                "\tStandard\n"
+                "\tStandalone\n");
         return -1;
     }
 
-    if (time(&session) == ((time_t)-1)) {
-        printf("[AH]: Error during time(): %s\n", strerror(errno));
-        return -1;
-    }
-
-    fprintf(fds, "harmony_session=%ld\n", session);
-    for (unsigned i = 0; i < cfg_pairlen && cfg_pair[i].key != NULL; ++i)
-    {
-        fprintf(fds, "%s=%s\n", cfg_pair[i].key, cfg_pair[i].val);
-    }
-    fclose(fds);
-
-    snprintf(buf, sizeof(buf), "scp %s %s:%s/harmony.init",
-             tmp_filename, conf_host, conf_dir);
-
-    retval = system(buf);
-    unlink(tmp_filename);
-    if (retval != 0)
-    {
-        printf("[AH]: Error on system(\"%s\")\n", buf);
-        return -1;
-    }
-
-    snprintf(buf, sizeof(buf), "%s/codeserver.init.%ld",
-             cfg_get("codegen_flag_dir"), session);
-    printf("[AH]: Awaiting response from code server (%s).\n", buf);
-    while (!file_exists(buf))
-    {
-        /* Spin until the code server responds correctly. */
-        sleep(1);
-    }
-    unlink(buf);
-
-    printf("[AH]: Connection to code server established.\n");
     return 0;
 }
 

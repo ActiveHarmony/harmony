@@ -73,18 +73,7 @@ proc simplex_init {appName} {
 
     set ${appName}_simplex_performance {}
     set ${appName}_simplex_first_call 1
-    global ${appName}_code_generation_params
-    set ${appName}_code_generation_params(generate_code) 0
-    set ${appName}_code_generation_params(gen_method) 2
-
-    # method 1 parameters
-    set ${appName}_code_generation_params(cserver_host) "armour"
-    set ${appName}_code_generation_params(cserver_port) 2002
-    set ${appName}_code_generation_params(cserver_connection) 0
-
-    # method 2 parameters
-    set ${appName}_code_generation_params(code_generation_destination) "rahulp@armour:/fs/spoon/rahulp/scratch/confs/"
-    set  ${appName}_search_done 0
+    set ${appName}_search_done 0
     set ${appName}_next_iteration 1
 
     global ${appName}_time

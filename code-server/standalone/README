@@ -21,8 +21,8 @@ To use the code_generator:
      following key definitions:
 
         codegen
-        codegen_conf_host
-        codegen_conf_dir
+        codegen_host
+        codegen_path
         codegen_flag_host
         codegen_flag_dir
         codegen_code_host
@@ -85,7 +85,7 @@ Things to remember:
      $HOME/suifhome.
 
 To launch the code_generator:
-  % ./code_generator <codegen_conf_dir>
+  % ./code_generator <codegen_path>
 
 Steps to run the code generator with example gemm application:
 
@@ -110,7 +110,7 @@ Steps to run the code generator with example gemm application:
 
   2) Launching the code generator
 
-    # ./code_generator <codegen_conf_dir>
+    # ./code_generator <codegen_path>
 
      For example, "./code_generator $HOME/codegen/flags"
 
@@ -125,8 +125,8 @@ Additional Details
 
     1) The harmony configuration should have the following directives:
         codegen=Standalone
-        codegen_conf_host=maxfli
-        codegen_conf_dir=/home/username/scratch/confs
+        codegen_host=maxfli
+        codegen_path=/home/username/scratch/confs
         codegen_flag_host=brood00
         codegen_flag_dir=/scratch0/username/flags
         codegen_code_host=brood00

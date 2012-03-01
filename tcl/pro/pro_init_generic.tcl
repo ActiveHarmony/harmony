@@ -256,20 +256,6 @@ proc parallel_simplex_init {appName} {
     set ann_params(pserver_port) 1977
     set ann_params(connected) 0
 
-    # code generation related parameters
-    set code_generation_params(generate_code) 1
-    set code_generation_params(gen_method) 2
-
-    # method 1 parameters
-    set code_generation_params(cserver_host) "brood00"
-    set code_generation_params(cserver_port) 1977
-    set code_generation_params(cserver_connection) 0
-
-    # method 2 parameters
-    set code_generation_params(code_generation_destination) "rahulp@brood00:/hivehomes/rahulp/scratch/confs/"
-
-    set initial_simplex_method 4
-
     # space exploration parameters
     set space_explore_params(num_iterations) 0
     set space_explore_params(random_step) 0
@@ -277,7 +263,9 @@ proc parallel_simplex_init {appName} {
     set space_explore_params(best_point) {}
 
     # initial simplex params
-    #  method 1 params
+    set initial_simplex_method 4
+
+    # method 1 params
     set icsm_1_params(init_point) {50 20}
     set icsm_1_params(init_distance) {4 3}
     set icsm_1_params(num_neighbors) 1000

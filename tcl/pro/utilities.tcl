@@ -260,8 +260,6 @@ proc logging { str appName flag } {
 proc write_candidate_simplex { appName } {
     upvar #0 candidate_simplex c_points
     upvar #0 simplex_iteration iter
-    upvar #0 codegen_conf_host c_host
-    upvar #0 codegen_conf_dir c_path
 
     set tmp_filename ""
     append tmp_filename "/tmp/harmony-tmp." [pid] "." [clock clicks]
@@ -277,8 +275,14 @@ proc write_candidate_simplex { appName } {
     puts $fname $out_str
     close $fname
 
-    set dst_filename "$c_host:$c_path/candidate_simplex.$appName.$iter.dat"
-    exec "scp" $tmp_filename $dst_filename
+    global code_generation_params
+    upvar #0 code_generation_params(port) cs_port
+    upvar #0 code_generation_params(user) cs_user
+    upvar #0 code_generation_params(host) cs_host
+    upvar #0 code_generation_params(path) cs_path
+
+    set dst_filename "$cs_path/candidate_simplex.$appName.$iter.dat"
+    eval "exec scp $cs_port $tmp_filename ${cs_user}${cs_host}:$dst_filename"
     file delete $tmp_filename
 }
 

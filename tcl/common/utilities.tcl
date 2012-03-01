@@ -182,58 +182,63 @@ proc get_best_configuration { appName } {
 }
 
 proc write_candidate_simplex { appName } {
-    set c_points [get_candidate_configuration $appName]
+    set tmp_filename ""
+    append tmp_filename "/tmp/harmony-tmp." [pid] "." [clock clicks]
+    set fname [open $tmp_filename "w"]
 
-    upvar #0 ${appName}_code_timestep iteration
-    set g_name [string range $appName 0 [expr [string last "_" $appName]-1]]
-    upvar #0 ${appName}_code_generation_params(code_generation_destination) code_generation_dest
-    set fname [open "/tmp/candidate_simplex.$g_name.$iteration.dat" "w"]
-
-    set i 0
     set out_str ""
+    set c_points [get_candidate_configuration $appName]
     foreach elem $c_points {
         append out_str " " $elem 
     }
     puts $fname $out_str
     close $fname
-    set filename_ "/tmp/candidate_simplex.$g_name.$iteration.dat"
-    exec "scp" $filename_ $code_generation_dest
+
+    global code_generation_params
+    upvar #0 code_generation_params(port) cs_port
+    upvar #0 code_generation_params(user) cs_user
+    upvar #0 code_generation_params(host) cs_host
+    upvar #0 code_generation_params(path) cs_path
+
+    upvar #0 ${appName}_code_timestep iteration
+    set dst_filename "$cs_path/candidate_simplex.$appName.$iteration.dat"
+    eval "exec scp $cs_port $tmp_filename ${cs_user}${cs_host}:$dst_filename"
+    file delete $tmp_filename
     incr iteration 1
 }
 
 proc send_candidate_simplex { appName } {
+    global code_generation_params
+    upvar #0 code_generation_params(enabled) cs_enabled
+    upvar #0 code_generation_params(type) cs_type
 
-    upvar #0 ${appName}_code_generation_params(cserver_connection) c_connection
-    upvar #0 ${appName}_code_generation_params(generate_code) g_code
-    upvar #0 ${appName}_code_generation_params(cserver_port) cserver_port
-    upvar #0 ${appName}_code_generation_params(cserver_host) cserver_host
-    upvar #0 ${appName}_code_generation_params(gen_method) gen_code_method
-
-    if { $g_code == 1 } {
-        if { $gen_code_method == 1 } {
-                send_candidate_simplex_to_server $appName
-            } else {
-                write_candidate_simplex $appName
-            }
+    if { $cs_enabled == 1 } {
+        if { $cs_type == 1 } {
+            send_candidate_simplex_to_server $appName
+        } else {
+            write_candidate_simplex $appName
+        }
     }
-
 }
 
 proc send_candidate_simplex_to_server { appName } {
-    
-    upvar #0 ${appName}_candidate_simplex [get_candidate_configuration $appName]
-    upvar #0 ${appName}_code_generation_params(cserver_connection) c_connection
 
-    if { $c_connection == 0 } {
-        set c_status [codeserver_startup $cserver_host $cserver_port]
+    upvar #0 ${appName}_candidate_simplex [get_candidate_configuration $appName]
+    global code_generation_params
+    upvar #0 code_generation_params(connected) cs_connected
+    upvar #0 code_generation_params(port) cs_port
+    upvar #0 code_generation_params(host) cs_host
+
+    if { $cs_connected == 0 } {
+        set c_status [codeserver_startup $cs_host $cs_port]
         if { $c_status == 0 } {
             puts -nonewline "Connection to the code server at "
-            puts -nonewline $cserver_host
+            puts -nonewline $cs_host
             puts -nonewline " and port "
-            puts -nonewline $cserver_port
+            puts -nonewline $cs_port
             puts "failed"
         } else {
-            set c_connection 1
+            set cs_connected 1
             puts "Requesting code generation"
             # debug
             #generate_code "2 2 2 1 3 : 1 2 1 2 1 | 3 3 3 3 3"

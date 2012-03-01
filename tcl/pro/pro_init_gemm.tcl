@@ -256,19 +256,6 @@ proc parallel_simplex_init {appName} {
     set ann_params(use_diff_radius) 1
     set ann_params(init_simplex_name) "/hivehomes/rahulp/activeharmony/bin/constructed_simplex.dat"
 
-
-    # code generation related parameters
-    set code_generation_params(generate_code) 1
-    set code_generation_params(gen_method) 2
-    
-    # method 1 parameters
-    set code_generation_params(cserver_host) "brood00"
-    set code_generation_params(cserver_port) 1977
-    set code_generation_params(cserver_connection) 0
-
-    # method 2 parameters
-    set initial_simplex_method 4
-
     # space exploration parameters
     set space_explore_params(num_iterations) 3
     set space_explore_params(random_step) 0
@@ -276,7 +263,9 @@ proc parallel_simplex_init {appName} {
     set space_explore_params(best_point) {}
 
     # initial simplex params
-    #  method 1 params
+    set initial_simplex_method 4
+
+    # method 1 params
     set icsm_1_params(init_point) {250 250 250 2 2}
     set icsm_1_params(init_distance) {10 1}
     set icsm_1_params(num_neighbors) 5000

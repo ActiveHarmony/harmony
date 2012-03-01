@@ -36,19 +36,6 @@ proc brute_force_init {appName} {
     global ${appName}_code_timestep
     set ${appName}_code_timestep 1
 
-    # code generation related parameters
-    global ${appName}_code_generation_params
-    set ${appName}_code_generation_params(generate_code) 0
-    set ${appName}_code_generation_params(gen_method) 2
-
-    # method 1 parameters
-    set ${appName}_code_generation_params(cserver_host) "spoon"
-    set ${appName}_code_generation_params(cserver_port) 2002
-    set ${appName}_code_generation_params(cserver_connection) 0
-
-    # method 2 parameters
-    set ${appName}_code_generation_params(code_generation_destination) "rahulp@armour:/fs/armour/rahulp/scratch/confs/"
-
     global ${appName}_bundles
     upvar #0 ${appName}_bundles bundles
     foreach bun $bundles {
