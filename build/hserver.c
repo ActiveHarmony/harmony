@@ -867,10 +867,10 @@ void check_code_completion(HUpdateMessage *mesg, int client_socket)
                 printf("[AH]: code generation is complete for timestep: %d\n",
                        code_timestep);
 
-            code_timesteps[cliName] = code_timestep + 1;
+            code_timesteps[appName] = code_timestep + 1;
             retval = 1;
             last_code_req_response = retval;
-            last_code_req_responses[cliName] = retval;
+            last_code_req_responses[appName] = retval;
             std::remove(filename);
             snprintf(filename, sizeof(filename), "%s/code_complete.%s.%d",
                     flag_dir, appName, code_timestep + 1);
@@ -879,13 +879,13 @@ void check_code_completion(HUpdateMessage *mesg, int client_socket)
         }
         else
         {
-            last_code_req_responses[cliName] = 0;
+            last_code_req_responses[appName] = 0;
         }
-        last_code_req_timesteps[cliName] = req_timestep;
+        last_code_req_timesteps[appName] = req_timestep;
     }
     else
     {
-        retval = last_code_req_responses[cliName];
+        retval = last_code_req_responses[appName];
     }
 
     mesg->get_var(0)->setValue(retval);
