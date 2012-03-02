@@ -103,9 +103,8 @@ map<int, int> clientId;
 /*
  * code generation specific parameters
  */
-map<string, int> code_timesteps;
-map<string, int> last_code_req_timesteps;
-map<string, int> last_code_req_responses;
+map<string, int> code_timestep;
+map<string, time_t> prev_fs_check;
 
 /* this map contains the configurations that we have seen so far and
  * their corresponding performances.
@@ -141,6 +140,18 @@ int set_tcl_var(const char *varName, const char *newValue)
         return -1;
     }
     return 0;
+}
+
+/*
+ * Check if a file exists in the file system
+ */
+int file_exists(const char *fileName)
+{
+    struct stat buf;
+    if (stat(fileName, &buf) != 0)
+        return 0;
+
+    return S_ISREG(buf.st_mode);
 }
 
 /*
@@ -412,25 +423,40 @@ void get_appl_description(HDescrMessage *mesg, int client_socket)
          * link it with the socket number.
          */
         const char *appName = tcl_inter->result;
+
+        if (code_timestep.find(appName) == code_timestep.end())
+        {
+            if (debug_mode)
+                printf("[AH]: Application name: %s\n", appName);
+
+            /* Initialize the codeserver maps. */
+            code_timestep[appName] = 0;
+            prev_fs_check[appName] = time(NULL);
+
+            char first_flag_filename[256];
+            snprintf(first_flag_filename, sizeof(first_flag_filename),
+                     "%s/code_complete.%s.0", flag_dir, appName);
+
+            /* If the first flag exists, it must be stale.  Remove it. */
+            if (file_exists(first_flag_filename) && 
+                std::remove(first_flag_filename) != 0)
+            {
+                fprintf(stderr, "Warning: Could not delete"
+                        " stale flag file %s.\n", first_flag_filename);
+            }
+        }
+
         unsigned int cliNameLen = strlen(tcl_inter->result) + 13;
-
-        if (debug_mode)
-            printf("[AH]: Application name: %s\n", appName);
-
-        code_timesteps[appName] = 1;
-        last_code_req_timesteps[appName] = 0;
-        last_code_req_responses[appName] = 0;
-
         char *cliName = (char *)malloc( cliNameLen );
         snprintf(cliName, cliNameLen, "%s_%d",
                  appName, clientId[client_socket]);
 
-        if (debug_mode)
-            printf("[AH]: Client name: %s\n", cliName);
-
-        /* add info to the map */
+        /* Add info to the client maps. */
         clientInfo[cliName] = client_socket;
         clientName[client_socket] = cliName;
+
+        if (debug_mode)
+            printf("[AH]: Client name: %s\n", cliName);
     }
 }
 
@@ -806,18 +832,6 @@ void var_tcl_variable_request(HUpdateMessage *mesg, int client_socket)
     delete mesg;
 }
 
-/* check if a file exists in the file system */
-int file_exists(const char *fileName)
-{
-    struct stat buffer;
-    int i = stat( fileName, &buffer );
-    if (i == 0)
-    {
-        return 1;
-    }
-    return 0;
-}
-
 /*
  * Send a query to the code-server to see if code generation for current
  * search iteration is done.
@@ -837,58 +851,57 @@ int file_exists(const char *fileName)
 void check_code_completion(HUpdateMessage *mesg, int client_socket)
 {
     char *cliName = clientName[client_socket];
-    char appName[256], filename[256];
-    int retval = 0;
+    char tclbuf[256], appName[256], filename[256];
+    int retval = 0, simplex_timestep = -1;
 
-    char *endp = cliName;
+    char *stime, *endp = cliName;
     while (*endp && *endp != '_') ++endp;
     snprintf(appName, sizeof(appName), "%.*s", endp - cliName, cliName);
 
     /* retrieve the timestep */
     int req_timestep = *(int *)mesg->get_var(0)->getPointer();
-    int code_timestep = code_timesteps[appName];
-    int last_code_req_timestep = last_code_req_timesteps[appName];
-    int last_code_req_response = last_code_req_responses[appName];
 
     if (debug_mode)
-        printf("[AH]: Code Request Timestep: %d last_code_req_timestep %d "
-               "code_timestep: %d\n", req_timestep, last_code_req_timestep,
-               code_timestep);
+        printf("[AH]: Code Request Timestep:%d Code Timestep:%d\n",
+               req_timestep, code_timestep[appName]);
 
-    if (req_timestep > last_code_req_timestep)
+    snprintf(tclbuf, sizeof(tclbuf), "%s_simplex_time", cliName);
+    stime = Tcl_GetVar(tcl_inter, tclbuf, 0);
+    if (stime != NULL)
+        simplex_timestep = atoi(stime);
+
+    if (simplex_timestep >= code_timestep[appName])
     {
-        /* based on file system right now. */
-        snprintf(filename, sizeof(filename), "%s/code_complete.%s.%d",
-                flag_dir, appName, code_timestep);
-
-	if (debug_mode)
-            printf("[AH]: Looking for %s\n", filename);
-
-        if (file_exists(filename))
-        {
-            if (debug_mode)
-                printf("[AH]: code generation is complete for timestep: %d\n",
-                       code_timestep);
-
-            code_timesteps[appName] = code_timestep + 1;
-            retval = 1;
-            last_code_req_response = retval;
-            last_code_req_responses[appName] = retval;
-            std::remove(filename);
+        /* Stat the filesystem at most once per second. */
+        time_t curr_time = time(NULL);
+        if (prev_fs_check[appName] < curr_time) {
             snprintf(filename, sizeof(filename), "%s/code_complete.%s.%d",
-                    flag_dir, appName, code_timestep + 1);
-            printf("[AH]: removing: %s\n", filename);
-            std::remove(filename);
+                     flag_dir, appName, code_timestep[appName]);
+
+            if (debug_mode)
+                printf("[AH]: Looking for %s\n", filename);
+
+            if (file_exists(filename))
+            {
+                if (debug_mode)
+                    printf("[AH]: Code generation step %d complete.\n",
+                           code_timestep[appName]);
+
+                std::remove(filename);
+
+                /* Remove the (stale) next filename, in case it exists. */
+                ++code_timestep[appName];
+                snprintf(filename, sizeof(filename), "%s/code_complete.%s.%d",
+                         flag_dir, appName, code_timestep[appName]);
+                std::remove(filename);
+                retval = 1;
+            }
+            prev_fs_check[appName] = curr_time;
         }
-        else
-        {
-            last_code_req_responses[appName] = 0;
-        }
-        last_code_req_timesteps[appName] = req_timestep;
     }
     else
     {
-        retval = last_code_req_responses[appName];
+        retval = 1;
     }
 
     mesg->get_var(0)->setValue(retval);
@@ -1668,6 +1681,7 @@ void process_message_from(int temp_socket, int *close_fd)
     }
 
     in_process_message = FALSE;
+    fflush(stdout);
 }
 
 int handle_new_connection(int fd)

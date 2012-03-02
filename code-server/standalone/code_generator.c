@@ -82,7 +82,7 @@ int touch_remote_file(string filename, string &host);
  * Global Variable Declaration
  */
 static int nchildren = 1;
-static int timestep = 1;
+static int timestep = 0;
 static generator *gen_ptr = NULL;
 static vector<string> generator_vec;
 /* Configuration values passed in from the harmony server. */
@@ -219,7 +219,7 @@ int main(int argc, char **argv)
             } else {
                 // record some data? How many variants produced in total?
                 global_data.clear();
-                timestep = 1;
+                timestep = 0;
                 cout << "[CS]: Beginning new code server session." << endl;
             }
             std::remove(init_filename.c_str());
@@ -295,6 +295,18 @@ int main(int argc, char **argv)
 
 	/* Remove the conf file we just processed. */
 	std::remove(next_filename.c_str());
+
+        /* If the next code-timestep file exists at this point,
+         * it must be stale.  Remove it.
+         */
+        ss.str("");
+        ss << conf_dir << "/candidate_simplex." << appname << "." 
+           << (timestep + 1) << ".dat";
+        next_filename = ss.str();
+        if (file_exists(next_filename.c_str())) {
+            cout << "[CS]: Removing stale candidate simplex file.\n";
+            std::remove(next_filename.c_str());
+        }
 
         /* Inform the harmony server of newly generated code. */
 	ss.str("");
@@ -423,6 +435,15 @@ int codeserver_init(string &filename)
         cout << "[CS]: Error on system(" << ss.str() << ")" << endl;
         return -1;
     }
+
+     /* If the first candidate configuration file exists at this point,
+      * it must be stale. Remove it.
+      */
+    ss.str("");                                                               
+    ss << conf_dir << "/candidate_simplex." << appname << ".0.dat";           
+    string first_filename = ss.str();                                         
+    if (file_exists(first_filename.c_str())) {                                
+        cout << "[CS]: Removing stale candidate simplex file.\n";
 
     /* Respond to the harmony server. */
     ss.str("");

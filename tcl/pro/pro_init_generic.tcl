@@ -201,7 +201,7 @@ proc parallel_simplex_init {appName} {
     set ${appName}_simplex_time -1
     set pro_step -1
     set simplex_save_perfs 1
-    set simplex_iteration 0
+    set simplex_iteration -1
 
     set simplex_performance {}
     set candidate_performance {}

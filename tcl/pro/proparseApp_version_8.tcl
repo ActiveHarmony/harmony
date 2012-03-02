@@ -200,7 +200,9 @@ proc updateObsGoodness {appName value timestamp args} {
                 set next 0
             }
         }
-        if {$i == [llength $deplocals]} {
+
+        global simplex_npoints
+        if {$i == $simplex_npoints} {
 
 	    puts "got samples from all the clients: ie from all $i clients"
 
