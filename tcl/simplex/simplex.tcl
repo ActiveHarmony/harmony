@@ -89,6 +89,7 @@ proc simplex_method {appName yvalue} {
     global ${appName}_simplex_ystar
     global ${appName}_simplex_pdstar
     global ${appName}_simplex_ydstar
+    global ${appName}_simplex_time
     
     upvar #0 ${appName}_simplex_points points
     upvar #0 ${appName}_simplex_npoints npoints
@@ -113,6 +114,8 @@ proc simplex_method {appName yvalue} {
     puts $performance
     parr ${appName}_simplex_points
     
+    incr ${appName}_simplex_time
+
     if {$step == 0} {
         
         # Provide initial simplex construction methods here.
@@ -457,11 +460,6 @@ proc set_bundles_to_new_values {appName values} {
 	    }
 	}
     }
-
-    global ${appName}_simplex_time
-    global ${appName}_time
-    upvar #0 ${appName}_time time
-    set ${appName}_simplex_time $time
 }
 
 

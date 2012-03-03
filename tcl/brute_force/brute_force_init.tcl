@@ -19,7 +19,7 @@
 proc brute_force_init {appName} {
     
     global ${appName}_simplex_time
-    set ${appName}_simplex_time 0
+    set ${appName}_simplex_time -1
 
     global ${appName}_search_done
     set ${appName}_search_done 0
@@ -27,14 +27,14 @@ proc brute_force_init {appName} {
     global int_max_value
     set int_max_value 2147483647
 
-    global best_perf_so_far
-    set best_perf_so_far $int_max_value
+    global ${appName}_best_perf_so_far
+    set ${appName}_best_perf_so_far $int_max_value
 
-    global best_coordinate_so_far
-    set best_coordinate_so_far {}
+    global ${appName}_best_coordinate_so_far
+    set ${appName}_best_coordinate_so_far {}
 
     global ${appName}_code_timestep
-    set ${appName}_code_timestep 1
+    set ${appName}_code_timestep 0
 
     global ${appName}_bundles
     upvar #0 ${appName}_bundles bundles

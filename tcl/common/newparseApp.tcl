@@ -53,47 +53,44 @@ proc obsGoodness {min max args} {
 
     set appName [lindex $args end]
 
-  #define global variable AppName_obsGoodness
-
+    # define global variable AppName_obsGoodness
     global ${appName}_obsGoodness
+
     if {[lindex $args 0]=="global"} {
-	set ${appName}_obsGoodness(isglobal) 1
-	# now we also have to create it in the global window
-	set aName [string range $appName 0 [expr [string last "_" $appName]-1]]
-	if {![info exists ${aName}_obsGoodness]} {
-	    predGoodness [expr ($min+$max-1)/2] [expr ($min+$max+1)/2] $aName
-	    obsGoodness $min $max $aName
-	    upvar #0 ${aName}_obsGoodness(isglobal) isglobal
-	    set isglobal -1
-	    upvar #0 ${aName}_obsGoodness(deplocals) deplocals
-	    lappend deplocals ${appName}_obsGoodness
-	    upvar #0 ${aName}_obsGoodness(queue_${appName}_obsGoodness) qGood
-	    set qGood {}
-	    puts "Printing Goodness : $isglobal ; $aName"
+        set ${appName}_obsGoodness(isglobal) 1
+        # now we also have to create it in the global window
+        set aName [string range $appName 0 [expr [string last "_" $appName]-1]]
+        if {![info exists ${aName}_obsGoodness]} {
+            predGoodness [expr ($min+$max-1)/2] [expr ($min+$max+1)/2] $aName
+            obsGoodness $min $max $aName
+            upvar #0 ${aName}_obsGoodness(isglobal) isglobal
+            set isglobal -1
+            upvar #0 ${aName}_obsGoodness(deplocals) deplocals
+            lappend deplocals ${appName}_obsGoodness
+            upvar #0 ${aName}_obsGoodness(queue_${appName}_obsGoodness) qGood
+            set qGood {}
+            upvar #0 ${aName}_obsGoodness(first_call) firstcall
+            set first_call 0
+            puts "Printing Goodness : $isglobal ; $aName"
 	    #parr ${aName}_obsGoodness
-	} else {
-	    upvar #0 ${aName}_obsGoodness(deplocals) deplocals
-	    lappend deplocals ${appName}_obsGoodness
-	    upvar #0 ${aName}_obsGoodness(queue_${appName}_obsGoodness) qGood
-	    set qGood {}
-	    puts "Printing Goodness : $isglobal ; $aName"
-	    #parr ${aName}_obsGoodness
-	}
+        } else {
+            upvar #0 ${aName}_obsGoodness(deplocals) deplocals
+            lappend deplocals ${appName}_obsGoodness
+            upvar #0 ${aName}_obsGoodness(queue_${appName}_obsGoodness) qGood
+            set qGood {}
+            puts "Printing Goodness : $isglobal ; $aName"
+            #parr ${aName}_obsGoodness
+        }
 
     } else {
         set ${appName}_obsGoodness(isglobal) 0
     }
 
     set ${appName}_obsGoodness(min) $min
-
     set ${appName}_obsGoodness(max) $max
-
     set ${appName}_obsGoodness(time) 0
-
     set ${appName}_obsGoodness(first_call) 1
-
     set ${appName}_obsGoodness(value) -1
-
     lappend ${appName}_obsGoodness(coordinates) 0 0 0 0
 
     writeTableHeadToDisk $appName
@@ -106,7 +103,6 @@ proc obsGoodness {min max args} {
     } elseif { $search_algo == 4 } {
         brute_force_init $appName
     }
-
 }
 
 
@@ -143,26 +139,10 @@ proc updateObsGoodness {appName value timestamp args} {
 
     upvar #0 ${appName}_obsGoodness(isglobal) isglobal
 
-    # the first performance update is for default configuration, so record it and move on
-    upvar #0 ${appName}_obsGoodness(first_call) first_call
-    if { $first_call == 1 } {
-        puts "Record the default performance !"
-        # reset the values for the first bundle
-        send_candidate_simplex $appName
-        set first_call 0
-        return
-    }
     puts "sanity check"
     if {$isglobal>=0} {
         set ${appName}_obsGoodness(value) $value
-
         incr time
-
-        #lappend coords $time [canvasyCoord $appName $value]
-        #upvar #0 draw_har_windows draw_windows
-        #if { $draw_windows == 1 } {
-        #    drawharmonyObsGoodness $appName
-        #}
 
         writeBundlesToDisk $appName
     }
@@ -173,9 +153,12 @@ proc updateObsGoodness {appName value timestamp args} {
 
     if {$isglobal==1} {
         upvar #0 ${appName}_simplex_time stime
-        if {$timestamp < $stime} {
+        upvar #0 ${appName}_obsGoodness(first_call) first_call
+        if {$timestamp < $stime && $first_call != 1} {
             puts "skipping stale result"
+            return
         }
+        set first_call 0
 
         set aName [string range $appName 0 [expr [string last "_" $appName]-1]]
         # send the values to the global instance
@@ -185,6 +168,10 @@ proc updateObsGoodness {appName value timestamp args} {
         global ${aName}_simplex_time
         upvar #0 ${aName}_simplex_time global_stime
         set stime $global_stime
+
+        global ${appName}_best_coord_so_far
+        upvar #0 ${aName}_best_coordinate_so_far bc
+        set ${appName}_best_coord_so_far $bc
 
     } elseif {$isglobal==0} {
 
@@ -218,6 +205,7 @@ proc updateObsGoodness {appName value timestamp args} {
     } else {
         puts "ObsGoodness is Global"
         # this is the case when the performance is global
+
         # first we have to add the new value to its queue
         if {[llength $args]} {
             set depend [lindex $args 0]
@@ -225,6 +213,7 @@ proc updateObsGoodness {appName value timestamp args} {
             lappend q_${depend} $value
             #parr ${appName}_obsGoodness
         } else {
+            # No arguments?  We were probably called incorrectly.
             return
         }
 
@@ -272,13 +261,6 @@ proc updateObsGoodness {appName value timestamp args} {
             set ${appName}_obsGoodness(value) $nvalue
 
             incr time
-
-            #lappend coords $time [canvasyCoord $appName $nvalue]
-            #
-            #upvar #0 draw_har_windows draw_windows
-            #if { $draw_windows == 1 } {
-            #    drawharmonyObsGoodness $appName
-            #}
 
             writeBundlesToDisk $appName
             upvar #0 search_algorithm search_algo

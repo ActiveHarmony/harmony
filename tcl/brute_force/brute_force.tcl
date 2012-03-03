@@ -19,15 +19,15 @@
 proc brute_force {appName} {
     # record the best performance, the rest are in the log files
     upvar #0 ${appName}_obsGoodness(value) this_perf
-    upvar #0 best_perf_so_far best_perf_so_far
-    upvar #0 best_coordinate_so_far best_point
+    upvar #0 ${appName}_best_perf_so_far best_perf_so_far
+    upvar #0 ${appName}_best_coordinate_so_far best_point
 
     # book-keeping
     if { $this_perf < $best_perf_so_far } {
         set best_perf_so_far $this_perf
         # collect the values
         upvar #0 ${appName}_bundles bundles
-        upvar #0 best_coordinate_so_far best_point
+        upvar #0 ${appName}_best_coordinate_so_far best_point
         set temp_ls {}
         foreach bun $bundles {
             upvar #0 ${appName}_bundle_${bun}(value) val

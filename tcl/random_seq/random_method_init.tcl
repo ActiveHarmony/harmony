@@ -19,7 +19,7 @@
 proc random_init {appName} {
 
     global ${appName}_code_timestep
-    set ${appName}_code_timestep 1
+    set ${appName}_code_timestep 0
     global ${appName}_search_done
     set ${appName}_search_done 0
     global int_max_value
@@ -32,9 +32,10 @@ proc random_init {appName} {
     global ${appName}_max_search_iterations
     set ${appName}_max_search_iterations 100
 
-    upvar #0 ${appName}_bundles bundles
     global ${appName}_simplex_time
-    set ${appName}_simplex_time 1
+    set ${appName}_simplex_time -1
+
+    upvar #0 ${appName}_bundles bundles
     foreach bun $bundles {
         upvar #0 ${appName}_bundle_${bun}(value) bunv
         upvar #0 ${appName}_bundle_${bun}(minv) minv

@@ -43,10 +43,17 @@ proc simplex_init {appName} {
 
     puts "global name $g_name"
 
+    set int_max_value 2147483647
+    global ${appName}_best_perf_so_far
+    set ${appName}_best_perf_so_far $int_max_value
+
+    global ${appName}_best_coordinate_so_far
+    set ${appName}_best_coordinate_so_far {}
+
     global ${g_name}_next_iteration
     set ${g_name}_next_iteration 1
 
-    set ${appName}_code_timestep 1
+    set ${appName}_code_timestep 0
     set ${appName}_simplex_step 0
 
     set ${appName}_simplex_npoints 0

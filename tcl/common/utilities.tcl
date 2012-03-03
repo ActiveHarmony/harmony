@@ -200,11 +200,11 @@ proc write_candidate_simplex { appName } {
     upvar #0 code_generation_params(host) cs_host
     upvar #0 code_generation_params(path) cs_path
 
-    upvar #0 ${appName}_code_timestep iteration
-    set dst_filename "$cs_path/candidate_simplex.$appName.$iteration.dat"
+    upvar #0 ${appName}_code_timestep iter
+    set dst_filename "$cs_path/candidate_simplex.$appName.$iter.dat"
     eval "exec scp $cs_port $tmp_filename ${cs_user}${cs_host}:$dst_filename"
     file delete $tmp_filename
-    incr iteration 1
+    incr iter 1
 }
 
 proc send_candidate_simplex { appName } {
