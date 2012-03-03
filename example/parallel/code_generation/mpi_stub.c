@@ -206,7 +206,7 @@ int check_code_correctness()
 // illustrates the use of penalization technique
 int penalty_factor()
 {
-    int increment = 1000;
+    int increment = 100;
     int return_val = 0;
 
     if (TI < TJ)
@@ -218,6 +218,11 @@ int penalty_factor()
     return return_val;
 }
 
+double calculate_performance(double raw_perf)
+{
+    int result = (int)(raw_perf * 1000);
+    return (double)(result + penalty_factor());
+}
 
 // driver
 int main(int argc, char *argv[])
@@ -302,7 +307,7 @@ int main(int argc, char *argv[])
     code_so(&matrix_size, A, B, C_orig);
     time_end = timer();
 
-    perf = (time_end - time_start) + penalty_factor();
+    perf = calculate_performance(time_end - time_start);
     if (harmony_report(hdesc, perf) < 0) {
         fprintf(stderr, "Error reporting default performance to server.\n");
         goto cleanup;
@@ -344,7 +349,7 @@ int main(int argc, char *argv[])
 
         check_code_correctness();
 
-        perf = raw_perf + penalty_factor();
+        perf = calculate_performance(raw_perf);
         printf("[r%d] TI:%d, TJ:%d, TK:%d, UI:%d, UJ:%d = %lf\n",
                rank, TI, TJ, TK, UI, UJ, perf);
 
