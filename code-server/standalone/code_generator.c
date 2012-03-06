@@ -444,6 +444,8 @@ int codeserver_init(string &filename)
     string first_filename = ss.str();                                         
     if (file_exists(first_filename.c_str())) {                                
         cout << "[CS]: Removing stale candidate simplex file.\n";
+        std::remove(first_filename.c_str());
+    }
 
     /* Respond to the harmony server. */
     ss.str("");
