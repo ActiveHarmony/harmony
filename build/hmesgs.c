@@ -425,8 +425,8 @@ int HUpdateMessage::serialize(char *buf) {
 
 // deserialize the HUpdateMessage
 int HUpdateMessage::deserialize(char *buf) {
-    int bl=0;
-    int t,tv, sl, ssl;
+    unsigned long int bl=0;
+    unsigned long int t, tv, sl, ssl;
     char *s, *ss;
     VarDef *vv;
     unsigned long int tstamp;
