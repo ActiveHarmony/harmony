@@ -110,11 +110,6 @@ map<string, time_t> prev_fs_check;
  * their corresponding performances.
  */
 map<string,string> global_data;
-map<string,string>::iterator it;
-
-map<string,string> appName_confs;
-map<string,string>::iterator it2;
-
 vector<string> coord_history;
 
 char new_code_path[256];
@@ -467,8 +462,8 @@ void get_appl_description(HDescrMessage *mesg, int client_socket)
  ***/
 void variable_registration(HDescrMessage *mesg, int client_socket)
 {
-    char *cliName = clientName[client_socket];
-    char *retval = NULL, *bufptr;
+    char *cliName = clientName[client_socket], *bufptr;
+    const char *retval = NULL;
     char tclvar[256];
     snprintf(tclvar, sizeof(tclvar), "%s_bundle_%s(value)",
              cliName, mesg->get_descr());
@@ -514,9 +509,9 @@ void variable_registration(HDescrMessage *mesg, int client_socket)
 void variable_request(HUpdateMessage *mesg, int client_socket)
 {
     char *cliName = clientName[client_socket];
-    char *retval;
+    const char *retval;
     char tclbuf[256];
-    char curr_config[80], next_config[80];
+    char curr_config[80];
     int err;
 
     /* construct the key using get_test_configuration (look at the database
@@ -542,89 +537,38 @@ void variable_request(HUpdateMessage *mesg, int client_socket)
         printf("Checking the map for %s\n", curr_config);
     }
 
-    /* DATABASE CHECK */
-
-    /* check the database whether "current_config" is already available */
-    string str_config = curr_config;
-    it = global_data.find(str_config);
-
-    /* this is the case where the performance is not in the database.
-     * if the iterator is at the end of the map, we never found the conf
-     * in the database.  so simply use the old code (from the point after
-     * setting the values of the variables).
+    /* step 1: updating the values for the tunable parameters.
+     * get the values from the Tcl backend using Tcl_GetVar and set the
+     * value of the variables in the message to whatever value received
+     * from the Tcl backend.
      */
-
-    if (it == global_data.end())
+    for (int i = 0; i < mesg->get_nr_vars(); ++i)
     {
-        /* The database search did not find the configuration */
-        printf("The following configuration has not seen before\n");
+        /* get the name of the parameter. e.g. x or y ... */
 
-        /* step 1: updating the values for the tunable parameters.
-         * get the values from the Tcl backend using Tcl_GetVar and set the
-         * value of the variables in the message to whatever value received
-         * from the Tcl backend.
+        /* constructing the Tcl variable name: the way variables are
+         * represented in the backend is as follows:
+         * <appname>_<client socket>_bundle_<name of the variable>
+         * for c++ example:
+         *    appname is SimplexT
+         *    name of the variables is x and y.
+         *    if you are running 4 clients: client socket goes from 1 to 4.
+         *    An example of the variable name in the backend will be:
+         *    SimplexT_1_bundle_x
+         * Now in the Tcl backend, this variable has attributes:
+         *  SimplexT_1_bundle_x(value)
          */
-        for (int i = 0; i < mesg->get_nr_vars(); ++i)
-        {
-            /* get the name of the parameter. e.g. x or y ... */
-
-            /* constructing the Tcl variable name: the way variables are
-             * represented in the backend is as follows:
-             * <appname>_<client socket>_bundle_<name of the variable>
-             * for c++ example:
-             *    appname is SimplexT
-             *    name of the variables is x and y.
-             *    if you are running 4 clients: client socket goes from 1 to 4.
-             *    An example of the variable name in the backend will be:
-             *    SimplexT_1_bundle_x
-             * Now in the Tcl backend, this variable has attributes:
-             *  SimplexT_1_bundle_x(value)
-             */
-            snprintf(tclbuf, sizeof(tclbuf), "%s_bundle_%s(value)", cliName,
-                     mesg->get_var(i)->getName());
-
-            if (debug_mode)
-                printf("[AH]: Tcl value string: %s\n", tclbuf);
-
-            /* invoking the Tcl interpreter to parse this Tcl command. */
-            retval = Tcl_GetVar(tcl_inter, tclbuf, 0);
-
-            if (debug_mode)
-                printf("[AH]: Tcl value: %s\n", retval);
-
-            if (retval == NULL)
-            {
-                printf("[AH]: Error retrieving Tcl variable %s: %s\n",
-                       tclbuf, tcl_inter->result);
-                operation_failed(client_socket);
-                return;
-            }
-
-            /* get the VarDef object at position i in the message
-             * and check its type.
-             */
-            switch (mesg->get_var(i)->getType()) 
-            {
-            case VAR_INT:
-                /* is int */
-                /* update the value */
-                mesg->get_var(i)->setValue(atoi(retval));
-                break;
-            case VAR_STR:
-                mesg->get_var(i)->setValue(retval);
-                break;
-            }
-        }
-
-        snprintf(tclbuf, sizeof(tclbuf), "%s_simplex_time", cliName);
+        snprintf(tclbuf, sizeof(tclbuf), "%s_bundle_%s(value)", cliName,
+                 mesg->get_var(i)->getName());
 
         if (debug_mode)
-            printf("[AH]: Timestamp Tcl string: %s\n", tclbuf);
+            printf("[AH]: Tcl value string: %s\n", tclbuf);
 
+        /* invoking the Tcl interpreter to parse this Tcl command. */
         retval = Tcl_GetVar(tcl_inter, tclbuf, 0);
 
         if (debug_mode)
-            printf("[AH]: Timestamp app: %s\n", retval);
+            printf("[AH]: Tcl value: %s\n", retval);
 
         if (retval == NULL)
         {
@@ -634,152 +578,47 @@ void variable_request(HUpdateMessage *mesg, int client_socket)
             return;
         }
 
-        if (debug_mode)
-            printf("[AH]: Timestamp value from the server: %s\n", retval);
-
-        mesg->set_timestamp(strtol(retval, NULL, 10));
-
-        send_message(mesg, client_socket);
-        printf("Server is sending the message of type: %d\n",
-               mesg->get_type());
-
-        delete mesg;
+        /* get the VarDef object at position i in the message
+         * and check its type.
+         */
+        switch (mesg->get_var(i)->getType()) 
+        {
+        case VAR_INT:
+            /* is int */
+            /* update the value */
+            mesg->get_var(i)->setValue(atoi(retval));
+            break;
+        case VAR_STR:
+            mesg->get_var(i)->setValue(retval);
+            break;
+        }
     }
-    else
+
+    snprintf(tclbuf, sizeof(tclbuf), "%s_simplex_time", cliName);
+
+    if (debug_mode)
+        printf("[AH]: Timestamp Tcl string: %s\n", tclbuf);
+
+    retval = Tcl_GetVar(tcl_inter, tclbuf, 0);
+
+    if (debug_mode)
+        printf("[AH]: Timestamp app: %s\n", retval);
+
+    if (retval == NULL)
     {
-        /* the configuration->performance mapping exists in the database */
-        printf("The following configuration has seen before\n"
-               "Server gets the unique configuration from the backend\n");
-
-        snprintf(tclbuf, sizeof(tclbuf), "get_next_configuration %s", cliName);
-        if ((err = Tcl_Eval(tcl_inter, tclbuf)) != TCL_OK)
-        {
-            fprintf(stderr, "Error %d retrieving next configuration: %s\n",
-                    err, tcl_inter->result);
-            operation_failed(client_socket);
-            return;
-        }
-        else
-        {
-            printf("The backend says the value is: %s\n", tcl_inter->result);
-            char *endptr = cliName;
-            while (*endptr && *endptr != '_') ++endptr;
-            snprintf(next_config, sizeof(next_config), "%.*s_%s",
-                     endptr - cliName, cliName, tcl_inter->result);
-            printf("Checking the map: %s\n", next_config);
-        }
-
-        for (int i = 0; i < mesg->get_nr_vars(); ++i)
-        {
-            /* Maintain the list of new configs associated with cliName */
-            appName_confs.insert(pair<string, string>(cliName, next_config));
-
-            snprintf(tclbuf, sizeof(tclbuf), "%s_bundle_%s(value)",
-                     cliName, mesg->get_var(i)->getName());
-
-            if (debug_mode)
-                printf("Tcl variable string: %s\n", tclbuf);
-
-            /* invoke the Tcl interpreter to parse this command */
-            retval = Tcl_GetVar(tcl_inter, tclbuf, 0);
-
-            if (debug_mode)
-                printf("Tcl value: %s\n", retval);
-
-            if (retval == NULL)
-            {
-                printf("Error getting the value of variable!\n");
-                operation_failed(client_socket);
-                return;
-            }
-
-            /* get the VarDef object at position i in the message and
-             * check its type
-             */
-            switch (mesg->get_var(i)->getType())
-            {
-            case VAR_INT:
-                /* is int */
-                /* update the value */
-                mesg->get_var(i)->setValue(atoi(retval));
-                break;
-            case VAR_STR:
-                mesg->get_var(i)->setValue(retval);
-                break;
-            }
-        }
-
-        it2 = appName_confs.find(next_config);
-        if (it2 != it)
-        {
-            /* The search concluded and did not find the configuration */
-            snprintf(tclbuf, sizeof(tclbuf), "%s_simplex_time", cliName);
-
-            if (debug_mode)
-                printf("Timestamp Tcl string: %s\n", tclbuf);
-
-            retval = Tcl_GetVar(tcl_inter, tclbuf, 0);
-
-            if (debug_mode)
-                printf("Timestamp app: %s\n", retval);
-
-            if (retval == NULL)
-            {
-                printf("Error getting value of variable %s: %s\n",
-                       tclbuf, tcl_inter->result);
-                operation_failed(client_socket);
-                return;
-            }
-
-            if (debug_mode)
-                printf("Timestamp value from the server: %s\n", retval);
-
-            mesg->set_timestamp(strtol(retval, NULL, 10));
-            send_message(mesg, client_socket);
-
-            delete mesg;
-        }
-        else
-        {
-            /* Extracting the performance from the database
-             * this performance has to come from the map
-             */
-            string updated_performance;
-            int updt_perf;
-
-            /* getting the perf from the map */
-            updated_performance = (*it).second;
-
-            /* This converts perf(string) to perf(int) */
-            updt_perf = atoi(updated_performance.c_str());
-            printf("Performance from the database: %d \n", updt_perf);
-
-            snprintf(tclbuf, sizeof(tclbuf), "%s_simplex_time", cliName);
-
-            if (debug_mode)
-                printf("Timestamp Tcl string: %s\n", tclbuf);
-
-            retval = Tcl_GetVar(tcl_inter, tclbuf, 0);
-
-            if (debug_mode)
-                printf("Timestamp app: %s\n", retval);
-
-            if (retval == NULL)
-            {
-                printf("Error getting value of variable %s: %s\n",
-                       tclbuf, tcl_inter->result);
-                operation_failed(client_socket);
-                return;
-            }
-
-            if (debug_mode)
-                printf("Timestamp value from the server: %s\n", retval);
-
-            mesg->set_timestamp(strtol(retval, NULL, 10));
-            send_message(mesg, client_socket);
-            delete mesg;
-        }
+        printf("[AH]: Error retrieving Tcl variable %s: %s\n",
+               tclbuf, tcl_inter->result);
+        operation_failed(client_socket);
+        return;
     }
+
+    if (debug_mode)
+        printf("[AH]: Timestamp value from the server: %s\n", retval);
+
+    mesg->set_timestamp(strtol(retval, NULL, 10));
+
+    send_message(mesg, client_socket);
+    printf("Server is sending the message of type: %d\n", mesg->get_type());
 }
 
 /*****
@@ -793,7 +632,7 @@ void var_tcl_variable_request(HUpdateMessage *mesg, int client_socket)
 {
     char *cliName = clientName[client_socket];
     char tclvar[256];
-    char *retval;
+    const char *retval;
 
     if (debug_mode)
         printf("[AH]: received a Tcl variable request\n");
@@ -850,11 +689,11 @@ void var_tcl_variable_request(HUpdateMessage *mesg, int client_socket)
  */
 void check_code_completion(HUpdateMessage *mesg, int client_socket)
 {
-    char *cliName = clientName[client_socket];
+    char *cliName = clientName[client_socket], *endp = cliName;
     char tclbuf[256], appName[256], filename[256];
     int retval = 0, simplex_timestep = -1;
+    const char *stime;
 
-    char *stime, *endp = cliName;
     while (*endp && *endp != '_') ++endp;
     snprintf(appName, sizeof(appName), "%.*s", endp - cliName, cliName);
 
@@ -907,183 +746,6 @@ void check_code_completion(HUpdateMessage *mesg, int client_socket)
     mesg->get_var(0)->setValue(retval);
     send_message(mesg, client_socket);
     delete mesg;
-}
-
-/*
- * Check the global database to see if we have already evaluated a 
- * configuration that we handed to a given client.
- */
-void database(HUpdateMessage *mesg, int client_socket)
-{
-    /*
-     * Make sure all pro instances have reported their performance value to
-     * the server and that the "next_iteration" flag is set to 1 before
-     * calling this function.
-     */
-    char *cliName = clientName[client_socket];
-    char curr_config[80], buf[80];
-    int err;
-
-    /* Tcl proc get_test_configuration appName returns the current
-     * configuration being tested
-     */
-    snprintf(buf, sizeof(buf), "get_test_configuration %s", cliName);
-    if ((err = Tcl_Eval(tcl_inter, buf)) != TCL_OK)
-    {
-        fprintf(stderr, "Error %d retrieving current configuration: %s\n",
-                err, tcl_inter->result);
-        operation_failed(client_socket);
-        return;
-    }
-    else
-    {
-        char *endp = cliName;
-        while (*endp && *endp!='_') ++endp;
-        snprintf(curr_config, sizeof(curr_config), "%.*s_%s",
-                 endp - cliName, cliName, tcl_inter->result);
-    }
-
-    string str_conf = curr_config;
-    it = global_data.find(str_conf);
-    if (it == global_data.end())
-    {
-        snprintf(buf, sizeof(buf), "%d", INTMAXVAL);
-    }
-    else
-    {
-        strncpy(buf, (*it).second.c_str(), sizeof(buf));
-    }
-
-    switch (mesg->get_var(0)->getType())
-    {
-    case VAR_INT:
-        mesg->get_var(0)->setValue(atoi(buf));
-        break;
-    case VAR_STR:
-        mesg->get_var(0)->setValue(buf);
-        break;
-    }
-
-    send_message(mesg, client_socket);
-    delete mesg;
-}
-
-/***
- *
- * Set the value of the variable into the database
- *
- ***/
-void variable_set(HUpdateMessage *mesg, int client_socket)
-{
-    char *cliName = clientName[client_socket];
-    char varname[256], buf[80];
-    char *value;
-    char *retval;
-
-    for (int i = 0; i < mesg->get_nr_vars(); ++i)
-    {
-        switch (mesg->get_var(i)->getType())
-        {
-        case VAR_INT:
-            snprintf(buf, sizeof(buf), "%d",
-                     *(int *)mesg->get_var(i)->getPointer());
-            value = buf;
-            break;
-        case VAR_STR:
-            value = (char *)mesg->get_var(i)->getPointer();
-            break;
-        }
-
-        snprintf(varname, sizeof(varname), "%s_bundle_%s(value)",
-                 cliName, mesg->get_var(i)->getName());
-        if (set_tcl_var(varname, value) < 0)
-        {
-            operation_failed(client_socket);
-            return;
-        }
-
-#ifdef SCHEDULER
-#ifdef notdef
-        char *c;
-        c = strchr(ss, '_');
-        assert(c);
-        *c = '\0';
-        char *cliName = ss;
-        c += 8;
-        char *vname = c;
-#endif  /*notdef*/
-
-        char StartEvent[] = "START";
-        char EndEvent[] = "END";
-        char SyncEvent[] = "SYNC";
-        char VarEvent[] = "VAR";
-        char *event;
-
-        if (strcmp(mesg->get_var(i)->getName(), "AdaState") == 0)
-        {
-            if (!strcmp(s, "APP_STARTED"))
-            {
-                /* register application in scheduler */
-                event = StartEvent;
-            }
-            else
-            {
-                /* call scheduler to take over */
-                event = SyncEvent;
-            }
-        }
-        else
-        {
-            event = VarEvent;
-        }
-
-        application_trigger = cliName;
-        update_sent = FALSE;
-        if (Tcl_VarEval(tcl_inter, "SchedulerEventHandler ",
-                        cliName, " ", event, NULL) != TCL_OK)
-        {
-            fprintf(stderr, "SchedulerEventHandler failed: %s\n",
-                    tcl_inter->result);
-            operation_failed(client_socket);
-        }
-
-#elif SCHEDULER2
-        char *c;
-        c = strchr(ss, '_');
-        assert(c);
-        *c = '\0';
-        cliName = ss;
-        c += 8;
-        char *vname = c;
-
-        if (strcmp(vname, "AdaState") == 0)
-        {
-            if (!socket_to_app(sock))
-            {
-                /* register application in scheduler */
-                app_start(cliName, client_socket);
-            }
-            else
-            {
-                /* call scheduler to take over */
-                scheduler.app_sync(client_socket);
-            }
-        }
-        else
-        {
-            scheduler.app_var(client_socket);
-        }
-
-        free(sname);
-#endif
-    }
-
-    if (!update_sent)
-    {
-        HRegistMessage m(HMESG_CONFIRM, 0);
-        send_message(&m, client_socket);
-    }
-    update_sent = FALSE;
 }
 
 /****
@@ -1207,72 +869,8 @@ void client_unregister(HRegistMessage *m, int client_socket)
     }
 }
 
-void performance_update_int(HUpdateMessage *m, int client_socket)
-{
-    char *cliName = clientName[client_socket];
-    char buf[256], curr_config[80], perf_string[80];
-    int performance = INTMAXVAL;
-    int err;
-
-    /* get the current conf for this instance from the Tcl backend. */
-    performance = *(int *)m->get_var(0)->getPointer();
-
-    if (performance != INTMAXVAL)
-    {
-        snprintf(buf, sizeof(buf), "get_test_configuration %s", cliName);
-
-        if ((err = Tcl_Eval(tcl_inter, buf)) != TCL_OK)
-        {
-            fprintf(stderr, "Error %d retrieving current configuration: %s\n",
-                    err, tcl_inter->result);
-            operation_failed(client_socket);
-            return;
-        }
-        else
-        {
-            char *endp = cliName;
-            while (*endp && *endp != '_') ++endp;
-            snprintf(curr_config, sizeof(curr_config), "%.*s_%s",
-                     endp - cliName, cliName, tcl_inter->result);
-        }
-
-        snprintf(perf_string, sizeof(perf_string), "%d", performance);
-        global_data.insert(pair<string, string>(string(curr_config),
-                                                string(perf_string)));
-
-        snprintf(buf, sizeof(buf), "get_http_test_coord %s", cliName);
-        if ((err = Tcl_Eval(tcl_inter, buf)) != TCL_OK) {
-            fprintf(stderr, "get_http_test_coord() error %d: %s\n",
-                    err, tcl_inter->result);
-            operation_failed(client_socket);
-            return;
-        }
-        snprintf(buf, sizeof(buf), "%u000,%s,%s",
-                 (unsigned int)time(NULL), tcl_inter->result, perf_string);
-        coord_history.push_back(buf); 
-   }
-
-    /* let the search backend know what we have received the performance
-     * number from this client.
-     */
-    snprintf(buf, sizeof(buf), "updateObsGoodness %s %d %ld",
-             cliName, performance, m->get_timestamp());
-
-    if (debug_mode)
-        printf("[AH]: goodness Tcl string: %s\n", buf);
-
-    if ((err = Tcl_Eval(tcl_inter, buf)) != TCL_OK)
-    {
-        fprintf(stderr, "Error %d setting performance function: %s\n",
-                err, tcl_inter->result);
-        operation_failed(client_socket);
-        return;
-    }
-    send_message(m, client_socket);
-}
-
 /* performance update function */
-void performance_update_double(HUpdateMessage *m, int client_socket)
+void performance_update(HUpdateMessage *m, int client_socket)
 {
     char *cliName = clientName[client_socket];
     char buf[256], curr_config[80], perf_dbl[80];
@@ -1334,256 +932,6 @@ void performance_update_double(HUpdateMessage *m, int client_socket)
     send_message(m, client_socket);
 }
 
-
-/* performance update function */
-void performance_update(HUpdateMessage *m, int client_socket)
-{
-    switch (m->get_var(0)->getType())
-    {
-    case VAR_INT:
-        performance_update_int(m,client_socket);
-        break;
-    case VAR_REAL:
-        performance_update_double(m,client_socket);
-        break;
-    }
-}
-
-/* Server queries the database to know whether the performance is
- * already evaluated or not
- */
-void performance_already_evaluated_int(HUpdateMessage *m, int client_socket)
-{
-    char *cliName = clientName[client_socket];
-    char buf[256], curr_config[80], str_conf[80];
-    int err;
-    int performance = INTMAXVAL;
-    char perf_string[80];
-
-    /* get the current conf for this instance from the Tcl backend. */
-    performance = *(int *)m->get_var(0)->getPointer();
-
-    if (performance != INTMAXVAL)
-    {
-        snprintf(buf, sizeof(buf), "get_test_configuration %s", cliName);
-
-        if ((err = Tcl_Eval(tcl_inter, buf)) != TCL_OK) 
-        {
-            fprintf(stderr, "Error %d retrieving current configuration: %s\n",
-                    err, tcl_inter->result);
-            operation_failed(client_socket);
-            return;
-        }
-        else
-        {
-            char *endp = cliName;
-            while (*endp && *endp != '_') ++endp;
-            snprintf(curr_config, sizeof(curr_config), "%.*s_%s",
-                     endp - cliName, cliName, tcl_inter->result);
-        }
-
-        sprintf(perf_string, "%d", performance);
-        global_data.insert(pair<string, string>(string(curr_config),
-                                                string(perf_string)));
-
-        snprintf(buf, sizeof(buf), "get_http_test_coord %s", cliName);
-        if ((err = Tcl_Eval(tcl_inter, buf)) != TCL_OK)
-        {
-            fprintf(stderr, "get_http_test_coord() error %d: (%s)\n",
-                    err, tcl_inter->result);
-            operation_failed(client_socket);
-            return;
-        }
-        snprintf(buf, sizeof(buf), "%u000,%s,%s",
-                 (unsigned int)time(NULL), tcl_inter->result, perf_string);
-        coord_history.push_back(buf);
-    }
-
-    /* Server checks the database whether the conf has already
-     * been evaluated in the past
-     */
-    it = global_data.find(str_conf);
-
-    /* searching the database */
-    for (it = global_data.begin(); it != global_data.end(); ++it)
-    {
-        if (!str_conf)
-        {
-            performance_update_int(m, client_socket);
-
-            if (debug_mode)
-                printf("goodness Tcl string: %s\n", buf);
-
-            if ((err = Tcl_Eval(tcl_inter, buf)) != TCL_OK)
-            {
-                fprintf(stderr, "Error %d setting performance function: %s\n",
-                        err, tcl_inter->result);
-                operation_failed(client_socket);
-                return;
-            }
-            send_message(m, client_socket);
-        }
-        else
-        {
-            printf("The following configuration has already seen\n");
-
-            /* For now using the update function again */
-            performance_update_int(m, client_socket);
-
-            if (debug_mode)
-                printf("goodness Tcl string: %s\n", buf);
-
-            if ((err = Tcl_Eval(tcl_inter, buf)) != TCL_OK)
-            {
-                fprintf(stderr, "Error %d setting performance function: %s\n",
-                        err, tcl_inter->result);
-                operation_failed(client_socket);
-                return;
-            }
-            send_message(m, client_socket);
-        }
-
-        send_message(m, client_socket);
-    }
-}
-
-
-void performance_already_evaluated_double(HUpdateMessage *m, int client_socket)
-{
-    char *cliName = clientName[client_socket];
-    char buf[256], curr_config[80], str_conf[80];
-    int err;
-    double performance = *(double *)m->get_var(0)->getPointer();
-    char perf_dbl[80];
-  
-    /* get the current conf for this instance from the Tcl backend */
-    snprintf(perf_dbl, sizeof(perf_dbl), "%.17lg", performance);
-
-    if (performance != FLTMAXVAL)
-    {
-        snprintf(buf, sizeof(buf), "get_test_configuration %s", cliName);
-
-        if ((err = Tcl_Eval(tcl_inter, buf)) != TCL_OK)
-        {
-            fprintf(stderr, "Error %d retrieving current configuration: %s\n",
-                    err, tcl_inter->result);
-            operation_failed(client_socket);
-            return;
-        }
-        else
-        {
-            char *endp = cliName;
-            while (*endp && *endp != '_') ++endp;
-            snprintf(curr_config, sizeof(curr_config), "%.*s_%s",
-                     endp - cliName, cliName, tcl_inter->result);
-        }
-
-        global_data.insert(pair<string, string>(string(str_conf),
-                                                string(perf_dbl)));
-
-        snprintf(buf, sizeof(buf), "get_http_test_coord %s", cliName);
-        if ((err = Tcl_Eval(tcl_inter, buf)) != TCL_OK) {
-            fprintf(stderr, "get_http_test_coord() error %d: %s\n",
-                    err, tcl_inter->result);
-            operation_failed(client_socket);
-            return;
-        }
-        snprintf(buf, sizeof(buf), "%u000,%s,%s",
-                 (unsigned int)time(NULL), tcl_inter->result, perf_dbl);
-        coord_history.push_back(buf);
-    }
-
-    /* Server checks the database whether the conf has already been
-     * evaluated in the past
-     */
-    it = global_data.find(str_conf);
-
-    /* searching the database */
-    for (it = global_data.begin(); it != global_data.end(); ++it)
-    {
-        if (!str_conf)
-        {
-            printf("The following configuration has not seen before\n"
-                   "Updating the performance and sending the configuration"
-                   " to the client\n");
-
-            performance_update_int(m, client_socket);
-
-            if (debug_mode)
-                printf("goodness Tcl string: %s\n", buf);
-
-            if ((err = Tcl_Eval(tcl_inter, buf)) != TCL_OK)
-            {
-                fprintf(stderr, "Error %d setting performance function: %s\n",
-                        err, tcl_inter->result);
-                operation_failed(client_socket);
-                return;
-            }
-            send_message(m,client_socket);
-        }
-        else
-        {
-            printf("The following configuration has already seen\n");
-
-            /* For now using the update function again */
-            performance_update_int(m, client_socket);
-
-            if (debug_mode)
-                printf("goodness Tcl string: %s\n", buf);
-
-            if ((err = Tcl_Eval(tcl_inter, buf)) != TCL_OK)
-            {
-                fprintf(stderr, "Error %d setting performance function: %s\n",
-                        err, tcl_inter->result);
-                operation_failed(client_socket);
-                return;
-            }
-            send_message(m, client_socket);
-        }
-        send_message(m,client_socket);
-    }
-}
-
-/* performance already evaluated function */
-void performance_already_evaluated(HUpdateMessage *m, int client_socket)
-{
-    switch (m->get_var(0)->getType())
-    {
-    case VAR_INT:
-        performance_already_evaluated_int(m, client_socket);
-        break;
-    case VAR_STR:
-        performance_already_evaluated_double(m, client_socket);
-        break;
-    }
-}
-
-/* not used anymore... but has some use for debugging, so keeping it intact */
-void performance_update_with_conf(HUpdateMessage *m, int client_socket)
-{
-    char *cliName = clientName[client_socket];
-    char tclbuf[512];
-    int err;
-    char *conf = (char *)m->get_var(0)->getName();
-
-    printf("Client Name: %s\n\n", cliName);
-    printf("configuration: %s\n", conf);
-
-    snprintf(tclbuf, sizeof(tclbuf), "updateObsGoodness %s %d %ld",
-             cliName, *(int *)m->get_var(0)->getPointer(), m->get_timestamp());
-
-    printf("perf_update_str: (%s)\n", tclbuf);
-
-    if ((err = Tcl_Eval(tcl_inter, tclbuf)) != TCL_OK)
-    {
-        fprintf(stderr, "Error %d setting performance function: %s\n",
-                err, tcl_inter->result);
-        operation_failed(client_socket);
-        return;
-    }
-    send_message(m, client_socket);
-}
-
 /****
  *
  * Return values from the global_config file
@@ -1631,8 +979,6 @@ void process_message_from(int temp_socket, int *close_fd)
      */
     switch (m->get_type())
     {
-    case HMESG_DAEMON_REG:
-        break;
     case HMESG_CLIENT_REG:
         client_registration((HRegistMessage *)m, temp_socket);
         break;
@@ -1647,23 +993,11 @@ void process_message_from(int temp_socket, int *close_fd)
     case HMESG_VAR_REQ:
         variable_request((HUpdateMessage *)m, temp_socket);
         break;
-    case HMESG_VAR_SET:
-        variable_set((HUpdateMessage *)m, temp_socket);
-        break;
     case HMESG_PERF_UPDT:
         performance_update((HUpdateMessage *)m, temp_socket);
         break;
-    case HMESG_PERF_ALREADY_EVALUATED:
-        performance_already_evaluated((HUpdateMessage *)m, temp_socket);
-        break;
     case HMESG_TCLVAR_REQ:
         var_tcl_variable_request((HUpdateMessage *)m, temp_socket);
-        break;
-    case HMESG_DATABASE:
-        database((HUpdateMessage *)m, temp_socket);
-        break;
-    case HMESG_WITH_CONF:
-        performance_update_with_conf((HUpdateMessage *)m, temp_socket);
         break;
     case HMESG_CLIENT_UNREG:
         client_unregister((HRegistMessage *)m, temp_socket);
@@ -2018,33 +1352,6 @@ void main_loop()
                 ++socketIterator;
             }
         }
-
-#if 0
-        /*
-          This section of the code is only needed if we want to use the
-          commandline interface of hserver as a Tcl interpreter.
-	  This is useful for debugging sessions. The users can query the
-	  Tcl backend with Tcl commands. Uncomment this if you are debugging
-	  the backend.
-        */
-        /*
-        if (FD_ISSET(xfd, &listen_set_copy)) {
-            printf("should never get here if not using TK \n");
-            
-            char line[1024];
-            int ret1 = read(0, line, sizeof(line));
-            assert (ret1 >= 0);
-            line[ret1] = '\0';
-
-            if (Tcl_Eval(tcl_inter, line) != TCL_OK) {
-                printf("Tcl Error: %s\n", tcl_inter->result);
-            } else {
-            }
-
-            fflush(stdout);
-        }
-        */
-#endif
     }
 }
 
