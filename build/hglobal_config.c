@@ -183,24 +183,27 @@ int cfg_parse()
         val = (char *)memchr(key, '=', hash - key);
         if (val == NULL || val == key) {
             printf("Configuration error line %d: %.*s\n",
-                   linenum, tail - head, head);
+                   linenum, (int)(tail - head), head);
             return -1;
         }
 
         /* Trim the whitespace on the right side of the key string. */
-        ptr = val;
-        *(val++) = '\0';
-        while (*ptr == '\0' || isspace(*ptr))
-            *(ptr--) = '\0';
+        ptr = val++;
+        *ptr = '\0';
+        while (*ptr == '\0' || isspace(*ptr)) {
+            *ptr = '\0';
+            --ptr;
+        }
 
         /* Force key strings to be lower-case and have underscores instead
            of whitespace, */
         while (ptr >= key) {
             if (*ptr == '\0' || isspace(*ptr)) {
-                *(ptr--) = '_';
+                *ptr = '_';
             } else {
-                *(ptr--) = tolower(*ptr);
+                *ptr = tolower(*ptr);
             }
+            --ptr;
         }
 
         /* Trim the whitespace on the left side of the value string. */
@@ -210,8 +213,10 @@ int cfg_parse()
         /* Trim the whitespace on the right side of the value string. */
         ptr = hash;
         *ptr = '\0';
-        while (ptr > val && (*ptr == '\0' || isspace(*ptr)))
-            *(ptr--) = '\0';
+        while (ptr > val && (*ptr == '\0' || isspace(*ptr))) {
+            *ptr = '\0';
+            --ptr;
+        }
 
         /* Increase the capacity of the cfg_pair array, if needed. */
         if (size >= cfg_pairlen) {

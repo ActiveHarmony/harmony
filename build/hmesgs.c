@@ -17,473 +17,276 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/******************************
- *
- * Author: Cristian Tapus
- * History:
- *   Jan 5, 2001   - comments and updated by Cristian Tapus
- *   Nov 20, 2000  - changes made by Djean Perkovic
- *   Sept 23, 2000 - comments added
- *   July 12, 2000 - first version
- *   July 15, 2000 - comments and update added by Cristian Tapus
- *
- *  Various modifications, fixes and additions by: Ananta Tiwari (2004-2010)
- *
- *******************************/
-
 #include "hmesgs.h"
 
-static const char *print_type[] = {"NONE",
-                                   "NODE_DESCR",
-                                   "APP_DESCR",
-                                   "DAEMON_REG",
-                                   "CLIENT_REG",
-/*				   "CODE_GEN_REG",  */
-                                   "VAR_DESCR",
-                                   "VAR_REQ",
-                                   "VAR_SET",
-                                   "CLIENT_UNREG",
-                                   "CONFIRM",
-                                   "FAIL",
-                                   "PERF_UPDT",
-                                   "PROBE_REQ",
-                                   "TCLVAR_REQ",
-                                   "TCLVAR_REQ_2",
-                                   "PROBE_SET",
-                                   "DATABASE",
-                                   "WITH_CONF",
-                                   "CODE_COMPLETION",
-                                   "PERF_ALREADY_EVALUATED",
-                                   "CFG_REQ"};
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-/***
- *
- * define functions used to pack, unpack message info
- *
- ***/
-
-static int debug_mode;
-
-// serialize the Variable definition
-// this class is defined in the hmesgs.h file
-int VarDef::serialize(char *buf)
+int hval_serialize(char *buf, size_t buflen, const hval_t *val)
 {
-    int buflen = 0;
-    char *localbuf;
-    unsigned int temp;
+    int total;
+    size_t len;
 
-    // first serialize the variable type, which is an int and can
-    // be one of the following: VAR_INT, VAR_STR, VAR_REAL.
-    assert(type != VAR_UNKNOWN);
-    temp = htonl(type);
-    memcpy(buf + buflen, &temp, sizeof(unsigned long int));
-    buflen += sizeof(unsigned long int);
-
-    // then serialize the name of the variable.
-    // when serializing strings put the length of the string first and
-    // then the string itself
-    temp = htonl(strlen(name));
-    memcpy(buf + buflen, &temp, sizeof(unsigned long int));
-    buflen += sizeof(unsigned long int);
-    memcpy(buf + buflen, name, strlen(name));
-    buflen += strlen(name);
-
-    // finally put the value of the variable into the buffer.
-    // if the type is int, just add it to the buffer
-    // if type is string, first add the length and then the string itself
-    switch (type) {
-    case VAR_INT:
-        temp = htonl(*((int *)ptr));
-        memcpy(buf + buflen, &temp, sizeof(unsigned long int));
-        buflen += sizeof(unsigned long int);
+    switch (val->type) {
+    case HVAL_INT:
+        total = snprintf(buf, buflen, "|%d %ld", HVAL_INT, val->value.i);
         break;
-    case VAR_STR:
-        temp = htonl(strlen((char *)ptr));
-        memcpy(buf + buflen, &temp, sizeof(unsigned long int));
-        buflen += sizeof(unsigned long int);
-        memcpy(buf + buflen, ptr, strlen((char *)ptr));
-        buflen += strlen((char *)ptr);
+
+    case HVAL_REAL:
+        total = snprintf(buf, buflen, "|%d %la", HVAL_REAL, val->value.r);
         break;
-    case VAR_REAL:
-        temp = snprintf(NULL, 0, "%la", *(double *)ptr);
-        localbuf = (char *) malloc(temp + 1);
-        if (localbuf == NULL) {
-            perror("Memory allocation error.");
+
+    case HVAL_STR:
+        len = strlen(val->value.s);
+        if (len >= MAX_VAL_STRLEN) {
+            fprintf(stderr, "*** Error: Harmony string variable overflow.\n");
+            return -1;
         }
-        sprintf(localbuf, "%la", *(double *)ptr);
+        total = snprintf(buf, buflen, "|%d %zu %.*s", HVAL_STR,
+                         len, (unsigned int)len, val->value.s);
+        break;
 
-        memcpy(buf + buflen, &temp, sizeof(unsigned long int));
-        buflen += sizeof(unsigned long int);
-        memcpy(buf + buflen, localbuf, temp);
-        buflen += temp;
-
-        free(localbuf);
+    default:
+        return -1;
     }
 
-    return buflen;
+    if (total < 0 || ((size_t)total) >= buflen) {
+        fprintf(stderr, "*** Error: Harmony variable overflow.\n");
+        return -1;
+    }
+
+    return total;
 }
 
-// deserialize the content of a variable
-// use the same order as above
-int VarDef::deserialize(char *buf)
+int hval_deserialize(hval_t *val, const char *buf)
 {
-    int bl = 0;
-    int t, tv, sl;
-    char *s;
-    double d;
+    unsigned int len, type;
+    int count, total;
 
-    //printf("VarDef: deserealization \n");
-
-    memcpy(&t, buf + bl, sizeof(unsigned long int));
-    bl += sizeof(unsigned long int);
-    type = ntohl(t);
-
-    //printf("VarDef:: deserialization:: type done \n");
-
-    memcpy(&tv, buf + bl, sizeof(unsigned long int));
-    bl += sizeof(unsigned long int);
-    sl = ntohl(tv);
-
-    //printf("VarDef:: deserialization:: tv done \n");
-
-    name = (char *)realloc(name, sl + 1);
-    memcpy(name, buf + bl, sl);
-    name[sl] = '\0';
-    bl += sl;
-
-    //printf("VarDef:: deserialization:: characters copying done \n");
+    if (sscanf(buf, " |%d%n", &type, &count) < 1)
+        return -1;
+    val->type = type;
+    total = count;
 
     switch (type) {
-    case VAR_INT:
-        //printf("VarDef:: deserialization:: VAR_INT \n");
-        memcpy(&tv, buf + bl, sizeof(unsigned long int));
-        bl += sizeof(unsigned long int);
-        setValue((int)ntohl(tv));
-        //printf("this is where it fails: \n");
+    case HVAL_INT:
+        if (sscanf(buf + total, " %ld%n", &val->value.i, &count) < 1)
+            return -1;
+        total += count;
         break;
-    case VAR_STR:
-        memcpy(&tv, buf + bl, sizeof(unsigned long int));
-        bl += sizeof(unsigned long int);
-        sl = ntohl(tv);
-        s = (char *)malloc(sl+1);
-        s[sl] = '\0';
-        strncpy(s, buf + bl, sl);
-        bl += sl;
-        setValue(s);
-        free(s);
-        break;
-    case VAR_REAL:
-        memcpy(&tv, buf + bl, sizeof(unsigned long int));
-        bl += sizeof(unsigned long int);
 
-        s = (char *) malloc(tv + 1);
-        if (s == NULL) {
-            perror("Memory allocation error");
+    case HVAL_REAL:
+        if (sscanf(buf + total, " %la%n", &val->value.r, &count) < 1)
+            return -1;
+        total += count;
+        break;
+
+    case HVAL_STR:
+        if (sscanf(buf + total, " %d %n", &len, &count) < 1)
+            return -1;
+        total += count;
+
+        if (len >= MAX_VAL_STRLEN) {
+            fprintf(stderr, "*** Warning: Harmony string variable overflow."
+                    "  Truncating.\n");
+
+            strncpy(val->value.s, buf + total, MAX_VAL_STRLEN - 1);
+            val->value.s[MAX_VAL_STRLEN - 1] = '\0';
         }
-        memcpy(s, buf + bl, tv);
-        s[tv] = '\0';
+        else {
+            strncpy(val->value.s, buf + total, len);
+            val->value.s[len] = '\0';
+        }
 
-        sscanf(s, "%la", &d);
-        setValue(d);
-        free(s);
-
-        bl += tv;
+        total += len;
         break;
+
+    default:
+        return -1;
     }
 
-    return bl;
+    return total;
 }
 
-// this is a function used for debug purposes. It prints the info
-// about the variable
-void VarDef::print()
+int hmesg_serialize(char *buf, size_t buflen, const hmesg_t *mesg)
 {
-    fprintf(stderr, "Var [Name:%s Type:%d Size:%d", name, type, size);
-    switch (type) {
-    case VAR_INT:
-        fprintf(stderr, " Value:%d (@ 0x%lx) Shadow:%d (@ 0x%lx)",
-               *(int *)ptr, ptr, *(int *)shadow, shadow);
-        break;
-    case VAR_STR:
-        fprintf(stderr, " Value:\"%s\" (@ 0x%lx) Shadow:\"%s\" (@ 0x%lx)",
-               ptr, ptr, shadow, shadow);
-        break;
-    case VAR_REAL:
-        fprintf(stderr, " Value:%lf (@ 0x%lx) Shadow:%lf (@ 0x%lx)",
-               *(double *)ptr, ptr, *(double *)shadow, shadow);
-        break;
+    unsigned int i;
+    const char *type_str;
+    int count, total;
+
+    switch (mesg->type) {
+    case HMESG_CONFIRM:      type_str = "ACK"; break;
+    case HMESG_FAIL:         type_str = "NAK"; break;
+    case HMESG_CLIENT_REG:   type_str = "REG"; break;
+    case HMESG_CLIENT_UNREG: type_str = "UNR"; break;
+    case HMESG_APP_DESCR:    type_str = "APP"; break;
+    case HMESG_VAR_DESCR:    type_str = "VAR"; break;
+    case HMESG_QUERY:        type_str = "QRY"; break;
+    case HMESG_FETCH:        type_str = "FET"; break;
+    case HMESG_REPORT:       type_str = "REP"; break;
+    default:
+        fprintf(stderr, "*** Error: Unknown Harmony message type.\n");
+        return -1;
     }
-    fprintf(stderr, "]\n");
-}
 
-// serialize the general message class
-int HMessage::serialize(char *buf) {
-    int buflen=0;
+    count = snprintf(buf, buflen, "%u:%s", HMESG_VERSION, type_str);
+    total = count;
+    if (count < 0 || ((size_t)total) >= buflen) {
+        fprintf(stderr, "*** Error: Harmony message overflow.\n");
+        return -1;
+    }
 
-    // include the message type and the version of the protocol
-    memcpy(buf+buflen,&type, sizeof(unsigned long int));
-    buflen+=sizeof(unsigned long int);
-    memcpy(buf+buflen,&version, sizeof(unsigned long int));
-    buflen+=sizeof(unsigned long int);
-    //memcpy(buf+buflen,&flag, sizeof(unsigned long int));
-    //buflen+=sizeof(unsigned long int);
-    return buflen;
-}
+    count = snprintf(buf + total, buflen - total, ":%hu", mesg->id);
+    if (count < 0 || ((size_t)total) >= buflen) {
+        fprintf(stderr, "*** Error: Harmony message overflow.\n");
+        return -1;
+    }
+    total += count;
 
+    count = snprintf(buf + total, buflen - total, ":%d", mesg->timestamp);
+    if (count < 0 || ((size_t)total) >= buflen) {
+        fprintf(stderr, "*** Error: Harmony message overflow.\n");
+        return -1;
+    }
+    total += count;
 
-// deserialize the general message class
-int HMessage::deserialize(char *buf) {
-    int bl=0;
+    switch (mesg->type) {
+    case HMESG_CLIENT_UNREG:
+        break;
 
-    // deserialize the message type and the version of the protocol
-    memcpy(&type,buf+bl, sizeof(unsigned long int));
-    bl+=sizeof(unsigned long int);
-    memcpy(&version,buf+bl, sizeof(unsigned long int));
-    bl+=sizeof(unsigned long int);
-    //memcpy(&flag,buf+bl, sizeof(unsigned long int));
-    //bl+=sizeof(unsigned long int);
-    return bl;
-}
-
-
-// function used for debugging purposes that prints the type of the
-// message
-void HMessage::print() {
-    fprintf(stderr, "Message type: %s %d\n",
-            print_type[get_type()], get_type());
-    //printf("Message type: %s %d\n",print_type[get_type()], get_type());
-}
-
-
-
-// serialize the Registration Message
-int HRegistMessage::serialize(char *buf) {
-    int buflen;
-
-    buflen=HMessage::serialize(buf);
-
-    // to the serialization of the general message add the param
-    // that HRegistMessage keeps track of
-    memcpy(buf+buflen,&param, sizeof(unsigned long int));
-    buflen+=sizeof(unsigned long int);
-    memcpy(buf+buflen,&identification, sizeof(int));
-    buflen+=sizeof(int);
-
-    return buflen;
-}
-
-
-// deserialize the Registration Message
-int HRegistMessage::deserialize(char *buf) {
-    int bl=0;
-
-    bl = HMessage::deserialize(buf);
-
-    memcpy(&param,buf+bl, sizeof(unsigned long int));
-    bl+=sizeof(unsigned long int);
-    memcpy(&identification, buf+bl, sizeof(int));
-    bl+=sizeof(int);
-
-    return bl;
-}
-
-
-// print extra information about the HRegistMessage
-void HRegistMessage::print(){
-    HMessage::print();
-    //fprintf(stderr, "Parameter: %d\n",get_param());
-    //printf("Parameter: %d\n",get_param());
-}
-
-
-// serialize the description message
-int HDescrMessage::serialize(char *buf) {
-    int buflen;
-
-    buflen = HMessage::serialize(buf);
-
-    // serialize the description (which is a string)
-    // by first adding the length to the buffer and then
-    // the actual string
-    memcpy(buf+buflen,&descrlen, sizeof(unsigned long int));
-    buflen+=sizeof(unsigned long int);
-    memcpy(buf+buflen,descr, get_descrlen());
-    buflen+=get_descrlen();
-
-    return buflen;
-}
-
-
-// deserialize the description message
-int HDescrMessage::deserialize(char *buf) {
-    int bl=0;
-
-    bl = HMessage::deserialize(buf);
-
-    memcpy(&descrlen,buf+bl, sizeof(unsigned long int));
-    bl+=sizeof(unsigned long int);
-    free(descr);
-    descr=(char *)malloc(get_descrlen()+1);
-    memcpy(descr,buf+bl, get_descrlen());
-    descr[get_descrlen()]='\0';
-    bl+=get_descrlen();
-
-    return bl;
-}
-
-
-// print info about the description message
-void HDescrMessage::print() {
-    HMessage::print();
-    fprintf(stderr, "Description has size %d: [%s]\n",get_descrlen(),get_descr());
-}
-
-
-
-// returns the variable n from the HUpdateMessage
-VarDef * HUpdateMessage::get_var(int n) {
-
-    vector<VarDef>::iterator VarIterator = var_list.begin();
-
-    for (int i=0;i<n;i++,VarIterator++);
-
-    return &*VarIterator;
-}
-
-
-// adds a variable to the HUpdateMessage
-void HUpdateMessage::set_var(VarDef v) {
-    set_nr_vars(get_nr_vars()+1);
-    var_list.push_back(v);
-}
-
-
-// compute the message size of the HUpdateMessage
-// this depends on the length of each of the variables
-// stored in the list of variables
-// and that is why it could not be inlined.
-int HUpdateMessage::get_message_size() {
-    int len;
-
-    len = HMessage::get_message_size()+2*sizeof(unsigned long int);
-
-    vector<VarDef>::iterator VarIterator;
-
-    for (VarIterator=var_list.begin(); VarIterator!=var_list.end(); VarIterator++) {
-
-        VarDef var=*VarIterator;
-        len+=sizeof(unsigned long int); // var type
-
-        len+=sizeof(unsigned long int); // name len
-        len+=strlen((char *)var.getName());
-
-        switch (var.getType()) {
-            case VAR_INT:
-                len+=sizeof(unsigned long int); //value
-                break;
-            case VAR_STR:
-                len+=sizeof(unsigned long int); //strlen
-                len+=strlen((char *)var.getPointer()); // size of the string
-                break;
-            case VAR_REAL:
-                // Add the double value as a string.  (C99 required)
-                len+=sizeof(unsigned long int); //strlen
-                len+=snprintf(NULL, 0, "%la", *(double *)var.getPointer());
-                break;
+    case HMESG_CONFIRM:
+    case HMESG_FAIL:
+    case HMESG_CLIENT_REG:
+    case HMESG_APP_DESCR:
+    case HMESG_QUERY:
+        if (mesg->count >= MAX_MSG_STRLEN) {
+            fprintf(stderr, "*** Error: Harmony string variable overflow.\n");
+            return -1;
         }
+        count = snprintf(buf + total, buflen - total, ":%hu", mesg->count);
+        total += count;
+        if (count < 0 || ((size_t)total) >= buflen) {
+            fprintf(stderr, "*** Error: Harmony message overflow.\n");
+            return -1;
+        }
+
+        if (mesg->count > 0) {
+            count = snprintf(buf + total, buflen - total, " %s",
+                             (char *)mesg->data);
+            total += count;
+            if (count < 0 || ((size_t)total) >= buflen) {
+                fprintf(stderr, "*** Error: Harmony message overflow.\n");
+                return -1;
+            }
+        }
+        break;
+
+    case HMESG_VAR_DESCR:
+    case HMESG_FETCH:
+    case HMESG_REPORT:
+        count = snprintf(buf + total, buflen - total, ":%hu", mesg->count);
+        if (count < 0 || ((size_t)total) >= buflen) {
+            fprintf(stderr, "*** Error: Harmony message overflow.\n");
+            return -1;
+        }
+        total += count;
+
+        for (i = 0; i < mesg->count; ++i) {
+            count = hval_serialize(buf + total, buflen - total,
+                                    ((hval_t *)mesg->data) + i);
+            if (count < 0 || ((size_t)total) >= buflen) {
+                fprintf(stderr, "*** Error: Harmony message overflow.\n");
+                return -1;
+            }
+            total += count;
+        }
+        break;
+
+    default:
+        fprintf(stderr, "*** Error: Unknown Harmony message type.\n");
+        return -1;
     }
-
-    return len;
+    return total;
 }
 
+int hmesg_deserialize(hmesg_t *mesg, const char *buf)
+{
+    unsigned int i, version;
+    char type_str[4];
+    int count, total;
 
-// serialize the HUpdateMessage
-int HUpdateMessage::serialize(char *buf) {
-    int buflen=0;
-    unsigned long int temp;
-
-    buflen=HMessage::serialize(buf);
-
-    // add the timestamp to the buffer
-    memcpy(buf+buflen, &timestamp, sizeof(unsigned long int));
-    buflen+=sizeof(unsigned long int);
-
-    // add the number of the variables to the buffer
-    memcpy(buf+buflen, &nr_vars, sizeof(unsigned long int));
-    buflen+=sizeof(unsigned long int);
-
-    vector<VarDef>::iterator VarIterator;
-
-    // serialize the variables
-    //printf("serializing the vardefs \n");
-    for (VarIterator=var_list.begin(); VarIterator!=var_list.end(); VarIterator++)
-        buflen+=(*VarIterator).serialize(buf+buflen);
-
-    return buflen;
-}
-
-
-// deserialize the HUpdateMessage
-int HUpdateMessage::deserialize(char *buf) {
-    unsigned long int bl=0;
-    unsigned long int t, tv, sl, ssl;
-    char *s, *ss;
-    VarDef *vv;
-    unsigned long int tstamp;
-
-    // printf("HUpdateMessage::deserialize(char *buf):: buf: %s\n", &buf);
-    bl = HMessage::deserialize(buf);
-
-    // printf("deserialization :: %s\n", &buf);
-    // deserialize the timestamp
-    memcpy(&tstamp,buf+bl, sizeof(unsigned long int));
-    bl+=sizeof(unsigned long int);
-
-    set_timestamp(tstamp);
-
-    // deserialize the number of variables
-    memcpy(&t,buf+bl, sizeof(unsigned long int));
-    bl+=sizeof(unsigned long int);
-
-    tv=ntohl(t);
-
-    // deserialize the variables
-    for (int i=0; i<tv;i++) {
-        vv = new VarDef();
-        //printf("deserialize var: %d \n", i);
-        bl+=vv->deserialize(buf+bl);
-        //printf("deserialization done \n");
-        //vv->print();
-        //printf("deserialization done \n\n");
-        set_var(*vv);
-        //printf("deserialization done \n");
-        //    if (debug_mode)
-        //      vv->print();
-        //vv->print();
-    }
-    //printf("done deserializing variables \n");
-    return bl;
-}
-
-
-// print the info contained in the Update Message
-// this means the variables sent for updating
-void HUpdateMessage::print() {
-
-    VarDef var;
-
-    //fprintf(stderr, "PRINT UPDATE MESSAGE:\n");
-    HMessage::print();
-    // fprintf(stderr, "Nr vars: %d\n",get_nr_vars());
-    //fprintf(stderr, "Timestamp: %d\n",get_timestamp());
-
-    vector<VarDef>::iterator VarIterator;
-
-    //  for(VarIterator=var_list.begin();VarIterator!=var_list.end();VarIterator++) {
-    //    var=VarIterator;
-    for (int i=0;i<get_nr_vars();i++)
+    if (sscanf(buf, " %u:%3s%n", &version, type_str, &count) < 2 ||
+        version != HMESG_VERSION)
     {
-        (get_var(i))->print();
+        return -1;
     }
-    //fprintf(stderr, "DONE PRINTING!\n");
+    total = count;
+
+    if      (strcmp(type_str, "ACK") == 0) mesg->type = HMESG_CONFIRM;
+    else if (strcmp(type_str, "NAK") == 0) mesg->type = HMESG_FAIL;
+    else if (strcmp(type_str, "REG") == 0) mesg->type = HMESG_CLIENT_REG;
+    else if (strcmp(type_str, "UNR") == 0) mesg->type = HMESG_CLIENT_UNREG;
+    else if (strcmp(type_str, "APP") == 0) mesg->type = HMESG_APP_DESCR;
+    else if (strcmp(type_str, "VAR") == 0) mesg->type = HMESG_VAR_DESCR;
+    else if (strcmp(type_str, "QRY") == 0) mesg->type = HMESG_QUERY;
+    else if (strcmp(type_str, "FET") == 0) mesg->type = HMESG_FETCH;
+    else if (strcmp(type_str, "REP") == 0) mesg->type = HMESG_REPORT;
+    else {
+        fprintf(stderr, "*** Error: Unknown Harmony message type.\n");
+        return -1;
+    }
+
+    if (sscanf(buf + total, " :%hu%n", &mesg->id, &count) < 1)
+        return -1;
+    total += count;
+
+    if (sscanf(buf + total, " :%d%n", &mesg->timestamp, &count) < 1)
+        return -1;
+    total += count;
+
+    switch (mesg->type) {
+    case HMESG_CLIENT_UNREG:
+        break;
+
+    case HMESG_CONFIRM:
+    case HMESG_FAIL:
+    case HMESG_CLIENT_REG:
+    case HMESG_APP_DESCR:
+    case HMESG_QUERY:
+        if (sscanf(buf + total, " :%hu %n", &mesg->count, &count) < 1)
+            return -1;
+        total += count;
+
+        if (mesg->count >= MAX_MSG_STRLEN) {
+            fprintf(stderr, "*** Warning: Harmony message overflow."
+                    "  Truncating.\n");
+            mesg->count = MAX_MSG_STRLEN - 1;
+        }
+
+        strncpy(mesg->data, buf + total, mesg->count);
+        mesg->data[mesg->count] = '\0';
+
+        total += mesg->count;
+        break;
+
+    case HMESG_VAR_DESCR:
+    case HMESG_FETCH:
+    case HMESG_REPORT:
+        if (sscanf(buf + total, " :%hu %n", &mesg->count, &count) < 1)
+            return -1;
+        total += count;
+        
+        for (i = 0; i < mesg->count; ++i) {
+            count = hval_deserialize(((hval_t *)mesg->data) + i, buf + total);
+            if (count < 0)
+                return -1;
+            total += count;
+        }
+        break;
+
+    default:
+        return -1;
+    }
+    return total;
 }

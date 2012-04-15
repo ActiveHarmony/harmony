@@ -17,13 +17,18 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/*
- * include user defined header
- */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <assert.h>
 #include <errno.h>
-#include "hsockutil.h"
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
-using namespace std;
+#include "hsockutil.h"
+#include "hmesgs.h"
 
 /***
  *
@@ -52,131 +57,55 @@ void socket_write(int fd, const void *data, unsigned datalen)
 /*
  * send a message to the given socket
  */
+int send_message(int sock, const hmesg_t *mesg)
+{
+    static const unsigned int hdrlen = sizeof(unsigned int);
+    char buf[4096];
+    int buflen = hdrlen;
 
-void send_message(HMessage *m, int sock) {
-    void *buf;
-    int buflen;
-    unsigned int preamble[2];
+    *(unsigned int *)buf = htonl(HARMONY_MAGIC);
+    buflen += hmesg_serialize(buf + hdrlen, sizeof(buf) - hdrlen, mesg);
+    if (buflen < hdrlen)
+        return -1;
+    assert(buflen == strlen(buf));
 
-    buf=malloc(m->get_message_size());
-    if (buf==NULL)
-        h_exit("Could not malloc!");
+    /*fprintf(stderr, "SEND: '%.*s'\n", buflen, buf);*/
+    if (sendto(sock, buf, buflen, 0, NULL, 0) < 0)
+        printf("* Warning: sendto failure.\n");
 
-    buflen=m->serialize((char *)buf);
-
-    if (buflen!=m->get_message_size()) {
-        printf(" ( %d vs. %d )", buflen, m->get_message_size());
-        h_exit("Error serializing message!");
-    }
-
-
-    preamble[0] = htonl(HARMONY_MAGIC);
-    preamble[1] = htonl(buflen);
-    // first send the message length and then the actual message
-    // helps when data is available on the socket. (at read!)
-
-    if (send(sock, (char *)preamble, sizeof(preamble), 0)<0) {
-        h_exit("Failed to send size of message!");
-    }
-
-
-    if (send(sock,(char *)buf, m->get_message_size(), 0)<0) {
-        h_exit("Failed to send message!");
-    }
-
-    free(buf);
-
+    return 0;
 }
-
-
-int get_message_type(void *buf) {
-    return ntohl(*(unsigned long int*)buf);
-}
-
 
 /*
  * receive a message from a given socket
  */
-HMessage * receive_message(int sock) {
-    void *buf;
+int receive_message(int sock, hmesg_t *mesg)
+{
+    static const unsigned int hdrlen = sizeof(unsigned int);
+    char buf[4096];
     int buflen;
-    HMessage *m;
-    int buflend;
-    unsigned int preamble[2];
 
-    // first read the size of the size of the message, allocate the space and
-    // then the message
-    
-    if ((buflen=recvfrom(sock, (char *)preamble, sizeof(preamble),0, NULL, NULL))<0) {
-        h_exit("Failed to receive message size!");
-    }
-
+    buflen = recvfrom(sock, buf, sizeof(buf), 0, NULL, NULL);
+    buf[buflen] = '\0';
+    /*fprintf(stderr, "RECV: '%s'\n", buf);*/
     if (buflen == 0) {
         /* Client closed socket */
-        return NULL;
+        return 0;
+    }
+    else if (buflen < 0) {
+        fprintf(stderr, "Failed to receive message.\n");
+        return -1;
+    }
+    else if (ntohl(*(unsigned int *)buf) != HARMONY_MAGIC) {
+        fprintf(stderr, "Expected 0x%x, got 0x%x\n", HARMONY_MAGIC,
+                ntohl(*(unsigned int *)buf));
+        return -1;
     }
 
-    preamble[0] = ntohl(preamble[0]);
-    if (preamble[0] != HARMONY_MAGIC) {
-        printf("Expected 0x%x, got 0x%x\n", HARMONY_MAGIC, preamble[0]);
-        h_exit("Received malformed harmony message.");
+    if (hmesg_deserialize(mesg, buf + hdrlen) < 0) {
+        fprintf(stderr, "Error deserializing message.\n");
+        return -1;
     }
 
-    buf=malloc(ntohl(preamble[1]));
-    if (buf==NULL) {
-        printf("Recv:%d\n",preamble[1]);
-        h_exit("Could not malloc!");
-    }
-
-    /* modified by I-Hsin Nov.11 '02 to fix the packet fragmentation  */
-    //printf("Got the message size %d sock: %d \n", buflen, sock);
-    char *p;
-    int i=ntohl(preamble[1]);
-    p=(char *)buf;
-
-    while(i>0) {
-        if((buflen=recvfrom(sock,(char *)p, i,0, NULL, NULL))<0)
-            h_exit("Failed to receive message!");
-        i-=buflen;
-        p+=buflen;
-        //printf("stuck here \n");
-    }
-
-    switch (get_message_type(buf)) {
-    case HMESG_APP_DESCR:
-    case HMESG_NODE_DESCR:
-    case HMESG_VAR_DESCR:
-    case HMESG_CFG_REQ:
-        m=new HDescrMessage();
-        buflend = ((HDescrMessage *)m)->deserialize((char *)buf);
-        break;
-    case HMESG_DAEMON_REG:
-    case HMESG_CLIENT_REG:
-    case HMESG_CLIENT_UNREG:
-    case HMESG_CONFIRM:
-    case HMESG_FAIL:
-        m=new HRegistMessage();
-        buflend = ((HRegistMessage *)m)->deserialize((char *)buf);
-        break;
-    case HMESG_VAR_REQ:
-    case HMESG_VAR_SET:
-    case HMESG_PERF_UPDT:
-    case HMESG_PROBE_REQ:
-    case HMESG_TCLVAR_REQ:
-    case HMESG_TCLVAR_REQ_2:
-    case HMESG_PROBE_SET:
-    case HMESG_DATABASE:
-    case HMESG_WITH_CONF:
-    case HMESG_CODE_COMPLETION:
-    case HMESG_PERF_ALREADY_EVALUATED:
-        //printf("The message type is: %d \n \n",get_message_type(buf) );
-        m=new HUpdateMessage();
-        buflend = ((HUpdateMessage *)m)->deserialize((char *)buf);
-        break;
-    default:
-        h_exit("Wrong message type!\n");
-    }
-
-    free(buf);
-    return m;
+    return 0;
 }

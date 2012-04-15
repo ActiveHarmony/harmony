@@ -17,22 +17,12 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/***
- *
- * include system headers
- *
- ***/
-#include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
-
-using namespace std;
-
 #ifndef __HUTIL_H__
 #define __HUTIL_H__
 
-#define TRUE 1
-#define FALSE 0
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /***
  *
@@ -41,5 +31,8 @@ using namespace std;
  ***/
 void h_exit(const char *errmesg);
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* __HUTIL_H__ */

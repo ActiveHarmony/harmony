@@ -37,6 +37,7 @@
 extern "C" {
 #endif
 
+struct hdesc_t;
 typedef struct hdesc_t hdesc_t;
 
 typedef enum harmony_iomethod_t {
@@ -52,13 +53,6 @@ typedef enum bundle_scope_t {
 
     BUNDLE_SCOPE_MAX
 } bundle_scope_t;
-
-typedef enum vartype_t {
-    VARTYPE_UNKNOWN = -1,
-    VARTYPE_INT     =  0,
-    VARTYPE_STR     =  1,
-    VARTYPE_REAL    =  2
-} vartype_t;
 
 /* ----------------------------------------------------------------------------
  * Initialize a Harmony descriptor.
@@ -190,22 +184,6 @@ int harmony_report(hdesc_t *hdesc, double value);
  */
 int harmony_converged(hdesc_t *hdesc);
 
-/* ----------------------------------------------------------------------------
- * Allocate memory for and register a new Harmony variable.
- *
- * Params:
- *   hdesc - Harmony handle returned from harmony_init()
- *   type  - Specifies if the variable is an integer, real number, etc.
- *   scope - Specifies how this variable is shared among other harmony clients
- *   name  - Name associated with this variable
- *
- * Returns a pointer to the newly allocated heap memory on success,
- * and NULL otherwise.
- */
-/*
-void *harmony_allocate(hdesc_t *hdesc, vartype_t type,
-                       bundle_scope_t scope, const char *name);
-*/
 /* ----------------------------------------------------------------------------
  * Register a variable with the Harmony system.
  *

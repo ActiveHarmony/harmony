@@ -16,14 +16,16 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <stdio.h>
-#include <stdlib.h>
-#include <assert.h>
-#include <time.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <errno.h>
+#include <sys/socket.h>
+#include <cerrno>
+#include <string>
 
 #include "hserver.h"   /* for tcl_inter definition */
 #include "hsockutil.h"
@@ -33,7 +35,7 @@ unsigned int http_connection_limit = 32;
 
 enum content_t { CONTENT_HTML, CONTENT_JAVASCRIPT, CONTENT_CSS };
 struct memfile_t {
-    char *filename;
+    const char *filename;
     content_t type;
     char *buf;
     unsigned buflen;
@@ -157,7 +159,7 @@ void http_send_error(int fd, int status, const char *arg)
     http_send_chunk(fd, NULL, 0);
 }
 
-void handle_http_socket(int fd, int *close_fd)
+int handle_http_socket(int fd)
 {
     char buf[4096];  /* This is not reentrant.  Is that a problem? */
     char *ptr = NULL, *req, *endp;
@@ -201,11 +203,10 @@ void handle_http_socket(int fd, int *close_fd)
         if (close(fd) < 0)
             printf("[AH]: Error closing HTTP socket\n");
 
-        if (close_fd != NULL) {
-            *close_fd = 1;
-            return;
-        }
+        return -1;
     }
+
+    return 0;
 }
 
 /**************************************
@@ -250,7 +251,7 @@ int http_handle_request(int fd, char *req)
         if (arg) {
             sscanf(arg, "%u", &last);
         }
-        string confs = history_since(last);
+        std::string confs = history_since(last);
         if (confs.length() > 0) {
             http_send_chunk(fd, confs.c_str(), confs.length());
         }

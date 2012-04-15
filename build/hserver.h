@@ -19,40 +19,8 @@
 #ifndef __HSERVER_H__
 #define __HSERVER_H__
 
-/***
- *
- * include system headers
- *
- ***/
-#include <stdlib.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/stat.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <unistd.h>
 #include <string>
-#include <map>
-
-#include <cstdio>
-#include <cstdlib>
-#include <iostream>
-#include <assert.h>
-#include <sstream>
-#include <set>
-
-// tcl
 #include <tcl.h>
-
-/***
- *
- * include user defined headers
- *
- ***/
-#include "hutil.h"
-#include "hmesgs.h"
-#include "hsockutil.h"
 
 /***
  *
@@ -62,6 +30,6 @@
 #define BUFF_SIZE 1024
 
 extern Tcl_Interp *tcl_inter;
-string history_since(unsigned int);
+std::string history_since(unsigned int);
 
 #endif /* __HSERVER_H__ */

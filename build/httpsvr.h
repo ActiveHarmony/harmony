@@ -23,6 +23,6 @@ extern unsigned int http_connection_limit;
 
 int http_init();
 void http_send_error(int fd, int status, const char *message);
-void handle_http_socket(int fd, int *close_fd);
+int handle_http_socket(int fd);
 
 #endif

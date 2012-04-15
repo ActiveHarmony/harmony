@@ -30,7 +30,6 @@
  *   2004-2010 : various fixes and additions by Ananta Tiwari
  *******************************/
 
-
 /***
  * include other user written headers
  ***/
@@ -38,6 +37,12 @@
 #include "hmesgs.h"
 #include "hsockutil.h"
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#include <error.h>
 #include <ctype.h>
 #include <netdb.h>
 #include <arpa/inet.h>
@@ -53,7 +58,7 @@
 #include <signal.h>
 #include <sys/time.h>
 
-enum harmony_state_t {
+typedef enum harmony_state_t {
     HARMONY_STATE_UNKNOWN,
     HARMONY_STATE_INIT,
     HARMONY_STATE_CONNECTED,
@@ -63,42 +68,47 @@ enum harmony_state_t {
     HARMONY_STATE_CONVERGED,
 
     HARMONY_STATE_MAX
-};
+} harmony_state_t;
 
-enum bundle_flag_t {
+typedef enum bundle_flag_t {
     BUNDLE_FLAG_ALLOC  = 0x01,
     BUNDLE_FLAG_RANGED = 0x02
-};
+} bundle_flag_t;
 
-typedef struct {
+typedef struct int_range_t {
     int min;
     int max;
     int step;
 } int_range_t;
 
-typedef struct {
+typedef struct real_range_t {
     double min;
     double max;
     double step;
 } real_range_t;
 
-typedef struct {
-    char **set;
+typedef struct enum_range_t {
+    hval_t *set;
     unsigned long set_len;
     unsigned long set_capacity;
 } enum_range_t;
 
-typedef union {
+typedef union range_u {
     int_range_t  i;
     real_range_t r;
     enum_range_t e;
 } range_u;
 
-typedef struct {
+typedef struct bundle_t {
+    char name[MAX_VAL_STRLEN];
+    hval_type type;
     bundle_scope_t scope;
     int flags;
-    VarDef val;
     range_u range;
+    void *ptr;
+    char strbuf[MAX_VAL_STRLEN];
+    hval_t shadow;
+    hval_t best;
 } bundle_t;
 
 struct hdesc_t {
@@ -127,10 +137,13 @@ struct hdesc_t {
     unsigned long constraint_capacity;
 };
 
+static int debug_mode = 0;
+
 /* -------------------------------------------------------------------
  * Private asynchronous (signal based) I/O functions
  */
-static int debug_mode = 0;
+
+#if 0
 static int huse_signals;
 static int *async_fd;
 static int  async_fds_len = 0;
@@ -290,6 +303,7 @@ static int enable_async_io(hdesc_t *hdesc)
 
     return 0;
 }
+#endif
 
 /* -------------------------------------------------------------------
  * Private internal helper functions
@@ -385,14 +399,14 @@ static int bundle_add_check(hdesc_t *hdesc, const char *name, void *ptr)
     int i;
 
     for (i = 0; i < hdesc->bundle_len; ++i) {
-        if (strcmp(name, hdesc->bundle[i].val.getName()) == 0) {
+        if (strcmp(name, hdesc->bundle[i].name) == 0) {
             fprintf(stderr, "Variable %s already exists.\n", name);
             return -1;
         }
-        if (ptr != NULL && ptr == hdesc->bundle[i].val.getPointer()) {
+        if (ptr != NULL && ptr == hdesc->bundle[i].ptr) {
             fprintf(stderr, "Memory for variable %s (0x%p) already"
                     "registered by variable %s.\n", name, ptr,
-                    hdesc->bundle[i].val.getName());
+                    hdesc->bundle[i].name);
             return -1;
         }
     }
@@ -404,12 +418,6 @@ static int bundle_add_check(hdesc_t *hdesc, const char *name, void *ptr)
             fprintf(stderr, "Memory allocation error.\n");
             return -1;
         }
-
-        /* Make sure constructor is called on newly allocated memory. */
-        for (i = hdesc->bundle_len; i < hdesc->bundle_capacity; ++i) {
-            memset(&hdesc->bundle[i].val, 0, sizeof(VarDef));
-            hdesc->bundle[i].val = VarDef();
-        }
     }
 
     return 0;
@@ -419,7 +427,7 @@ static bundle_t *bundle_find(hdesc_t *hdesc, const char *name)
 {
     int i;
     for (i = 0; i < hdesc->bundle_len; ++i) {
-        if (strcmp(name, hdesc->bundle[i].val.getName()) == 0) {
+        if (strcmp(name, hdesc->bundle[i].name) == 0) {
             return &hdesc->bundle[i];
         }
     }
@@ -443,36 +451,47 @@ static bundle_t *bundle_find(hdesc_t *hdesc, const char *name)
  */
 static char *request_tcl_variable(hdesc_t *hdesc, const char *variable)
 {
-    VarDef var(variable, VAR_STR);
-    HUpdateMessage m(HMESG_TCLVAR_REQ, 0);
+    static const char query_header[] = "=tcl=";
+    hmesg_t mesg;
+    char *retval;
 
-    /* set a dummy value */
-    var.setValue("tcl_var");
-    m.set_timestamp(hdesc->timestamp);
-    m.set_var(var);
+    /* Prepare a Harmony message. */
+    mesg.type = HMESG_QUERY;
+    mesg.id = hdesc->client_id;
+    mesg.timestamp = hdesc->timestamp;
+    mesg.count = strlen(query_header) + strlen(variable);
+
+    if (mesg.count >= MAX_MSG_STRLEN) {
+        fprintf(stderr, "Harmony message overflow.\n");
+        return NULL;
+    }
+    strcpy(mesg.data, query_header);
+    strcat(mesg.data, variable);
 
     if (debug_mode)
-        printf("tcl_request: %d %s \n", hdesc, variable);
+        printf("tcl_request: %s \n", variable);
 
-    send_message(&m, hdesc->socket);
-
-    /* wait for answer */
-    HMessage *mesg = receive_message(hdesc->socket);
-    if (mesg->get_type() == HMESG_FAIL) {
-        delete mesg;
-        /* this needs to be checked thoroughly. */
-        fprintf(stderr, "Error during Tcl variable retrieval.\n");
+    if (send_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error sending request to server.\n");
         return NULL;
     }
 
-    HUpdateMessage *um = dynamic_cast<HUpdateMessage *>(mesg);
-    assert(um && "Server returned wrong message type!");
+    if (receive_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error receiving message from server.\n");
+        return NULL;
+    }
 
-    char *str = (char *)um->get_var(0)->getPointer();
-    char *retval = (char *)malloc( strlen(str) + 1 );
-    strcpy(retval, str);
-    delete um;
+    if (mesg.type != HMESG_CONFIRM) {
+        fprintf(stderr, "Server reports error during config lookup.\n");
+        return NULL;
+    }
 
+    retval = (char *)malloc(mesg.count + 1);
+    if (retval == NULL) {
+        fprintf(stderr, "Memory allocation error.\n");
+        return NULL;
+    }
+    strcpy(retval, mesg.data);
     return retval;
 }
 
@@ -489,8 +508,8 @@ static char *simulate_application_file(hdesc_t *hdesc)
     char *buf;
     const char *chunk_str;
     unsigned long capacity = 4096;
-    int len, chunk, subchunk;
-    VarDef *val;
+    int len, chunk;
+    bundle_t *bun;
 
     buf = (char *) malloc(capacity);
     if (buf == NULL) {
@@ -507,49 +526,57 @@ static char *simulate_application_file(hdesc_t *hdesc)
     }
 
     for (i = 0; i < hdesc->bundle_len; ++i) {
-        val = &hdesc->bundle[i].val;
+        bun = &hdesc->bundle[i];
 
-        switch (val->getType()) {
-        case VAR_INT:
+        switch (bun->type) {
+        case HVAL_INT:
             chunk = snprintf(buf + len, capacity - len,
                              "{ harmonyBundle %s { int { %d %d %d",
-                             val->getName(),
-                             hdesc->bundle[i].range.i.min,
-                             hdesc->bundle[i].range.i.max,
-                             hdesc->bundle[i].range.i.step);
+                             bun->name,
+                             bun->range.i.min,
+                             bun->range.i.max,
+                             bun->range.i.step);
             break;
-        case VAR_STR:
-            chunk = snprintf(buf + len, capacity - len,
-                             "{ harmonyBundle %s { enum {",
-                             val->getName());
-            for (j = 0; j < hdesc->bundle[i].range.e.set_len; ++j) {
-                if (len + chunk >= capacity) {
-                    break;
-                }
-                chunk += snprintf(buf + len + chunk, capacity - len - chunk,
-                                  " \"%s\"", hdesc->bundle[i].range.e.set[j]);
-            }
-            break;
-        case VAR_REAL:
+
+        case HVAL_REAL:
             chunk = snprintf(buf + len, capacity - len,
                              "{ harmonyBundle %s { real { "
                              "%.17lg %.17lg %.17lg",
-                             val->getName(),
-                             hdesc->bundle[i].range.r.min,
-                             hdesc->bundle[i].range.r.max,
-                             hdesc->bundle[i].range.r.step);
+                             bun->name,
+                             bun->range.r.min,
+                             bun->range.r.max,
+                             bun->range.r.step);
             break;
+
+        case HVAL_STR:
+            chunk = snprintf(buf + len, capacity - len,
+                             "{ harmonyBundle %s { enum {",
+                             bun->name);
+            for (j = 0; j < bun->range.e.set_len; ++j) {
+                if (len + chunk >= capacity) {
+                    break;
+                }
+                chunk += snprintf(buf + len + chunk,
+                                  capacity - len - chunk,
+                                  " \"%s\"", bun->range.e.set[j].value.s);
+            }
+            break;
+
+        default:
+            free(buf);
+            return NULL;
         }
 
         if (capacity > len + chunk) {
-            if (hdesc->bundle[i].scope == BUNDLE_SCOPE_GLOBAL) {
+            if (bun->scope == BUNDLE_SCOPE_GLOBAL) {
                 chunk_str = "} global } }\n";
                 seen_global = 1;
             }
             else {
                 chunk_str = "} } }\n";
             }
-            chunk += snprintf(buf + len + chunk, capacity - len - chunk,
+            chunk += snprintf(buf + len + chunk,
+                              capacity - len - chunk,
                               chunk_str);
         }
 
@@ -584,23 +611,39 @@ static char *simulate_application_file(hdesc_t *hdesc)
 
 int application_setup(hdesc_t *hdesc, const char *description, unsigned len)
 {
+    hmesg_t mesg;
+
     if (len == 0) {
         len = strlen(description);
     }
 
-    HDescrMessage mesg(HMESG_APP_DESCR, description, len);
-    send_message(&mesg, hdesc->socket);
+    if (len >= MAX_MSG_STRLEN) {
+        fprintf(stderr, "Harmony description too long.\n");
+        return -1;
+    }
 
-    /* wait for confirmation */
-    HMessage *m = receive_message(hdesc->socket);
-    if (m->get_type() != HMESG_CONFIRM) {
-        /* something went wrong on the server side! */
-        delete m;
+    /* Prepare a Harmony message. */
+    mesg.type = HMESG_APP_DESCR;
+    mesg.id = hdesc->client_id;
+    mesg.timestamp = hdesc->timestamp;
+    mesg.count = len;
+    strcpy(mesg.data, description);
+
+    if (send_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error sending request to server.\n");
+        return -1;
+    }
+
+    if (receive_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error receiving message from server.\n");
+        return -1;
+    }
+
+    if (mesg.type != HMESG_CONFIRM) {
         fprintf(stderr, "Server reports error in application description.\n");
         return -1;
     }
 
-    delete m;
     return 0;
 }
 
@@ -613,79 +656,88 @@ int application_setup(hdesc_t *hdesc, const char *description, unsigned len)
  */
 static int register_bundles(hdesc_t *hdesc)
 {
-    int i = 0;
+    int i;
+    hmesg_t mesg;
+    hval_t *val;
 
-    for (i =0; i < hdesc->bundle_len; ++i) {
-        bundle_t *bun = hdesc->bundle + i;
+    /* Prepare variable registration message */
+    mesg.type = HMESG_VAR_DESCR;
+    mesg.id = hdesc->client_id;
+    mesg.timestamp = hdesc->timestamp;
+    mesg.count = hdesc->bundle_len;
+    val = (hval_t *)mesg.data;
 
-        /* send variable registration message */
-        HDescrMessage m(HMESG_VAR_DESCR,
-                        bun->val.getName(),
-                        strlen(bun->val.getName()));
-        send_message(&m, hdesc->socket);
-
-        /* wait for confirmation
-           the confirmation message also contains the initial
-           value of the variable */
-        HMessage *mesg = receive_message(hdesc->socket);
-
-        if (debug_mode)
-            mesg->print();
-
-        if (mesg->get_type() == HMESG_FAIL) {
-            /* failed to register variable with server */
-            fprintf(stderr, "Server reports error during registration of "
-                            "variable %s from application %s\n",
-                    bun->val.getName(), hdesc->name);
-            delete mesg;
-            /*unblock_sigio();*/
-            return NULL;
-        }
-
-        HUpdateMessage *umesg = dynamic_cast<HUpdateMessage *>(mesg);
-        assert(umesg && "Server returned wrong message type!");
-
-        delete umesg;
+    for (i = 0; i < hdesc->bundle_len; ++i) {
+        val[i].type = HVAL_STR;
+        assert(strlen(hdesc->bundle[i].name) < MAX_VAL_STRLEN);
+        strcpy(val[i].value.s, hdesc->bundle[i].name);
     }
+
+    if (send_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error sending registration to server.\n");
+        goto cleanup;
+    }
+
+    /* wait for confirmation */
+    if (receive_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error receiving confirmation from server.\n");
+        goto cleanup;
+    }
+
+    if (mesg.type != HMESG_CONFIRM) {
+        /* failed to register variable with server */
+        fprintf(stderr, "Server reports variable registration error.\n");
+        goto cleanup;
+    }
+
+    return 0;
+
+  cleanup:
+    /*unblock_sigio();*/
+    return -1;
 }
 
 int code_generation_complete(hdesc_t *hdesc)
 {
-    /* first update the timestamp */
-    VarDef var("code_completion", VAR_INT);
-    var.setValue(hdesc->code_timestep);
+    static const char query_string[] = "=code_completion=";
+    hmesg_t mesg;
 
-    /* define a message and send it */
-    HUpdateMessage m(HMESG_CODE_COMPLETION, 0);
-    m.set_timestamp(hdesc->code_timestep);
-    m.set_var(var);
-    send_message(&m, hdesc->socket);
+    /* Prepare a Harmony message. */
+    mesg.type = HMESG_QUERY;
+    mesg.id = hdesc->client_id;
+    mesg.timestamp = hdesc->code_timestep;
+    mesg.count = strlen(query_string);
+    assert(mesg.count < MAX_MSG_STRLEN);
+    strcpy(mesg.data, query_string);
 
-    ++hdesc->code_timestep;
-
-    /* wait for answer */
-    HMessage *mesg = receive_message(hdesc->socket);
-    if (mesg->get_type() == HMESG_FAIL) {
-        /* the server could not return the value of the variable */
-        fprintf(stderr, "Server reports error during code completion check.\n");
-        delete mesg;
+    if (send_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error sending request to server.\n");
         return -1;
     }
 
-    HUpdateMessage *umesg = dynamic_cast<HUpdateMessage *>(mesg);
-    assert(umesg && "Server returned wrong message type!");
+    if (receive_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error receiving confirmation from server.\n");
+        return -1;
+    }
 
-    VarDef *v = umesg->get_var(0);
-    int result =  *(int *)umesg->get_var(0)->getPointer();
-    delete umesg;
-    return result;
+    if (mesg.type != HMESG_CONFIRM) {
+        /* failed to register variable with server */
+        fprintf(stderr, "Server reports code completion check error.\n");
+        return -1;
+    }
+
+    ++hdesc->code_timestep;
+    return (mesg.data[0] == '1');
 }
 
 int set_to_best(hdesc_t *hdesc)
 {
     int i = 0;
     int change_flag = 0;
-    char *best_str, *curr, *end;
+    char *best_str;
+    const char *curr, *end;
+    bundle_t *bun;
+    size_t len;
 
     best_str = harmony_best_config(hdesc);
     if (best_str == NULL || best_str[0] == '\0') {
@@ -701,49 +753,55 @@ int set_to_best(hdesc_t *hdesc)
             ++i;
             break;
         }
-        VarDef *val = &hdesc->bundle[i++].val;
         end = strchr(curr, '_');
         if (end == NULL) {
             end = curr + strlen(curr);
         }
 
-        switch (val->getType()) {
-        case VAR_INT:
-            if (*(int*)val->getPointer() != atoi(curr)) {
-                val->setValue(atoi(curr));
+
+        bun = &hdesc->bundle[i++];
+        switch (bun->type) {
+        case HVAL_INT:
+            if (*(int*)bun->ptr != atoi(curr)) {
+                *(int*)bun->ptr = atoi(curr);
                 change_flag = 1;
             }
             break;
-        case VAR_STR:
-            if (end != '\0') {
-                *end = '\0';
-                if (strcmp(curr, (char *)val->getPointer()) != 0) {
-                    val->setValue(curr);
-                    change_flag = 1;
-                }
-                *end = '_';
-            }
-            else {
-                if (strcmp(curr, (char *)val->getPointer()) != 0) {
-                    val->setValue(curr);
-                    change_flag = 1;
-                }
-            }
-            break;
-        case VAR_REAL:
-            if (*(double*)val->getPointer() != atof(curr)) {
-                val->setValue(atof(curr));
+
+        case HVAL_REAL:
+            if (*(double*)bun->ptr != atof(curr)) {
+                *(double*)bun->ptr = atof(curr);
                 change_flag = 1;
             }
             break;
+
+        case HVAL_STR:
+            if (end != NULL)
+                len = end - curr;
+            else
+                len = strlen(curr);
+
+            assert(len < MAX_VAL_STRLEN);
+            if (strncmp(curr, (char *)bun->ptr, len) != 0) {
+                strncpy(bun->strbuf, curr, len);
+                bun->strbuf[len - 1] = '\0';
+                *(char **)bun->ptr = bun->strbuf;
+                change_flag = 1;
+            }
+            break;
+
+        default:
+            fprintf(stderr, "Invalid string received from server.\n");
+            goto cleanup;
         }
         curr = end + 1;
     }
 
     if (i != hdesc->bundle_len) {
-        printf("*** Warning: Invalid best string received from server.\n");
+        fprintf(stderr, "Invalid string received from server.\n");
     }
 
+  cleanup:
     free(best_str);
     return change_flag;
 }
@@ -779,8 +837,7 @@ hdesc_t *harmony_init(const char *name, harmony_iomethod_t iomethod)
 int harmony_connect(hdesc_t *hdesc, const char *host, int port)
 {
     int i;
-    HRegistMessage *m;
-    HMessage *mesg;
+    hmesg_t mesg;
     char *app_desc, *codegen;
 
     /* A couple sanity checks before we connect to the server. */
@@ -790,9 +847,9 @@ int harmony_connect(hdesc_t *hdesc, const char *host, int port)
     }
 
     for (i = 0; i < hdesc->bundle_len; ++i) {
-        if (hdesc->bundle[i].flags & BUNDLE_FLAG_RANGED == 0) {
+        if ((hdesc->bundle[i].flags & BUNDLE_FLAG_RANGED) == 0) {
             fprintf(stderr, "Range uninitialized for variable %s\n",
-                    hdesc->bundle[i].val.getName());
+                    hdesc->bundle[i].name);
             goto cleanup;
         }
     }
@@ -801,23 +858,36 @@ int harmony_connect(hdesc_t *hdesc, const char *host, int port)
         goto cleanup;
     }
 
+    /* Prepare a Harmony message. */
+    mesg.type = HMESG_CLIENT_REG;
+    mesg.id = hdesc->client_id;
+    mesg.timestamp = hdesc->timestamp;
+    mesg.count = 0;
+
     /* send the client registration message */
-    m = new HRegistMessage(HMESG_CLIENT_REG, 0);
-    send_message(m, hdesc->socket);
-    delete m;
+    if (send_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error sending registration message to server.\n");
+        goto cleanup;
+    }
 
     /* wait for confirmation */
-    mesg = receive_message(hdesc->socket);
-    m = dynamic_cast<HRegistMessage *>(mesg);
-    assert(m && "Server returned wrong message type!");
+    if (receive_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error receiving confirmation from server.\n");
+        goto cleanup;
+    }
 
-    hdesc->client_id = m->get_id();
-    assert(hdesc->client_id > 0);
-    delete m;
+    if (mesg.type != HMESG_CONFIRM) {
+        fprintf(stderr, "Server reports error during client registration.\n");
+        goto cleanup;
+    }
+
+    assert(mesg.id > 0);
+    hdesc->client_id = mesg.id;
 
     /* send an application registration message */
     app_desc = simulate_application_file(hdesc);
-    if (app_desc == NULL || application_setup(hdesc, app_desc, 0) < 0) {
+    if (app_desc == NULL ||
+        application_setup(hdesc, app_desc, 0) < 0) {
         fprintf(stderr, "Error registering application description.\n");
         goto cleanup;
     }
@@ -829,12 +899,14 @@ int harmony_connect(hdesc_t *hdesc, const char *host, int port)
         goto cleanup;
     }
 
+/*
     if (hdesc->iomethod == HARMONY_IO_ASYNC) {
         if (enable_async_io(hdesc) < 0) {
             fprintf(stderr, "Error enabling asynchronous I/O.\n");
             goto cleanup;
         }
     }
+*/
 
     /* Hopefully, this can be removed as parts of harmony get overhauled. */
     codegen = harmony_query(hdesc, "codegen");
@@ -870,8 +942,7 @@ int harmony_connect(hdesc_t *hdesc, const char *host, int port)
 int harmony_reconnect(hdesc_t *hdesc, const char *host, int port, int cid)
 {
     int i;
-    HRegistMessage *m;
-    HMessage *mesg;
+    hmesg_t mesg;
     char *app_desc, *codegen;
 
     if (hdesc->state == HARMONY_STATE_INIT) {
@@ -894,27 +965,36 @@ int harmony_reconnect(hdesc_t *hdesc, const char *host, int port, int cid)
         }
     }
 
+    /* Prepare a Harmony message. */
+    mesg.type = HMESG_CLIENT_REG;
+    mesg.id = cid;
+    mesg.timestamp = hdesc->timestamp;
+    mesg.count = 0;
+
     /* send the registration message */
-    m = new HRegistMessage(HMESG_CLIENT_REG, 0);
-    m->set_id(cid);
-    send_message(m, hdesc->socket);
-    delete m;
+    if (send_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error sending registration message to server.\n");
+        goto cleanup;
+    }
 
     /* wait for confirmation */
-    mesg = receive_message(hdesc->socket);
-    m = dynamic_cast<HRegistMessage *>(mesg);
-    assert(m && "Server returned wrong message type!");
+    if (receive_message(hdesc->socket, &mesg) != 0 ||
+        mesg.id != HMESG_CONFIRM) {
+        fprintf(stderr, "Error receiving confirmation from server.\n");
+        goto cleanup;
+    }
 
-    hdesc->client_id = m->get_id();
-    assert(hdesc->client_id > 0);
-    delete m;
+    assert(mesg.id > 0);
+    hdesc->client_id = mesg.id;
 
+/*
     if (hdesc->iomethod == HARMONY_IO_ASYNC) {
         if (enable_async_io(hdesc) < 0) {
             fprintf(stderr, "Error enabling asynchronous I/O.\n");
             goto cleanup;
         }
     }
+*/
 
     /* Hopefully, this can be removed as parts of harmony get overhauled. */
     codegen = harmony_query(hdesc, "codegen");
@@ -949,18 +1029,24 @@ int harmony_reconnect(hdesc_t *hdesc, const char *host, int port, int cid)
 
 int harmony_disconnect(hdesc_t *hdesc)
 {
-    /* send the unregister message to the server */
-    HRegistMessage m(HMESG_CLIENT_UNREG, 0);
-    send_message(&m, hdesc->socket);
+    hmesg_t mesg;
 
-    /* wait for server confirmation */
-    HMessage *mesg = receive_message(hdesc->socket);
-    if (mesg->get_type() != HMESG_CONFIRM) {
-        delete mesg;
+    /* Prepare a Harmony message. */
+    mesg.type = HMESG_CLIENT_UNREG;
+    mesg.id = hdesc->client_id;
+    mesg.timestamp = hdesc->timestamp;
+    mesg.count = 0;
+
+    /* send the unregister message to the server */
+    if (send_message(hdesc->socket, &mesg) != 0)
+        return -1;
+
+    if (receive_message(hdesc->socket, &mesg) != 0 ||
+        mesg.type != HMESG_CONFIRM)
+    {
         fprintf(stderr, "Server reports error during unregister.\n");
         return -1;
     }
-    delete mesg;
 
     /* close the actual connection */
     hdesc->state = HARMONY_STATE_INIT;
@@ -974,6 +1060,7 @@ int harmony_disconnect(hdesc_t *hdesc)
 
 char *harmony_query(hdesc_t *hdesc, const char *key)
 {
+    hmesg_t mesg;
     char *value;
 
     if (hdesc->state < HARMONY_STATE_CONNECTED) {
@@ -981,78 +1068,53 @@ char *harmony_query(hdesc_t *hdesc, const char *key)
         return NULL;
     }
 
-    HDescrMessage mesg(HMESG_CFG_REQ, key, strlen(key));
-    send_message(&mesg, hdesc->socket);
+    /* Prepare a Harmony message. */
+    mesg.type = HMESG_QUERY;
+    mesg.id = hdesc->client_id;
+    mesg.timestamp = hdesc->timestamp;
+    mesg.count = strlen(key);
 
-    /* Wait for reply. */
-    HMessage *reply = receive_message(hdesc->socket);
-    if (reply->get_type() != HMESG_CFG_REQ) {
-        fprintf(stderr, "Server reports error during config lookup.\n");
-        delete reply;
+    if (mesg.count >= MAX_MSG_STRLEN) {
+        fprintf(stderr, "Query too long (> %d)\n", MAX_MSG_STRLEN - 1);
+        return NULL;
+    }
+    strcpy(mesg.data, key);
+
+    if (send_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error sending request to server.\n");
         return NULL;
     }
 
-    HDescrMessage *msg = dynamic_cast<HDescrMessage *>(reply);
-    assert(msg && "Server returned wrong message type!");
+    if (receive_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error receiving message from server.\n");
+        return NULL;
+    }
 
-    value = (char *)malloc(strlen(msg->get_descr()) + 1);
+    if (mesg.type != HMESG_CONFIRM) {
+        fprintf(stderr, "Server reports error during config lookup.\n");
+        return NULL;
+    }
+
+    value = (char *)malloc(mesg.count + 1);
     if (value == NULL) {
         fprintf(stderr, "Memory allocation error.\n");
         return NULL;
     }
-    strcpy(value, msg->get_descr());
-    delete reply;
+    strcpy(value, mesg.data);
 
     /* User is responsible for freeing this memory. */
     return value;
 }
 
-int harmony_bundle_file(hdesc_t *hdesc, const char *filename)
-{
-    int fd, retval = -1;
-    char *buf;
-    unsigned buflen;
-    struct stat sb;
-
-    fd = open(filename, O_RDONLY);
-    if (fd == -1) {
-        printf("[AH]: Error opening file %s: %s\n", filename, strerror(errno));
-        goto cleanup;
-    }
-
-    /* Obtain file size */
-    if (fstat(fd, &sb) == -1) {
-        printf("[AH]: Error during fstat(): %s\n", strerror(errno));
-        goto cleanup_open;
-    }
-    buflen = sb.st_size;
-
-    buf = (char *)mmap(NULL, buflen, PROT_READ, MAP_PRIVATE, fd, 0);
-    if (buf == (char *)-1) {
-        printf("[AH]: Error during mmap(): %s\n", strerror(errno));
-        goto cleanup_open;
-    }
-
-    retval = application_setup(hdesc, buf, buflen);
-
-    if (munmap(buf, buflen) != 0) {
-        printf("[AH]: Error during munmap(): %s. Ignoring.\n",
-               strerror(errno));
-    }
-
-  cleanup_open:
-    if (close(fd) != 0) {
-        printf("[AH]: Error during close(): %s. Ignoring.\n",
-               strerror(errno));
-    }
-
-  cleanup:
-    return retval;
-}
-
 int harmony_fetch(hdesc_t *hdesc)
 {
     int i;
+    bundle_t *bun;
+    hval_t *val;
+    hmesg_t mesg;
+
+    bun = hdesc->bundle;
+    val = (hval_t *)mesg.data;
 
     if (hdesc->state < HARMONY_STATE_CONNECTED) {
         fprintf(stderr, "Cannot fetch until connected.\n");
@@ -1065,17 +1127,22 @@ int harmony_fetch(hdesc_t *hdesc)
         /* we use signals, so we just have to copy the shadow
            to the actual value */
         for (i = 0; i < hdesc->bundle_len; ++i) {
-            void *value = hdesc->bundle[i].val.getShadow();
-            switch (hdesc->bundle[i].val.getType()) {
-            case VAR_INT:
-                hdesc->bundle[i].val.setValue(*(int *)value);
+            switch (bun[i].type) {
+            case HVAL_INT:
+                *((long *)bun[i].ptr) = bun[i].shadow.value.i;
                 break;
-            case VAR_STR:
-                hdesc->bundle[i].val.setValue((char *)value);
+
+            case HVAL_REAL:
+                *((double *)bun[i].ptr) = bun[i].shadow.value.r;
                 break;
-            case VAR_REAL:
-                hdesc->bundle[i].val.setValue(*(double *)value);
+
+            case HVAL_STR:
+                *((char **)bun[i].ptr) = bun[i].shadow.value.s;
                 break;
+
+            default:
+                fprintf(stderr, "Invalid configuration received.\n");
+                return -1;
             }
         }
         return 1;
@@ -1089,58 +1156,72 @@ int harmony_fetch(hdesc_t *hdesc)
         return set_to_best(hdesc);
     }
 
-    /* if signals are not used, send request message */
-    HUpdateMessage *m = new HUpdateMessage(HMESG_VAR_REQ, 0);
+    /* If signals are not used, prepare a Harmony message. */
+    mesg.type = HMESG_FETCH;
+    mesg.id = hdesc->client_id;
+    mesg.timestamp = hdesc->timestamp;
+    mesg.count = hdesc->bundle_len;
 
-    for (i = 0; i < hdesc->bundle_len; ++i)
-        m->set_var(hdesc->bundle[i].val);
-
-    if (debug_mode)
-        m->print();
-
-    send_message(m, hdesc->socket);
-    delete m;
-
-    /* wait for the answer from the harmony server */
-    HMessage *mesg = receive_message(hdesc->socket);
-    if (mesg->get_type() == HMESG_FAIL) {
-        /* the server could not return the value of the variable */
-        delete mesg;
-        fprintf(stderr, "Server reports error during variable request.\n");
-	return -1;
+    for (i = 0; i < hdesc->bundle_len; ++i) {
+        val[i].type = HVAL_STR;
+        assert(strlen(bun[i].name) < MAX_VAL_STRLEN);
+        strcpy(val[i].value.s, bun[i].name);
     }
 
-    m = dynamic_cast<HUpdateMessage *>(mesg);
-    assert(m && "Server returned wrong message type!");
+    //if (debug_mode)
+    //    m->print();
 
-    if (hdesc->timestamp > -1 && hdesc->timestamp == m->get_timestamp()) {
+    if (send_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error sending request to server.\n");
+        return -1;
+    }
+
+    mesg.type = HMESG_UNKNOWN;  /* Insure that receive_message changes mesg. */
+    if (receive_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error receiving message from server.\n");
+        return -1;
+    }
+
+    if (mesg.type != HMESG_FETCH) {
+        fprintf(stderr, "Server reports error during variable request.\n");
+        return -1;
+    }
+
+    if (hdesc->timestamp > -1 && hdesc->timestamp >= mesg.timestamp) {
         /* The timestamp hasn't changed since last fetch. No update.*/
         return 0;
     }
 
-    /* Updating the timestamp */
-    hdesc->timestamp = m->get_timestamp();
+    /* Update the timestamp */
+    hdesc->timestamp = mesg.timestamp;
 
-    if (debug_mode) {
-        m->print();
-    }
+    //if (debug_mode)
+    //    m->print();
 
     /* Updating the variables from the content of the message */
+    assert(mesg.count == hdesc->bundle_len);
     for (i = 0; i < hdesc->bundle_len; ++i) {
-        void *value = m->get_var(i)->getPointer();
-        switch (hdesc->bundle[i].val.getType()) {
-        case VAR_INT:
-            hdesc->bundle[i].val.setValue(*(int *)value);
+
+        switch (bun[i].type) {
+        case HVAL_INT:
+            *(int *)bun[i].ptr = atoi(val[i].value.s);
             break;
-        case VAR_STR:
-            hdesc->bundle[i].val.setValue((char *)value);
+
+        case HVAL_REAL:
+            *(double *)bun[i].ptr = atof(val[i].value.s);
             break;
-        case VAR_REAL:
-            hdesc->bundle[i].val.setValue(*(double *)value);
+
+        case HVAL_STR:
+            assert(strlen(val[i].value.s) < MAX_VAL_STRLEN);
+            strcpy(bun[i].strbuf, val[i].value.s);
+            *(char **)bun[i].ptr = hdesc->bundle[i].strbuf;
             break;
+
+        default:
+            fprintf(stderr, "Invalid configuration received.\n");
+            return -1;
         }
     }
-    delete m;
 
     hdesc->state = HARMONY_STATE_TESTING;
     return 1;
@@ -1148,6 +1229,8 @@ int harmony_fetch(hdesc_t *hdesc)
 
 char *harmony_best_config(hdesc_t *hdesc)
 {
+    int i;
+
     if (hdesc->state < HARMONY_STATE_CONNECTED) {
         fprintf(stderr, "Cannot receive best config until connected.\n");
         return NULL;
@@ -1156,7 +1239,7 @@ char *harmony_best_config(hdesc_t *hdesc)
     char *retval = request_tcl_variable(hdesc, "best_coord_so_far");
 
     if (retval != NULL) {
-        for (int i = 0; retval[i] != '\0'; ++i) {
+        for (i = 0; retval[i] != '\0'; ++i) {
             if (retval[i] == ' ') {
                 retval[i] = '_';
             }
@@ -1169,6 +1252,9 @@ char *harmony_best_config(hdesc_t *hdesc)
 
 int harmony_report(hdesc_t *hdesc, double value)
 {
+    hmesg_t mesg;
+    hval_t *val;
+
     if (hdesc->state < HARMONY_STATE_CONNECTED) {
         fprintf(stderr, "Cannot report until connected.\n");
         return -1;
@@ -1185,33 +1271,32 @@ int harmony_report(hdesc_t *hdesc, double value)
     }
     */
 
-    /* create a new variable */
-    VarDef *v = new VarDef("obsGoodness", VAR_REAL);
-    v->setValue(value);
-    HUpdateMessage *m = new HUpdateMessage(HMESG_PERF_UPDT, 0);
+    /* If signals are not used, prepare a Harmony message. */
+    mesg.type = HMESG_REPORT;
+    mesg.id = hdesc->client_id;
+    mesg.timestamp = hdesc->timestamp;
+    mesg.count = 1;
+    val = (hval_t *)mesg.data;
+    val->type = HVAL_REAL;
+    val->value.r = value;
 
-    if (debug_mode)
-        printf("socket %d timestamp %d \n", hdesc->socket, hdesc->timestamp);
+    //if (debug_mode)
+    //    m->print();
 
-    /* first set the timestamp to be sent to the server */
-    m->set_timestamp(hdesc->timestamp);
-    m->set_var(*v);
-
-    if (debug_mode)
-        m->print();
-
-    send_message(m, hdesc->socket);
-    delete m;
-
-    /* wait for the answer from the harmony server */
-    HMessage *mesg = receive_message(hdesc->socket);
-    if (mesg->get_type() == HMESG_FAIL) {
-        /* could not send performance function */
-        delete mesg;
-        fprintf(stderr, "Server error during performance update.\n");
+    if (send_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error sending request to server.\n");
         return -1;
     }
-    delete mesg;
+
+    if (receive_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error receiving message from server.\n");
+        return -1;
+    }
+
+    if (mesg.type != HMESG_CONFIRM) {
+        fprintf(stderr, "Server reports error during variable request.\n");
+        return -1;
+    }
 
     hdesc->state = HARMONY_STATE_CONNECTED;
     return 0;
@@ -1219,48 +1304,29 @@ int harmony_report(hdesc_t *hdesc, double value)
 
 int harmony_converged(hdesc_t *hdesc)
 {
+    char *str;
+    int retval;
+
     if (hdesc->state < HARMONY_STATE_CONNECTED) {
         fprintf(stderr, "Cannot check convergence until connected.\n");
         return -1;
     }
 
-    char *str = request_tcl_variable(hdesc, "search_done");
+    str = request_tcl_variable(hdesc, "search_done");
     if (str == NULL) {
         fprintf(stderr, "Error during convergence check.\n");
         return -1;
     }
 
-    int retval = atoi(str);
-    free(str);
-
+    retval = atoi(str);
     if (debug_mode)
-        printf("harmony_check_convergence: %s\n", retval);
+        printf("harmony_check_convergence: atoi(%s) = %d\n", str, retval);
+    free(str);
 
     if (retval != 0)
         return 1;
 
     return 0;
-}
-
-void *harmony_allocate(hdesc_t *hdesc, vartype_t type,
-                       bundle_scope_t scope, const char *name)
-{
-    int idx;
-
-    if (bundle_add_check(hdesc, name, NULL) < 0) {
-        fprintf(stderr, "Add variable check failed.\n");
-        return NULL;
-    }
-
-    idx = hdesc->bundle_len;
-    hdesc->bundle[idx].scope = scope;
-    hdesc->bundle[idx].flags = BUNDLE_FLAG_ALLOC;
-    hdesc->bundle[idx].val.setName(name);
-    hdesc->bundle[idx].val.setType((int)type);
-    hdesc->bundle[idx].val.alloc();
-
-    ++hdesc->bundle_len;
-    return hdesc->bundle[idx].val.getPointer();
 }
 
 int harmony_register_int(hdesc_t *hdesc, const char *name, void *ptr,
@@ -1273,12 +1339,17 @@ int harmony_register_int(hdesc_t *hdesc, const char *name, void *ptr,
         return -1;
     }
 
+    if (strlen(name) >= MAX_VAL_STRLEN) {
+        fprintf(stderr, "Bundle name too long (>= %d).\n", MAX_VAL_STRLEN);
+        return -1;
+    }
+
     idx = hdesc->bundle_len;
+    strcpy(hdesc->bundle[idx].name, name);
+    hdesc->bundle[idx].type = HVAL_INT;
     hdesc->bundle[idx].scope = BUNDLE_SCOPE_GLOBAL;
     hdesc->bundle[idx].flags = 0x0;
-    hdesc->bundle[idx].val.setName(name);
-    hdesc->bundle[idx].val.setType(VARTYPE_INT);
-    hdesc->bundle[idx].val.setPointer(ptr);
+    hdesc->bundle[idx].ptr = ptr;
 
     hdesc->bundle[idx].range.i.min = min;
     hdesc->bundle[idx].range.i.max = max;
@@ -1299,12 +1370,17 @@ int harmony_register_real(hdesc_t *hdesc, const char *name, void *ptr,
         return -1;
     }
 
+    if (strlen(name) >= MAX_VAL_STRLEN) {
+        fprintf(stderr, "Bundle name too long (>= %d).\n", MAX_VAL_STRLEN);
+        return -1;
+    }
+
     idx = hdesc->bundle_len;
+    strcpy(hdesc->bundle[idx].name, name);
+    hdesc->bundle[idx].type = HVAL_REAL;
     hdesc->bundle[idx].scope = BUNDLE_SCOPE_GLOBAL;
     hdesc->bundle[idx].flags = 0x0;
-    hdesc->bundle[idx].val.setName(name);
-    hdesc->bundle[idx].val.setType(VARTYPE_REAL);
-    hdesc->bundle[idx].val.setPointer(ptr);
+    hdesc->bundle[idx].ptr = ptr;
 
     hdesc->bundle[idx].range.r.min = min;
     hdesc->bundle[idx].range.r.max = max;
@@ -1324,12 +1400,17 @@ int harmony_register_enum(hdesc_t *hdesc, const char *name, void *ptr)
         return -1;
     }
 
+    if (strlen(name) >= MAX_VAL_STRLEN) {
+        fprintf(stderr, "Bundle name too long (>= %d).\n", MAX_VAL_STRLEN);
+        return -1;
+    }
+
     idx = hdesc->bundle_len;
+    strcpy(hdesc->bundle[idx].name, name);
+    hdesc->bundle[idx].type = HVAL_STR;
     hdesc->bundle[idx].scope = BUNDLE_SCOPE_GLOBAL;
     hdesc->bundle[idx].flags = 0x0;
-    hdesc->bundle[idx].val.setName(name);
-    hdesc->bundle[idx].val.setType(VARTYPE_STR);
-    hdesc->bundle[idx].val.setPointer(ptr);
+    hdesc->bundle[idx].ptr = ptr;
 
     ++hdesc->bundle_len;
     return 0;
@@ -1346,27 +1427,29 @@ int harmony_range_enum(hdesc_t *hdesc, const char *name, const char *value)
         return -1;
     }
 
+    if (strlen(name) >= MAX_VAL_STRLEN) {
+        fprintf(stderr, "Enum value too long (>= %d).\n", MAX_VAL_STRLEN);
+        return -1;
+    }
+
     for (i = 0; i < bun->range.e.set_len; ++i) {
-        if (strcmp(value, bun->range.e.set[i]) == 0) {
+        if (strcmp(value, bun->range.e.set[i].value.s) == 0) {
             fprintf(stderr, "Enumeration set %s already contains %s\n",
-                    bun->val.getName(), value);
+                    bun->name, value);
             return -1;
         }
     }
 
     if (i == bun->range.e.set_capacity) {
         if (grow_array(&bun->range.e.set,
-                       &bun->range.e.set_capacity, sizeof(char *)) < 0) {
+                       &bun->range.e.set_capacity, sizeof(hval_t)) < 0) {
             fprintf(stderr, "Memory allocation error.\n");
             return -1;
         }
     }
 
-    char *s = (char *) malloc(strlen(value) + 1);
-    strcpy(s, value);
-
     bun->flags |= BUNDLE_FLAG_RANGED;
-    bun->range.e.set[i] = s;
+    strcpy(bun->range.e.set[i].value.s, value);
     ++bun->range.e.set_len;
 
     return 0;
@@ -1384,10 +1467,7 @@ int harmony_unregister(hdesc_t *hdesc, const char *name)
     }
 
     /* Free allocated memory if this bundle was an enum. */
-    if (bun->val.getType() == VAR_STR) {
-        for(i = 0; i < bun->range.e.set_len; ++i) {
-            free(bun->range.e.set[i]);
-        }
+    if (bun->type == HVAL_STR) {
         free(bun->range.e.set);
         bun->range.e.set_len = 0;
         bun->range.e.set_capacity = 0;

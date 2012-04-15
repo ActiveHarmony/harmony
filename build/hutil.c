@@ -17,20 +17,19 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/***
- *
- * include user defined headers
- *
- ***/
 #include "hutil.h"
-using namespace std;
+
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+
 /***
  *
  * Exit and send a mesage to stderr
  *
  ***/
-void h_exit(const char *errmesg){
-  perror(errmesg);
-  exit(1);
+void h_exit(const char *errmesg)
+{
+    perror(errmesg);
+    exit(1);
 }
-

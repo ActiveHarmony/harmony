@@ -17,38 +17,23 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/*
- * include system headers
- */
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <unistd.h>
-#include <stdlib.h>
-
-/*
- * include user headers
- */
-#include "hmesgs.h"
-
-using namespace std;
+/***
+ *
+ * Data communication helper functions.
+ *
+ ***/
 
 #ifndef __HSOCKUTIL_H__
 #define __HSOCKUTIL_H__
 
+#include "hmesgs.h"
 
-/* the maximum buffer size for a message is 64K */
-#define MAX_BUFFER_SIZE 65535
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /* Magic number for messages between the harmony server and its clients. */
-#define HARMONY_MAGIC 0x001DEA00
-
-/***
- *
- * Here we define some useful functions to handle data communication
- *
- ***/
+#define HARMONY_MAGIC 0x5261793a
 
 /**
  * Loop until all data has been writen to fd.
@@ -58,11 +43,15 @@ void socket_write(int fd, const void *data, unsigned datalen);
 /**
  * send a message on the given socket
  **/
-void send_message(HMessage *, int sock);
+int send_message(int sock, const hmesg_t *);
 
 /**
  * read a message from the given socket
  **/
-HMessage *receive_message(int sock);
+int receive_message(int sock, hmesg_t *);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* ifndef _HSOCKUTIL_H__ */

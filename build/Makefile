@@ -1,49 +1,49 @@
 OPTIMIZE =  
 
-GCC_LINUX = g++ -DLinux -DLINUX -Dlinux -Df2cFortran -w -DUSE_NON_CONST -g -pg 
-LIBS_LINUX = -lm -ldl -lnsl -ltcl
-INCLUDE_LINUX =
-
-GCC=$(GCC_LINUX)
-LIBS=$(LIBS_LINUX)
-INCLUDE=$(INCLUDE_LINUX)
-
-LIBOBJS= hclient.o hsockutil.o hutil.o hmesgs.o hclientf.o
+CC=gcc
+CXX=g++
 AR= ar
 ARCREATE= cr
 
-all: hserver harmony.a libcreater
+INCLUDE=
+CFLAGS=-Wall -g -pg $(INCLUDE)
+CXXFLAGS=$(CFLAGS)
+LDFLAGS=-lm -ldl -lnsl -ltcl
+
+OBJS=hclient.o hsockutil.o hutil.o hmesgs.o hclientf.o
+
+all: hserver harmony.a
 
 hserver: hserver.o hutil.o hsockutil.o hmesgs.o hglobal_config.o httpsvr.o
-	$(GCC) -o hserver hserver.o hutil.o hsockutil.o hmesgs.o hglobal_config.o httpsvr.o $(LIBS) $(INCLUDE)
+	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
 	cp hserver ../bin
 
-harmony.a: $(LIBOBJS)
-	$(AR) $(ARCREATE) harmony.a $(LIBOBJS)
+harmony.a: $(OBJS)
+	$(AR) $(ARCREATE) harmony.a $(OBJS)
+
+hserver.o: hserver.cxx hserver.h hutil.h hdb.h hsockutil.h hmesgs.h
+	$(CXX) -c $(CFLAGS) $< -o $@
+
+httpsvr.o: httpsvr.cxx httpsvr.h hserver.h hsockutil.h
+	$(CXX) -c $(CFLAGS) $< -o $@
 
 hglobal_config.o: hglobal_config.c hglobal_config.h
-	$(GCC) -c hglobal_config.c $(INCLUDE)
-
-hserver.o: hserver.c hserver.h hutil.h hdb.h hsockutil.h hmesgs.h
-	$(GCC) -c hserver.c -o hserver.o $(INCLUDE)
+	$(CC) -c $(CFLAGS) $< -o $@
 
 hutil.o: hutil.c hutil.h
-	$(GCC) -c hutil.c $(INCLUDE)
+	$(CC) -c $(CFLAGS) $< -o $@
 
 hsockutil.o: hsockutil.c hsockutil.h hutil.h hmesgs.h
-	$(GCC) -c hsockutil.c $(INCLUDE)
+	$(CC) -c $(CFLAGS) $< -o $@
 
 hmesgs.o: hmesgs.c hmesgs.h hutil.h
-	$(GCC) -c hmesgs.c $(INCLUDE) 
-
-httpsvr.o: httpsvr.c httpsvr.h hserver.h hsockutil.h
-	$(GCC) -c httpsvr.c $(INCLUDE)
+	$(CC) -c $(CFLAGS) $< -o $@
 
 hclient.o: hclient.c hclient.h hmesgs.h hsockutil.h hutil.h
-	$(GCC) -c hclient.c $(INCLUDE) 
+	$(CC) -c $(CFLAGS) $< -o $@
 
 hclientf.o: hclientf.c hclient.h hmesgs.h hutil.h hsockutil.h
-	$(GCC) -c hclientf.c $(INCLUDE)
+	$(CC) -c $(CFLAGS) $< -o $@
 
 y.tab.c: grammar.y
 	yacc -v -d grammar.y
