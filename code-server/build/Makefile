@@ -48,6 +48,6 @@ swig_lib: code-client.c code_client.i code-client.h cutil.o csockutil.o cmesgs.o
 	g++ -c -fpic code-client.c code_client_wrap.cxx -isystem /usr/include
 	g++ -shared code-client.o code_client_wrap.o csockutil.o cutil.o cmesgs.o -o code-server.so
 clean:
-	rm -f core a.out lex.yy.c y.tab.* *.o parser libcreater y.output ../bin/libcreater *~ hserver harmony.a ../bin/hserver ../bin/hconfig.tcl
+	rm -f core a.out lex.yy.c y.tab.* *.o parser libcreater y.output ../bin/libcreater *~ hserver libharmony.a ../bin/hserver ../bin/hconfig.tcl
 
 

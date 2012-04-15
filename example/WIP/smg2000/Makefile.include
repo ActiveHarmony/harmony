@@ -41,7 +41,7 @@ INCLUDE_CFLAGS += -DACTIVE_HARMONY -D_CARVER_ #-DINIT_ONLY
 # set link flags here
 # -lcr is needed for BLCR
 #  -ldl for dlopen() etc
-INCLUDE_LFLAGS = -lm -ldl ${HOME}/tutorial-2010/harmony/build/harmony.a -lstdc++
+INCLUDE_LFLAGS = -lm -ldl ${HOME}/tutorial-2010/harmony/build/libharmony.a -lstdc++
 #INCLUDE_LFLAGS = -g -lm -lcr
 #INCLUDE_LFLAGS = -pg -lm
   

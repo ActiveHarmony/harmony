@@ -11,7 +11,7 @@ FCOPT= -O3
 FCFLAGS=$(FCOPT) #-Mpreprocess
 LDFLAGS=$(FCOPT) -lstdc++
 
-OBJS=mykind.o solve3d.o dump.o l3d.o cscmpi.o $(HARMONY)/build/harmony.a $(TIMER)/rtclock.o
+OBJS=mykind.o solve3d.o dump.o l3d.o cscmpi.o $(HARMONY)/build/libharmony.a $(TIMER)/rtclock.o
 
 PES=1 8 27
 

@@ -1,10 +1,11 @@
 all: example
 
-example: simplextest.o ../../../build/harmony.a
-	g++ -g -Wall simplextest.o ../../../build/harmony.a -lm -lnsl -ltcl -w -lstdc++ -o example
+example: simplextest.o ../../../build/libharmony.a
+	$(MAKE) -C $(TO_ROOT)/build libharmony.a
+	g++ -g -Wall simplextest.o $(LDFLAGS) -lharmony -lm -lnsl -o $@
 
 simplextest.o: simplextest.c
-	gcc -g -Wall -c simplextest.c -I../../../build
+	gcc -g -Wall $(CFLAGS) -c $<
 
 clean:
 	rm -f core a.out *.o example

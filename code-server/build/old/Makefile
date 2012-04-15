@@ -48,6 +48,6 @@ swig_lib: pclient.c pclient.i pclient.h hutil.o hsockutil.o hmesgs.o Tokenizer.o
 	g++ -c -fpic pclient.c pclient_wrap.cxx -isystem /usr/include
 	g++ -shared pclient.o pclient_wrap.o hsockutil.o hutil.o hmesgs.o -o nearest_neighbor.so
 clean:
-	rm -f core a.out lex.yy.c y.tab.* *.o parser libcreater y.output ../bin/libcreater *~ hserver harmony.a ../bin/hserver ../bin/hconfig.tcl
+	rm -f core a.out lex.yy.c y.tab.* *.o parser libcreater y.output ../bin/libcreater *~ hserver libharmony.a ../bin/hserver ../bin/hconfig.tcl
 
 

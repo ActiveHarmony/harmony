@@ -3,7 +3,7 @@ OPTIMIZE =
 CC=gcc
 CXX=g++
 AR= ar
-ARCREATE= cr
+ARCREATE= rc
 
 INCLUDE=
 CFLAGS=-Wall -g -pg $(INCLUDE)
@@ -12,14 +12,14 @@ LDFLAGS=-lm -ldl -lnsl -ltcl
 
 OBJS=hclient.o hsockutil.o hutil.o hmesgs.o hclientf.o
 
-all: hserver harmony.a
+all: hserver libharmony.a
 
 hserver: hserver.o hutil.o hsockutil.o hmesgs.o hglobal_config.o httpsvr.o
 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
 	cp hserver ../bin
 
-harmony.a: $(OBJS)
-	$(AR) $(ARCREATE) harmony.a $(OBJS)
+libharmony.a: $(OBJS)
+	$(AR) $(ARCREATE) $@ $^
 
 hserver.o: hserver.cxx hserver.h hutil.h hdb.h hsockutil.h hmesgs.h
 	$(CXX) -c $(CFLAGS) $< -o $@
@@ -62,7 +62,7 @@ libcreater: y.tab.o lex.yy.c stack.o libcreater.c
 	cp libcreater ../bin
 
 clean:
-	rm -f core a.out *.o y.output harmony.a hserver ../bin/hserver libcreater ../bin/libcreater ../bin/hconfig.tcl
+	rm -f core a.out *.o y.output libharmony.a hserver ../bin/hserver libcreater ../bin/libcreater ../bin/hconfig.tcl
 
 distclean:
 	rm -f *~
