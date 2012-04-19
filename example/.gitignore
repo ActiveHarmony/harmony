@@ -6,3 +6,5 @@ sequential/fortran_example/example
 sequential/offline_tuning/offline_tuning
 sequential/search_code_variants/search_code_variants
 sequential/chapel/synth
+sequential/tuna/synth
+sequential/tuna/tuna
