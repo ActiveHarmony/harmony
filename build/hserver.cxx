@@ -122,7 +122,7 @@ vector<string> coord_history;
 char new_code_path[256];
 
 /* Code-generation completion flag */
-char *flag_dir;
+const char *flag_dir;
 
 /*
  * Other global variables
@@ -176,36 +176,36 @@ string history_since(unsigned int last)
  ***/
 int check_parameters()
 {
-    char *search_algo;
+    const char *search_algo;
 
     /* Gets the Search Algorithm and the config file 
      * that the user has selected in the hglobal_config file.
      */
-    search_algo = cfg_getlower("search_algorithm");
+    search_algo = cfg_get("search_algorithm");
     if (search_algo == NULL)
     {
         printf("[AH]: Error: Search algorithm unspecified.\n");
         return -1;
     }
 
-    if (strcmp(search_algo, "pro") == 0)
+    if (strcasecmp(search_algo, "pro") == 0)
     {
         printf("[AH]: Using the PRO search algorithm.  Please make sure\n");
         printf("[AH]:   the parameters in ../tcl/pro_init_<appname>.tcl are"
                " defined properly.\n");
         sprintf(harmonyTclFile, "hconfig.pro.tcl");
     }
-    else if (strcmp(search_algo, "nelder mead") == 0)
+    else if (strcasecmp(search_algo, "nelder mead") == 0)
     {
         printf("[AH]: Using the Nelder Mead Simplex search algorithm.\n");
         sprintf(harmonyTclFile, "hconfig.nm.tcl");
     }
-    else if (strcmp(search_algo, "random") == 0)
+    else if (strcasecmp(search_algo, "random") == 0)
     {
         printf("[AH]: Using random search algorithm.\n");
         sprintf(harmonyTclFile,"hconfig.random.tcl");
     }
-    else if (strcmp(search_algo, "brute force") == 0)
+    else if (strcasecmp(search_algo, "brute force") == 0)
     {
         printf("[AH]: Using brute force search algorithm.\n");
         sprintf(harmonyTclFile, "hconfig.brute.tcl");
@@ -1064,19 +1064,19 @@ int codegen_init()
     time_t session;
     FILE *fds;
 
-    cs_type = cfg_getlower("codegen");
-    if (cs_type == NULL || strcmp(cs_type, "none") == 0)
+    cs_type = cfg_get("codegen");
+    if (cs_type == NULL || strcasecmp(cs_type, "none") == 0)
     {
         /* No code server requested. */
         return set_tcl_var("code_generation_params(enabled)", "0");
     }
 
-    if (strcmp(cs_type, "standard") == 0)
+    if (strcasecmp(cs_type, "standard") == 0)
     {
         /* TCP-based code server requested. */
         assert(0 && "TCP-based code server not yet tested/implemented.");
     }
-    else if (strcmp(cs_type, "standalone") == 0)
+    else if (strcasecmp(cs_type, "standalone") == 0)
     {
         cs_user = cfg_get("codegen_user");
         cs_host = cfg_get("codegen_host");
@@ -1142,10 +1142,7 @@ int codegen_init()
         }
 
         fprintf(fds, "harmony_session=%ld\n", session);
-        for (unsigned i = 0; i < cfg_pairlen && cfg_pair[i].key != NULL; ++i)
-        {
-            fprintf(fds, "%s=%s\n", cfg_pair[i].key, cfg_pair[i].val);
-        }
+        cfg_write(fds);
         fclose(fds);
 
         snprintf(buf, sizeof(buf), "scp %s %s %s%s:%s/harmony.init",

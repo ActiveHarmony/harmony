@@ -23,27 +23,39 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <ctype.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
 #include "hglobal_config.h"
 
-/* Extern'ed variable declaration */
-keyval_t *cfg_pair = NULL;
-unsigned cfg_pairlen = 0;
+typedef struct keyval {
+    char *key;
+    char *val;
+} keyval_t;
 
 /* Internal function prototypes */
-int cfg_load(const char *);
-int cfg_parse();
+unsigned int hash_function(const char *input, unsigned int logsize);
+keyval_t *hash_init(unsigned int logsize);
+keyval_t *hash_find(const char *key);
+int hash_grow(void);
+int hash_insert(const char *key, const char *val);
+int hash_delete(const char *key);
+int cfg_load(const char *filename);
 
 /* Static global variables */
+static const unsigned HASH_GROWTH_THRESHOLD = 50;
 static const char CONFIG_DEFAULT_FILENAME[] = "harmony.cfg";
-static const unsigned CONFIG_INITIAL_CAPACITY = 32;
+static const unsigned CONFIG_INITIAL_LOGSIZE = 8;
 
-static char *cfg_buf = NULL;
-static unsigned cfg_buflen;
+keyval_t *cfg_hash;
+unsigned int cfg_count;
+unsigned int cfg_logsize;
 
 int cfg_init(const char *filename)
 {
+    cfg_count = 0;
+    cfg_logsize = CONFIG_INITIAL_LOGSIZE;
+    cfg_hash = hash_init(CONFIG_INITIAL_LOGSIZE);
+    if (cfg_hash == NULL)
+        return -1;
+
     if (filename == NULL) {
         filename = getenv("HARMONY_CONFIG");
         if (filename == NULL) {
@@ -55,206 +67,313 @@ int cfg_init(const char *filename)
 
     if (cfg_load(filename) < 0)
         return -1;
-    if (cfg_parse() < 0)
-        return -1;
 
     return 0;
 }
 
-char *cfg_get(const char *key)
+const char *cfg_get(const char *key)
 {
-    int i, cmp;
-
-    i = 0;
-    cmp = -1;
-    while (i < cfg_pairlen && cfg_pair[i].key != NULL && cmp < 0) {
-        cmp = strcmp(cfg_pair[i].key, key);
-        if (cmp == 0) {
-            return cfg_pair[i].val;
-        }
-        ++i;
-    }
-    return NULL;
-}
-
-char *cfg_getlower(const char *key)
-{
-    char *str, *ptr;
-
-    str = cfg_get(key);
-    if (str == NULL) {
+    keyval_t *entry;
+    entry = hash_find(key);
+    if (entry == NULL || entry->key == NULL)
         return NULL;
-    }
 
-    for (ptr = str; *ptr != '\0'; ++ptr) {
-        *ptr = tolower(*ptr);
-    }
-    return str;
+    return entry->val;
 }
 
-/* Load the entire configturation file into memory. */
+int cfg_set(const char *key, const char *val)
+{
+    if (val == NULL)
+        return hash_delete(key);
+    return hash_insert(key, val);
+}
+
+int cfg_unset(const char *key)
+{
+    return hash_delete(key);
+}
+
+void cfg_write(FILE *fd)
+{
+    int i;
+
+    for (i = 0; i < (1 << cfg_logsize); ++i) {
+        if (cfg_hash[i].key != NULL) {
+            fprintf(fd, "%s=%s\n", cfg_hash[i].key, cfg_hash[i].val);
+        }
+    }
+}
+
+/* Open the configuration file, and parse it line by line. */
 int cfg_load(const char *filename)
 {
-    unsigned count = 0;
-    int fd, retval;
-    struct stat sb;
+    FILE *fd;
+    char buf[4096];
+    char *head, *curr, *tail, *key, *val;
+    unsigned int retval, linenum = 0;
+    keyval_t *entry;
 
-    if (cfg_buf != NULL) {
-        free(cfg_buf);
+    if (*filename == '-') {
+        fd = stdin;
     }
-
-    printf("Loading config file '%s'\n", filename);
-    fd = open(filename, O_RDONLY);
-    if (fd == -1) {
-        printf("Error opening file: %s\n", strerror(errno));
-        return -1;
-    }
-
-    /* Obtain file size */
-    if (fstat(fd, &sb) == -1) {
-        printf("Error during fstat(): %s\n", strerror(errno));
-        return -1;
-    }
-    cfg_buflen = sb.st_size;
-
-    cfg_buf = (char *)malloc(cfg_buflen + 1); /* Make room for an extra char */
-    if (cfg_buf == NULL) {
-        printf("Error during malloc(): %s\n", strerror(errno));
-        return -1;
-    }
-
-    do {
-        retval = read(fd, cfg_buf + count, cfg_buflen - count);
-        if (retval < 0) {
-            printf("Error during read(): %s\n", strerror(errno));
+    else {
+        fd = fopen(filename, "r");
+        if (fd == NULL) {
+            fprintf(stderr, "Error opening file: %s\n", strerror(errno));
             return -1;
         }
-        count += retval;
-    } while (count < cfg_buflen);
-    *(cfg_buf + cfg_buflen) = '\n';  /* Add a newline at the end of the file */
-
-    if (close(fd) != 0) {
-        printf("Error during close(): %s. Ignoring.\n", strerror(errno));
     }
+
+    head = curr = buf;
+    while (!feof(fd)) {
+        retval = fread(curr, sizeof(char), sizeof(buf) - (curr - buf), fd);
+        tail = curr + retval;
+
+        curr = memchr(head, '\n', tail - head);
+        while (curr != NULL) {
+            ++linenum;
+            *curr = '\0';
+            if (cfg_parseline(head, &key, &val) != 0) {
+                fprintf(stderr, "Error: Line %d: %s.\n", linenum, key);
+                fclose(fd);
+                return -1;
+            }
+
+            if (key != NULL) {
+                entry = hash_find(key);
+                if (entry != NULL && entry->key != NULL) {
+                    fprintf(stderr, "Warning: Line %d: Redefinition of"
+                            " configuration key %s.\n", linenum, key);
+                }
+
+                if (hash_insert(key, val) != 0) {
+                    fprintf(stderr, "Error: Internal hash table error.\n");
+                    fclose(fd);
+                    return -1;
+                }
+            }
+            head = curr + 1;
+            curr = memchr(head, '\n', tail - head);
+        }
+
+        /* Full buffer with no newline.  Read until one is found. */
+        if (head == buf && tail == buf + sizeof(buf)) {
+            ++linenum;
+            fprintf(stderr, "Ignoring configuration file line %d:"
+                    "  Line buffer overflow.\n", linenum);
+            while (curr == NULL && !feof(fd)) {
+                retval = fread(buf, sizeof(char), sizeof(buf), fd);
+                tail = buf + retval;
+                curr = memchr(head, '\n', tail - head);
+            }
+
+            if (curr != NULL) {
+                head = curr + 1;
+            }
+        }
+
+        /* Move remaining data to front of buffer. */
+        if (head != buf) {
+            curr = buf;
+            while (head < tail)
+                *(curr++) = *(head++);
+            tail = curr;
+            head = buf;
+        }
+    }
+    return 0;
+}
+
+/* Parse one line of the config file. */
+int cfg_parseline(char *line, char **ret_key, char **ret_val)
+{
+    char *key, *val, *ptr;
+
+    /* Ignore comments. */
+    ptr = strchr(line, '#');
+    if (ptr != NULL) *ptr = '\0';
+
+    /* Trim leading key whitespace. */
+    key = line;
+    while (isspace(*key)) ++key;
+
+    /* Line is empty.  Skip it. */
+    if (*key == '\0') {
+        *ret_key = NULL;
+        return 0;
+    }
+
+    /* Find the equal sign. */
+    val = strchr(key, '=');
+    if (val == NULL) {
+        *ret_key = "No key/value separator character (=)";
+        return -1;
+    }
+
+    /* Trim trailing key whitespace. */
+    ptr = val - 1;
+    while (ptr > key && isspace(*ptr)) *(ptr--) = '\0';
+
+    /* Trim leading value whitespace. */
+    *(val++) = '\0';
+    while (isspace(*val)) ++val;
+
+    /* Trim trailing value whitespace. */
+    ptr = val + strlen(val) - 1;
+    while (ptr > val && isspace(*ptr)) *(ptr--) = '\0';
+
+    /* Force key strings to be lowercase and have underscores instead
+       of whitespace. */
+    ptr = key;
+    while (*ptr) {
+        if (isspace(*ptr))
+            *ptr = '_';
+        else
+            *ptr = tolower(*ptr);
+        ++ptr;
+    }
+
+    if (*key == '\0') {
+        *ret_key = "Empty key string";
+        return -1;
+    }
+
+    *ret_key = key;
+    *ret_val = val;
+    return 0;
+}
+
+/*
+ * Simple implementation of an FNV-1a 32-bit hash.
+ */
+#define FNV_PRIME_32     0x01000193
+#define FNV_OFFSET_BASIS 0x811C9DC5
+unsigned int hash_function(const char *input, unsigned int logsize)
+{
+    unsigned int hash = FNV_OFFSET_BASIS;
+    while (*input != '\0') {
+        hash ^= *(input++);
+        hash *= FNV_PRIME_32;
+    }
+    return ((hash >> logsize) ^ hash) & ((1 << logsize) - 1);
+}
+
+keyval_t *hash_init(unsigned int logsize)
+{
+    keyval_t *hash;
+    hash = (keyval_t *)malloc(sizeof(keyval_t) * (1 << logsize));
+    if (hash != NULL)
+        memset(hash, 0, sizeof(keyval_t) * (1 << logsize));
+    return hash;
+}
+
+keyval_t *hash_find(const char *key)
+{
+    unsigned int idx, orig_idx, capacity, count = 1;
+
+    capacity = 1 << cfg_logsize;
+    orig_idx = idx = hash_function(key, cfg_logsize);
+
+    while (cfg_hash[idx].key != NULL &&
+           strcmp(key, cfg_hash[idx].key) != 0)
+    {
+        ++count;
+
+        idx = (idx + 1) % capacity;
+        if (idx == orig_idx)
+            return NULL;
+    }
+    return &cfg_hash[idx];
+}
+
+int hash_grow(void)
+{
+    unsigned int i, idx, orig_size, new_size, count;
+    keyval_t *new_hash;
+
+    orig_size = 1 << cfg_logsize;
+    new_size = orig_size << 1;
+
+    new_hash = (keyval_t *)malloc(sizeof(keyval_t) * new_size);
+    if (new_hash == NULL)
+        return -1;
+    memset(new_hash, 0, sizeof(keyval_t) * new_size);
+
+    for (i = 0; i < orig_size; ++i) {
+        count = 1;
+        if (cfg_hash[i].key != NULL) {
+            idx = hash_function(cfg_hash[i].key, cfg_logsize + 1);
+            while (new_hash[idx].key != NULL) {
+                ++count;
+                idx = (idx + 1) % new_size;
+            }
+            new_hash[idx].key = cfg_hash[i].key;
+            new_hash[idx].val = cfg_hash[i].val;
+        }
+    }
+
+    free(cfg_hash);
+    cfg_hash = new_hash;
+    ++cfg_logsize;
+    if (cfg_logsize > 16)
+        fprintf(stderr, "Warning: Internal hash grew beyond expectation.\n");
 
     return 0;
 }
 
-/* Parse the config file. */
-int cfg_parse()
+int hash_insert(const char *key, const char *val)
 {
-    unsigned i, size, linenum;
-    char *eof, *head, *tail, *key, *val, *hash, *ptr;
-    void *alloc;
+    keyval_t *entry;
+    char *new_val;
 
-    eof = cfg_buf + cfg_buflen;
-    size = 0;
-    linenum = 0;
-    head = cfg_buf;
+    entry = hash_find(key);
+    if (entry == NULL)
+        return -1;
 
-    /* Parse the pairs inside cfg_buf */
-    while (head < eof) {
-        ++linenum;
+    if (entry->key == NULL)
+    {
+        /* New entry case. */
+        entry->key = malloc(strlen(key) + 1);
+        entry->val = malloc(strlen(val) + 1);
 
-        /* Find the next line boundary. */
-        tail = (char *)memchr(head, '\n', eof - head);
-        if (tail == NULL) {
-            tail = eof;
-        }
-        *tail = '\0';
-
-        /* Ignore comments. */
-        hash = (char *)memchr(head, '#', tail - head);
-        if (hash == NULL) {
-            hash = tail;
-        }
-
-        /* Trim the whitespace on the left side of the line. */
-        key = head;
-        while (key < hash && (*key == '\0' || isspace(*key)))
-            ++key;
-        if (key == hash) {
-            /* All whitespace line. Ignore it. */
-            head = tail + 1;
-            continue;
-        }
-
-        /* Find the equal sign. */
-        val = (char *)memchr(key, '=', hash - key);
-        if (val == NULL || val == key) {
-            printf("Configuration error line %d: %.*s\n",
-                   linenum, (int)(tail - head), head);
+        if (entry->key == NULL || entry->val == NULL) {
+            free(entry->key);
+            free(entry->val);
+            entry->key = NULL;
+            entry->val = NULL;
             return -1;
         }
 
-        /* Trim the whitespace on the right side of the key string. */
-        ptr = val++;
-        *ptr = '\0';
-        while (*ptr == '\0' || isspace(*ptr)) {
-            *ptr = '\0';
-            --ptr;
-        }
+        strcpy(entry->key, key);
+        strcpy(entry->val, val);
 
-        /* Force key strings to be lower-case and have underscores instead
-           of whitespace, */
-        while (ptr >= key) {
-            if (*ptr == '\0' || isspace(*ptr)) {
-                *ptr = '_';
-            } else {
-                *ptr = tolower(*ptr);
-            }
-            --ptr;
-        }
-
-        /* Trim the whitespace on the left side of the value string. */
-        while (val < hash && (*val == '\0' || isspace(*val)))
-            ++val;
-
-        /* Trim the whitespace on the right side of the value string. */
-        ptr = hash;
-        *ptr = '\0';
-        while (ptr > val && (*ptr == '\0' || isspace(*ptr))) {
-            *ptr = '\0';
-            --ptr;
-        }
-
-        /* Increase the capacity of the cfg_pair array, if needed. */
-        if (size >= cfg_pairlen) {
-            cfg_pairlen *= 2;
-            if (cfg_pairlen == 0) {
-                cfg_pairlen = CONFIG_INITIAL_CAPACITY;
-            }
-            alloc = realloc(cfg_pair, sizeof(keyval_t) * cfg_pairlen);
-            if (alloc == NULL) {
-                printf("Error on realloc(): %s\n", strerror(errno));
-                return -1;
-            }
-            cfg_pair = (keyval_t *)alloc;
-        }
-
-        /* Insert the new configuration pair in sorted order. */
-        for (i = size; i > 0; --i) {
-            if (strcmp(cfg_pair[i - 1].key, key) < 0) {
-                break;
-            }
-            cfg_pair[i] = cfg_pair[i - 1];
-        }
-
-        if (i < size && strcmp(cfg_pair[i+1].key, key) == 0) {
-            printf("Warning: Configuration key '%s'"
-                   " overwritten on line %d.\n", key, linenum);
-        }
-        cfg_pair[i].key = key;
-        cfg_pair[i].val = val;
-        ++size;
-
-        head = tail + 1;
+        if (((++cfg_count * 100) / (1 << cfg_logsize)) > HASH_GROWTH_THRESHOLD)
+            hash_grow(); /* Failing to grow the hash is not an error. */
     }
-
-    /* Mark the end of valid data within the cfg_pair array. */
-    if (size < cfg_pairlen) {
-        cfg_pair[size].key = NULL;
+    else {
+        /* Value replacement case. */
+        new_val = malloc(strlen(val) + 1);
+        if (new_val == NULL)
+            return -1;
+        strcpy(new_val, val);
+        free(entry->val);
+        entry->val = new_val;
     }
+    return 0;
+}
 
-    return size;
+int hash_delete(const char *key)
+{
+    keyval_t *entry;
+
+    entry = hash_find(key);
+    if (entry == NULL || entry->key == NULL)
+        return -1;
+
+    free(entry->key);
+    free(entry->val);
+    entry->key = NULL;
+    entry->val = NULL;
+    --cfg_count;
+    return 0;
 }

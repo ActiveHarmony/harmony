@@ -333,7 +333,7 @@ int codeserver_init(string &filename)
     /* Configuration variable assignment needs to be an atomic operation.
      * So, check that all variables exist, then assign them all.
      */
-    char *session = cfg_get("harmony_session");
+    const char *session = cfg_get("harmony_session");
     if (session == NULL) {
         cerr << "[CS]: Error: harmony_session config directive missing.\n";
         return -1;
