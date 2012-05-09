@@ -119,8 +119,9 @@ int harmony_disconnect(hdesc_t *hdesc);
 /* ----------------------------------------------------------------------------
  * Query the server's key/value configuration system.
  *
- * Requests the value associated with the parameter key on the Harmony server.
- * Heap memory is allocated for the result string.
+ * Searches the server's configuration system for key, and returns the
+ * string value associated with it if found. Heap memory is allocated
+ * for the result string.
  *
  * It is the caller's responsibility to free the result string.
  *
@@ -131,6 +132,49 @@ int harmony_disconnect(hdesc_t *hdesc);
  * Returns a c-style string on success, and NULL otherwise.
  */
 char *harmony_query(hdesc_t *hdesc, const char *key);
+
+/* ----------------------------------------------------------------------------
+ * Inform the server of a new key/value pair.
+ *
+ * Writes the new key/value pair into the server's run-time configuration
+ * database.  If the key exists in the database, its value is overwritten.
+ * If val is NULL, the key will be erased from the database.  These key/value
+ * pairs exist only in memory, and will not be written back to the server's
+ * configuration file.
+ *
+ * Params:
+ *   hdesc - Harmony handle returned from harmony_init()
+ *   key   - Config key to modify on the server
+ *   val   - Config value to associate with the key
+ *
+ * Returns 0 on success, and -1 otherwise.
+ */
+int harmony_inform(hdesc_t *hdesc, const char *key, const char *val);
+
+/* ----------------------------------------------------------------------------
+ * Inform the server of a new key/value pair, for non-existent keys.
+ *
+ * Writes the new key/value pair into the server's run-time configuration
+ * database only if it does not currently exist.  Otherwise, a copy of the
+ * existing value will be stored in heap memory and returned in return_val.
+ * No memory is allocated if return_val is NULL.  These key/value pairs
+ * exist only in in memory, and will not be written back to the server's
+ * configuration file.
+ *
+ * It is the caller's responsibility to free the string returned in
+ * return_val, if any.
+ *
+ * Params:
+ *   hdesc      - Harmony handle returned from harmony_init()
+ *   key        - Config key to modify on the server
+ *   val        - Config value to associate with the key, if none exists
+ *   return_val - Current value, if key pre-exists
+ *
+ * Returns 1 if the key/value pair was written, 0 if the key value pair
+ * pre-existed, and -1 otherwise.
+ */
+int harmony_inform_if_empty(hdesc_t *hdesc, const char *key, const char *val,
+                            char **return_val);
 
 /* ----------------------------------------------------------------------------
  * Fetch a new configuration from the Harmony server.

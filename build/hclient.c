@@ -1106,6 +1106,98 @@ char *harmony_query(hdesc_t *hdesc, const char *key)
     return value;
 }
 
+int harmony_inform(hdesc_t *hdesc, const char *key, const char *val)
+{
+    hmesg_t mesg;
+
+    if (hdesc->state < HARMONY_STATE_CONNECTED) {
+        fprintf(stderr, "Cannot inform until connected.\n");
+        return -1;
+    }
+
+    /* Prepare a Harmony message. */
+    mesg.type = HMESG_INFORM;
+    mesg.id = 0; /* Non-atomic operation. */
+    mesg.timestamp = hdesc->timestamp;
+    mesg.count = strlen(key) + 1;
+    if (val != NULL)
+        mesg.count += strlen(val);
+
+    if (mesg.count >= MAX_MSG_STRLEN) {
+        fprintf(stderr, "Query too long (> %d)\n", MAX_MSG_STRLEN - 1);
+        return -1;
+    }
+    if (val != NULL)
+        snprintf(mesg.data, MAX_MSG_STRLEN, "%s=%s", key, val);
+    else
+        snprintf(mesg.data, MAX_MSG_STRLEN, "=%s", key);
+
+    if (send_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error sending request to server.\n");
+        return -1;
+    }
+
+    if (receive_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error receiving message from server.\n");
+        return -1;
+    }
+
+    if (mesg.type == HMESG_FAIL) {
+        fprintf(stderr, "Server reports error: %s\n", mesg.data);
+        return -1;
+    }
+    return 0;
+}
+
+int harmony_inform_if_empty(hdesc_t *hdesc, const char *key, const char *val,
+                            char **return_val)
+{
+    hmesg_t mesg;
+
+    if (hdesc->state < HARMONY_STATE_CONNECTED) {
+        fprintf(stderr, "Cannot inform_if_empty until connected.\n");
+        return -1;
+    }
+
+    /* Prepare a Harmony message. */
+    mesg.type = HMESG_INFORM;
+    mesg.id = 1; /* Atomic operation. */
+    mesg.timestamp = hdesc->timestamp;
+    mesg.count = strlen(key) + 1 + strlen(val);
+
+    if (mesg.count >= MAX_MSG_STRLEN) {
+        fprintf(stderr, "Query too long (> %d)\n", MAX_MSG_STRLEN - 1);
+        return -1;
+    }
+    snprintf(mesg.data, MAX_MSG_STRLEN, "%s=%s", key, val);
+
+    if (send_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error sending request to server.\n");
+        return -1;
+    }
+
+    if (receive_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error receiving message from server.\n");
+        return -1;
+    }
+
+    if (mesg.type == HMESG_FAIL) {
+        fprintf(stderr, "Server reports error: %s\n", mesg.data);
+        return -1;
+    }
+
+    /* Write status encoded in mesg.id.  1 == written, 0 == pre-existed. */
+    if (mesg.id == 0 && return_val != NULL) {
+        *return_val = (char *)malloc(mesg.count + 1);
+        if (*return_val == NULL) {
+            fprintf(stderr, "Memory allocation error.\n");
+            return -1;
+        }
+        strncpy(*return_val, mesg.data, mesg.count + 1);
+    }
+    return mesg.id;
+}
+
 int harmony_fetch(hdesc_t *hdesc)
 {
     int i;

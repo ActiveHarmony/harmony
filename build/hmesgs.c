@@ -123,6 +123,7 @@ int hmesg_serialize(char *buf, size_t buflen, const hmesg_t *mesg)
     case HMESG_APP_DESCR:    type_str = "APP"; break;
     case HMESG_VAR_DESCR:    type_str = "VAR"; break;
     case HMESG_QUERY:        type_str = "QRY"; break;
+    case HMESG_INFORM:       type_str = "INF"; break;
     case HMESG_FETCH:        type_str = "FET"; break;
     case HMESG_REPORT:       type_str = "REP"; break;
     default:
@@ -160,6 +161,7 @@ int hmesg_serialize(char *buf, size_t buflen, const hmesg_t *mesg)
     case HMESG_CLIENT_REG:
     case HMESG_APP_DESCR:
     case HMESG_QUERY:
+    case HMESG_INFORM:
         if (mesg->count >= MAX_MSG_STRLEN) {
             fprintf(stderr, "*** Error: Harmony string variable overflow.\n");
             return -1;
@@ -230,6 +232,7 @@ int hmesg_deserialize(hmesg_t *mesg, const char *buf)
     else if (strcmp(type_str, "APP") == 0) mesg->type = HMESG_APP_DESCR;
     else if (strcmp(type_str, "VAR") == 0) mesg->type = HMESG_VAR_DESCR;
     else if (strcmp(type_str, "QRY") == 0) mesg->type = HMESG_QUERY;
+    else if (strcmp(type_str, "INF") == 0) mesg->type = HMESG_INFORM;
     else if (strcmp(type_str, "FET") == 0) mesg->type = HMESG_FETCH;
     else if (strcmp(type_str, "REP") == 0) mesg->type = HMESG_REPORT;
     else {
@@ -254,6 +257,7 @@ int hmesg_deserialize(hmesg_t *mesg, const char *buf)
     case HMESG_CLIENT_REG:
     case HMESG_APP_DESCR:
     case HMESG_QUERY:
+    case HMESG_INFORM:
         if (sscanf(buf + total, " :%hu %n", &mesg->count, &count) < 1)
             return -1;
         total += count;

@@ -941,6 +941,62 @@ void client_query(int sockfd, hmesg_t *mesg)
     send_message(sockfd, mesg);
 }
 
+/******
+ * Respond to client inform requests.
+ *
+ * This client handler treats hmesg_t.id in a non-standard way to signal
+ * atomic operation.  If incoming messages have hmesg_t.id set to 1, atomic
+ * semantics are requested.  If outgoing messages have hmesg_t.id set to 1,
+ * the write was successful.
+ ******/
+void client_inform(int sockfd, hmesg_t *mesg)
+{
+    char *parse_key, *parse_val;
+    const char *val;
+
+    /* Check to see if unsetting is requested. */
+    if (*mesg->data == '=') {
+        parse_key = mesg->data + 1;
+        if (cfg_unset(parse_key) != 0) {
+            mesg->type = HMESG_FAIL;
+            val = "Internal hash error";
+        }
+        else {
+            mesg->type = HMESG_CONFIRM;
+            val = parse_key;
+        }
+
+    /* Parse incoming string. */
+    } else if (cfg_parseline(mesg->data, &parse_key, &parse_val) != 0) {
+        mesg->type = HMESG_FAIL;
+        val = parse_key;
+
+    /* Operate atomically if mesg->id == 1 */
+    } else if (mesg->id == 1 && (val = cfg_get(parse_key)) != NULL) {
+        mesg->id = 0;
+        mesg->type = HMESG_CONFIRM;
+
+    /* Otherwise, set the config variable */
+    } else if (cfg_set(parse_key, parse_val) != 0) {
+        mesg->type = HMESG_FAIL;
+        val = "Internal hash error";
+
+    } else {
+        mesg->id = 1;
+        mesg->type = HMESG_CONFIRM;
+        val = parse_val;
+    }
+
+    mesg->count = strlen(val);
+    if (mesg->count >= MAX_MSG_STRLEN) {
+        fprintf(stderr, "* Warning: Truncating config variable.\n");
+        mesg->count = MAX_MSG_STRLEN - 1;
+    }
+    strncpy(mesg->data, val, mesg->count);
+    mesg->data[mesg->count] = '\0';
+    send_message(sockfd, mesg);
+}
+
 int process_message_from(int sockfd)
 {
     hmesg_t mesg;
@@ -974,6 +1030,9 @@ int process_message_from(int sockfd)
         break;
     case HMESG_QUERY:
         client_query(sockfd, &mesg);
+        break;
+    case HMESG_INFORM:
+        client_inform(sockfd, &mesg);
         break;
     default:
         printf("[AH]: Received invalid message type\n");
