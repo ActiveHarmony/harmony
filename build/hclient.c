@@ -817,7 +817,7 @@ hdesc_t *harmony_init(const char *name, harmony_iomethod_t iomethod)
         perror("malloc() error during harmony_init()");
         return NULL;
     }
-    memset(retval, sizeof(hdesc_t), 0);
+    memset(retval, 0, sizeof(hdesc_t));
 
     retval->name = (char *) malloc(strlen(name) + 1);
     if (!retval->name) {
