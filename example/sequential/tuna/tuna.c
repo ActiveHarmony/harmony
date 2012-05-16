@@ -239,6 +239,10 @@ void parseArgs(int argc, char **argv)
             case 'q': quiet = 1; break;
             case 'v': verbose = 1; break;
             case 'n':
+                ++arg;
+                if (*arg == '=')
+                    ++arg;
+
                 errno = 0;
                 max_loop = strtoul(arg, &arg, 0);
                 if (errno != 0) {
