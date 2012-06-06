@@ -16,8 +16,8 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef __HGLOBAL_CONFIG__
-#define __HGLOBAL_CONFIG__
+#ifndef __HCONFIG_H__
+#define __HCONFIG_H__
 
 #include <stdio.h>
 
@@ -25,14 +25,20 @@
 extern "C" {
 #endif
 
-int cfg_init();
-const char *cfg_get(const char *key);
-int cfg_set(const char *key, const char *value);
-int cfg_unset(const char *key);
-int cfg_parseline(char *line, char **key, char **val);
+struct cfg;
+typedef struct cfg cfg_t;
 
-int cfg_read(FILE *fd);
-void cfg_write(FILE *fd);
+cfg_t *cfg_init(void);
+cfg_t *cfg_copy(const cfg_t *);
+void cfg_free(cfg_t *cfg);
+
+const char *cfg_get(cfg_t *cfg, const char *key);
+int cfg_set(cfg_t *cfg, const char *key, const char *val);
+int cfg_unset(cfg_t *cfg, const char *key);
+int cfg_load(cfg_t *cfg, FILE *fd);
+void cfg_write(cfg_t *cfg, FILE *fd);
+
+char *cfg_parse(char *buf, char **key, char **val);
 
 #ifdef __cplusplus
 }

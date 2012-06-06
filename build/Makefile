@@ -14,7 +14,7 @@ OBJS=hclient.o hsockutil.o hutil.o hmesgs.o hclientf.o
 
 all: hserver libharmony.a tuna
 
-hserver: hserver.o hutil.o hsockutil.o hmesgs.o hglobal_config.o httpsvr.o
+hserver: hserver.o hutil.o hsockutil.o hmesgs.o hconfig.o httpsvr.o
 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
 	cp hserver ../bin
 
@@ -31,7 +31,7 @@ hserver.o: hserver.cxx hserver.h hutil.h hdb.h hsockutil.h hmesgs.h
 httpsvr.o: httpsvr.cxx httpsvr.h hserver.h hsockutil.h
 	$(CXX) -c $(CFLAGS) $< -o $@
 
-hglobal_config.o: hglobal_config.c hglobal_config.h
+hconfig.o: hconfig.c hconfig.h
 	$(CC) -c $(CFLAGS) $< -o $@
 
 hutil.o: hutil.c hutil.h

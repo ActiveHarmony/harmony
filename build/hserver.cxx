@@ -48,7 +48,7 @@
 
 #include "hserver.h"
 #include "httpsvr.h"
-#include "hglobal_config.h"
+#include "hconfig.h"
 #include "hmesgs.h"
 #include "hsockutil.h"
 #include "hutil.h"
@@ -129,6 +129,11 @@ char new_code_path[256];
 const char *flag_dir;
 
 /*
+ * Global Configuration
+ */
+cfg_t *cfg;
+
+/*
  * Other global variables
  */
 const char *application_trigger = "";
@@ -183,9 +188,9 @@ int check_parameters()
     const char *search_algo;
 
     /* Gets the Search Algorithm and the config file 
-     * that the user has selected in the hglobal_config file.
+     * that the user has selected in the harmony.cfg file.
      */
-    search_algo = cfg_get("search_algorithm");
+    search_algo = cfg_get(cfg, "search_algorithm");
     if (search_algo == NULL)
     {
         printf("Using default search algorithm: %s\n", DEFAULT_SEARCH_ALGO);
@@ -259,7 +264,7 @@ int server_startup()
     if (getenv("HARMONY_S_PORT") != NULL) {
         listen_port = atoi(getenv("HARMONY_S_PORT"));
     }
-    else if ( (cfgval = cfg_get("harmony_port"))) {
+    else if ( (cfgval = cfg_get(cfg, "harmony_port"))) {
         listen_port = atoi(cfgval);
     }
     else {
@@ -925,7 +930,7 @@ void client_query(int sockfd, hmesg_t *mesg)
         val = check_tcl_variable(sockfd, mesg->data + 5);
     }
     else {
-        val = cfg_get(mesg->data);
+        val = cfg_get(cfg, mesg->data);
     }
 
     if (val == NULL) {
@@ -954,40 +959,43 @@ void client_query(int sockfd, hmesg_t *mesg)
  ******/
 void client_inform(int sockfd, hmesg_t *mesg)
 {
-    char *parse_key, *parse_val;
-    const char *val;
+    char *key, *val;
+    const char *result;
 
     /* Check to see if unsetting is requested. */
     if (*mesg->data == '=') {
-        parse_key = mesg->data + 1;
-        if (cfg_unset(parse_key) != 0) {
+        key = mesg->data + 1;
+        if (cfg_unset(cfg, key) != 0) {
             mesg->type = HMESG_FAIL;
-            val = "Internal hash error";
+            result = "Internal hash error";
         }
         else {
             mesg->type = HMESG_CONFIRM;
-            val = parse_key;
+            result = key;
         }
 
     /* Parse incoming string. */
-    } else if (cfg_parseline(mesg->data, &parse_key, &parse_val) != 0) {
+    } else if (cfg_parse(mesg->data, &key, &val) == NULL) {
         mesg->type = HMESG_FAIL;
-        val = parse_key;
+        if (key == NULL)
+            result = "Empty key string";
+        else
+            result = "No key/value separator character (=)";
 
     /* Operate atomically if mesg->id == 1 */
-    } else if (mesg->id == 1 && (val = cfg_get(parse_key)) != NULL) {
+    } else if (mesg->id == 1 && (result = cfg_get(cfg, key)) != NULL) {
         mesg->id = 0;
         mesg->type = HMESG_CONFIRM;
 
     /* Otherwise, set the config variable */
-    } else if (cfg_set(parse_key, parse_val) != 0) {
+    } else if (cfg_set(cfg, key, val) != 0) {
         mesg->type = HMESG_FAIL;
-        val = "Internal hash error";
+        result = "Internal hash error";
 
     } else {
         mesg->id = 1;
         mesg->type = HMESG_CONFIRM;
-        val = parse_val;
+        result = val;
     }
 
     mesg->count = strlen(val);
@@ -995,7 +1003,7 @@ void client_inform(int sockfd, hmesg_t *mesg)
         fprintf(stderr, "* Warning: Truncating config variable.\n");
         mesg->count = MAX_MSG_STRLEN - 1;
     }
-    strncpy(mesg->data, val, mesg->count);
+    strncpy(mesg->data, result, mesg->count);
     mesg->data[mesg->count] = '\0';
     send_message(sockfd, mesg);
 }
@@ -1126,7 +1134,7 @@ int codegen_init()
     time_t session;
     FILE *fds;
 
-    cs_type = cfg_get("codegen");
+    cs_type = cfg_get(cfg, "codegen");
     if (cs_type == NULL || strcasecmp(cs_type, "none") == 0) {
         /* No code server requested. */
         return set_tcl_var("code_generation_params(enabled)", "0");
@@ -1137,11 +1145,11 @@ int codegen_init()
         assert(0 && "TCP-based code server not yet tested/implemented.");
     }
     else if (strcasecmp(cs_type, "standalone") == 0) {
-        cs_user = cfg_get("codegen_user");
-        cs_host = cfg_get("codegen_host");
-        cs_port = cfg_get("codegen_port");
-        cs_path = cfg_get("codegen_path");
-        flag_dir = cfg_get("codegen_flag_dir");
+        cs_user = cfg_get(cfg, "codegen_user");
+        cs_host = cfg_get(cfg, "codegen_host");
+        cs_port = cfg_get(cfg, "codegen_port");
+        cs_path = cfg_get(cfg, "codegen_path");
+        flag_dir = cfg_get(cfg, "codegen_flag_dir");
 
         if (cs_host == NULL) {
             fprintf(stderr, "Config error: codegen_host unspecified.\n");
@@ -1195,7 +1203,7 @@ int codegen_init()
         }
 
         fprintf(fds, "harmony_session=%ld\n", session);
-        cfg_write(fds);
+        cfg_write(cfg, fds);
         fclose(fds);
 
         snprintf(buf, sizeof(buf), "scp %s %s %s%s:%s/harmony.init",
@@ -1209,7 +1217,7 @@ int codegen_init()
         }
 
         snprintf(buf, sizeof(buf), "%s/codeserver.init.%ld",
-                 cfg_get("codegen_flag_dir"), session);
+                 cfg_get(cfg, "codegen_flag_dir"), session);
         printf("[AH]: Awaiting response from code server (%s).\n", buf);
         while (!file_exists(buf))
         {
@@ -1440,7 +1448,7 @@ int main(int argc, char **argv)
             }
         }
 
-        if (cfg_read(fd) < 0) {
+        if (cfg_load(cfg, fd) < 0) {
             fprintf(stderr, "Error parsing %s\n", cfgpath);
             return -1;
         }
@@ -1455,8 +1463,7 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    if (server_startup() < 0)
-    {
+    if (server_startup() < 0) {
         printf("[AH]: Could not start server.  Exiting.\n");
         return -1;
     }

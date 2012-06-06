@@ -38,9 +38,14 @@
 
 #include "Tokenizer.h"
 #include "code_generator.h"
-#include "hglobal_config.h"
+#include "hconfig.h"
 
 using namespace std;
+
+/*
+ * Configuration from Harmony Server.
+ */
+cfg_t *cfg = NULL;
 
 typedef vector<vector<int> > vec_of_intvec;
 
@@ -84,7 +89,7 @@ int touch_remote_file(string filename, string &host);
 static int nchildren = 1;
 static int timestep = 0;
 static generator *gen_ptr = NULL;
-static vector<string> generator_vec;
+static vector<string> slave_vec;
 /* Configuration values passed in from the harmony server. */
 static string appname, conf_host, conf_dir, code_host,
     code_dir, flag_host, flag_dir, slave_dir;
@@ -128,7 +133,7 @@ void generator_main(int i, vector<int> params)
 
     // set which machine to use
     // first check to see if there is an underscore in the machine name.
-    string generator_name = generator_vec.at(i);
+    string generator_name = slave_vec.at(i);
     size_t found;
     found = generator_name.find("_");
     if (found != -1)
@@ -148,7 +153,7 @@ void generator_main(int i, vector<int> params)
         // remote
         ss << "ssh " << generator_name << " ";
     }
-    ss << "exec " << slave_dir << "/" << generator_vec.at(i)
+    ss << "exec " << slave_dir << "/" << slave_vec.at(i)
        << "_" << appname << "/chill_script." << appname << ".sh ";
 
     if (flag) {
@@ -157,7 +162,7 @@ void generator_main(int i, vector<int> params)
         ss << vector_to_bash_array_remote(params);
     }
     ss << generator_name << " "
-       << slave_dir << "/" << generator_vec.at(i) << "_" << appname << " "
+       << slave_dir << "/" << slave_vec.at(i) << "_" << appname << " "
        << code_host << " "
        << code_dir;
 
@@ -248,7 +253,7 @@ int main(int argc, char **argv)
             //  resources
             if (i < nchildren) {
                 pid = generator_make(i, code_parameters.at(i));
-                log_message << generator_vec.at(i) << " : "
+                log_message << slave_vec.at(i) << " : "
                             << vector_to_string(code_parameters.at(i)) << "\n";
                 logger(log_message.str());
                 log_message.str("");
@@ -272,7 +277,7 @@ int main(int argc, char **argv)
                         }
                     }
                     pid = generator_make(ii, code_parameters.at(i));
-                    log_message << generator_vec.at(ii) << " : "
+                    log_message << slave_vec.at(ii) << " : "
                                 << vector_to_string(code_parameters.at(i))
                                 << "\n";
                     logger(log_message.str());
@@ -328,82 +333,85 @@ int codeserver_init(string &filename)
 {
     FILE *fp;
     stringstream ss;
-    cfg_init();
+
+    if (cfg)
+        cfg_free(cfg);
+    cfg = cfg_init();
 
     fp = fopen(filename.c_str(), "r");
     if (!fp) {
         fprintf(stderr, "Could not open config file %s\n", filename.c_str());
         return -1;
     }
-    cfg_read(fp);  /* Errors during this call will show up
-                      when we check code_dir and session. */
+    cfg_load(cfg, fp);  /* Errors during this call will show up
+                           when we check code_dir and session. */
 
     /* Configuration variable assignment needs to be an atomic operation.
      * So, check that all variables exist, then assign them all.
      */
-    const char *session = cfg_get("harmony_session");
+    const char *session = cfg_get(cfg, "harmony_session");
     if (session == NULL) {
         cerr << "[CS]: Error: harmony_session config directive missing.\n";
         return -1;
     }
 
-    if (cfg_get("app_name_tuning") == NULL) {
+    if (cfg_get(cfg, "app_name_tuning") == NULL) {
         cerr << "[CS]: Error: app_name_tuning config directive missing.\n"
              << "Please fix the harmony server's global config file.\n";
         return -1;
     }
 
-    if (cfg_get("codegen_host") == NULL) {
+    if (cfg_get(cfg, "codegen_host") == NULL) {
         cerr << "[CS]: Error: codegen_host config directive missing.\n"
              << "Please fix the harmony server's global config file.\n";
         return -1;
     }
 
-    if (cfg_get("codegen_path") == NULL) {
+    if (cfg_get(cfg, "codegen_path") == NULL) {
         cerr << "[CS]: Error: codegen_path config directive missing.\n"
              << "Please fix the harmony server's global config file.\n";
         return -1;
     }
 
-    if (cfg_get("codegen_code_host") == NULL) {
+    if (cfg_get(cfg, "codegen_code_host") == NULL) {
         cerr << "[CS]: Error: codegen_code_host config directive missing.\n"
              << "Please fix the harmony server's global config file.\n";
         return -1;
     }
 
-    if (cfg_get("codegen_flag_host") == NULL) {
+    if (cfg_get(cfg, "codegen_flag_host") == NULL) {
         cerr << "[CS]: Error: codegen_flag_host config directive missing.\n"
              << "Please fix the harmony server's global config file.\n";
         return -1;
     }
 
-    if (cfg_get("codegen_flag_dir") == NULL) {
+    if (cfg_get(cfg, "codegen_flag_dir") == NULL) {
         cerr << "[CS]: Error: codegen_flag_dir config directive missing.\n"
              << "Please fix the harmony server's global config file.\n";
         return -1;
     }
 
-    if (cfg_get("codegen_slave_dir") == NULL) {
+    if (cfg_get(cfg, "codegen_slave_dir") == NULL) {
         cerr << "[CS]: Error: codegen_slave_dir config directive missing.\n"
              << "Please fix the harmony server's global config file.\n";
         return -1;
     }
 
-    if (parse_slave_list(generator_vec, cfg_get("codegen_slave_list")) < 0) {
+    if (parse_slave_list(slave_vec, cfg_get(cfg, "codegen_slave_list")) < 0) {
         cerr << "[CS]: Error: codegen_slave_list config directive invalid.\n"
              << "Please fix the harmony server's global config file.\n";
         return -1;
     }
-    nchildren = generator_vec.size();
+    nchildren = slave_vec.size();
 
     /* All configuration items are valid.  Begin atomic assignement. */
-    appname = cfg_get("app_name_tuning");
-    conf_host = cfg_get("codegen_host");
-    code_host = cfg_get("codegen_code_host");
-    code_dir = cfg_get("codegen_code_dir");
-    flag_host = cfg_get("codegen_flag_host");
-    flag_dir = cfg_get("codegen_flag_dir");
-    slave_dir = cfg_get("codegen_slave_dir");
+    appname = cfg_get(cfg, "app_name_tuning");
+    conf_host = cfg_get(cfg, "codegen_host");
+    code_host = cfg_get(cfg, "codegen_code_host");
+    code_dir = cfg_get(cfg, "codegen_code_dir");
+    flag_host = cfg_get(cfg, "codegen_flag_host");
+    flag_dir = cfg_get(cfg, "codegen_flag_dir");
+    slave_dir = cfg_get(cfg, "codegen_slave_dir");
 
     /* Initialize the application log file. */
     ss.str("");
@@ -417,8 +425,8 @@ int codeserver_init(string &filename)
 
     for(int i = 0; i < nchildren; ++i)
     {
-        cout << generator_vec.at(i) << " ";
-        log_message << generator_vec.at(i) << " ";
+        cout << slave_vec.at(i) << " ";
+        log_message << slave_vec.at(i) << " ";
     }
     cout << "\n";
     log_message << "\n";
@@ -437,7 +445,7 @@ int codeserver_init(string &filename)
     ss << "/bin/sh setup_code_gen_hosts.sh " << appname <<  " "
        << slave_dir << " " << conf_host;
     for (int i = 0; i < nchildren; ++i) {
-        ss << " " << generator_vec[i];
+        ss << " " << slave_vec[i];
     }
     if (system(ss.str().c_str()) != 0) {
         cout << "[CS]: Error on system(" << ss.str() << ")" << endl;
