@@ -19,7 +19,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <unistd.h>
+#include <limits.h>
 #include <assert.h>
 #include <errno.h>
 
@@ -40,15 +42,32 @@ typedef enum method_t {
     METHOD_MAX
 } method_t;
 
+struct strlist {
+    char *str;
+    struct strlist *next;
+};
+typedef struct strlist strlist_t;
+
+typedef struct bundle_info {
+    hval_type type;
+    char *name;
+    void *data;
+    int used;
+} bundle_info_t;
+
 void usage(const char *);
 void parseArgs(int, char **);
-int handle_int(int, char *);
-int handle_real(int, char *);
-int handle_enum(int, char *);
+int handle_int(char *);
+int handle_real(char *);
+int handle_enum(char *);
 int handle_method(char *);
+int handle_chapel(char *);
 int prepare_client_argv();
 FILE *tuna_popen(const char *, char **, pid_t *);
-double tv_to_double(struct timeval *tv);
+double tv_to_double(struct timeval *);
+int argv_add(char *);
+bundle_info_t *bundle_add(hval_type, char *);
+bundle_info_t *bundle_get(char **);
 
 hdesc_t *hdesc = NULL;
 method_t method = METHOD_WALL;
@@ -56,14 +75,15 @@ unsigned int max_loop = -1;
 unsigned int quiet = 0;
 unsigned int verbose = 0;
 
-#define MAX_PARAM 64
-unsigned int param_count = 0;
-hval_type param_type[MAX_PARAM];
-void *param_data[MAX_PARAM];
+#define MAX_BUNDLE 64
+unsigned int bcount = 0;
+bundle_info_t binfo[MAX_BUNDLE];
 
-int client_argc_template, client_argc;
-char **client_argv_template, **client_argv;
-char *client_argv_buf, *client_argv_bufend;
+strlist_t *argv_template = NULL;
+int client_argc = 0;
+char **client_argv;
+char *argv_buf = NULL;
+int argv_buflen = 0;
 
 int main(int argc, char **argv)
 {
@@ -130,9 +150,6 @@ int main(int argc, char **argv)
             ++count;
         }
         fclose(fptr);
-
-        if (verbose)
-            printf("Called fgets() %d times before fclose()\n", count);
 
         do {
             w_res = wait4(pid, &client_status, 0, &client_usage);
@@ -214,27 +231,30 @@ void usage(const char *me)
 "  If the tunable variables cannot be supplied directly as arguments to\n"
 "  the client application, then you must provide additional parameters to\n"
 "  describe the format of the argument vector.  Each argument (starting with\n"
-"  and including the program binary) may include a percent sign (%%) which\n"
-"  will be replaced by values from the tuning server, in the order they were\n"
-"  specified on the command line.  Backslashes (\\) should be used as the\n"
-"  escape character.  For example:\n"
+"  and including the program binary) may include a percent sign (%%)\n"
+"  followed by the name of a previously defined tunable variable.  This\n"
+"  identifier may be optionally bracketed by curly-braces.  Values from the\n"
+"  tuning server will then be used to complete a command-line instance.\n"
+"  A backslash (\\) may be used to produce a literal %%.  For example:\n"
 "\n"
-"    %s -i=tile,1,10,1 -i=unroll,1,10,1 ./matrix_mult -t %% -u %%`\n\n", me);
+"    %s -i=tile,1,10,1 -i=unroll,1,10,1 \\\n"
+"        ./matrix_mult -t %%tile -u %%unroll`\n\n", me);
 }
 
 void parseArgs(int argc, char **argv)
 {
-    int i, used;
-    size_t bufsize;
+    int i, chapel = 0;
     char *arg;
+    bundle_info_t *bun;
 
     for (i = 1; i < argc && *argv[i] == '-'; ++i) {
         arg = argv[i] + 1;
         while (*arg != '\0') {
             switch (*arg) {
-            case 'i': if (handle_int(i, arg)  != 0) exit(-1); break;
-            case 'r': if (handle_real(i, arg) != 0) exit(-1); break;
-            case 'e': if (handle_enum(i, arg) != 0) exit(-1); break;
+            case 'h': usage(argv[0]); exit(-1);
+            case 'i': if (handle_int(arg)  != 0) exit(-1); break;
+            case 'r': if (handle_real(arg) != 0) exit(-1); break;
+            case 'e': if (handle_enum(arg) != 0) exit(-1); break;
             case 'm': if (handle_method(arg)  != 0) exit(-1); break;
             case 'q': quiet = 1; break;
             case 'v': verbose = 1; break;
@@ -254,6 +274,10 @@ void parseArgs(int argc, char **argv)
                     exit(-1);
                 }
                 break;
+            case '-':
+                if      (strcmp(arg, "-help") == 0) {usage(argv[0]); exit(-1);}
+                else if (strcmp(arg, "-chapel") == 0) {chapel = 1;}
+                break;
             default:
                 fprintf(stderr, "Unknown flag: -%c\n", *arg);
                 exit(-1);
@@ -263,216 +287,154 @@ void parseArgs(int argc, char **argv)
             else break;
         }
     }
-    client_argc_template = argc - i;
-    client_argv_template = &argv[i];
 
-    /* Space for the tuned values */
-    bufsize = param_count * MAX_VAL_STRLEN;
-
-    /* Space for additional character strings. */
-    used = 0;
-    client_argc = 0;
     while (i < argc) {
-        ++client_argc;
+        if (argv_add(argv[i]) < 0)
+            exit(-1);
+
         for (arg = argv[i]; *arg != '\0'; ++arg) {
-            if (*arg == '%') ++used;
+            if (*arg == '%') {
+                bun = bundle_get(&arg);
+                if (bun == NULL)
+                    exit(-1);
+                bun->used = 1;
+            }
             else if (*arg == '\\') ++arg;
-            ++bufsize;
         }
-        ++bufsize;
+
+        if (chapel == 1) {
+            if (handle_chapel(argv[i]) < 0)
+                exit(-1);
+            chapel = 0;
+        }
         ++i;
     }
-    if (used > param_count) {
-        fprintf(stderr, "Variables requested exceeds variables defined.\n");
-        exit(-1);
+
+    for (i = 0; i < bcount; ++i) {
+        if (binfo[i].used == 0) {
+            if (verbose)
+                fprintf(stdout, "Warning: Appending unused bundle \"%s\""
+                        " to target argv.\n", binfo[i].name);
+
+            arg = (char *)malloc(strlen(binfo[i].name) + 2);
+            if (arg == NULL) {
+                perror("Malloc error");
+                exit(-1);
+            }
+            sprintf(arg, "%%%s", binfo[i].name);
+            if (argv_add(arg) < 0)
+                exit(-1);
+        }
     }
 
-    /* Space for the argv array. */
-    client_argc += param_count - used;
-    bufsize += sizeof(char *) * (client_argc + 1);
-
-    client_argv = (char **)malloc(bufsize);
+    client_argv = (char **)malloc(sizeof(char *) * (client_argc + 1));
     if (client_argv == NULL) {
-        fprintf(stderr, "Error allocating memory for parameters.\n");
+        perror("Malloc error");
         exit(-1);
     }
-    client_argv_buf = (char *)(&client_argv[client_argc + 1]);
-    client_argv_bufend = ((char *)client_argv) + bufsize;
 }
 
-int handle_int(int i, char *arg)
+int handle_int(char *arg)
 {
-    char *name;
-    int i_min, i_max, i_step;
-    void *data;
+    char *arg_orig, *name;
+    long min, max, step;
+    bundle_info_t *bun;
 
     assert(*arg == 'i');
+    arg_orig = arg;
 
     ++arg;
-    if (*arg == '=') {
+    if (*arg == '=')
         ++arg;
-    }
     name = arg;
 
     while (*arg != ',' && *arg != '\0') ++arg;
     if (*arg != ',') {
-        fprintf(stderr, "Invalid description in parameter %d.\n", i);
+        fprintf(stderr, "Invalid description: \"%s\"\n", arg_orig);
         return -1;
     }
     *(arg++) = '\0';
 
-    errno = 0;
-    i_min = strtol(arg, &arg, 0);
-    if (errno != 0) {
-        fprintf(stderr, "Invalid min range value for variable '%s'.\n", name);
-        return -1;
-    }
-    ++arg;
-
-    errno = 0;
-    i_max = strtol(arg, &arg, 0);
-    if (errno != 0) {
-        fprintf(stderr, "Invalid max range value for variable '%s'.\n", name);
-        return -1;
-    }
-    ++arg;
-
-    errno = 0;
-    i_step = strtol(arg, &arg, 0);
-    if (errno != 0) {
-        fprintf(stderr, "Invalid step value for variable '%s'.\n", name);
+    if (sscanf(arg, "%ld,%ld,%ld", &min, &max, &step) != 3) {
+        fprintf(stderr, "Invalid description for variable \"%s\".\n", name);
         return -1;
     }
 
-    if (*arg != '\0') {
-        fprintf(stderr, "Trailing characters in definition of '%s'.\n", name);
+    bun = bundle_add(HVAL_INT, name);
+    if (bun == NULL)
         return -1;
-    }
-    
-    data = malloc(sizeof(long));
-    if (!data) {
-        fprintf(stderr, "Error allocating memory for variable '%s'.\n", name);
-        return -1;
-    }
 
-    if (harmony_register_int(hdesc, name, data, i_min, i_max, i_step) < 0) {
+    if (harmony_register_int(hdesc, name, bun->data, min, max, step) < 0) {
         fprintf(stderr, "Error registering variable '%s'.\n", name);
         return -1;
     }
 
-    if (param_count >= MAX_PARAM) {
-        fprintf(stderr, "Maximum number of tunable parameters"
-                " exceeded (%d).\n", MAX_PARAM);
-        return -1;
-    }
-
-    param_type[param_count] = HVAL_INT;
-    param_data[param_count] = data;
-    ++param_count;
-
     return 0;
 }
 
-int handle_real(int i, char *arg)
+int handle_real(char *arg)
 {
-    char *name;
-    int r_min, r_max, r_step;
-    void *data;
+    char *arg_orig, *name;
+    double min, max, step;
+    bundle_info_t *bun;
 
     assert(*arg == 'r');
+    arg_orig = arg;
 
     ++arg;
-    if (*arg == '=') {
+    if (*arg == '=')
         ++arg;
-    }
     name = arg;
 
     while (*arg != ',' && *arg != '\0') ++arg;
     if (*arg != ',') {
-        fprintf(stderr, "Invalid description in parameter %d.\n", i);
+        fprintf(stderr, "Invalid description: \"%s\"\n", arg_orig);
         return -1;
     }
     *(arg++) = '\0';
 
-    errno = 0;
-    r_min = strtod(arg, &arg);
-    if (errno != 0) {
-        fprintf(stderr, "Invalid min range value for variable '%s'.\n", name);
-        return -1;
-    }
-    ++arg;
-
-    errno = 0;
-    r_max = strtod(arg, &arg);
-    if (errno != 0) {
-        fprintf(stderr, "Invalid max range value for variable '%s'.\n", name);
-        return -1;
-    }
-    ++arg;
-
-    errno = 0;
-    r_step = strtod(arg, &arg);
-    if (errno != 0) {
-        fprintf(stderr, "Invalid step value for variable '%s'.\n", name);
+    if (sscanf(arg, "%lf,%lf,%lf", &min, &max, &step) != 3) {
+        fprintf(stderr, "Invalid description for variable \"%s\".\n", name);
         return -1;
     }
 
-    if (*arg != '\0') {
-        fprintf(stderr, "Trailing characters in definition of '%s'.\n", name);
+    bun = bundle_add(HVAL_REAL, name);
+    if (bun == NULL)
         return -1;
-    }
-    
-    data = malloc(sizeof(double));
-    if (!data) {
-        fprintf(stderr, "Error allocating memory for variable '%s'.\n", name);
-        return -1;
-    }
 
-    if (harmony_register_real(hdesc, name, data, r_min, r_max, r_step) < 0) {
+    if (harmony_register_real(hdesc, name, bun->data, min, max, step) < 0) {
         fprintf(stderr, "Error registering variable '%s'.\n", name);
         return -1;
     }
 
-    if (param_count >= MAX_PARAM) {
-        fprintf(stderr, "Maximum number of tunable parameters"
-                " exceeded (%d).\n", MAX_PARAM);
-        return -1;
-    }
-
-    param_type[param_count] = HVAL_REAL;
-    param_data[param_count] = data;
-    ++param_count;
-
     return 0;
 }
 
-int handle_enum(int i, char *arg)
+int handle_enum(char *arg)
 {
-    char *name, *val;
-    void *data;
- 
+    char *arg_orig, *name, *val;
+    bundle_info_t *bun;
+
     assert(*arg == 'e');
+    arg_orig = arg;
 
     ++arg;
-    if (*arg == '=') {
+    if (*arg == '=')
         ++arg;
-    }
     name = arg;
 
     while (*arg != ',' && *arg != '\0') ++arg;
     if (*arg != ',') {
-        fprintf(stderr, "Invalid description in parameter %d.\n", i);
+        fprintf(stderr, "Invalid description: \"%s\"\n", arg_orig);
         return -1;
     }
     *(arg++) = '\0';
 
-    data = malloc(sizeof(char *));
-    if (!data) {
-        fprintf(stderr, "Error allocating memory for variable '%s'.\n", name);
+    bun = bundle_add(HVAL_REAL, name);
+    if (bun == NULL)
         return -1;
-    }
 
-    if (harmony_register_enum(hdesc, name, data) < 0) {
+    if (harmony_register_enum(hdesc, name, bun->data) < 0) {
         fprintf(stderr, "Error registering variable '%s'.\n", name);
         return -1;
     }
@@ -488,16 +450,6 @@ int handle_enum(int i, char *arg)
             return -1;
         }
     }
-
-    if (param_count >= MAX_PARAM) {
-        fprintf(stderr, "Maximum number of tunable parameters"
-                " exceeded (%d).\n", MAX_PARAM);
-        return -1;
-    }
-
-    param_type[param_count] = HVAL_STR;
-    param_data[param_count] = data;
-    ++param_count;
 
     return 0;
 }
@@ -521,57 +473,176 @@ int handle_method(char *arg)
     return 0;
 }
 
+int handle_chapel(char *prog)
+{
+    char buf[4096], *arg;
+    int chpl_flag = 0;
+
+    char *name;
+    long min, max, step;
+    bundle_info_t *bun;
+
+    FILE *fd;
+    pid_t pid;
+    char *help_argv[3];
+
+    help_argv[0] = prog;
+    help_argv[1] = "--help";
+    help_argv[2] = NULL;
+    fd = tuna_popen(prog, help_argv, &pid);
+    if (fd == NULL)
+        return -1;
+
+    while (fgets(buf, sizeof(buf), fd) != NULL) {
+        if (strcmp(buf, "CONFIG VARS:\n") == 0) {
+            chpl_flag = 1;
+            break;
+        }
+    }
+    if (!chpl_flag) {
+        fprintf(stderr, "%s is not a Chapel program.\n", prog);
+        return -1;
+    }
+
+    bun = bundle_add(HVAL_INT, "dataParTsk");
+    if (bun == NULL)
+        return -1;
+    if (harmony_register_int(hdesc, "dataParTsk", bun->data, 1, 64, 1) < 0) {
+        fprintf(stderr, "Error registering variable 'dataParTsk'.\n");
+        return -1;
+    }
+    if (argv_add("--dataParTasksPerLocale=%dataParTsk"))
+        return -1;
+    bun->used = 1;
+
+    bun = bundle_add(HVAL_INT, "numThr");
+    if (bun == NULL)
+        return -1;
+    if (harmony_register_int(hdesc, "numThr", bun->data, 1, 32, 1) < 0) {
+        fprintf(stderr, "Error registering variable 'numThr'.\n");
+        return -1;
+    }
+    if (argv_add("--numThreadsPerLocale=%numThr"))
+        return -1;
+    bun->used = 1;
+
+    while (fgets(buf, sizeof(buf), fd) != NULL) {
+        if (strstr(buf, ") in (") == NULL)
+            continue;
+
+        min = LONG_MIN;
+        max = LONG_MAX;
+        step = 1;
+
+        name = buf;
+        while (isspace(*name)) ++name;
+
+        if (sscanf(name, "%*s %*s in (%ld .. %ld) by %ld",
+                   &min, &max, &step) != 3 &&
+            sscanf(name, "%*s %*s in (%ld .. %ld)", &min, &max) != 2 &&
+            sscanf(name, "%*s %*s in (%ld .. )", &min) != 1 &&
+            sscanf(name, "%*s %*s in ( .. %ld)", &max) != 1)
+        {
+            fprintf(stderr, "Malformed Chapel output: target may not be"
+                    " a Chapel program.\n");
+            return -1;
+        }
+
+        if (strchr(name, ':') == NULL) {
+            fprintf(stderr, "Malformed Chapel output: target may not be"
+                    " a Chapel program.\n");
+            return -1;
+        }
+        *strchr(name, ':') = '\0';
+
+        arg = (char *)malloc((strlen(name) * 2) + 4);
+        if (arg == NULL) {
+            perror("Malloc error");
+            return -1;
+        }
+        strcpy(arg, name);
+        bun = bundle_add(HVAL_INT, arg);
+        if (bun == NULL)
+            return -1;
+
+        if (harmony_register_int(hdesc, name, bun->data, min, max, step) < 0) {
+            fprintf(stderr, "Error registering variable '%s'.\n", name);
+            return -1;
+        }
+
+        arg = (char *)malloc((strlen(name) * 2) + 4);
+        if (arg == NULL) {
+            perror("Malloc error");
+            return -1;
+        }
+        sprintf(arg, "--%s=%%%s", name, name);
+        if (argv_add(arg))
+            return -1;
+
+        bun->used = 1;
+    }
+
+    return 0;
+}
+
 int prepare_client_argv()
 {
-    unsigned int i, used;
-    int addlen;
-    char *arg, *ptr;
+    unsigned int i = 0;
+    int count = 0, len, remainder;
+    char *arg;
+    strlist_t *arglist;
+    bundle_info_t *bun;
 
-    used = 0;
-    ptr = client_argv_buf;
-    for (i = 0; i < client_argc; ++i) {
-        client_argv[i] = ptr;
+    for (arglist = argv_template; arglist != NULL; arglist = arglist->next) {
+        client_argv[i++] = argv_buf + count;
 
-        if (i < client_argc_template)
-            arg = client_argv_template[i];
-        else
-            arg = "%";
-
-        while (*arg != '\0') {
+        for (arg = arglist->str; *arg != '\0'; ++arg) {
             if (*arg == '%') {
-                assert(used < param_count);
-                switch(param_type[used]) {
-                case HVAL_INT:
-                    addlen = sprintf(ptr, "%ld", *(long *)param_data[used]);
-                    break;
-                case HVAL_REAL:
-                    addlen = sprintf(ptr, "%lf", *(double *)param_data[used]);
-                    break;
-                case HVAL_STR:
-                    addlen = sprintf(ptr, "%s", *(char **)param_data[used]);
-                    break;
-                default:
-                    assert(0 && "Invalid parameter type.");
-                }
-                if (addlen < 0) {
-                    perror("Error during sprintf()");
+                bun = bundle_get(&arg);
+                if (bun == NULL)
                     return -1;
+
+                remainder = 0;
+                if (count < argv_buflen)
+                    remainder = argv_buflen - count;
+
+                switch (bun->type) {
+                case HVAL_INT:  len = snprintf(argv_buf + count, remainder,
+                                               "%ld", *(long *)bun->data);
+                    break;
+                case HVAL_REAL: len = snprintf(argv_buf + count, remainder,
+                                               "%lf", *(double *)bun->data);
+                    break;
+                case HVAL_STR:  len = snprintf(argv_buf + count, remainder,
+                                               "%s", *(char **)bun->data);
+                    break;
+                default:        assert(0 && "Invalid parameter type.");
                 }
-                ptr += addlen;
-                ++used;
+                count += len;
             }
             else {
                 if (*arg == '\\')
                     ++arg;
-                *(ptr++) = *arg;
+                if (count < argv_buflen)
+                    *(argv_buf + count) = *arg;
+                ++count;
             }
-            ++arg;
         }
-        *(ptr++) = '\0';
+        if (count < argv_buflen)
+            *(argv_buf + count) = '\0';
+        ++count;
     }
     client_argv[i] = NULL;
 
-    assert(ptr < client_argv_bufend);
+    if (count > argv_buflen) {
+        argv_buf = (char *)realloc(argv_buf, count);
+        if (argv_buf == NULL) {
+            perror("Realloc error");
+            return -1;
+        }
+        argv_buflen = count;
+        return prepare_client_argv();
+    }
     return 0;
 }
 
@@ -628,4 +699,92 @@ double tv_to_double(struct timeval *tv)
     double retval = tv->tv_usec;
     retval /= 1000000;
     return retval + tv->tv_sec;
+}
+
+int argv_add(char *str)
+{
+    static strlist_t **tail;
+
+    if (argv_template == NULL)
+        tail = &argv_template;
+
+    *tail = (strlist_t *)malloc(sizeof(strlist_t));
+    if (*tail == NULL) {
+        perror("Malloc error");
+        return -1;
+    }
+
+    ++client_argc;
+    (*tail)->str = str;
+    (*tail)->next = NULL;
+    tail = &((*tail)->next);
+    return 0;
+}
+
+bundle_info_t *bundle_add(hval_type type, char *name)
+{
+    void *data;
+
+    if (bcount >= MAX_BUNDLE) {
+        fprintf(stderr, "Maximum number of tunable parameters"
+                " exceeded (%d).\n", MAX_BUNDLE);
+        return NULL;
+    }
+
+    switch (type) {
+    case HVAL_INT:  data = malloc(sizeof(long)); break;
+    case HVAL_REAL: data = malloc(sizeof(double)); break;
+    case HVAL_STR:  data = malloc(sizeof(char *)); break;
+    default: assert(0 && "Invalid parameter type.");
+    }
+
+    if (!data) {
+        fprintf(stderr, "Malloc error for variable \"%s\".\n", name);
+        return NULL;
+    }
+
+    binfo[bcount].type = type;
+    binfo[bcount].name = name;
+    binfo[bcount].data = data;
+    binfo[bcount].used = 0;
+    return &binfo[bcount++];
+}
+
+bundle_info_t *bundle_get(char **name)
+{
+    int i;
+    char *end = NULL;
+    bundle_info_t *retval = NULL;
+
+    if (**name == '%') {
+        ++(*name);
+        if (**name == '{') {
+            end = ++(*name);
+            while (*end && *end != '}') ++end;
+        }
+    }
+    if (end == NULL) {
+        end = *name;
+        while (*end && !isspace(*end)) ++end;
+    }
+
+    for (i = 0; i < bcount; ++i) {
+        if (strncmp(*name, binfo[i].name, end - *name) == 0 &&
+            binfo[i].name[end - *name] == '\0')
+        {
+            retval = binfo + i;
+            break;
+            return binfo + i;
+        }
+    }
+
+    if (retval == NULL)
+        fprintf(stderr, "Invalid reference to tunable variable \"%.*s\"\n",
+                (int)(end - *name), *name);
+
+    *name = end;
+    if (**name != '}')
+        --(*name);
+
+    return retval;
 }
