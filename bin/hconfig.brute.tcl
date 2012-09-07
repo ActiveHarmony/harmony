@@ -16,15 +16,20 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
 #
+
+# Store the path to the base directory
+global toBase
+set toBase [file dirname [info script]]
+
 global search_algorithm
 set search_algorithm 4 
 
 ## load commons
 
 # comment nearest_neighbor if you are not using ANN based projection
-#load ../tcl/common/nearest_neighbor.so
+#load ${toBase}/../tcl/common/nearest_neighbor.so
 # comment code_server.so if you are not using dynamic code generation
-#load ../tcl/common/code_server.so
+#load ${toBase}/../tcl/common/code_server.so
 
 global init_simplex_method
 
@@ -34,8 +39,8 @@ global init_simplex_method
 set init_simplex_method "max"
 #set init_simplex_method "user_defined"
 
-source ../tcl/common/parseApp.tcl
-source ../tcl/common/newparseApp.tcl
-source ../tcl/common/utilities.tcl
-source ../tcl/brute_force/brute_force_init.tcl
-source ../tcl/brute_force/brute_force.tcl
+source ${toBase}/../tcl/common/parseApp.tcl
+source ${toBase}/../tcl/common/newparseApp.tcl
+source ${toBase}/../tcl/common/utilities.tcl
+source ${toBase}/../tcl/brute_force/brute_force_init.tcl
+source ${toBase}/../tcl/brute_force/brute_force.tcl

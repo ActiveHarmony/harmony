@@ -26,6 +26,7 @@
 #include <sys/socket.h>
 #include <cerrno>
 #include <string>
+#include <limits.h>
 
 #include "hserver.h"   /* for tcl_inter definition */
 #include "hsockutil.h"
@@ -77,8 +78,9 @@ char *uri_decode(char *buf);
 void http_send_chunk(int fd, const char *data, int datalen);
 char *http_recv_request(int fd, char *buf, int buflen, char **data);
 
-int http_init()
+int http_init(const char *basedir)
 {
+    char path[FILENAME_MAX];
     int fd, i;
     struct stat sb;
 
@@ -87,7 +89,8 @@ int http_init()
             munmap(html_file[i].buf, html_file[i].buflen);
         }
 
-        fd = open(html_file[i].filename, O_RDONLY);
+        snprintf(path, sizeof(path), "%s/%s", basedir, html_file[i].filename);
+        fd = open(path, O_RDONLY);
         if (fd == -1) {
             printf("[AH]: Error opening HTTP server file %s\n",
                    html_file[i].filename);
@@ -260,7 +263,7 @@ int http_handle_request(int fd, char *req)
         return 0;
 
     } else if (strcmp(req, "/hup") == 0) {
-        http_init();
+        http_init(harmonyBinDir);
 
         socket_write(fd, status_200, strlen(status_200));
         socket_write(fd, http_type_text, strlen(http_type_text));

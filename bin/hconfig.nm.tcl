@@ -16,22 +16,27 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
 #
+
+# Store the path to the base directory
+global toBase
+set toBase [file dirname [info script]]
+
 global search_algorithm
 set search_algorithm 2 
 
 ## load commons
 
 # comment nearest_neighbor if you are not using ANN based projection
-#load ../tcl/common/nearest_neighbor.so
+#load ${toBase}/../tcl/common/nearest_neighbor.so
 # comment code_server.so if you are not using dynamic code generation
-#load ../tcl/common/code_server.so
+#load ${toBase}/../tcl/common/code_server.so
 
 ## Nelder Mead Simplex Algorithm
-source ../tcl/common/parseApp.tcl
-source ../tcl/common/newparseApp.tcl
-source ../tcl/common/utilities.tcl
-source ../tcl/simplex/simplex.tcl
-source ../tcl/simplex/simplex_init.tcl
+source ${toBase}/../tcl/common/parseApp.tcl
+source ${toBase}/../tcl/common/newparseApp.tcl
+source ${toBase}/../tcl/common/utilities.tcl
+source ${toBase}/../tcl/simplex/simplex.tcl
+source ${toBase}/../tcl/simplex/simplex_init.tcl
 
 global init_simplex_method
 # change this variable to either "max" (for default simplex construction

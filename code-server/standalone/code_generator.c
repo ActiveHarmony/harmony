@@ -326,9 +326,17 @@ int main(int argc, char **argv)
 
 int codeserver_init(string &filename)
 {
+    FILE *fp;
     stringstream ss;
-    cfg_init(filename.c_str());  /* Errors during this call will show up
-                                    when we check code_dir and session. */
+    cfg_init();
+
+    fp = fopen(filename.c_str(), "r");
+    if (!fp) {
+        fprintf(stderr, "Could not open config file %s\n", filename.c_str());
+        return -1;
+    }
+    cfg_read(fp);  /* Errors during this call will show up
+                      when we check code_dir and session. */
 
     /* Configuration variable assignment needs to be an atomic operation.
      * So, check that all variables exist, then assign them all.
@@ -623,7 +631,7 @@ process_point_line(string line, vector<int>& one_point)
 string
 vector_to_string_demo(vector<int> v)
 {
-    char *vars[] = {"TI","TJ","TK", "UI","US"};
+    const char *vars[] = {"TI","TJ","TK", "UI","US"};
 
     stringstream ss;
     ss << " ";

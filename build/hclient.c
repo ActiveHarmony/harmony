@@ -36,6 +36,7 @@
 #include "hclient.h"
 #include "hmesgs.h"
 #include "hsockutil.h"
+#include "defaults.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -352,11 +353,10 @@ static int tcp_connect(hdesc_t *hdesc, const char *host, int port)
        to set the port of connection to the machine where the harmony
        server is running */
     if (port == 0) {
-        if (getenv("HARMONY_S_PORT") == NULL) {
-            fprintf(stderr, "HARMONY_S_PORT variable not set!\n");
-            return -1;
-        }
-        port = atoi(getenv("HARMONY_S_PORT"));
+        if (getenv("HARMONY_S_PORT"))
+            port = atoi(getenv("HARMONY_S_PORT"));
+        else
+            port = DEFAULT_PORT;
     }
     address.sin_port = htons(port);
 
@@ -364,10 +364,8 @@ static int tcp_connect(hdesc_t *hdesc, const char *host, int port)
        to set the host where the harmony server resides */
     if (host == NULL) {
         host = getenv("HARMONY_S_HOST");
-        if (host == NULL) {
-            fprintf(stderr, "HARMONY_S_HOST variable not set!\n");
-            return -1;
-        }
+        if (host == NULL)
+            host = DEFAULT_HOST;
     }
 
     hostaddr = gethostbyname(host);

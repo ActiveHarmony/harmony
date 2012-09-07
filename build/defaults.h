@@ -16,13 +16,12 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef __HTTPSVR_H__
-#define __HTTPSVR_H__
+#ifndef __DEFAULTS_H__
+#define __DEFAULTS_H__
 
-extern unsigned int http_connection_limit;
-
-int http_init(const char *basedir);
-void http_send_error(int fd, int status, const char *message);
-int handle_http_socket(int fd);
+#define DEFAULT_HOST "localhost"
+#define DEFAULT_PORT 1977
+#define DEFAULT_CONFIG_FILENAME "harmony.cfg"
+#define DEFAULT_SEARCH_ALGO "Nelder Mead"
 
 #endif

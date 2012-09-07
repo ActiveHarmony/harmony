@@ -37,38 +37,21 @@ keyval_t *hash_find(const char *key);
 int hash_grow(void);
 int hash_insert(const char *key, const char *val);
 int hash_delete(const char *key);
-int cfg_load(const char *filename);
 
 /* Static global variables */
 static const unsigned HASH_GROWTH_THRESHOLD = 50;
-static const char CONFIG_DEFAULT_FILENAME[] = "harmony.cfg";
 static const unsigned CONFIG_INITIAL_LOGSIZE = 8;
 
 keyval_t *cfg_hash;
 unsigned int cfg_count;
 unsigned int cfg_logsize;
 
-int cfg_init(const char *filename)
+int cfg_init()
 {
     cfg_count = 0;
     cfg_logsize = CONFIG_INITIAL_LOGSIZE;
     cfg_hash = hash_init(CONFIG_INITIAL_LOGSIZE);
-    if (cfg_hash == NULL)
-        return -1;
-
-    if (filename == NULL) {
-        filename = getenv("HARMONY_CONFIG");
-        if (filename == NULL) {
-            printf("HARMONY_CONFIG environment variable empty."
-                   "  Using default.\n");
-            filename = CONFIG_DEFAULT_FILENAME;
-        }
-    }
-
-    if (cfg_load(filename) < 0)
-        return -1;
-
-    return 0;
+    return (cfg_hash != NULL);
 }
 
 const char *cfg_get(const char *key)
@@ -105,24 +88,12 @@ void cfg_write(FILE *fd)
 }
 
 /* Open the configuration file, and parse it line by line. */
-int cfg_load(const char *filename)
+int cfg_read(FILE *fd)
 {
-    FILE *fd;
     char buf[4096];
     char *head, *curr, *tail, *key, *val;
     unsigned int retval, linenum = 0;
     keyval_t *entry;
-
-    if (*filename == '-') {
-        fd = stdin;
-    }
-    else {
-        fd = fopen(filename, "r");
-        if (fd == NULL) {
-            fprintf(stderr, "Error opening file: %s\n", strerror(errno));
-            return -1;
-        }
-    }
 
     head = curr = buf;
     while (!feof(fd)) {

@@ -31,6 +31,8 @@
 #include <cassert>
 #include <fcntl.h>
 #include <unistd.h>
+#include <limits.h>
+#include <libgen.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -50,6 +52,7 @@
 #include "hmesgs.h"
 #include "hsockutil.h"
 #include "hutil.h"
+#include "defaults.h"
 
 using namespace std;
 
@@ -96,7 +99,8 @@ int next_id = 1;
  * The Tcl Interpreter
  */
 Tcl_Interp *tcl_inter;
-char harmonyTclFile[256];
+char harmonyTclFile[FILENAME_MAX];
+char harmonyBinDir[FILENAME_MAX];
 
 /*
  * the map containing client AppName and Socket
@@ -184,8 +188,8 @@ int check_parameters()
     search_algo = cfg_get("search_algorithm");
     if (search_algo == NULL)
     {
-        printf("[AH]: Error: Search algorithm unspecified.\n");
-        return -1;
+        printf("Using default search algorithm: %s\n", DEFAULT_SEARCH_ALGO);
+        search_algo = DEFAULT_SEARCH_ALGO;
     }
 
     if (strcasecmp(search_algo, "pro") == 0)
@@ -193,22 +197,27 @@ int check_parameters()
         printf("[AH]: Using the PRO search algorithm.  Please make sure\n");
         printf("[AH]:   the parameters in ../tcl/pro_init_<appname>.tcl are"
                " defined properly.\n");
-        sprintf(harmonyTclFile, "hconfig.pro.tcl");
+
+        snprintf(harmonyTclFile, sizeof(harmonyTclFile),
+                 "%s/hconfig.pro.tcl", harmonyBinDir);
     }
     else if (strcasecmp(search_algo, "nelder mead") == 0)
     {
         printf("[AH]: Using the Nelder Mead Simplex search algorithm.\n");
-        sprintf(harmonyTclFile, "hconfig.nm.tcl");
+        snprintf(harmonyTclFile, sizeof(harmonyTclFile),
+                 "%s/hconfig.nm.tcl", harmonyBinDir);
     }
     else if (strcasecmp(search_algo, "random") == 0)
     {
         printf("[AH]: Using random search algorithm.\n");
-        sprintf(harmonyTclFile,"hconfig.random.tcl");
+        snprintf(harmonyTclFile, sizeof(harmonyTclFile),
+                 "%s/hconfig.random.tcl", harmonyBinDir);
     }
     else if (strcasecmp(search_algo, "brute force") == 0)
     {
         printf("[AH]: Using brute force search algorithm.\n");
-        sprintf(harmonyTclFile, "hconfig.brute.tcl");
+        snprintf(harmonyTclFile, sizeof(harmonyTclFile),
+                 "%s/hconfig.brute.tcl", harmonyBinDir);
     }
     else
     {
@@ -242,26 +251,25 @@ void operation_failed(int sockfd, hmesg_t *mesg)
  ***/
 int server_startup()
 {
-    /* used address */
     struct sockaddr_in sin;
     int err, optval;
+    const char *cfgval;
 
     /* try to get the port info from the environment */
-    if (getenv("HARMONY_S_PORT") != NULL)
-    {
+    if (getenv("HARMONY_S_PORT") != NULL) {
         listen_port = atoi(getenv("HARMONY_S_PORT"));
     }
-    else
-    {
-        /* if the env var is not defined, use the default */
-        listen_port = atoi(cfg_get("harmony_port"));
+    else if ( (cfgval = cfg_get("harmony_port"))) {
+        listen_port = atoi(cfgval);
+    }
+    else {
+        printf("Using default TCP port: %d\n", DEFAULT_PORT);
+        listen_port = DEFAULT_PORT;
     }
 
     /* create a listening socket */
     if ( (listen_socket = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-    {
         h_exit("Error initializing socket!");
-    }
 
     /* set socket options. We try to make the port reusable and have it
        close as fast as possible without waiting in unnecessary wait states
@@ -285,21 +293,16 @@ int server_startup()
 
     /* Bind the socket to the desired port. */
     if (bind(listen_socket, (struct sockaddr *)&sin, sizeof(sin)) < 0)
-    {
         h_exit("Error binding socket! Please check if there are previous\n"
                "instances of hserver still running.");
-    }
 
     /* Now we have to initialize the Tcl interpreter */
     tcl_inter = Tcl_CreateInterp();
 
     if ( (err = Tcl_Init(tcl_inter)) != TCL_OK)
-    {
         h_exit("Tcl Init failed!");
-    }
 
-    if ( (err = Tcl_EvalFile(tcl_inter, harmonyTclFile)) != TCL_OK)
-    {
+    if ( (err = Tcl_EvalFile(tcl_inter, harmonyTclFile)) != TCL_OK) {
         printf("[AH]: Tcl Error %d; %s [%s]\n", err,
                tcl_inter->result, harmonyTclFile);
         h_exit("Tcl Interpreter Error ");
@@ -317,7 +320,7 @@ int server_startup()
         return -1;
 
     /* Initialize the HTTP user interface. */
-    if (http_init() < 0)
+    if (http_init(harmonyBinDir) < 0)
         return -1;
 
     return 0;
@@ -1124,37 +1127,31 @@ int codegen_init()
     FILE *fds;
 
     cs_type = cfg_get("codegen");
-    if (cs_type == NULL || strcasecmp(cs_type, "none") == 0)
-    {
+    if (cs_type == NULL || strcasecmp(cs_type, "none") == 0) {
         /* No code server requested. */
         return set_tcl_var("code_generation_params(enabled)", "0");
     }
 
-    if (strcasecmp(cs_type, "standard") == 0)
-    {
+    if (strcasecmp(cs_type, "standard") == 0) {
         /* TCP-based code server requested. */
         assert(0 && "TCP-based code server not yet tested/implemented.");
     }
-    else if (strcasecmp(cs_type, "standalone") == 0)
-    {
+    else if (strcasecmp(cs_type, "standalone") == 0) {
         cs_user = cfg_get("codegen_user");
         cs_host = cfg_get("codegen_host");
         cs_port = cfg_get("codegen_port");
         cs_path = cfg_get("codegen_path");
         flag_dir = cfg_get("codegen_flag_dir");
 
-        if (cs_host == NULL)
-        {
+        if (cs_host == NULL) {
             fprintf(stderr, "Config error: codegen_host unspecified.\n");
             return -1;
         }
-        if (cs_path == NULL)
-        {
+        if (cs_path == NULL) {
             fprintf(stderr, "Config error: codegen_path unspecified.\n");
             return -1;
         }
-        if (flag_dir == NULL)
-        {
+        if (flag_dir == NULL) {
             fprintf(stderr, "Config error: codegen_flag_dir unspecified.\n");
             return -1;
         }
@@ -1178,24 +1175,21 @@ int codegen_init()
 
         /* Temporarily create and send a file to the code server */
         fd = mkstemp(tmp_filename);
-        if (fd == -1)
-        {
+        if (fd == -1) {
             fprintf(stderr, "Error creating temporary file: %s\n",
                     strerror(errno));
             return -1;
         }
 
         fds = fdopen(fd, "w+");
-        if (fds == NULL)
-        {
+        if (fds == NULL) {
             fprintf(stderr, "Error during fdopen(): %s\n", strerror(errno));
             unlink(tmp_filename);
             close(fd);
             return -1;
         }
 
-        if (time(&session) == ((time_t)-1))
-        {
+        if (time(&session) == ((time_t)-1)) {
             fprintf(stderr, "Error during time(): %s\n", strerror(errno));
             return -1;
         }
@@ -1209,8 +1203,7 @@ int codegen_init()
 
         retval = system(buf);
         unlink(tmp_filename);
-        if (retval != 0)
-        {
+        if (retval != 0) {
             fprintf(stderr, "Error on system(\"%s\")\n", buf);
             return -1;
         }
@@ -1227,8 +1220,7 @@ int codegen_init()
 
         printf("[AH]: Connection to code server established.\n");
     }
-    else
-    {
+    else {
         fprintf(stderr, "Configuration error: invalid codegen value.\n"
                 "  Valid values are:\n"
                 "\tNone\n"
@@ -1383,18 +1375,82 @@ void main_loop()
  ***/
 int main(int argc, char **argv)
 {
-    char *config_filename = NULL;
+    FILE *fd;
+    char *tmppath;
+    char cfgpath[FILENAME_MAX];
 
-    /* Reads the global_config file and retrieves the values assigned to 
-       different variables in this file.
-     */
-    if (argc > 1)
-    {
-        config_filename = argv[1];
+    if (cfg_init() < 0) {
+        perror("Internal error in cfg_init()");
+        exit(-1);
     }
 
-    if (cfg_init(config_filename) < 0 || check_parameters() < 0)
-    {
+    /*
+     * Determine directory where this binary is located.
+     */
+    if (strchr(argv[0], '/')) {
+        strncpy(harmonyBinDir, argv[0], sizeof(harmonyBinDir));
+        dirname(harmonyBinDir);
+    }
+    else {
+        tmppath = search_path(basename(argv[0]), S_IFREG,
+                              S_IXUSR | S_IXGRP | S_IXOTH);
+        strncpy(harmonyBinDir, dirname(tmppath), sizeof(harmonyBinDir));
+    }
+    printf("Found %s binary in directory %s\n",
+           basename(argv[0]), harmonyBinDir);
+
+    /*
+     * Config file search
+     */
+    cfgpath[0] = '\0';
+    if (argc > 1) {
+        /* Option #1: Command-line parameter. */
+        strncpy(cfgpath, argv[1], sizeof(cfgpath));
+    }
+    else {
+        /* Option #2: Environment variable. */
+        tmppath = getenv("HARMONY_CONFIG");
+        if (tmppath) {
+            strncpy(cfgpath, tmppath, sizeof(cfgpath));
+
+        } else {
+            /* Option #3: Check if default filename exists. */
+            snprintf(cfgpath, sizeof(cfgpath), "%s/%s",
+                     harmonyBinDir, DEFAULT_CONFIG_FILENAME);
+            if (!file_exists(cfgpath))
+                cfgpath[0] = '\0';
+        }
+    }
+
+    /*
+     * Load config file, if found.
+     */
+    if (cfgpath[0] != '\0') {
+        if (strcmp(cfgpath, "-") == 0) {
+            printf("Reading config values from <stdin>\n");
+            fd = stdin;
+        }
+        else {
+            printf("Reading config values from %s\n", cfgpath);
+            fd = fopen(cfgpath, "r");
+            if (fd == NULL) {
+                fprintf(stderr, "Error opening %s: %s\n",
+                        cfgpath, strerror(errno));
+                return -1;
+            }
+        }
+
+        if (cfg_read(fd) < 0) {
+            fprintf(stderr, "Error parsing %s\n", cfgpath);
+            return -1;
+        }
+        fclose(fd);
+    }
+    else {
+        printf("No config file found.  Proceeding with default values.\n");
+    }
+
+    if (check_parameters() < 0) {
         printf("[AH]: Configuration error.  Exiting.\n");
         return -1;
     }

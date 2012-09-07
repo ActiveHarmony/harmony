@@ -25,12 +25,14 @@
 extern "C" {
 #endif
 
-int cfg_init(const char *filename);
+int cfg_init();
 const char *cfg_get(const char *key);
 int cfg_set(const char *key, const char *value);
 int cfg_unset(const char *key);
-void cfg_write(FILE *fd);
 int cfg_parseline(char *line, char **key, char **val);
+
+int cfg_read(FILE *fd);
+void cfg_write(FILE *fd);
 
 #ifdef __cplusplus
 }
