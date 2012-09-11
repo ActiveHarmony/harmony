@@ -12,7 +12,7 @@ LDFLAGS=-lm -ldl -lnsl -ltcl
 
 OBJS=hclient.o hsockutil.o hutil.o hmesgs.o hclientf.o
 
-all: hserver libharmony.a
+all: hserver libharmony.a tuna
 
 hserver: hserver.o hutil.o hsockutil.o hmesgs.o hglobal_config.o httpsvr.o
 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
@@ -20,6 +20,10 @@ hserver: hserver.o hutil.o hsockutil.o hmesgs.o hglobal_config.o httpsvr.o
 
 libharmony.a: $(OBJS)
 	$(AR) $(ARCREATE) $@ $^
+
+tuna: tuna.c libharmony.a
+	$(CC) $(CFLAGS) $^ $(LDFLAGS) -o $@
+	cp tuna ../bin
 
 hserver.o: hserver.cxx hserver.h hutil.h hdb.h hsockutil.h hmesgs.h
 	$(CXX) -c $(CFLAGS) $< -o $@
@@ -62,7 +66,7 @@ libcreater: y.tab.o lex.yy.c stack.o libcreater.c
 	cp libcreater ../bin
 
 clean:
-	rm -f core a.out *.o y.output libharmony.a hserver ../bin/hserver libcreater ../bin/libcreater ../bin/hconfig.tcl
+	rm -f core a.out *.o y.output libharmony.a hserver ../bin/hserver tuna ../bin/tuna libcreater ../bin/libcreater ../bin/hconfig.tcl
 
 distclean:
 	rm -f *~

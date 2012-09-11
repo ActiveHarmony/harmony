@@ -19,16 +19,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
 #include <ctype.h>
 #include <unistd.h>
 #include <limits.h>
 #include <assert.h>
 #include <errno.h>
+#include <libgen.h>
+#include <signal.h>
 
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 
 #include "hclient.h"
 #include "hmesgs.h"
@@ -68,10 +72,16 @@ double tv_to_double(struct timeval *);
 int argv_add(char *);
 bundle_info_t *bundle_add(hval_type, char *);
 bundle_info_t *bundle_get(char **);
+int is_exec(const char *filename);
+char *find_exec(const char *);
+pid_t launch_silent(const char *, char **);
+
+char prog_env[FILENAME_MAX];
+char prog_hsvr[FILENAME_MAX];
 
 hdesc_t *hdesc = NULL;
 method_t method = METHOD_WALL;
-unsigned int max_loop = -1;
+unsigned int max_loop = 50;
 unsigned int quiet = 0;
 unsigned int verbose = 0;
 
@@ -88,19 +98,44 @@ int argv_buflen = 0;
 int main(int argc, char **argv)
 {
     int i, hresult, line_start, count;
-    char readbuf[4096];
+    char readbuf[4096], *path, *hsvr_argv[2];
     FILE *fptr;
     double perf = 0.0;
 
     struct timeval wall_start, wall_end, wall_time;
 
-    pid_t pid, w_res;
+    pid_t pid, svr_pid = 0;
     int client_status;
     struct rusage client_usage;
 
     if (argc < 2) {
         usage(argv[0]);
         return -1;
+    }
+
+    /* Find external support executables */
+    path = find_exec("env");
+    if (path != NULL) {
+        strncpy(prog_env, path, sizeof(prog_env));
+        if (argv_add(prog_env) < 0)
+            return -1;
+    } else if (!quiet) {
+        fprintf(stderr, "*** Could not find env executable in $PATH."
+                "  Will attempt direct execution.\n");
+    }
+
+    snprintf(prog_hsvr, sizeof(prog_hsvr), "%s/hserver", dirname(argv[0]));
+    if (!is_exec(prog_hsvr)) {
+        path = find_exec("hserver");
+        if (path != NULL) {
+            strncpy(prog_hsvr, path, sizeof(prog_hsvr));
+            if (argv_add(prog_env) < 0)
+                return -1;
+        } else {
+            fprintf(stderr, "*** Could not find hserver executable in $PATH."
+                    "  Will attempt to connect to remote server.\n");
+            prog_hsvr[0] = '\0';
+        }
     }
 
     /* Initialize the Harmony descriptor */
@@ -113,14 +148,42 @@ int main(int argc, char **argv)
     /* Parse the command line arguments. */
     parseArgs(argc, argv);
 
+    /* Sanity check before we attempt to connect to the server. */
+    if (bcount < 1) {
+        fprintf(stderr, "No tunable variables defined.\n");
+        return -1;
+    }
+
+    /* Launch Harmony server if needed */
+    if (prog_hsvr[0] != '\0') {
+        hsvr_argv[0] = prog_hsvr;
+        hsvr_argv[1] = NULL;
+        svr_pid = launch_silent(hsvr_argv[0], hsvr_argv);
+        if (svr_pid < 0)
+            return -1;
+
+        /* XXX - This should be replaced with a system where the hserver
+           notifies tuna of its readiness.  Perhaps if a --slave mode was
+           added to the server. */
+        sleep(1);
+    }
+
     /* Connect to Harmony server and register ourselves as a client. */
     printf("Starting Harmony...\n");
-    if (harmony_connect(hdesc, NULL, 0) < 0) {
+    for (i = 0; i < 3; ++i) {
+        if (harmony_connect(hdesc, NULL, 0) >= 0)
+            break;
+        if (verbose)
+            fprintf(stderr, "Error connecting to harmony server."
+                    "  Re-try in %d seconds...", i+1);
+        sleep(i+1);
+    }
+    if (i == 3) {
         fprintf(stderr, "Could not connect to harmony server.\n");
         return -1;
     }
 
-    for (i = 0; max_loop < 0 || i < max_loop; ++i) {
+    for (i = 0; max_loop <= 0 || i < max_loop; ++i) {
         hresult = harmony_fetch(hdesc);
         if (hresult < 0) {
             fprintf(stderr, "Failed to fetch values from server.\n");
@@ -152,12 +215,16 @@ int main(int argc, char **argv)
         fclose(fptr);
 
         do {
-            w_res = wait4(pid, &client_status, 0, &client_usage);
-            if (w_res < 0) {
-                perror("Error on wait4()");
+            pid = wait3(&client_status, 0, &client_usage);
+            if (svr_pid && pid == svr_pid) {
+                fprintf(stderr, "Server died prematurely."
+                        "  Closing tuna session.\n");
+                exit(-1);
+            } else if (pid < 0) {
+                perror("Error on wait3()");
                 return -1;
             }
-        } while (w_res == 0);
+        } while (pid == 0);
 
         if (gettimeofday(&wall_end, NULL) != 0) {
             perror("Error on gettimeofday()");
@@ -189,6 +256,9 @@ int main(int argc, char **argv)
         fprintf(stderr, "Failed to disconnect from harmony server.\n");
         return -1;
     }
+
+    if (svr_pid && kill(svr_pid, SIGKILL) < 0)
+        fprintf(stderr, "Could not kill server process (%d).\n", svr_pid);
 
     return 0;
 }
@@ -483,13 +553,12 @@ int handle_chapel(char *prog)
     bundle_info_t *bun;
 
     FILE *fd;
-    pid_t pid;
     char *help_argv[3];
 
     help_argv[0] = prog;
     help_argv[1] = "--help";
     help_argv[2] = NULL;
-    fd = tuna_popen(prog, help_argv, &pid);
+    fd = tuna_popen(prog, help_argv, NULL);
     if (fd == NULL)
         return -1;
 
@@ -646,10 +715,11 @@ int prepare_client_argv()
     return 0;
 }
 
-FILE *tuna_popen(const char *prog, char **argv, pid_t *pid)
+FILE *tuna_popen(const char *prog, char **argv, pid_t *ret_pid)
 {
     int i, pipefd[2];
     FILE *fptr;
+    pid_t pid;
 
     if (pipe(pipefd) != 0) {
         perror("Could not create pipe");
@@ -664,21 +734,23 @@ FILE *tuna_popen(const char *prog, char **argv, pid_t *pid)
         printf("\n");
     }
 
-    *pid = fork();
-    if (*pid == 0) {
+    pid = fork();
+    if (pid == 0) {
         /* Child Case */
         close(pipefd[0]); /* Close (historically) read side of pipe. */
 
         if (dup2(pipefd[1], STDOUT_FILENO) < 0 ||
             dup2(pipefd[1], STDERR_FILENO) < 0)
         {
+            perror("Could not redirect stdout or stderr via dup2()");
             exit(-1);
         }
 
+        close(pipefd[1]);
         execv(prog, argv);
         exit(-2);
     }
-    else if (*pid < 0) {
+    else if (pid < 0) {
         perror("Error on fork()");
         return NULL;
     }
@@ -691,7 +763,49 @@ FILE *tuna_popen(const char *prog, char **argv, pid_t *pid)
         exit(-2);
     }
 
+    if (ret_pid)
+        *ret_pid = pid;
     return fptr;
+}
+
+pid_t launch_silent(const char *prog, char **argv)
+{
+    int i, fd;
+    pid_t pid;
+
+    fd = open("/dev/null", O_WRONLY);
+    if (fd < 0) {
+        perror("Error opening /dev/null");
+        return -1;
+    }
+
+    if (verbose) {
+        printf("Launching %s", prog);
+        for (i = 1; argv[i] != NULL; ++i) {
+            printf(" %s", argv[i]);
+        }
+        printf(" > /dev/null\n");
+    }
+
+    pid = fork();
+    if (pid == 0) {
+        /* Child Case */
+        if (dup2(fd, STDOUT_FILENO) < 0 ||
+            dup2(fd, STDERR_FILENO) < 0)
+        {
+            perror("Could not redirect stdout or stderr via dup2()");
+            exit(-1);
+        }
+        close(fd);
+
+        execv(prog, argv);
+        exit(-2);
+    }
+    else if (pid < 0)
+        perror("Error on fork()");
+
+    close(fd);
+    return pid;
 }
 
 double tv_to_double(struct timeval *tv)
@@ -787,4 +901,55 @@ bundle_info_t *bundle_get(char **name)
         --(*name);
 
     return retval;
+}
+
+char *find_exec(const char *filename)
+{
+    static char fullpath[FILENAME_MAX];
+    char *path, *ptr;
+
+    path = getenv("PATH");
+    if (path == NULL)
+        return NULL;
+
+    while (path != NULL) {
+        ptr = strchr(path, ':');
+        if (ptr == NULL)
+            ptr = path + strlen(path);
+
+        snprintf(fullpath, sizeof(fullpath), "%.*s/%s",
+                 (int)(ptr - path), path, filename);
+
+        if (is_exec(fullpath))
+            return fullpath;
+
+        if (*ptr == '\0')
+            path = NULL;
+        else
+            path = ptr + 1;
+    }
+    return NULL;
+}
+
+int is_exec(const char *filename)
+{
+    uid_t uid, euid;
+    gid_t gid, egid;
+    struct stat sb;
+
+    uid = getuid();
+    euid = geteuid();
+    gid = getgid();
+    egid = getegid();
+
+    return ((stat(filename, &sb) == 0) && (S_ISREG(sb.st_mode) ||
+                                           S_ISLNK(sb.st_mode)) &&
+
+            (((sb.st_mode & S_IXOTH) != 0x0) ||
+             ((sb.st_mode & S_IXGRP) != 0x0 && (sb.st_gid == gid ||
+                                                sb.st_gid == egid ||
+                                                egid == 0)) ||
+             ((sb.st_mode & S_IXUSR) != 0x0 && (sb.st_uid == uid ||
+                                                sb.st_uid == euid ||
+                                                euid == 0))));
 }
