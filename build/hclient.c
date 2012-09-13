@@ -575,7 +575,7 @@ static char *simulate_application_file(hdesc_t *hdesc)
             }
             chunk += snprintf(buf + len + chunk,
                               capacity - len - chunk,
-                              chunk_str);
+                              "%s", chunk_str);
         }
 
         if (capacity <= len + chunk) {

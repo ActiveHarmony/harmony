@@ -1,0 +1,8 @@
+A quick overview of the examples in this directory:
+
+client_api	- Harmony Client API samples in multiple languages.
+synth		- Stand-alone performance client to be used with Tuna.
+code_generation	- Harmony/CHiLL integration sample to be used with PRO.
+WIP		- Works in progress.
+
+Each directory includes a README which provides further details.

@@ -1,7 +1,7 @@
 Please read this carefully before setting up the code-generator.
 
 code_generator can be used to generate code using CHiLL. 
-CHiLL and its components can be downloaded from (www.cs.utah.edu/~chunchen)
+CHiLL and its components can be downloaded from (http://ctop.cs.utah.edu).
 
 The code_generator is designed to take advantage of the available free
 machines to do a distributed code generation.
@@ -30,13 +30,14 @@ To use the code_generator:
         codegen_slave_list
         codegen_slave_dir
 
-     Explinations and examples for these keys can be found in the sample
+     Explanations and examples for these keys can be found in the sample
      harmony.cfg provided with this distribution.
 
   2) Compile the code_generator binary via: `make all`
 
-Lets assume the code_generator is installed in <code_generator> directory.
-Assume we want to generate code for gemm (matrix multiplication):
+Let's assume the code_generator is installed in the <code_generator>
+directory.  Assume we want to generate code for gemm (matrix
+multiplication):
 
 First create a directory called "gemm" within the <code_generator> directory.
 Copy all files from <code_generator>/generic to gemm directory. Rename the 
@@ -49,16 +50,16 @@ Files that need to be changed:
     creates a chill script (named temp.script).
 
   code.properties
-    This file defines some global environment variables. The appname has
-    to match the name of the directory (in this case gemm). Other changes
-    that needs to made are documented in the file itself.
+    This file defines some global environment variables.  The appname
+    has to match the name of the directory (in this case gemm).  Other
+    changes that need to be made are documented in the file itself.
 
   required_files.dat
-    This file lists all the files are needed by CHiLL to generate code.
-    These files include SUIF intermediate files, a default file (needed
-    in case CHiLL cannot generate code for the provided transformation
-    parameters), code.properties, etc. More information can be found on
-    the generic code.properties file itself.
+    This file lists all of the files that are needed by CHiLL to
+    generate code.  These files include SUIF intermediate files, a
+    default output file (needed in case CHiLL receives an invalid
+    configuration), code.properties, etc. More information can be
+    found on the generic code.properties file itself.
 
 Files that need to be created:
 
@@ -75,17 +76,17 @@ Files that need to be created:
 
 Things to remember:
 
-  1) We assume that password-less login have been setup between the master
-     and slave code-generators (and vice-versa).  This can be done via public
-     key authentication (eg. ssh-keygen).
+  1) We assume that password-less login has been set up between the
+     master and slave code-generators (and vice-versa).  This can be
+     done via public key authentication (eg. ssh-keygen).
 
   2) We assume that CHiLL and its components are installed in $HOME.
      More specifically, we assume CHiLL is installed in $HOME/CHiLL,
-     Omega plus is installed in $HOME/omega and SUIF is installed in
+     Omega plus is installed in $HOME/omega, and SUIF is installed in
      $HOME/suifhome.
 
 To launch the code_generator:
-  % ./code_generator <codegen_path>
+	$ ./code_generator <codegen_path>
 
 Steps to run the code generator with example gemm application:
 
@@ -97,8 +98,8 @@ Steps to run the code generator with example gemm application:
     a) Create a 'gemm' directory within the 'standalone' directory.
     b) Copy all files from 'code-server/standalone/generic'
        to the 'gemm' directory you created in step 1a.
-    c) Rename chill_script.generic.sh to chill_script.gemm.sh
-    d) Following files that are needed to be changed under 'gemm'
+    c) Rename 'chill_script.generic.sh' to 'chill_script.gemm.sh'.
+    d) The following files need to be changed under 'gemm':
 
       i) generate_temp_script.sh (Used to specify the tunable parameters)
      ii) code.properties (Used to specify the PATH variables and appname)
@@ -108,9 +109,8 @@ Steps to run the code generator with example gemm application:
      vi) gemm.sp2
     vii) generator_hosts_gemm
 
-  2) Launching the code generator
-
-    # ./code_generator <codegen_path>
+  2) Launching the code generator:
+	$ ./code_generator <codegen_path>
 
      For example, "./code_generator $HOME/codegen/flags"
 
@@ -134,9 +134,10 @@ Additional Details
         codegen_slave_list=armour 6, maxfli 3
         codegen_slave_dir=/tmp/codegen
 
-    2) In this example, we use to generate code for matrix multiplication,
-       the directory "gemm" has to be created within "standalone" directory.
-       Now copy all the files from "generic" directory to "gemm" directory.
+    2) In this matrix multiplication code generation example, the
+       directory "gemm" has to be created within "standalone"
+       directory.  Now copy all the files from "generic" directory to
+       "gemm" directory.
 
     3) Rename "chill_script.generic.sh" to "chill_script.gemm.sh"
 
@@ -161,25 +162,26 @@ Additional Details
         make clean
         make
 
-Important point to note:  There is no relation as to which one to run first 
-(either code_generator or hserver).  They both have to be ready and running
-before the application starts.
-
     6) To run the code generator, execute it inside the "standalone" directory.
 
         ./code_generator /home/username/scratch/confs
 
-    7) Open a new terminal and ssh into "brood00".  From now on, we show
-       how to run PRO example.  Under "pro_init_generic.tcl" make sure the
-       "space dimension" is set to "5" and "npoints" is set to atleast "7".
+       (* Important point to note: It does not matter whether
+          "code_generator" or "hserver" is launched first.  Both know
+          to wait for the other, if configured correctly.  When both
+          servers are ready, the client application may be launched.)
 
-    8) After that do the following for the changes to become effective 
+    7) Open a new terminal and ssh into "brood00".  In the file
+       "tcl/pro/pro_init_generic.tcl" on the server, make sure "space
+       dimension" is set to 5 and "npoints" is set to at least 6.
+
+    8) After that, do the following for the changes to become effective:
 
         cd build
         make clean
         make
 
-    9) For running the "hserver" with PRO example do the following
+    9) For running the "hserver" with PRO example, do the following:
 
         cd bin
         gdb ./hserver
@@ -195,17 +197,17 @@ before the application starts.
         HARMONY_S_HOST=brood00
         HARMONY_S_PORT=1977
 
-   12) Do the following
+   12) Do the following:
 
         qsub -IV -lnodes=bug21+bug22+bug23+bug24+.....+bug29
 
-   13) After the above step, type "lamboot"
+   13) After the above step, type "lamboot".
 
-   14) Then do the following at the bash prompt
+   14) Then do the following at the bash prompt:
 
         cd example/parallel/pro_example
 
-   15) For running the parallel examples, do the following
+   15) For running the parallel examples, do the following:
 
         mpirun -np 8 ./pro_example &
 

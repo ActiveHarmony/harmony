@@ -17,36 +17,30 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/* This example illustrates the use of Active harmony to search a parameter
- * space for a parameterized compiler transformation framework. 
- * The underlying optimization algorithm is modified version of Nelder-Mead
- * Simplex algorithm. A more effective search algorithm (Parallel Rank
- * Ordering) is in the development phase. Please refer to our SC'05 paper 
- * (can be accessed through Active Harmony's Webpage)
- * to get preliminary idea on this algorithm.
- */
-
 #include <math.h>
 #include <stdio.h>
 #include "hclient.h"
 
 /* For illustration purposes, the performance here is defined by following
  * simple definition:
- *   perf = (p1-9)*(p1-9) + (p2-8)*(p2-8) + 
- *          (p3-7)*(p3-7) + (p4-6)*(p4-6) + 
- *          (p4-5)*(p4-5) + (p5-4)*(p5-4) +
- *          (p6-3)*(p6-3) + 200
- * All parameters are in [1-100] range
+ *   perf = (p1 - 15)^2 + (p2 - 30)^2 + (p3 - 45)^2 +
+ *          (p4 - 60)^2 + (p5 - 75)^2 + (p6 - 90)^2
+ *
+ * So the theoretical minimum can be found at point:
+ *      (15, 30, 45, 60, 75, 90)
+ *
+ * And a reasonable search range for all parameters is [1-100].
  * 
  */
 int application(int p1, int p2, int p3, int p4, int p5, int p6) 
 {
-    int perf = 
-        (p1-45)*(p1-9) + (p2-65)*(p2-8) + 
-        (p3-85)*(p3-7) - (p4-75)*(p4-6) +
-        (p5-55)*(p5-4) -
-        (p6-45)*(p6-3) - 200;
-    
+    int perf =
+        (p1-15) * (p1-15) +
+        (p2-30) * (p2-30) +
+        (p3-45) * (p3-45) +
+        (p4-60) * (p4-60) +
+        (p5-75) * (p5-75) +
+        (p6-90) * (p6-90);
     return perf;
 }
 

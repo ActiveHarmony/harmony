@@ -36,7 +36,7 @@
  *   perf = (p1 - 15)^2 + (p2 - 30)^2 + (p3 - 45)^2 +
  *          (p4 - 60)^2 + (p5 - 75)^2 + (p6 - 90)^2
  *
- * So the theoretical minimum should can be found at point:
+ * So the theoretical minimum can be found at point:
  *      (15, 30, 45, 60, 75, 90)
  *
  * And a reasonable search range for all parameters is [1-100].
