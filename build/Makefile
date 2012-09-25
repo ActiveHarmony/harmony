@@ -8,22 +8,18 @@ ARCREATE= rc
 INCLUDE=
 CFLAGS=-Wall -g -pg $(INCLUDE)
 CXXFLAGS=$(CFLAGS)
-LDFLAGS=-lm -ldl -lnsl -ltcl
+LDFLAGS=-lm -ldl -lnsl -ltcl -lxml2
 
-OBJS=hclient.o hsockutil.o hutil.o hmesgs.o hclientf.o
+OBJS=hclient.o hsockutil.o hutil.o hmesgs.o hclientf.o record.o
 
-all: hserver libharmony.a tuna
+all: hserver libharmony.a
 
-hserver: hserver.o hutil.o hsockutil.o hmesgs.o hglobal_config.o httpsvr.o
+hserver: hserver.o hutil.o hsockutil.o hmesgs.o hglobal_config.o httpsvr.o record.o
 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
 	cp hserver ../bin
 
 libharmony.a: $(OBJS)
 	$(AR) $(ARCREATE) $@ $^
-
-tuna: tuna.c libharmony.a
-	$(CC) $(CFLAGS) $^ $(LDFLAGS) -o $@
-	cp tuna ../bin
 
 hserver.o: hserver.cxx hserver.h hutil.h hdb.h hsockutil.h hmesgs.h
 	$(CXX) -c $(CFLAGS) $< -o $@
@@ -49,6 +45,9 @@ hclient.o: hclient.c hclient.h hmesgs.h hsockutil.h hutil.h
 hclientf.o: hclientf.c hclient.h hmesgs.h hutil.h hsockutil.h
 	$(CC) -c $(CFLAGS) $< -o $@
 
+record.o: record.c record.h
+	$(CC) -c $(CFLAGS) $< -o $@
+
 y.tab.c: grammar.y
 	yacc -v -d grammar.y
 
@@ -66,7 +65,7 @@ libcreater: y.tab.o lex.yy.c stack.o libcreater.c
 	cp libcreater ../bin
 
 clean:
-	rm -f core a.out *.o y.output libharmony.a hserver ../bin/hserver tuna ../bin/tuna libcreater ../bin/libcreater ../bin/hconfig.tcl
+	rm -f core a.out *.o y.output libharmony.a hserver ../bin/hserver libcreater ../bin/libcreater ../bin/hconfig.tcl
 
 distclean:
 	rm -f *~

@@ -53,6 +53,7 @@
 #include "hsockutil.h"
 #include "hutil.h"
 #include "defaults.h"
+#include "record.h"
 
 using namespace std;
 
@@ -74,6 +75,10 @@ int codegen_init();
  *
  */
 static int debug_mode = 1;
+
+const char * data_format;
+/*Some of the information only has to be written to xml once, here is the flag*/
+static int record_once = 0;
 
 /*
  * the socket waiting for connections
@@ -110,6 +115,7 @@ map<int, char *> clientName;
 map<int, int> clientSignals;
 map<int, int> clientSocket;
 map<int, int> clientId;
+map<int, char *>clientHost;
 
 /*
  * code generation specific parameters
@@ -181,6 +187,7 @@ string history_since(unsigned int last)
 int check_parameters()
 {
     const char *search_algo;
+    const char *data_format;
 
     /* Gets the Search Algorithm and the config file 
      * that the user has selected in the hglobal_config file.
@@ -229,6 +236,10 @@ int check_parameters()
                "[AH]:\tBrute Force\n");
         return -1;
     }
+
+    /*Check the output format, possible values are None, xml*/
+    data_format = cfg_get("ouput_format");
+
     return 0;
 }
 
@@ -333,8 +344,19 @@ int server_startup()
  ***/
 void client_registration(int sockfd, hmesg_t *mesg)
 {
+    /*Get the host name from the clients*/
+    char nodeName[MAX_MSG_STRLEN];
+    char sysName[64];
+    char release[64];
+    char machine[64];
+
     if (debug_mode)
         printf("[AH]: Client registration! (%d)\n", sockfd);
+
+    sscanf(mesg->data, "%s\n%s\n%s\n%s", nodeName, sysName, release, machine);
+    
+    if (data_format == "xml")
+    	write_nodeinfo(nodeName, sysName, release, machine);
 
     int id = mesg->id;
     if (id)
@@ -601,6 +623,8 @@ void client_var_registration(int sockfd, hmesg_t *mesg)
     const char *retval = NULL;
     char tclvar[256];
     int i;
+    int err;
+    char paramInfo[512];
 
     for (i = 0; i < mesg->count; ++i) {
         if (val[i].type != HVAL_STR)
@@ -619,6 +643,19 @@ void client_var_registration(int sockfd, hmesg_t *mesg)
             return;
         }
     }
+
+    //Write the param info into METADATA tag of xml file
+    snprintf(tclvar, sizeof(tclvar), "get_param_init %s", cliName);
+    if ((err = Tcl_Eval(tcl_inter, tclvar)) != TCL_OK) {
+	fprintf(stderr, "Error %d retrieving parameter information: %s\n", err, tcl_inter->result);
+	operation_failed(sockfd, mesg);
+	return;
+    } else {
+        snprintf(paramInfo, sizeof(paramInfo), "%s", tcl_inter->result);
+        if (data_format == "xml")
+	    write_param_info(paramInfo);
+    }
+
 
     mesg->type = HMESG_CONFIRM;
     mesg->count = 0;
@@ -741,7 +778,7 @@ void client_fetch(int sockfd, hmesg_t *mesg)
 void client_report(int sockfd, hmesg_t *mesg)
 {
     char *cliName = clientName[sockfd];
-    char buf[256], curr_config[80], perf_dbl[80];
+    char buf[256], curr_config[80], perf_dbl[80], param_namelist[256];
     hval_t *val = (hval_t *)mesg->data;
     double performance = val[0].value.r;
     int err;
@@ -764,9 +801,24 @@ void client_report(int sockfd, hmesg_t *mesg)
         {
             char *endp = cliName;
             while (*endp && *endp != '_') ++endp;
-            snprintf(curr_config, sizeof(curr_config), "%.*s_%s",
-                     (int)(endp - cliName), cliName, tcl_inter->result);
+            snprintf(curr_config, sizeof(curr_config), "%s", tcl_inter->result);
         }
+
+	//get the name of the bundles
+	snprintf(buf, sizeof(buf), "get_param_name %s", cliName);	
+        if ((err = Tcl_Eval(tcl_inter, buf)) != TCL_OK)
+        {
+            fprintf(stderr, "Error %d retrieving parameter name: %s\n", err, tcl_inter->result);
+            operation_failed(sockfd, mesg);
+            return;
+        } else {
+            printf("Parameter retrieved\n");
+            snprintf(param_namelist, sizeof(param_namelist), "%s", tcl_inter->result);
+        }
+        printf("ParamList: %s, CurConfig: %s\n", param_namelist, curr_config);
+        
+	if (data_format == "xml")
+	    write_conf_perf_pair(param_namelist, curr_config, performance);
 
         global_data.insert(pair<string, string>(string(curr_config),
                                                 string(perf_dbl)));
@@ -1378,6 +1430,8 @@ int main(int argc, char **argv)
     FILE *fd;
     char *tmppath;
     char cfgpath[FILENAME_MAX];
+    if (data_format == "xml")
+        init_ref_file();
 
     if (cfg_init() < 0) {
         perror("Internal error in cfg_init()");

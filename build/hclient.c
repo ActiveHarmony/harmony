@@ -59,6 +59,9 @@
 #include <signal.h>
 #include <sys/time.h>
 
+/* For collecting metadata*/
+#include <sys/utsname.h>
+
 typedef enum harmony_state_t {
     HARMONY_STATE_UNKNOWN,
     HARMONY_STATE_INIT,
@@ -837,6 +840,10 @@ int harmony_connect(hdesc_t *hdesc, const char *host, int port)
     int i;
     hmesg_t mesg;
     char *app_desc, *codegen;
+    struct utsname uts;
+
+    if (uname(&uts) < 0)
+	perror("uname() error\n");
 
     /* A couple sanity checks before we connect to the server. */
     if (hdesc->bundle_len == 0) {
@@ -861,6 +868,9 @@ int harmony_connect(hdesc_t *hdesc, const char *host, int port)
     mesg.id = hdesc->client_id;
     mesg.timestamp = hdesc->timestamp;
     mesg.count = 0;
+
+    mesg.count = MAX_MSG_STRLEN-1;
+    snprintf(mesg.data, MAX_MSG_STRLEN, "%s\n%s\n%s\n%s",uts.nodename, uts.sysname, uts.release, uts.machine);
 
     /* send the client registration message */
     if (send_message(hdesc->socket, &mesg) != 0) {
