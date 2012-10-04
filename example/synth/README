@@ -1,0 +1,37 @@
+Introduction
+============
+This is a sample application that produces a performance value based
+on a mathematical function on six integer parameters.  The resulting
+synthetic value is converted into a real performance value in terms of
+wall time, user time, system time, or simply printing to stdout.
+
+It is meant to be used with Tuna, which can measure a client
+application based on any of the four outputs.
+
+Building
+========
+This sample application only relies on a C compiler.  It can be built
+with the following command:
+
+	$ make all
+
+Running
+=======
+This application requires six integer parameters.  An optional "mode"
+flag may also be provided to specify what resource to utilize.
+
+Parameters
+	./synth [options] <int> <int> <int> <int> <int> <int>
+
+Options
+	-w	Use wall time.
+	-u	Use user time.
+	-s	Use system time.
+	-o	Print performance to stdout.
+
+And so, an appropriate Tuna tuning session could be launched as such:
+	$ tuna -i=p1,1,100,1 -i=p2,1,100,1 -i=p3,1,100,1 \
+	       -i=p4,1,100,1 -i=p5,1,100,1 -i=p6,1,100,1 ./synth
+
+Use `tuna --help` for an explanation of Tuna's command-line
+parameters.

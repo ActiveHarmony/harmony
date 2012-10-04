@@ -30,6 +30,7 @@
 #define BUFF_SIZE 1024
 
 extern Tcl_Interp *tcl_inter;
+extern char harmonyBinDir[];
 std::string history_since(unsigned int);
 
 #endif /* __HSERVER_H__ */

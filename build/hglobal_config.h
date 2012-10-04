@@ -19,21 +19,20 @@
 #ifndef __HGLOBAL_CONFIG__
 #define __HGLOBAL_CONFIG__
 
+#include <stdio.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef struct keyval {
-    char *key;
-    char *val;
-} keyval_t;
+int cfg_init();
+const char *cfg_get(const char *key);
+int cfg_set(const char *key, const char *value);
+int cfg_unset(const char *key);
+int cfg_parseline(char *line, char **key, char **val);
 
-extern keyval_t *cfg_pair;
-extern unsigned cfg_pairlen;
-
-int cfg_init(const char *);
-char *cfg_get(const char *);
-char *cfg_getlower(const char *);
+int cfg_read(FILE *fd);
+void cfg_write(FILE *fd);
 
 #ifdef __cplusplus
 }

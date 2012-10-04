@@ -16,13 +16,24 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef __HTTPSVR_H__
-#define __HTTPSVR_H__
 
-extern unsigned int http_connection_limit;
-
-int http_init(const char *basedir);
-void http_send_error(int fd, int status, const char *message);
-int handle_http_socket(int fd);
-
+#ifdef __cplusplus
+extern "C" {
 #endif
+
+
+void init_ref_file();
+
+void write_nodeinfo(char *nodeinfo, char *sysName, char *release, char *machine);
+
+void write_appName(const char *appName);
+
+void write_param_info(char *paramInfo);
+
+void write_conf_perf_pair(const char *param_namelist, const char *config, double performance);
+
+
+#ifdef __cplusplus 
+}   
+#endif
+

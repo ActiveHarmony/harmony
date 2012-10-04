@@ -59,15 +59,16 @@ int hvar_deserialize(hval_t *, const char *);
  */
 typedef enum {
     HMESG_UNKNOWN      = 0x00,
-    HMESG_CONFIRM      = 0x01, /* Message ACK                      */
-    HMESG_FAIL         = 0x02, /* Message NACK                     */
-    HMESG_CLIENT_REG   = 0x03, /* Client registration info         */
-    HMESG_CLIENT_UNREG = 0x04, /* Client disconnect                */
-    HMESG_APP_DESCR    = 0x05, /* Initial application metadata     */
-    HMESG_VAR_DESCR    = 0x06, /* Initial bundle metadata          */
-    HMESG_QUERY        = 0x07, /* Query server for non-bundle info */
-    HMESG_FETCH        = 0x08, /* Retrieve configuration to test   */
-    HMESG_REPORT       = 0x09, /* Report configuration performance */
+    HMESG_CONFIRM      = 0x01, /* Message ACK                          */
+    HMESG_FAIL         = 0x02, /* Message NACK                         */
+    HMESG_CLIENT_REG   = 0x03, /* Client registration info             */
+    HMESG_CLIENT_UNREG = 0x04, /* Client disconnect                    */
+    HMESG_APP_DESCR    = 0x05, /* Initial application metadata         */
+    HMESG_VAR_DESCR    = 0x06, /* Initial bundle metadata              */
+    HMESG_QUERY        = 0x07, /* Query server for non-bundle info     */
+    HMESG_INFORM       = 0x08, /* Inform server of new non-bundle info */
+    HMESG_FETCH        = 0x09, /* Retrieve configuration to test       */
+    HMESG_REPORT       = 0x0a, /* Report configuration performance     */
 
     HMESG_TYPE_MAX
 } hmesg_type;

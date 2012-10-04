@@ -33,30 +33,32 @@
 
 /* For illustration purposes, the performance here is defined by following
  * simple definition:
- *   perf = (p1-9)*(p1-9) + (p2-8)*(p2-8) + 
- *          (p3-7)*(p3-7) + (p4-6)*(p4-6) + 
- *          (p4-5)*(p4-5) + (p5-4)*(p5-4) +
- *          (p6-3)*(p6-3) + 200
- * All parameters are in [1-100] range
+ *   perf = (p1 - 15)^2 + (p2 - 30)^2 + (p3 - 45)^2 +
+ *          (p4 - 60)^2 + (p5 - 75)^2 + (p6 - 90)^2
+ *
+ * So the theoretical minimum can be found at point:
+ *      (15, 30, 45, 60, 75, 90)
+ *
+ * And a reasonable search range for all parameters is [1-100].
  * 
  */
 int application(int p1, int p2, int p3, int p4, int p5, int p6) 
 {
     int perf =
-        (p1-150)*(p1-150) +
-        (p2-300)*(p2-300) +
-        (p3-450)*(p3-450) +
-        (p4-600)*(p4-600) +
-        (p5-750)*(p5-750) +
-        (p6-900)*(p6-900) + 2000;
-    printf("App got: %d %d %d %d %d %d = %d\n",
+        (p1-15) * (p1-15) +
+        (p2-30) * (p2-30) +
+        (p3-45) * (p3-45) +
+        (p4-60) * (p4-60) +
+        (p5-75) * (p5-75) +
+        (p6-90) * (p6-90);
+    printf("App got: (%d %d %d %d %d %d) = %d",
            p1, p2 ,p3 ,p4, p5, p6, perf);
     return perf;
 }
 
 int main(int argc, char **argv)
 {
-    long i;
+    long i, stall;
     char method;
     double perf;
 
@@ -72,10 +74,34 @@ int main(int argc, char **argv)
                        atoi(argv[i+3]), atoi(argv[i+4]), atoi(argv[i+5]));
 
     switch (method) {
-    case 'w': usleep(perf); break;
-    case 'u': for (i=0; i < perf*250; ++i) argc *= argc * argc; break;
-    case 's': for (i=0; i < perf/2; ++i) close(open(argv[0], O_RDONLY)); break;
-    case 'o': printf("%lf", perf/1000000); break;
+    case 'w':
+        /* Wall time */
+        stall = (perf * 100) + 50000;
+        printf(" ==> usleep(%ld)\n", stall);
+        usleep(stall);
+        break;
+
+    case 'u':
+        /* User time */
+        stall = (perf * perf);
+        printf(" ==> perform %ld flops\n", stall * 2);
+        for (i = 0; i < stall; ++i)
+            perf = perf * (1/perf);
+        break;
+
+    case 's':
+        /* System time */
+        stall = perf * 32;
+        printf(" ==> perform %ld syscalls\n", stall * 2);
+        for (i = 0; i < stall; ++i)
+            close(open("/dev/null", O_RDONLY));
+        break;
+
+    case 'o':
+        /* Output method */
+        usleep(200000);
+        printf("\n%lf\n", perf);
+        break;
     }
     return 0;
 }

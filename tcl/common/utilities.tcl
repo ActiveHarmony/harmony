@@ -127,9 +127,31 @@ proc get_test_configuration { appName } {
     upvar #0 ${appName}_bundles buns
     foreach bun $buns {
         upvar #0 ${appName}_bundle_${bun}(value) v
-        append out_str $v "_"
+        append out_str $v " "
     }
     set out_str [string range $out_str 0 [expr [string length $out_str] -2]]
+    append $out_str "\0"
+    return $out_str
+}
+
+proc get_param_name { appName } {
+    set out_str ""
+    upvar #0 ${appName}_bundles buns
+    foreach bun $buns {
+	append out_str $bun " "
+    }
+    return $out_str
+}
+
+proc get_param_init {appName} {
+    set out_str ""
+    upvar #0 ${appName}_bundles buns
+    foreach bun $buns {
+	upvar #0 ${appName}_bundle_${bun}(max) max
+	upvar #0 ${appName}_bundle_${bun}(min) min
+	upvar #0 ${appName}_bundle_${bun}(step) step
+	append out_str $bun " " $min " " $max " " $step " "
+    }
     append $out_str "\0"
     return $out_str
 }

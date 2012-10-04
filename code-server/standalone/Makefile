@@ -1,10 +1,10 @@
-TO_ROOT = ../..
+TO_BASE = ../..
 
-VPATH=$(TO_ROOT)/build
+VPATH=$(TO_BASE)/build
 
 OPTIMIZE = -O3
 LIBS_LINUX = -lm -ldl -lnsl -ltcl8.4
-INCLUDE_LINUX = -I$(TO_ROOT)/build
+INCLUDE_LINUX = -I$(TO_BASE)/build
 GCC_LINUX = g++ -g -DLinux -DLINUX -Dlinux $(OPTIMIZE) $(INCLUDE_LINUX)
 
 GCC_SOLARIS = g++ -g -DSOLARIS
@@ -26,8 +26,8 @@ all: code_generator parse_host_file
 Tokenizer.o:
 	$(GCC) -c Tokenizer.cpp
 
-$(TO_ROOT)/build/hglobal_config.o: hglobal_config.c hglobal_config.h
-	$(MAKE) -C $(TO_ROOT)/build hglobal_config.o
+$(TO_BASE)/build/hglobal_config.o: hglobal_config.c hglobal_config.h
+	$(MAKE) -C $(TO_BASE)/build hglobal_config.o
 
 code_generator.o: code_generator.c code_generator.h
 	$(GCC) -c $< -o $@

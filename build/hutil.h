@@ -20,6 +20,9 @@
 #ifndef __HUTIL_H__
 #define __HUTIL_H__
 
+#include <sys/types.h>
+#include <sys/stat.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -30,6 +33,7 @@ extern "C" {
  *
  ***/
 void h_exit(const char *errmesg);
+char *search_path(const char *filename, mode_t and_bits, mode_t or_bits);
 
 #ifdef __cplusplus
 }

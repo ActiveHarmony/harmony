@@ -21,7 +21,10 @@
 
 #include <errno.h>
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <limits.h>
 
 /***
  *
@@ -32,4 +35,37 @@ void h_exit(const char *errmesg)
 {
     perror(errmesg);
     exit(1);
+}
+
+char *search_path(const char *filename, mode_t and_bits, mode_t or_bits)
+{
+    static char fullpath[FILENAME_MAX];
+    struct stat sb;
+    char *path, *pend;
+
+    path = getenv("PATH");
+    if (path == NULL)
+        return NULL;
+
+    while (path != NULL) {
+        pend = strchr(path, ':');
+        if (pend == NULL)
+            pend = path + strlen(path);
+
+        snprintf(fullpath, sizeof(fullpath), "%.*s/%s",
+                 (int)(pend - path), path, filename);
+
+        if (stat(fullpath, &sb) == 0)
+            if ((sb.st_mode & and_bits) == and_bits &&
+                (sb.st_mode & or_bits) != 0)
+            {
+                return fullpath;
+            }
+
+        if (*pend == '\0')
+            path = NULL;
+        else
+            path = pend + 1;
+    }
+    return NULL;
 }

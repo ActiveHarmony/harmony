@@ -31,6 +31,8 @@
 #include <cassert>
 #include <fcntl.h>
 #include <unistd.h>
+#include <limits.h>
+#include <libgen.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -50,6 +52,8 @@
 #include "hmesgs.h"
 #include "hsockutil.h"
 #include "hutil.h"
+#include "defaults.h"
+#include "record.h"
 
 using namespace std;
 
@@ -71,6 +75,10 @@ int codegen_init();
  *
  */
 static int debug_mode = 1;
+
+const char * data_format;
+/*Some of the information only has to be written to xml once, here is the flag*/
+static int record_once = 0;
 
 /*
  * the socket waiting for connections
@@ -96,7 +104,8 @@ int next_id = 1;
  * The Tcl Interpreter
  */
 Tcl_Interp *tcl_inter;
-char harmonyTclFile[256];
+char harmonyTclFile[FILENAME_MAX];
+char harmonyBinDir[FILENAME_MAX];
 
 /*
  * the map containing client AppName and Socket
@@ -106,6 +115,7 @@ map<int, char *> clientName;
 map<int, int> clientSignals;
 map<int, int> clientSocket;
 map<int, int> clientId;
+map<int, char *>clientHost;
 
 /*
  * code generation specific parameters
@@ -122,7 +132,7 @@ vector<string> coord_history;
 char new_code_path[256];
 
 /* Code-generation completion flag */
-char *flag_dir;
+const char *flag_dir;
 
 /*
  * Other global variables
@@ -176,39 +186,45 @@ string history_since(unsigned int last)
  ***/
 int check_parameters()
 {
-    char *search_algo;
+    const char *search_algo;
+    const char *data_format;
 
     /* Gets the Search Algorithm and the config file 
      * that the user has selected in the hglobal_config file.
      */
-    search_algo = cfg_getlower("search_algorithm");
+    search_algo = cfg_get("search_algorithm");
     if (search_algo == NULL)
     {
-        printf("[AH]: Error: Search algorithm unspecified.\n");
-        return -1;
+        printf("Using default search algorithm: %s\n", DEFAULT_SEARCH_ALGO);
+        search_algo = DEFAULT_SEARCH_ALGO;
     }
 
-    if (strcmp(search_algo, "pro") == 0)
+    if (strcasecmp(search_algo, "pro") == 0)
     {
         printf("[AH]: Using the PRO search algorithm.  Please make sure\n");
         printf("[AH]:   the parameters in ../tcl/pro_init_<appname>.tcl are"
                " defined properly.\n");
-        sprintf(harmonyTclFile, "hconfig.pro.tcl");
+
+        snprintf(harmonyTclFile, sizeof(harmonyTclFile),
+                 "%s/hconfig.pro.tcl", harmonyBinDir);
     }
-    else if (strcmp(search_algo, "nelder mead") == 0)
+    else if (strcasecmp(search_algo, "nelder mead") == 0)
     {
         printf("[AH]: Using the Nelder Mead Simplex search algorithm.\n");
-        sprintf(harmonyTclFile, "hconfig.nm.tcl");
+        snprintf(harmonyTclFile, sizeof(harmonyTclFile),
+                 "%s/hconfig.nm.tcl", harmonyBinDir);
     }
-    else if (strcmp(search_algo, "random") == 0)
+    else if (strcasecmp(search_algo, "random") == 0)
     {
         printf("[AH]: Using random search algorithm.\n");
-        sprintf(harmonyTclFile,"hconfig.random.tcl");
+        snprintf(harmonyTclFile, sizeof(harmonyTclFile),
+                 "%s/hconfig.random.tcl", harmonyBinDir);
     }
-    else if (strcmp(search_algo, "brute force") == 0)
+    else if (strcasecmp(search_algo, "brute force") == 0)
     {
         printf("[AH]: Using brute force search algorithm.\n");
-        sprintf(harmonyTclFile, "hconfig.brute.tcl");
+        snprintf(harmonyTclFile, sizeof(harmonyTclFile),
+                 "%s/hconfig.brute.tcl", harmonyBinDir);
     }
     else
     {
@@ -220,6 +236,10 @@ int check_parameters()
                "[AH]:\tBrute Force\n");
         return -1;
     }
+
+    /*Check the output format, possible values are None, xml*/
+    data_format = cfg_get("ouput_format");
+
     return 0;
 }
 
@@ -242,26 +262,25 @@ void operation_failed(int sockfd, hmesg_t *mesg)
  ***/
 int server_startup()
 {
-    /* used address */
     struct sockaddr_in sin;
     int err, optval;
+    const char *cfgval;
 
     /* try to get the port info from the environment */
-    if (getenv("HARMONY_S_PORT") != NULL)
-    {
+    if (getenv("HARMONY_S_PORT") != NULL) {
         listen_port = atoi(getenv("HARMONY_S_PORT"));
     }
-    else
-    {
-        /* if the env var is not defined, use the default */
-        listen_port = atoi(cfg_get("harmony_port"));
+    else if ( (cfgval = cfg_get("harmony_port"))) {
+        listen_port = atoi(cfgval);
+    }
+    else {
+        printf("Using default TCP port: %d\n", DEFAULT_PORT);
+        listen_port = DEFAULT_PORT;
     }
 
     /* create a listening socket */
     if ( (listen_socket = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-    {
         h_exit("Error initializing socket!");
-    }
 
     /* set socket options. We try to make the port reusable and have it
        close as fast as possible without waiting in unnecessary wait states
@@ -285,21 +304,16 @@ int server_startup()
 
     /* Bind the socket to the desired port. */
     if (bind(listen_socket, (struct sockaddr *)&sin, sizeof(sin)) < 0)
-    {
         h_exit("Error binding socket! Please check if there are previous\n"
                "instances of hserver still running.");
-    }
 
     /* Now we have to initialize the Tcl interpreter */
     tcl_inter = Tcl_CreateInterp();
 
     if ( (err = Tcl_Init(tcl_inter)) != TCL_OK)
-    {
         h_exit("Tcl Init failed!");
-    }
 
-    if ( (err = Tcl_EvalFile(tcl_inter, harmonyTclFile)) != TCL_OK)
-    {
+    if ( (err = Tcl_EvalFile(tcl_inter, harmonyTclFile)) != TCL_OK) {
         printf("[AH]: Tcl Error %d; %s [%s]\n", err,
                tcl_inter->result, harmonyTclFile);
         h_exit("Tcl Interpreter Error ");
@@ -317,7 +331,7 @@ int server_startup()
         return -1;
 
     /* Initialize the HTTP user interface. */
-    if (http_init() < 0)
+    if (http_init(harmonyBinDir) < 0)
         return -1;
 
     return 0;
@@ -330,8 +344,19 @@ int server_startup()
  ***/
 void client_registration(int sockfd, hmesg_t *mesg)
 {
+    /*Get the host name from the clients*/
+    char nodeName[MAX_MSG_STRLEN];
+    char sysName[64];
+    char release[64];
+    char machine[64];
+
     if (debug_mode)
         printf("[AH]: Client registration! (%d)\n", sockfd);
+
+    sscanf(mesg->data, "%s\n%s\n%s\n%s", nodeName, sysName, release, machine);
+    
+    if (data_format == "xml")
+    	write_nodeinfo(nodeName, sysName, release, machine);
 
     int id = mesg->id;
     if (id)
@@ -598,6 +623,8 @@ void client_var_registration(int sockfd, hmesg_t *mesg)
     const char *retval = NULL;
     char tclvar[256];
     int i;
+    int err;
+    char paramInfo[512];
 
     for (i = 0; i < mesg->count; ++i) {
         if (val[i].type != HVAL_STR)
@@ -616,6 +643,19 @@ void client_var_registration(int sockfd, hmesg_t *mesg)
             return;
         }
     }
+
+    //Write the param info into METADATA tag of xml file
+    snprintf(tclvar, sizeof(tclvar), "get_param_init %s", cliName);
+    if ((err = Tcl_Eval(tcl_inter, tclvar)) != TCL_OK) {
+	fprintf(stderr, "Error %d retrieving parameter information: %s\n", err, tcl_inter->result);
+	operation_failed(sockfd, mesg);
+	return;
+    } else {
+        snprintf(paramInfo, sizeof(paramInfo), "%s", tcl_inter->result);
+        if (data_format == "xml")
+	    write_param_info(paramInfo);
+    }
+
 
     mesg->type = HMESG_CONFIRM;
     mesg->count = 0;
@@ -738,7 +778,7 @@ void client_fetch(int sockfd, hmesg_t *mesg)
 void client_report(int sockfd, hmesg_t *mesg)
 {
     char *cliName = clientName[sockfd];
-    char buf[256], curr_config[80], perf_dbl[80];
+    char buf[256], curr_config[80], perf_dbl[80], param_namelist[256];
     hval_t *val = (hval_t *)mesg->data;
     double performance = val[0].value.r;
     int err;
@@ -761,9 +801,24 @@ void client_report(int sockfd, hmesg_t *mesg)
         {
             char *endp = cliName;
             while (*endp && *endp != '_') ++endp;
-            snprintf(curr_config, sizeof(curr_config), "%.*s_%s",
-                     (int)(endp - cliName), cliName, tcl_inter->result);
+            snprintf(curr_config, sizeof(curr_config), "%s", tcl_inter->result);
         }
+
+	//get the name of the bundles
+	snprintf(buf, sizeof(buf), "get_param_name %s", cliName);	
+        if ((err = Tcl_Eval(tcl_inter, buf)) != TCL_OK)
+        {
+            fprintf(stderr, "Error %d retrieving parameter name: %s\n", err, tcl_inter->result);
+            operation_failed(sockfd, mesg);
+            return;
+        } else {
+            printf("Parameter retrieved\n");
+            snprintf(param_namelist, sizeof(param_namelist), "%s", tcl_inter->result);
+        }
+        printf("ParamList: %s, CurConfig: %s\n", param_namelist, curr_config);
+        
+	if (data_format == "xml")
+	    write_conf_perf_pair(param_namelist, curr_config, performance);
 
         global_data.insert(pair<string, string>(string(curr_config),
                                                 string(perf_dbl)));
@@ -941,6 +996,62 @@ void client_query(int sockfd, hmesg_t *mesg)
     send_message(sockfd, mesg);
 }
 
+/******
+ * Respond to client inform requests.
+ *
+ * This client handler treats hmesg_t.id in a non-standard way to signal
+ * atomic operation.  If incoming messages have hmesg_t.id set to 1, atomic
+ * semantics are requested.  If outgoing messages have hmesg_t.id set to 1,
+ * the write was successful.
+ ******/
+void client_inform(int sockfd, hmesg_t *mesg)
+{
+    char *parse_key, *parse_val;
+    const char *val;
+
+    /* Check to see if unsetting is requested. */
+    if (*mesg->data == '=') {
+        parse_key = mesg->data + 1;
+        if (cfg_unset(parse_key) != 0) {
+            mesg->type = HMESG_FAIL;
+            val = "Internal hash error";
+        }
+        else {
+            mesg->type = HMESG_CONFIRM;
+            val = parse_key;
+        }
+
+    /* Parse incoming string. */
+    } else if (cfg_parseline(mesg->data, &parse_key, &parse_val) != 0) {
+        mesg->type = HMESG_FAIL;
+        val = parse_key;
+
+    /* Operate atomically if mesg->id == 1 */
+    } else if (mesg->id == 1 && (val = cfg_get(parse_key)) != NULL) {
+        mesg->id = 0;
+        mesg->type = HMESG_CONFIRM;
+
+    /* Otherwise, set the config variable */
+    } else if (cfg_set(parse_key, parse_val) != 0) {
+        mesg->type = HMESG_FAIL;
+        val = "Internal hash error";
+
+    } else {
+        mesg->id = 1;
+        mesg->type = HMESG_CONFIRM;
+        val = parse_val;
+    }
+
+    mesg->count = strlen(val);
+    if (mesg->count >= MAX_MSG_STRLEN) {
+        fprintf(stderr, "* Warning: Truncating config variable.\n");
+        mesg->count = MAX_MSG_STRLEN - 1;
+    }
+    strncpy(mesg->data, val, mesg->count);
+    mesg->data[mesg->count] = '\0';
+    send_message(sockfd, mesg);
+}
+
 int process_message_from(int sockfd)
 {
     hmesg_t mesg;
@@ -974,6 +1085,9 @@ int process_message_from(int sockfd)
         break;
     case HMESG_QUERY:
         client_query(sockfd, &mesg);
+        break;
+    case HMESG_INFORM:
+        client_inform(sockfd, &mesg);
         break;
     default:
         printf("[AH]: Received invalid message type\n");
@@ -1064,38 +1178,32 @@ int codegen_init()
     time_t session;
     FILE *fds;
 
-    cs_type = cfg_getlower("codegen");
-    if (cs_type == NULL || strcmp(cs_type, "none") == 0)
-    {
+    cs_type = cfg_get("codegen");
+    if (cs_type == NULL || strcasecmp(cs_type, "none") == 0) {
         /* No code server requested. */
         return set_tcl_var("code_generation_params(enabled)", "0");
     }
 
-    if (strcmp(cs_type, "standard") == 0)
-    {
+    if (strcasecmp(cs_type, "standard") == 0) {
         /* TCP-based code server requested. */
         assert(0 && "TCP-based code server not yet tested/implemented.");
     }
-    else if (strcmp(cs_type, "standalone") == 0)
-    {
+    else if (strcasecmp(cs_type, "standalone") == 0) {
         cs_user = cfg_get("codegen_user");
         cs_host = cfg_get("codegen_host");
         cs_port = cfg_get("codegen_port");
         cs_path = cfg_get("codegen_path");
         flag_dir = cfg_get("codegen_flag_dir");
 
-        if (cs_host == NULL)
-        {
+        if (cs_host == NULL) {
             fprintf(stderr, "Config error: codegen_host unspecified.\n");
             return -1;
         }
-        if (cs_path == NULL)
-        {
+        if (cs_path == NULL) {
             fprintf(stderr, "Config error: codegen_path unspecified.\n");
             return -1;
         }
-        if (flag_dir == NULL)
-        {
+        if (flag_dir == NULL) {
             fprintf(stderr, "Config error: codegen_flag_dir unspecified.\n");
             return -1;
         }
@@ -1119,33 +1227,27 @@ int codegen_init()
 
         /* Temporarily create and send a file to the code server */
         fd = mkstemp(tmp_filename);
-        if (fd == -1)
-        {
+        if (fd == -1) {
             fprintf(stderr, "Error creating temporary file: %s\n",
                     strerror(errno));
             return -1;
         }
 
         fds = fdopen(fd, "w+");
-        if (fds == NULL)
-        {
+        if (fds == NULL) {
             fprintf(stderr, "Error during fdopen(): %s\n", strerror(errno));
             unlink(tmp_filename);
             close(fd);
             return -1;
         }
 
-        if (time(&session) == ((time_t)-1))
-        {
+        if (time(&session) == ((time_t)-1)) {
             fprintf(stderr, "Error during time(): %s\n", strerror(errno));
             return -1;
         }
 
         fprintf(fds, "harmony_session=%ld\n", session);
-        for (unsigned i = 0; i < cfg_pairlen && cfg_pair[i].key != NULL; ++i)
-        {
-            fprintf(fds, "%s=%s\n", cfg_pair[i].key, cfg_pair[i].val);
-        }
+        cfg_write(fds);
         fclose(fds);
 
         snprintf(buf, sizeof(buf), "scp %s %s %s%s:%s/harmony.init",
@@ -1153,8 +1255,7 @@ int codegen_init()
 
         retval = system(buf);
         unlink(tmp_filename);
-        if (retval != 0)
-        {
+        if (retval != 0) {
             fprintf(stderr, "Error on system(\"%s\")\n", buf);
             return -1;
         }
@@ -1171,8 +1272,7 @@ int codegen_init()
 
         printf("[AH]: Connection to code server established.\n");
     }
-    else
-    {
+    else {
         fprintf(stderr, "Configuration error: invalid codegen value.\n"
                 "  Valid values are:\n"
                 "\tNone\n"
@@ -1327,18 +1427,84 @@ void main_loop()
  ***/
 int main(int argc, char **argv)
 {
-    char *config_filename = NULL;
+    FILE *fd;
+    char *tmppath;
+    char cfgpath[FILENAME_MAX];
+    if (data_format == "xml")
+        init_ref_file();
 
-    /* Reads the global_config file and retrieves the values assigned to 
-       different variables in this file.
-     */
-    if (argc > 1)
-    {
-        config_filename = argv[1];
+    if (cfg_init() < 0) {
+        perror("Internal error in cfg_init()");
+        exit(-1);
     }
 
-    if (cfg_init(config_filename) < 0 || check_parameters() < 0)
-    {
+    /*
+     * Determine directory where this binary is located.
+     */
+    if (strchr(argv[0], '/')) {
+        strncpy(harmonyBinDir, argv[0], sizeof(harmonyBinDir));
+        dirname(harmonyBinDir);
+    }
+    else {
+        tmppath = search_path(basename(argv[0]), S_IFREG,
+                              S_IXUSR | S_IXGRP | S_IXOTH);
+        strncpy(harmonyBinDir, dirname(tmppath), sizeof(harmonyBinDir));
+    }
+    printf("Found %s binary in directory %s\n",
+           basename(argv[0]), harmonyBinDir);
+
+    /*
+     * Config file search
+     */
+    cfgpath[0] = '\0';
+    if (argc > 1) {
+        /* Option #1: Command-line parameter. */
+        strncpy(cfgpath, argv[1], sizeof(cfgpath));
+    }
+    else {
+        /* Option #2: Environment variable. */
+        tmppath = getenv("HARMONY_CONFIG");
+        if (tmppath) {
+            strncpy(cfgpath, tmppath, sizeof(cfgpath));
+
+        } else {
+            /* Option #3: Check if default filename exists. */
+            snprintf(cfgpath, sizeof(cfgpath), "%s/%s",
+                     harmonyBinDir, DEFAULT_CONFIG_FILENAME);
+            if (!file_exists(cfgpath))
+                cfgpath[0] = '\0';
+        }
+    }
+
+    /*
+     * Load config file, if found.
+     */
+    if (cfgpath[0] != '\0') {
+        if (strcmp(cfgpath, "-") == 0) {
+            printf("Reading config values from <stdin>\n");
+            fd = stdin;
+        }
+        else {
+            printf("Reading config values from %s\n", cfgpath);
+            fd = fopen(cfgpath, "r");
+            if (fd == NULL) {
+                fprintf(stderr, "Error opening %s: %s\n",
+                        cfgpath, strerror(errno));
+                return -1;
+            }
+        }
+
+        if (cfg_read(fd) < 0) {
+            fprintf(stderr, "Error parsing %s\n", cfgpath);
+            return -1;
+        }
+        fclose(fd);
+    }
+    else {
+        printf("No config file found.  Proceeding with default values.\n");
+    }
+
+    if (check_parameters() < 0) {
         printf("[AH]: Configuration error.  Exiting.\n");
         return -1;
     }

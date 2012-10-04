@@ -8,13 +8,13 @@ ARCREATE= rc
 INCLUDE=
 CFLAGS=-Wall -g -pg $(INCLUDE)
 CXXFLAGS=$(CFLAGS)
-LDFLAGS=-lm -ldl -lnsl -ltcl
+LDFLAGS=-lm -ldl -lnsl -ltcl -lxml2
 
-OBJS=hclient.o hsockutil.o hutil.o hmesgs.o hclientf.o
+OBJS=hclient.o hsockutil.o hutil.o hmesgs.o hclientf.o record.o
 
 all: hserver libharmony.a
 
-hserver: hserver.o hutil.o hsockutil.o hmesgs.o hglobal_config.o httpsvr.o
+hserver: hserver.o hutil.o hsockutil.o hmesgs.o hglobal_config.o httpsvr.o record.o
 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
 	cp hserver ../bin
 
@@ -43,6 +43,9 @@ hclient.o: hclient.c hclient.h hmesgs.h hsockutil.h hutil.h
 	$(CC) -c $(CFLAGS) $< -o $@
 
 hclientf.o: hclientf.c hclient.h hmesgs.h hutil.h hsockutil.h
+	$(CC) -c $(CFLAGS) $< -o $@
+
+record.o: record.c record.h
 	$(CC) -c $(CFLAGS) $< -o $@
 
 y.tab.c: grammar.y

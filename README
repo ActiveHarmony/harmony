@@ -22,89 +22,71 @@ java/    : Java Harmony API
 * Notable Files
 * =============
 
-bin/harmony.cfg - This is the global configuration file.  All runtime
+bin/harmony.cfg - This is the global configuration file.  All run-time
                   customization such as code server type, or search
                   algorithm selection, should be made in this file.
-build/hglobal_config.c - the implementation of the Global Configuration file
-build/hglobal_config.h - function prototypes for global configuration file and
-                         other definitions
-build/hclient.c - the implementation of the API functions of Harmony
-build/hclient.h - prototypes of the API functions
-build/hdb.h - classes that are supposed to be used by the server to store
-              information about clients and nodes registered with the system.
-build/hmesgs.c - the implementation of functions that pack/unpack
-                 (serialize/deserialize) messages
-build/hmesgs.h - the definition of message classes.
-build/hserver.c - the implementation of the Harmony server
-build/hserver.h - function prototypes for harmony server and other definitions
-build/lsl_config.h - please modify this to the appropriate directory
-build/scan.l and build/grammar.y - specify the syntax for the library
-                                   specification language
-build/libcreater.c - the implementation of the library specification language
-                     precompiler
-build/template.* - template data file used by libcreater
+build/hclient.c - Implementation of the API functions of Harmony in C.
+build/hclient.h - Prototypes of the API functions.
+build/hmesgs.c - Implementation of functions that pack/unpack
+                 (serialize/deserialize) harmony messages.
+build/hmesgs.h - Prototypes of message class functions.
+build/hserver.cxx - Implementation of the Harmony server in C++.
+build/tuna - Harmony command-line tuning shell.
 
-Next, a few pointers on how to compile the code and run the example.
+* ================
+* Building Harmony
+* ================
 
-just do a:
+Here are a few pointers on how to compile the code and run the
+example.  Just do a:
 
-        $ cd build
-        $ make
+	$ cd build
+	$ make
 
-This will build the harmony server and the libcreater for you 
+This will build the Harmony server and Tuna for you.  You can verify a
+successful build with the following commands:
 
-        $ cd ../bin
-        $ ls
-        hconfig.tcl  hserver  libcreater
+	$ cd ../bin
+	$ ls
+	hconfig.tcl  hserver  tuna
 
-To extract the variable values from the global_config file you have to setup
-the path to the file as an environment variable.
+* ==================
+* Running An Example
+* ==================
 
 The HARMONY_CONFIG environment variable can be used to specify which
 configuration file to use.  For example:
 
-        $ HARMONY_CONFIG=$HOME/activeharmony/build/harmony.cfg
+	$ HARMONY_CONFIG=<harmony_dir>/bin/harmony.cfg
 
 To run the server:
-        $ ./hserver [configuration_file]
+	$ ./hserver [configuration_file]
 
 To run the example client you have to setup the environment variables:
 
 at sh:
-        $ export HARMONY_S_HOST=localhost
-        $ export HARMONY_S_PORT=1977
+	$ export HARMONY_S_HOST=localhost
+	$ export HARMONY_S_PORT=1977
 
 at csh:
-        $ setenv HARMONY_S_HOST localhost
-        $ setenv HARMONY_S_PORT 1977
+	$ setenv HARMONY_S_HOST localhost
+	$ setenv HARMONY_S_PORT 1977
 
-Of course, "localhost" is put just for demo purposes. You should set that
-variable to whatever hostname the server is running on. However, the port
-has to be 1977. Maybe in future versions the port number will be hardcoded
-in the client code.
+Naturally, these variables should point to the hostname and port where
+the Harmony Server is running.  If unspecified, the client will
+default to host "localhost" and port 1977.
 
-We provide a set of examples:
 To build and run the example client:
 
-        $ cd ../example/sequential/c++_examples/example2/
-        $ make
+	$ cd ../example/client_api
+	$ make
 
-Before running the example, make sure to check the hconfig.tcl file in bin
-directory. The hconfig.tcl file should include correct pro init file. For
-this example, you can put pro_init_generic.tcl in the load list.
-Check the pro_init_generic file to make sure that the parameters are set
-correctly. In particular, check the space_dimension and simplex_npoints
-parameters. For this example, the space dimension is 2 (x and y parameters).
+If the server is running and the environment is set up correctly,
+running an example should be immediately executable.  For instance,
+the C example may be run as follows:
 
-        set space_dimension 2
-        # simplex size
-        set simplex_npoints 8
+	$ ./example_c
 
-Since the simplex_npoints is 8, harmony expects eight clients. So to run the
-example, you can do one of the following:
-
-        $ for i in $(seq 1 1 8); do ./example& done
-OR
-        $ mpiexec -np 8 ./example
-
-Look in the example/ directory for other examples to try.
+A complex example is provided in example/code_generation.  That
+example relies on our code-server, MPI, and CHiLL.  More details on
+that example can be found in example/code_generation/README.

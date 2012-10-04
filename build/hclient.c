@@ -36,6 +36,7 @@
 #include "hclient.h"
 #include "hmesgs.h"
 #include "hsockutil.h"
+#include "defaults.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -57,6 +58,9 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/time.h>
+
+/* For collecting metadata*/
+#include <sys/utsname.h>
 
 typedef enum harmony_state_t {
     HARMONY_STATE_UNKNOWN,
@@ -352,11 +356,10 @@ static int tcp_connect(hdesc_t *hdesc, const char *host, int port)
        to set the port of connection to the machine where the harmony
        server is running */
     if (port == 0) {
-        if (getenv("HARMONY_S_PORT") == NULL) {
-            fprintf(stderr, "HARMONY_S_PORT variable not set!\n");
-            return -1;
-        }
-        port = atoi(getenv("HARMONY_S_PORT"));
+        if (getenv("HARMONY_S_PORT"))
+            port = atoi(getenv("HARMONY_S_PORT"));
+        else
+            port = DEFAULT_PORT;
     }
     address.sin_port = htons(port);
 
@@ -364,10 +367,8 @@ static int tcp_connect(hdesc_t *hdesc, const char *host, int port)
        to set the host where the harmony server resides */
     if (host == NULL) {
         host = getenv("HARMONY_S_HOST");
-        if (host == NULL) {
-            fprintf(stderr, "HARMONY_S_HOST variable not set!\n");
-            return -1;
-        }
+        if (host == NULL)
+            host = DEFAULT_HOST;
     }
 
     hostaddr = gethostbyname(host);
@@ -577,7 +578,7 @@ static char *simulate_application_file(hdesc_t *hdesc)
             }
             chunk += snprintf(buf + len + chunk,
                               capacity - len - chunk,
-                              chunk_str);
+                              "%s", chunk_str);
         }
 
         if (capacity <= len + chunk) {
@@ -817,7 +818,7 @@ hdesc_t *harmony_init(const char *name, harmony_iomethod_t iomethod)
         perror("malloc() error during harmony_init()");
         return NULL;
     }
-    memset(retval, sizeof(hdesc_t), 0);
+    memset(retval, 0, sizeof(hdesc_t));
 
     retval->name = (char *) malloc(strlen(name) + 1);
     if (!retval->name) {
@@ -839,6 +840,10 @@ int harmony_connect(hdesc_t *hdesc, const char *host, int port)
     int i;
     hmesg_t mesg;
     char *app_desc, *codegen;
+    struct utsname uts;
+
+    if (uname(&uts) < 0)
+	perror("uname() error\n");
 
     /* A couple sanity checks before we connect to the server. */
     if (hdesc->bundle_len == 0) {
@@ -863,6 +868,9 @@ int harmony_connect(hdesc_t *hdesc, const char *host, int port)
     mesg.id = hdesc->client_id;
     mesg.timestamp = hdesc->timestamp;
     mesg.count = 0;
+
+    mesg.count = MAX_MSG_STRLEN-1;
+    snprintf(mesg.data, MAX_MSG_STRLEN, "%s\n%s\n%s\n%s",uts.nodename, uts.sysname, uts.release, uts.machine);
 
     /* send the client registration message */
     if (send_message(hdesc->socket, &mesg) != 0) {
@@ -1104,6 +1112,98 @@ char *harmony_query(hdesc_t *hdesc, const char *key)
 
     /* User is responsible for freeing this memory. */
     return value;
+}
+
+int harmony_inform(hdesc_t *hdesc, const char *key, const char *val)
+{
+    hmesg_t mesg;
+
+    if (hdesc->state < HARMONY_STATE_CONNECTED) {
+        fprintf(stderr, "Cannot inform until connected.\n");
+        return -1;
+    }
+
+    /* Prepare a Harmony message. */
+    mesg.type = HMESG_INFORM;
+    mesg.id = 0; /* Non-atomic operation. */
+    mesg.timestamp = hdesc->timestamp;
+    mesg.count = strlen(key) + 1;
+    if (val != NULL)
+        mesg.count += strlen(val);
+
+    if (mesg.count >= MAX_MSG_STRLEN) {
+        fprintf(stderr, "Query too long (> %d)\n", MAX_MSG_STRLEN - 1);
+        return -1;
+    }
+    if (val != NULL)
+        snprintf(mesg.data, MAX_MSG_STRLEN, "%s=%s", key, val);
+    else
+        snprintf(mesg.data, MAX_MSG_STRLEN, "=%s", key);
+
+    if (send_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error sending request to server.\n");
+        return -1;
+    }
+
+    if (receive_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error receiving message from server.\n");
+        return -1;
+    }
+
+    if (mesg.type == HMESG_FAIL) {
+        fprintf(stderr, "Server reports error: %s\n", mesg.data);
+        return -1;
+    }
+    return 0;
+}
+
+int harmony_inform_if_empty(hdesc_t *hdesc, const char *key, const char *val,
+                            char **return_val)
+{
+    hmesg_t mesg;
+
+    if (hdesc->state < HARMONY_STATE_CONNECTED) {
+        fprintf(stderr, "Cannot inform_if_empty until connected.\n");
+        return -1;
+    }
+
+    /* Prepare a Harmony message. */
+    mesg.type = HMESG_INFORM;
+    mesg.id = 1; /* Atomic operation. */
+    mesg.timestamp = hdesc->timestamp;
+    mesg.count = strlen(key) + 1 + strlen(val);
+
+    if (mesg.count >= MAX_MSG_STRLEN) {
+        fprintf(stderr, "Query too long (> %d)\n", MAX_MSG_STRLEN - 1);
+        return -1;
+    }
+    snprintf(mesg.data, MAX_MSG_STRLEN, "%s=%s", key, val);
+
+    if (send_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error sending request to server.\n");
+        return -1;
+    }
+
+    if (receive_message(hdesc->socket, &mesg) != 0) {
+        fprintf(stderr, "Error receiving message from server.\n");
+        return -1;
+    }
+
+    if (mesg.type == HMESG_FAIL) {
+        fprintf(stderr, "Server reports error: %s\n", mesg.data);
+        return -1;
+    }
+
+    /* Write status encoded in mesg.id.  1 == written, 0 == pre-existed. */
+    if (mesg.id == 0 && return_val != NULL) {
+        *return_val = (char *)malloc(mesg.count + 1);
+        if (*return_val == NULL) {
+            fprintf(stderr, "Memory allocation error.\n");
+            return -1;
+        }
+        strncpy(*return_val, mesg.data, mesg.count + 1);
+    }
+    return mesg.id;
 }
 
 int harmony_fetch(hdesc_t *hdesc)

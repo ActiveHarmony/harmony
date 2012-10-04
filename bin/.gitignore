@@ -1,5 +1,6 @@
 *.log
 hserver
+tuna
 libcreater
 unique_points.*.dat
 gmon.out
