@@ -5,9 +5,14 @@ CXX=g++
 AR= ar
 ARCREATE= rc
 
-INCLUDE=
+XML_INCLUDE=-I/usr/include/libxml2
+INCLUDE=${XML_INCLUDE}
+
+
 CFLAGS=-Wall -g -pg $(INCLUDE)
 CXXFLAGS=$(CFLAGS)
+
+XML_LIB = -L/opt/local/lib -lxml2
 LDFLAGS=-lm -ldl -lnsl -ltcl -lxml2
 
 OBJS=hclient.o hsockutil.o hutil.o hmesgs.o hclientf.o record.o

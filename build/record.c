@@ -4,6 +4,7 @@
 #include <string.h>
 #include <assert.h>
 #include <time.h>
+#include <ctype.h>
 
 #include <libxml/tree.h>
 #include <libxml/parser.h>
@@ -16,7 +17,7 @@
 #define MY_ENCODING "ISO-8859-1"
 
 
-static clock_t file_create_time;
+//static clock_t file_create_time;
 const char filename[128];
 
 static int first_pass = 1;
@@ -25,7 +26,7 @@ static int first_pass = 1;
 void init_ref_file () {
     int rc;
     xmlTextWriterPtr writer;
-    xmlChar *tmp;
+    //xmlChar *tmp;
     xmlDocPtr doc;
     xmlNodePtr node;
     char create_time[64];
@@ -33,9 +34,9 @@ void init_ref_file () {
     struct tm *current;
     now = time(0);
     current = localtime(&now);
-    snprintf(create_time, 64, "%d:%d:%d", current->tm_hour, current->tm_min, current->tm_sec);
+    snprintf(create_time, 64, "%d_%d_%d", (int)current->tm_hour, (int)current->tm_min, (int)current->tm_sec);
 
-    snprintf(filename, 128, "%s.xml",create_time);
+    snprintf(filename, 128, "%s.xml", (char *)create_time);
     doc = xmlNewDoc(BAD_CAST XML_DEFAULT_VERSION);
     if (doc == NULL) {
 	printf("Error creating the xml document tree!\n");
