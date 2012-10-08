@@ -187,7 +187,6 @@ string history_since(unsigned int last)
 int check_parameters()
 {
     const char *search_algo;
-    const char *data_format;
 
     /* Gets the Search Algorithm and the config file 
      * that the user has selected in the hglobal_config file.
@@ -238,7 +237,8 @@ int check_parameters()
     }
 
     /*Check the output format, possible values are None, xml*/
-    data_format = cfg_get("ouput_format");
+    data_format = cfg_get("output_format");
+    printf("data_format = %s\n", data_format);
 
     return 0;
 }
@@ -354,9 +354,11 @@ void client_registration(int sockfd, hmesg_t *mesg)
         printf("[AH]: Client registration! (%d)\n", sockfd);
 
     sscanf(mesg->data, "%s\n%s\n%s\n%s", nodeName, sysName, release, machine);
-    
-    if (data_format == "xml")
-    	write_nodeinfo(nodeName, sysName, release, machine);
+     
+    if (strcmp(data_format, "xml") == 0) {
+	init_ref_file(sockfd);
+    	write_nodeinfo(sockfd, nodeName, sysName, release, machine);
+    }
 
     int id = mesg->id;
     if (id)
@@ -652,8 +654,8 @@ void client_var_registration(int sockfd, hmesg_t *mesg)
 	return;
     } else {
         snprintf(paramInfo, sizeof(paramInfo), "%s", tcl_inter->result);
-        if (data_format == "xml")
-	    write_param_info(paramInfo);
+        if (strcmp(data_format, "xml") == 0)
+	    write_param_info(sockfd, paramInfo);
     }
 
 
@@ -778,6 +780,8 @@ void client_fetch(int sockfd, hmesg_t *mesg)
 void client_report(int sockfd, hmesg_t *mesg)
 {
     char *cliName = clientName[sockfd];
+
+    printf("ASLDFJKA;LKSJDFA;LKJSDFL;AKJSDFLASJKF  %s", cliName);
     char buf[256], curr_config[80], perf_dbl[80], param_namelist[256];
     hval_t *val = (hval_t *)mesg->data;
     double performance = val[0].value.r;
@@ -817,8 +821,8 @@ void client_report(int sockfd, hmesg_t *mesg)
         }
         printf("ParamList: %s, CurConfig: %s\n", param_namelist, curr_config);
         
-	if (data_format == "xml")
-	    write_conf_perf_pair(param_namelist, curr_config, performance);
+	if (strcmp(data_format, "xml") == 0)
+	    write_conf_perf_pair(sockfd, param_namelist, curr_config, performance);
 
         global_data.insert(pair<string, string>(string(curr_config),
                                                 string(perf_dbl)));
@@ -1430,8 +1434,8 @@ int main(int argc, char **argv)
     FILE *fd;
     char *tmppath;
     char cfgpath[FILENAME_MAX];
-    if (data_format == "xml")
-        init_ref_file();
+    /*if (data_format == "xml")
+        init_ref_file();*/
 
     if (cfg_init() < 0) {
         perror("Internal error in cfg_init()");

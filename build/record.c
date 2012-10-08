@@ -18,25 +18,25 @@
 
 
 //static clock_t file_create_time;
-const char filename[128];
-
+char filename[128];
+const char create_time[128];
 static int first_pass = 1;
 //void main();
 
-void init_ref_file () {
+void init_ref_file (int clientID) {
     int rc;
     xmlTextWriterPtr writer;
     //xmlChar *tmp;
     xmlDocPtr doc;
     xmlNodePtr node;
-    char create_time[64];
+    //char create_time[64];
     time_t now;
     struct tm *current;
     now = time(0);
     current = localtime(&now);
-    snprintf(create_time, 64, "%d_%d_%d", (int)current->tm_hour, (int)current->tm_min, (int)current->tm_sec);
+    snprintf(create_time, 64, "%d%d%d", (int)current->tm_hour, (int)current->tm_min, (int)current->tm_sec);
 
-    snprintf(filename, 128, "%s.xml", (char *)create_time);
+    snprintf(filename, 128, "%s_%d.xml", create_time, clientID);
     doc = xmlNewDoc(BAD_CAST XML_DEFAULT_VERSION);
     if (doc == NULL) {
 	printf("Error creating the xml document tree!\n");
@@ -107,10 +107,12 @@ void init_ref_file () {
     xmlFreeDoc(doc);
 }
 
-void write_nodeinfo(char *nodeinfo, char *sysName, char *release, char *machine) {
+void write_nodeinfo(int clientID, char *nodeinfo, char *sysName, char *release, char *machine) {
     xmlDoc *doc;
     xmlNode *curNode;
     xmlNode *root_element = NULL;
+
+    snprintf(filename, 128, "%s_%d.xml", create_time, clientID);
 
     doc = xmlReadFile(filename, NULL, 0);
     if (doc == NULL) {
@@ -139,10 +141,12 @@ void write_nodeinfo(char *nodeinfo, char *sysName, char *release, char *machine)
 
     
 
-void write_appName(const char *appName) {
+void write_appName(int clientID, const char *appName) {
     xmlDoc *doc;
     xmlNode *curNode;
     xmlNode *root_element = NULL;
+
+    snprintf(filename, 128, "%s_%d.xml", create_time, clientID);
 
     doc = xmlReadFile(filename, NULL, 0);
     if (doc == NULL) {
@@ -165,10 +169,12 @@ void write_appName(const char *appName) {
 
 /*This function get the param information in the followint format {Name Min Max Step Name Min Max Step ......}
 And then parse this formation and put it into the Metadata section of the xml file*/
-void write_param_info(char *paramInfo) {
+void write_param_info(int clientID, char *paramInfo) {
     xmlDoc *doc;
     xmlNode *curNode;
     xmlNode *root_element = NULL;
+
+    snprintf(filename, 128, "%s_%d.xml", create_time, clientID);
 
     char paramName[32];
     char paramMin[16];
@@ -247,11 +253,13 @@ void write_param_info(char *paramInfo) {
 }
 
 
-void write_conf_perf_pair(const char *param_namelist, const char *config, double perf) {
+void write_conf_perf_pair(int clientID, const char *param_namelist, const char *config, double perf) {
     xmlDoc *doc;
     xmlNode *curNode;
     xmlNode *dataNode;
     xmlNode *root_element = NULL;
+
+    snprintf(filename, 128, "%s_%d.xml", create_time, clientID);
 
     bool EndLine;
     char cur_time[64];
@@ -299,16 +307,18 @@ void write_conf_perf_pair(const char *param_namelist, const char *config, double
 		    }
 		    strncpy(temp, &param_namelist[i], j-i);
 		    temp[j-i] = '\0';
+		    printf("config loaded: %s\n",temp);
 		    i = j;
 		    break;
 	        } 
 	    
-	        while (m < strlen(config)-1) {
-		    while (!isspace(config[n])) {
+	        while (m <= strlen(config)-1) {
+		    while (!isspace(config[n]) && (n <= strlen(config)-1)) {
 		        n++;
 		    }
 		    strncpy(curConfig, &config[m], n-m);
 		    curConfig[n-m] = '\0';
+		    printf("config value loaded: %s\n",curConfig);
 		    m = n;
 
 		    xmlNewTextChild(curNode, NULL, (xmlChar *)temp, (xmlChar *)curConfig);
