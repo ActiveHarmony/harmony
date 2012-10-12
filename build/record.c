@@ -23,7 +23,7 @@ const char create_time[128];
 static int first_pass = 1;
 //void main();
 
-void init_ref_file (int clientID) {
+void init_ref_file () {
     int rc;
     xmlTextWriterPtr writer;
     //xmlChar *tmp;
@@ -36,7 +36,7 @@ void init_ref_file (int clientID) {
     current = localtime(&now);
     snprintf(create_time, 64, "%d%d%d", (int)current->tm_hour, (int)current->tm_min, (int)current->tm_sec);
 
-    snprintf(filename, 128, "%s_%d.xml", create_time, clientID);
+    snprintf(filename, 128, "%s.xml", create_time);
     doc = xmlNewDoc(BAD_CAST XML_DEFAULT_VERSION);
     if (doc == NULL) {
 	printf("Error creating the xml document tree!\n");
@@ -107,12 +107,15 @@ void init_ref_file (int clientID) {
     xmlFreeDoc(doc);
 }
 
-void write_nodeinfo(int clientID, char *nodeinfo, char *sysName, char *release, char *machine) {
+void write_nodeinfo(char *nodeinfo, char *sysName, char *release, char *machine, int core_num, char *cpu_vendor, char *cpu_model, char *cpu_freq, char *cache_size) {
     xmlDoc *doc;
     xmlNode *curNode;
     xmlNode *root_element = NULL;
 
-    snprintf(filename, 128, "%s_%d.xml", create_time, clientID);
+    char proc_num[2];
+
+    snprintf(filename, 128, "%s.xml", create_time);
+    snprintf(proc_num, 2, "%d", core_num);
 
     doc = xmlReadFile(filename, NULL, 0);
     if (doc == NULL) {
@@ -131,7 +134,13 @@ void write_nodeinfo(int clientID, char *nodeinfo, char *sysName, char *release, 
 	    xmlNewTextChild(curNode, NULL, (xmlChar *)"HostName", (xmlChar *)nodeinfo);
 	    xmlNewTextChild(curNode, NULL, (xmlChar *)"sysName", (xmlChar *)sysName);
 	    xmlNewTextChild(curNode, NULL, (xmlChar *)"Release", (xmlChar *)release);
-	    xmlNewTextChild(curNode, NULL, (xmlChar *)"Machine", (xmlChar *)machine);
+	    xmlNewTextChild(curNode, NULL, (xmlChar *)"Machine", (xmlChar *)machine);		
+	    xmlNewTextChild(curNode, NULL, (xmlChar *)"ProcessorNum", (xmlChar *)proc_num);
+	    xmlNewTextChild(curNode, NULL, (xmlChar *)"CPUVendor", (xmlChar *)cpu_vendor);
+	    xmlNewTextChild(curNode, NULL, (xmlChar *)"CPUModel", (xmlChar *)cpu_model);
+	    xmlNewTextChild(curNode, NULL, (xmlChar *)"CPUFreq", (xmlChar *)cpu_freq);
+	    xmlNewTextChild(curNode, NULL, (xmlChar *)"CacheSize", (xmlChar *)cache_size);
+
 	    xmlSaveFileEnc(filename, doc, MY_ENCODING);
 	    break;
 	}
@@ -141,12 +150,12 @@ void write_nodeinfo(int clientID, char *nodeinfo, char *sysName, char *release, 
 
     
 
-void write_appName(int clientID, const char *appName) {
+void write_appName(const char *appName) {
     xmlDoc *doc;
     xmlNode *curNode;
     xmlNode *root_element = NULL;
 
-    snprintf(filename, 128, "%s_%d.xml", create_time, clientID);
+    snprintf(filename, 128, "%s.xml", create_time);
 
     doc = xmlReadFile(filename, NULL, 0);
     if (doc == NULL) {
@@ -169,12 +178,12 @@ void write_appName(int clientID, const char *appName) {
 
 /*This function get the param information in the followint format {Name Min Max Step Name Min Max Step ......}
 And then parse this formation and put it into the Metadata section of the xml file*/
-void write_param_info(int clientID, char *paramInfo) {
+void write_param_info(char *paramInfo) {
     xmlDoc *doc;
     xmlNode *curNode;
     xmlNode *root_element = NULL;
 
-    snprintf(filename, 128, "%s_%d.xml", create_time, clientID);
+    snprintf(filename, 128, "%s.xml", create_time);
 
     char paramName[32];
     char paramMin[16];
@@ -258,8 +267,10 @@ void write_conf_perf_pair(int clientID, const char *param_namelist, const char *
     xmlNode *curNode;
     xmlNode *dataNode;
     xmlNode *root_element = NULL;
+    char client[4];
 
-    snprintf(filename, 128, "%s_%d.xml", create_time, clientID);
+    snprintf(filename, 128, "%s.xml", create_time);
+    snprintf(client, 4, "%d", clientID);
 
     bool EndLine;
     char cur_time[64];
@@ -337,6 +348,7 @@ void write_conf_perf_pair(int clientID, const char *param_namelist, const char *
 
 	    xmlNewTextChild(dataNode, NULL, (xmlChar *)"Perf", (xmlChar *)performance);
 	    xmlNewTextChild(dataNode, NULL, (xmlChar *)"Time", (xmlChar *)cur_time);
+	    xmlNewTextChild(dataNode, NULL, (xmlChar *)"Client", (xmlChar *)client);
 	    xmlSaveFileEnc(filename, doc, MY_ENCODING);
 	    break;
 	}

@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <limits.h>
 
@@ -68,4 +69,58 @@ char *search_path(const char *filename, mode_t and_bits, mode_t or_bits)
             path = pend + 1;
     }
     return NULL;
+}
+
+int get_cpu_info(char *cpu_vendor, char *cpu_model, char *cpu_freq, char *cache_size) {
+    FILE *cpuinfo;
+    int core_num;
+    bool recorded_vendor;
+    bool recorded_model;
+    bool recorded_freq;
+    bool recorded_cache;
+
+    char line_str[256];
+    char ele_name[128];
+    char ele_val[128];
+    
+    core_num = 0;
+    recorded_vendor = recorded_model = recorded_freq = recorded_cache = false;
+
+    /*Open cpuinfo in /proc/cpuinfo*/
+    cpuinfo = fopen("/proc/cpuinfo", "r");
+    if (cpuinfo == NULL) {
+	fprintf(stderr, "Error occurs when acquire cpu information.\nLog file will not include CPU info.\n");
+	return -1;
+    } else {
+	printf("CPU info file opened!\n");
+    }
+
+    while(!feof(cpuinfo)) {
+	fgets(line_str, 512, cpuinfo);
+
+	if (strlen(line_str) <= 1)
+	    continue;
+	sscanf(line_str, "%[^\t:] : %[^\t:]", ele_name, ele_val);
+
+	if (!strcmp(ele_name, "processor")) {
+	    core_num++;
+	} else if (!strcmp(ele_name, "vendor_id") && recorded_vendor == false) {
+	    strcpy(cpu_vendor, ele_val);
+	    recorded_vendor = true;
+	} else if (!strcmp(ele_name, "model name") && recorded_model == false) {
+	    strcpy(cpu_model, ele_val);
+	    recorded_model = true;
+	} else if (!strcmp(ele_name, "cpu MHz") && recorded_freq == false) {
+	    strcpy(cpu_freq, ele_val);
+	    recorded_freq = true;
+	} else if (!strcmp(ele_name, "cache size") && recorded_cache == false) {
+	    strcpy(cache_size, ele_val);
+	    recorded_cache = true;
+	}
+    }
+
+    printf("Core num is %d\n", core_num);
+
+    return core_num;
+
 }

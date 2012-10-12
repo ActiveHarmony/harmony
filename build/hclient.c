@@ -36,6 +36,7 @@
 #include "hclient.h"
 #include "hmesgs.h"
 #include "hsockutil.h"
+#include "hutil.h"
 #include "defaults.h"
 
 #include <stdio.h>
@@ -840,10 +841,24 @@ int harmony_connect(hdesc_t *hdesc, const char *host, int port)
     int i;
     hmesg_t mesg;
     char *app_desc, *codegen;
-    struct utsname uts;
 
-    if (uname(&uts) < 0)
+    struct utsname uts; //os info
+
+    int core_num; //number of cpu cores
+    char cpu_vendor[32];
+    char cpu_model[32];
+    char cpu_freq[32];
+    char cache_size[32];
+
+
+    if (uname(&uts) < 0) //get os information
 	perror("uname() error\n");
+
+    /*get_cpu_info() returns the number of cores, if error, return -1*/
+    if ((core_num = get_cpu_info(cpu_vendor, cpu_model, cpu_freq, cache_size)) < 0) {
+	fprintf(stderr, "Error getting CPU information!");
+	cpu_vendor[0] = cpu_model[0] = cpu_freq[0] = cache_size[0] = NULL;
+    }
 
     /* A couple sanity checks before we connect to the server. */
     if (hdesc->bundle_len == 0) {
@@ -870,8 +885,8 @@ int harmony_connect(hdesc_t *hdesc, const char *host, int port)
     mesg.count = 0;
 
     mesg.count = MAX_MSG_STRLEN-1;
-    snprintf(mesg.data, MAX_MSG_STRLEN, "%s\n%s\n%s\n%s",uts.nodename, uts.sysname, uts.release, uts.machine);
-
+    snprintf(mesg.data, MAX_MSG_STRLEN, "%s\n%s\n%s\n%s\n%d\n%s%s%s%s",uts.nodename, uts.sysname, uts.release, uts.machine, core_num, cpu_vendor, cpu_model, cpu_freq, cache_size);
+    printf("CPU INFO: %d %s %s %s %s", core_num, cpu_vendor, cpu_model, cpu_freq, cache_size);
     /* send the client registration message */
     if (send_message(hdesc->socket, &mesg) != 0) {
         fprintf(stderr, "Error sending registration message to server.\n");

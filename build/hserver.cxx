@@ -349,15 +349,21 @@ void client_registration(int sockfd, hmesg_t *mesg)
     char sysName[64];
     char release[64];
     char machine[64];
+    int core_num;
+    char cpu_vendor[32];
+    char cpu_model[32];
+    char cpu_freq[32];
+    char cache_size[32];
 
     if (debug_mode)
         printf("[AH]: Client registration! (%d)\n", sockfd);
-
-    sscanf(mesg->data, "%s\n%s\n%s\n%s", nodeName, sysName, release, machine);
-     
+    printf("%s\n", mesg->data);
+    sscanf(mesg->data, "%[^\n]\n%[^\n]\n%[^\n]\n%[^\n]\n%d\n%[^\n]\n%[^\n]\n%[^\n]\n%[^\n]\n", nodeName, sysName, release, machine, &core_num, cpu_vendor, cpu_model, cpu_freq, cache_size);
+    
+    printf("Detect %s %s %s %s\n", cpu_vendor, cpu_model, cpu_freq, cache_size); 
     if (strcmp(data_format, "xml") == 0) {
-	init_ref_file(sockfd);
-    	write_nodeinfo(sockfd, nodeName, sysName, release, machine);
+    	write_nodeinfo(nodeName, sysName, release, machine, core_num, cpu_vendor, cpu_model, cpu_freq, cache_size);
+	printf("xml file initialized\n");
     }
 
     int id = mesg->id;
@@ -655,7 +661,7 @@ void client_var_registration(int sockfd, hmesg_t *mesg)
     } else {
         snprintf(paramInfo, sizeof(paramInfo), "%s", tcl_inter->result);
         if (strcmp(data_format, "xml") == 0)
-	    write_param_info(sockfd, paramInfo);
+	    write_param_info(paramInfo);
     }
 
 
@@ -1517,6 +1523,10 @@ int main(int argc, char **argv)
     {
         printf("[AH]: Could not start server.  Exiting.\n");
         return -1;
+    }
+    /*Initializing the xml file*/
+    if (strcmp(data_format, "xml") == 0) {
+	init_ref_file();
     }
 
     /* Begin the main harmony loop. */

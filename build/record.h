@@ -24,13 +24,13 @@ extern "C" {
 
 void init_ref_file();
 
-void write_nodeinfo(char *nodeinfo, char *sysName, char *release, char *machine);
+void write_nodeinfo(char *nodeinfo, char *sysName, char *release, char *machine, int core_num, char *cpu_vendor, char *cpu_model, char *cpu_freq, char *cache_size);
 
 void write_appName(const char *appName);
 
 void write_param_info(char *paramInfo);
 
-void write_conf_perf_pair(const char *param_namelist, const char *config, double performance);
+void write_conf_perf_pair(int clientID, const char *param_namelist, const char *config, double performance);
 
 
 #ifdef __cplusplus 

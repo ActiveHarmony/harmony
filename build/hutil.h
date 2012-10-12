@@ -34,6 +34,7 @@ extern "C" {
  ***/
 void h_exit(const char *errmesg);
 char *search_path(const char *filename, mode_t and_bits, mode_t or_bits);
+int get_cpu_info(char *cpu_vendor, char *cpu_model, char *cpu_freq, char *cache_size);
 
 #ifdef __cplusplus
 }
