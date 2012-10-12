@@ -107,15 +107,17 @@ void init_ref_file () {
     xmlFreeDoc(doc);
 }
 
-void write_nodeinfo(char *nodeinfo, char *sysName, char *release, char *machine, int core_num, char *cpu_vendor, char *cpu_model, char *cpu_freq, char *cache_size) {
+void write_nodeinfo(int clientID, char *nodeinfo, char *sysName, char *release, char *machine, int core_num, char *cpu_vendor, char *cpu_model, char *cpu_freq, char *cache_size) {
     xmlDoc *doc;
     xmlNode *curNode;
     xmlNode *root_element = NULL;
 
     char proc_num[2];
+    char client[4];
 
     snprintf(filename, 128, "%s.xml", create_time);
     snprintf(proc_num, 2, "%d", core_num);
+    snprintf(client, 2, "%d", clientID);
 
     doc = xmlReadFile(filename, NULL, 0);
     if (doc == NULL) {
@@ -140,6 +142,7 @@ void write_nodeinfo(char *nodeinfo, char *sysName, char *release, char *machine,
 	    xmlNewTextChild(curNode, NULL, (xmlChar *)"CPUModel", (xmlChar *)cpu_model);
 	    xmlNewTextChild(curNode, NULL, (xmlChar *)"CPUFreq", (xmlChar *)cpu_freq);
 	    xmlNewTextChild(curNode, NULL, (xmlChar *)"CacheSize", (xmlChar *)cache_size);
+	    xmlNewTextChild(curNode, NULL, (xmlChar *)"ClientID", (xmlChar *)client);
 
 	    xmlSaveFileEnc(filename, doc, MY_ENCODING);
 	    break;

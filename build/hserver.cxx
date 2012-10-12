@@ -362,7 +362,7 @@ void client_registration(int sockfd, hmesg_t *mesg)
     
     printf("Detect %s %s %s %s\n", cpu_vendor, cpu_model, cpu_freq, cache_size); 
     if (strcmp(data_format, "xml") == 0) {
-    	write_nodeinfo(nodeName, sysName, release, machine, core_num, cpu_vendor, cpu_model, cpu_freq, cache_size);
+    	write_nodeinfo(sockfd, nodeName, sysName, release, machine, core_num, cpu_vendor, cpu_model, cpu_freq, cache_size);
 	printf("xml file initialized\n");
     }
 

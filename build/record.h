@@ -24,7 +24,7 @@ extern "C" {
 
 void init_ref_file();
 
-void write_nodeinfo(char *nodeinfo, char *sysName, char *release, char *machine, int core_num, char *cpu_vendor, char *cpu_model, char *cpu_freq, char *cache_size);
+void write_nodeinfo(int clientID, char *nodeinfo, char *sysName, char *release, char *machine, int core_num, char *cpu_vendor, char *cpu_model, char *cpu_freq, char *cache_size);
 
 void write_appName(const char *appName);
 
