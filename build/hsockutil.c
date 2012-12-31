@@ -17,95 +17,216 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "hsockutil.h"
+#include "defaults.h"
+#include "hmesg.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <assert.h>
 #include <errno.h>
+#include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <netdb.h>
 
-#include "hsockutil.h"
-#include "hmesgs.h"
+int tcp_connect(const char *host, int port)
+{
+    struct sockaddr_in addr;
+    struct hostent *h_name;
+    char *portenv;
+    int sockfd;
+
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0)
+        return -1;
+
+    /* Look up the address associated with the supplied hostname
+     * string.  If no hostname is provided, use the HARMONY_S_HOST
+     * environment variable, if defined.  Otherwise, resort to
+     * default.
+     */
+    if (host == NULL) {
+        host = getenv("HARMONY_S_HOST");
+        if (host == NULL)
+            host = DEFAULT_HOST;
+    }
+
+    h_name = gethostbyname(host);
+    if (!h_name)
+        return -1;
+    memcpy(&addr.sin_addr, h_name->h_addr_list[0], sizeof(struct in_addr));
+
+    /* Prepare the port of connection.  If the supplied port is 0, use
+     * the HARMONY_S_PORT environment variable, if defined.
+     * Otherwise, resort to default.
+     */
+    if (port == 0) {
+        portenv = getenv("HARMONY_S_PORT");
+        if (portenv)
+            port = atoi(portenv);
+        else
+            port = DEFAULT_PORT;
+    }
+    addr.sin_port = htons(port);
+
+    /* try to connect to the server */
+    addr.sin_family = AF_INET;
+    if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
+        return -1;
+
+    return sockfd;
+}
 
 /***
  *
  * Here we define some useful functions to handle data communication
  *
  ***/
-void socket_write(int fd, const void *data, unsigned datalen)
+int socket_write(int fd, const void *data, unsigned datalen)
+{
+    int retval;
+    unsigned count;
+
+    count = 0;
+    do {
+        retval = send(fd, ((char *)data) + count,
+                      datalen - count, MSG_NOSIGNAL);
+        if (retval < 0) {
+            if (errno == EINTR) continue;
+            else return -1;
+        }
+        else if (retval == 0)
+            break;
+
+        count += retval;
+    } while (count < datalen);
+
+    return count;
+}
+
+int socket_read(int fd, const void *data, unsigned datalen)
 {
     int retval;
     unsigned count = 0;
 
     do {
-        errno = 0;
-        retval = write(fd, ((char *)data) + count, datalen - count);
-        if (retval <= 0 && errno != EINTR)
+        retval = recv(fd, ((char *)data) + count,
+                      datalen - count, MSG_NOSIGNAL);
+        if (retval < 0) {
+            if (errno == EINTR) continue;
+            else return -1;
+        }
+        else if (retval == 0)
             break;
-        /*printf("Wrote: %.*s\n", retval, data);*/
+
         count += retval;
     } while (count < datalen);
 
-    if (retval <= 0 && errno != 0) {
-        printf("[AH]: Socket write error: %s.\n", strerror(errno));
+    return count;
+}
+
+int socket_launch(const char *path, char *const argv[], pid_t *return_pid)
+{
+    int sockfd[2];
+    pid_t pid;
+
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockfd) < 0)
+        return -1;
+
+    pid = fork();
+    if (pid < 0)
+        return -1;
+
+    if (pid == 0) {
+        /* Child Case */
+        close(sockfd[0]);
+        if (dup2(sockfd[1], STDIN_FILENO) != STDIN_FILENO)
+            return -1;
+
+        if (execv(path, argv) < 0) {
+            perror("Could not launch child executable");
+            exit(-1);  /* Be sure to exit here. */
+        }
     }
+
+    /* Parent continues here. */
+    if (return_pid)
+        *return_pid = pid;
+
+    close(sockfd[1]);
+    return sockfd[0];
 }
 
 /*
  * send a message to the given socket
  */
-int send_message(int sock, const hmesg_t *mesg)
+int mesg_send(int sock, hmesg_t *mesg)
 {
-    static const unsigned int hdrlen = sizeof(unsigned int);
-    char buf[4096];
-    int buflen = hdrlen;
+    int msglen;
 
-    *(unsigned int *)buf = htonl(HARMONY_MAGIC);
-    buflen += hmesg_serialize(buf + hdrlen, sizeof(buf) - hdrlen, mesg);
-    if (buflen < hdrlen)
+    msglen = hmesg_serialize(mesg);
+    if (msglen < 0)
         return -1;
-    assert(buflen == strlen(buf));
 
-    /*fprintf(stderr, "SEND: '%.*s'\n", buflen, buf);*/
-    if (sendto(sock, buf, buflen, 0, NULL, 0) < 0)
-        printf("* Warning: sendto failure.\n");
+    *(unsigned   int *)(mesg->buf              ) = htonl(HARMONY_MAGIC);
+    *(unsigned short *)(mesg->buf + sizeof(int)) = htons(msglen);
 
-    return 0;
+    /* // DEBUG
+    fprintf(stderr, "(%d)<<< [%d] %s\n", sock, msglen - 6,
+            mesg->buf + HARMONY_HDRLEN); // */
+    if (socket_write(sock, mesg->buf, msglen) < msglen)
+        return -1;
+
+    hmesg_scrub(mesg);
+    mesg->type = HMESG_UNKNOWN;
+    return 1;
 }
 
 /*
  * receive a message from a given socket
  */
-int receive_message(int sock, hmesg_t *mesg)
+int mesg_recv(int sock, hmesg_t *mesg)
 {
-    static const unsigned int hdrlen = sizeof(unsigned int);
-    char buf[4096];
-    int buflen;
+    char hdr[HARMONY_HDRLEN];
+    char *newbuf;
+    int msglen, retval;
 
-    buflen = recvfrom(sock, buf, sizeof(buf), 0, NULL, NULL);
-    buf[buflen] = '\0';
-    /*fprintf(stderr, "RECV: '%s'\n", buf);*/
-    if (buflen == 0) {
-        /* Client closed socket */
-        return 0;
-    }
-    else if (buflen < 0) {
-        fprintf(stderr, "Failed to receive message.\n");
-        return -1;
-    }
-    else if (ntohl(*(unsigned int *)buf) != HARMONY_MAGIC) {
-        fprintf(stderr, "Expected 0x%x, got 0x%x\n", HARMONY_MAGIC,
-                ntohl(*(unsigned int *)buf));
-        return -1;
-    }
+    retval = recv(sock, hdr, sizeof(hdr), MSG_PEEK);
+    if (retval <  0) goto error;
+    if (retval == 0) return 0;
 
-    if (hmesg_deserialize(mesg, buf + hdrlen) < 0) {
-        fprintf(stderr, "Error deserializing message.\n");
-        return -1;
+    if (ntohl(*(unsigned int *)hdr) != HARMONY_MAGIC)
+        goto invalid;
+
+    msglen = ntohs(*(unsigned short *)(hdr + sizeof(int)));
+    if (mesg->buflen <= msglen) {
+        newbuf = (char *) realloc(mesg->buf, msglen + 1);
+        if (!newbuf)
+            goto error;
+        mesg->buf = newbuf;
+        mesg->buflen = msglen;
     }
 
-    return 0;
+    retval = socket_read(sock, mesg->buf, msglen);
+    if (retval == 0) return 0;
+    if (retval < msglen) goto error;
+    mesg->buf[retval] = '\0';  /* A strlen() safety net. */
+
+    /* // DEBUG
+    fprintf(stderr, "(%d)>>> [%d] %s\n", sock, msglen - 6,
+            mesg->buf + HARMONY_HDRLEN); // */
+    hmesg_scrub(mesg);
+    if (hmesg_deserialize(mesg) < 0)
+        goto error;
+
+    return 1;
+
+  invalid:
+    errno = EINVAL;
+  error:
+    return -1;
 }

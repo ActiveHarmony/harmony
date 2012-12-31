@@ -20,20 +20,21 @@
 #ifndef __HUTIL_H__
 #define __HUTIL_H__
 
-#include <sys/types.h>
-#include <sys/stat.h>
+#include <stdarg.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/***
- *
- * Exit and write a message to stderr
- *
- ***/
-void h_exit(const char *errmesg);
-char *search_path(const char *filename, mode_t and_bits, mode_t or_bits);
+int file_exists(const char *filename);
+char *search_path(const char *filename);
+int array_grow(void *buf, int *capacity, int elem_size);
+char *stralloc(const char *in);
+char *sprintf_alloc(const char *fmt, ...);
+int snprintf_grow(char **buf, int *buflen, const char *fmt, ...);
+int snprintf_serial(char **buf, int *buflen, const char *fmt, ...);
+int printstr_serial(char **buf, int *buflen, const char *str);
+int scanstr_serial(const char **str, char *buf);
 
 #ifdef __cplusplus
 }

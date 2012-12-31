@@ -26,29 +26,57 @@
 #ifndef __HSOCKUTIL_H__
 #define __HSOCKUTIL_H__
 
-#include "hmesgs.h"
+#include "hmesg.h"
+#include <unistd.h>
+#include <sys/types.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+/* Header Layout:
+ *
+ *  0             15 16            31
+ * |----------------|----------------|
+ * |          HARMONY_MAGIC          |
+ * |---------------------------------|
+ * | Message Length |  HMESG_VERSION |
+ * |---------------------------------|
+ * |  Message Data ...               |
+ * |                                 |
+ */
+
 /* Magic number for messages between the harmony server and its clients. */
-#define HARMONY_MAGIC 0x5261793a
+#define HARMONY_MAGIC  0x5261793a
+#define HARMONY_HDRLEN 6 /* sizeof(int) + sizeof(short) */
+
+int tcp_connect(const char *host, int port);
 
 /**
- * Loop until all data has been writen to fd.
+ * Loop until all data has been written to fd.
  **/
-void socket_write(int fd, const void *data, unsigned datalen);
+int socket_write(int fd, const void *data, unsigned datalen);
+
+/**
+ * Loop until all data has been read from fd.
+ **/
+int socket_read(int fd, const void *data, unsigned datalen);
+
+/**
+ * Fork and exec a new process with STDIN_FILENO and STDOUT_FILENO
+ * replaced with a bidirectional socket descriptor.
+ **/
+int socket_launch(const char *path, char *const argv[], pid_t *return_pid);
 
 /**
  * send a message on the given socket
  **/
-int send_message(int sock, const hmesg_t *);
+int mesg_send(int sock, hmesg_t *mesg);
 
 /**
  * read a message from the given socket
  **/
-int receive_message(int sock, hmesg_t *);
+int mesg_recv(int sock, hmesg_t *mesg);
 
 #ifdef __cplusplus
 }

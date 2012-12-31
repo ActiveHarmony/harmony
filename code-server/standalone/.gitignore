@@ -2,3 +2,4 @@ code_generator
 parse_host_file
 temp_hosts
 generation.*.log
+*.d

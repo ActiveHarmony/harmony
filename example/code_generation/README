@@ -30,7 +30,7 @@ multiple packages and subsystems, which include:
 	- Code Server: From this directory, use the following command
 	  to build the Code Server:
 
-		$ make -C ../../code-server/standalone/code_generator all
+		$ make -C ../../code-server/standalone all
 
 	- Gemm Application: Finally, the client application can be
 	  built using the following command:
@@ -44,25 +44,24 @@ Server, the Code Server, and the client application.  They are not
 required to be on separate hosts, but password-less authentication via
 SSH must be enabled between any hosts involved.
 
-Interaction between the Harmony Server and the Code Server must be
-configured before this example can be run successfully.  See the
-README file in ../../code-server/standalone for more details.
+The Harmony Server and Code Server must be instructed how to
+communicate with each other and the client application.  At a minimum,
+this can be accomplished by defining CODEGEN_SERVER_URL and
+CODEGEN_TARGET_URL Harmony configuration variables.  See the README
+file in ../../code-server/standalone for more details.
 
-Since the target application (gemm) has 5 tunable parameters, it
-must be launched on at least 6 MPI nodes.  Please make sure the
-parameters in pro_init_gemm.tcl (in ../../tcl/pro directory)
-are defined appropriately.
-
-space_dimension parameter in the init file has to be 5, the npoints
-parameter in the init file must equal the number of client nodes
-launched, and be at least 6 (no upper limit).
+Since the search sapce of this application has 5 dimensions, the
+Harmony configuration key PRO_SIMPLEX_SIZE should be at least 6
+(eg. N+1).  The PRO search strategy will correct the value if
+undefined or undervalued.  Of course, the search will be more
+efficient as PRO_SIMPLEX_SIZE increases.
 
 Running
 =======
 With the Harmony and Code Servers running successfully, launching the
 MPI application is the final step necessary to get this example
-running.  There are various methods to launch/submit an MPI job.  Talk
-to your system administrator for the details of your particular
+running.  There are various methods to launch/submit an MPI job.
+Consult your system administrator for the details of your particular
 system.  One example might be:
 
-	$ mpirun -np 8 ./gemm
+	$ mpirun -np 8 ./gemm <new_code_path>

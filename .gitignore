@@ -1,3 +1,7 @@
 *.[ao]
 *.so
 *~
+./bin/
+./lib/
+./include/
+./libexec/

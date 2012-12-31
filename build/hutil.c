@@ -19,53 +19,188 @@
 
 #include "hutil.h"
 
-#include <errno.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <unistd.h>
 #include <limits.h>
+#include <errno.h>
+#include <sys/stat.h>
 
-/***
- *
- * Exit and send a mesage to stderr
- *
- ***/
-void h_exit(const char *errmesg)
+int file_exists(const char *filename)
 {
-    perror(errmesg);
-    exit(1);
+    struct stat sb;
+    return (stat(filename, &sb) == 0 && S_ISREG(sb.st_mode));
 }
 
-char *search_path(const char *filename, mode_t and_bits, mode_t or_bits)
+char *search_path(const char *filename)
 {
-    static char fullpath[FILENAME_MAX];
-    struct stat sb;
-    char *path, *pend;
+    /* XXX - Not re-entrant. */
+    static char *fullpath = NULL;
+    static int pathlen = 0;
+
+    char *path, *pend, *newbuf;
+    int count;
 
     path = getenv("PATH");
     if (path == NULL)
         return NULL;
 
-    while (path != NULL) {
+    pend = path;
+    while (*pend != '\0') {
         pend = strchr(path, ':');
-        if (pend == NULL)
+        if (!pend)
             pend = path + strlen(path);
 
-        snprintf(fullpath, sizeof(fullpath), "%.*s/%s",
-                 (int)(pend - path), path, filename);
+      retry:
+        count = snprintf(fullpath, pathlen, "%.*s/%s",
+                         (int)(pend - path), path, filename);
+        if (pathlen <= count) {
+            newbuf = realloc(fullpath, count + 1);
+            if (!newbuf) return NULL;
 
-        if (stat(fullpath, &sb) == 0)
-            if ((sb.st_mode & and_bits) == and_bits &&
-                (sb.st_mode & or_bits) != 0)
-            {
-                return fullpath;
-            }
+            fullpath = newbuf;
+            pathlen = count;
+            goto retry;
+        }
 
-        if (*pend == '\0')
-            path = NULL;
-        else
-            path = pend + 1;
+        if (file_exists(fullpath))
+            return fullpath;
+
+        path = pend + 1;
     }
     return NULL;
+}
+
+int array_grow(void *buf, int *capacity, int elem_size)
+{
+    void *new_buf;
+    int new_capacity = 8;
+
+    if (*capacity >= new_capacity)
+        new_capacity = *capacity << 1;
+
+    new_buf = realloc(*(void **)buf, new_capacity * elem_size);
+    if (new_buf == NULL)
+        return -1;
+
+    memset(((char *)new_buf) + (*capacity * elem_size), 0,
+           (new_capacity - *capacity) * elem_size);
+    *(void **)buf = new_buf;
+    *capacity = new_capacity;
+    return 0;
+}
+
+char *stralloc(const char *in)
+{
+    char *out;
+    if (!in)
+        return NULL;
+
+    out = (char *)malloc(sizeof(char) * (strlen(in) + 1));
+    if (out != NULL)
+        strcpy(out, in);
+
+    return out;
+}
+
+char *sprintf_alloc(const char *fmt, ...)
+{
+    va_list ap;
+    int count;
+    char *retval;
+
+    va_start(ap, fmt);
+    count = vsnprintf(NULL, 0, fmt, ap);
+    va_end(ap);
+
+    if (count < 0) return NULL;
+    retval = (char *) malloc(count + 1);
+    if (!retval) return NULL;
+
+    va_start(ap, fmt);
+    vsnprintf(retval, count + 1, fmt, ap);
+    va_end(ap);
+
+    return retval;
+}
+
+int snprintf_grow(char **buf, int *buflen, const char *fmt, ...)
+{
+    va_list ap;
+    int count;
+    char *newbuf;
+
+  retry:
+    va_start(ap, fmt);
+    count = vsnprintf(*buf, *buflen, fmt, ap);
+    va_end(ap);
+
+    if (count < 0)
+        return -1;
+
+    if (*buflen <= count) {
+        newbuf = (char *) realloc(*buf, count + 1);
+        if (!newbuf)
+            return -1;
+        *buf = newbuf;
+        *buflen = count + 1;
+        goto retry;
+    }
+
+    return count;
+}
+
+int snprintf_serial(char **buf, int *buflen, const char *fmt, ...)
+{
+    va_list ap;
+    int count;
+
+    va_start(ap, fmt);
+    count = vsnprintf(*buf, *buflen, fmt, ap);
+    va_end(ap);
+
+    if (count < 0)
+        return -1;
+
+    *buflen -= count;
+    if (*buflen < 0)
+        *buflen = 0;
+    else
+        *buf += count;  /* Only advance *buf if the write was successful. */
+
+    return count;
+}
+
+int printstr_serial(char **buf, int *buflen, const char *str)
+{
+    if (!str) return snprintf_serial(buf, buflen, "0\"0\" ");
+    return snprintf_serial(buf, buflen, "%u\"%s\" ", strlen(str), str);
+}
+
+int scanstr_serial(const char **str, char *buf)
+{
+    int count;
+    unsigned int len;
+
+    if (sscanf(buf, "%u\"%n", &len, &count) < 1)
+        goto invalid;
+    buf += count;
+
+    if (len == 0 && *buf == '0') {
+        len = 1;
+        *str = NULL;
+    }
+    else if (len < strlen(buf) && buf[len] == '\"') {
+        buf[len] = '\0';
+        *str = buf;
+    }
+    else goto invalid;
+
+    return count + len + 1;
+
+  invalid:
+    errno = EINVAL;
+    return -1;
 }

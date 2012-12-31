@@ -17,18 +17,11 @@ files are required is provided below.
 
 To use the code_generator:
 
-  1) Make sure the Harmony server's configuration file has the
-     following key definitions:
+  1) Make sure the Harmony session properly defines the following
+     configuration keys:
 
-        codegen
-        codegen_host
-        codegen_path
-        codegen_flag_host
-        codegen_flag_dir
-        codegen_code_host
-        codegen_code_dir
-        codegen_slave_list
-        codegen_slave_dir
+        CODEGEN_SERVER_URL
+        CODEGEN_TARGET_URL
 
      Explanations and examples for these keys can be found in the sample
      harmony.cfg provided with this distribution.
@@ -36,8 +29,7 @@ To use the code_generator:
   2) Compile the code_generator binary via: `make all`
 
 Let's assume the code_generator is installed in the <code_generator>
-directory.  Assume we want to generate code for gemm (matrix
-multiplication):
+directory, and we want to generate code for a naive matrix multiplication application called "gemm".
 
 First create a directory called "gemm" within the <code_generator> directory.
 Copy all files from <code_generator>/generic to gemm directory. Rename the 
@@ -118,21 +110,16 @@ Additional Details
   Let us assume that we will launch 6 slave code-generators on "armour"
   and 3 slave code-generators on "maxfli" from the master code-generator
   on "spoon".  The code should be sent to "brood00" when complete, and
-  the harmony server (also on "brood00") should be informed when new code
+  the Harmony server (also on "brood00") should be informed when new code
   is ready.
 
   Follow these steps for running the code_generator:
 
     1) The harmony configuration should have the following directives:
-        codegen=Standalone
-        codegen_host=maxfli
-        codegen_path=/home/username/scratch/confs
-        codegen_flag_host=brood00
-        codegen_flag_dir=/scratch0/username/flags
-        codegen_code_host=brood00
-        codegen_code_dir=/scratch0/username/code
-        codegen_slave_list=armour 6, maxfli 3
-        codegen_slave_dir=/tmp/codegen
+        CODEGEN_SERVER_URL=ssh://maxfli//home/username/scratch/confs
+        CODEGEN_TARGET_URL=ssh://brood00//scratch0/username/code
+        CODEGEN_SLAVE_LIST=armour 6, maxfli 3
+        CODEGEN_SLAVE_PATH=/tmp/codegen
 
     2) In this matrix multiplication code generation example, the
        directory "gemm" has to be created within "standalone"
@@ -166,49 +153,32 @@ Additional Details
 
         ./code_generator /home/username/scratch/confs
 
-       (* Important point to note: It does not matter whether
-          "code_generator" or "hserver" is launched first.  Both know
-          to wait for the other, if configured correctly.  When both
-          servers are ready, the client application may be launched.)
-
-    7) Open a new terminal and ssh into "brood00".  In the file
-       "tcl/pro/pro_init_generic.tcl" on the server, make sure "space
-       dimension" is set to 5 and "npoints" is set to at least 6.
-
-    8) After that, do the following for the changes to become effective:
-
-        cd build
-        make clean
-        make
-
-    9) For running the "hserver" with PRO example, do the following:
+    7) For running the "hserver" with PRO example, open a new
+       terminal, ssh into "brood00", and do the following:
 
         cd bin
-        gdb ./hserver
-        (Now at (gdb) prompt, type "run")
+        ./hserver
 
    10) Open another terminal and ssh into "brood00" and then change the
        directory to the "pro_example" folder:
 
-        cd example/parallel/pro_example
+        cd <HARMONY_ROOT>/example/code_generation
 
    11) Define the following environment variables:
 
         HARMONY_S_HOST=brood00
-        HARMONY_S_PORT=1977
+        HARMONY_S_PORT=1979
 
    12) Do the following:
 
-        qsub -IV -lnodes=bug21+bug22+bug23+bug24+.....+bug29
-
-   13) After the above step, type "lamboot".
+        qsub -IV -lnodes=8
 
    14) Then do the following at the bash prompt:
 
-        cd example/parallel/pro_example
+        cd <HARMONY_ROOT>/example/code_generation
 
    15) For running the parallel examples, do the following:
 
-        mpirun -np 8 ./pro_example &
+        mpirun -np 8 ./gemm /scratch0/username/code &
 
-    This runs the "pro_example" for the code generation part.
+    This runs the "gemm" client application for the code generation part.

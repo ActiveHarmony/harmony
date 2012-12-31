@@ -42,9 +42,9 @@ do
     # make the directories
     # copy the relevant files
     dir_string=""
-    if [ $machine_name = $local_host ];
+    if [ "$machine_name" = "$local_host" ];
     then
-        if [ $machine_name != $last_machine_name ];
+        if [ "$machine_name" != "$last_machine_name" ];
         then
             dir_string=$scratch_dir/new_code_$appname
             echo "Clearing/creating $dir_string"

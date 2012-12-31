@@ -1,42 +1,45 @@
-TO_BASE = ../..
+TO_BASE=../..
+PREFIX=$(TO_BASE)
 
-VPATH=$(TO_BASE)/build
+CXX=g++
+CXXFLAGS=-Wall -pedantic -Werror -g
 
-OPTIMIZE = -O3
-LIBS_LINUX = -lm -ldl -lnsl -ltcl8.4
-INCLUDE_LINUX = -I$(TO_BASE)/build
-GCC_LINUX = g++ -g -DLinux -DLINUX -Dlinux $(OPTIMIZE) $(INCLUDE_LINUX)
+override CPPFLAGS+=-I$(TO_BASE)/build
 
-GCC_SOLARIS = g++ -g -DSOLARIS
-LIBS_SOLARIS = -L/usr/imports/lib -lsocket -lnsl -ltcl8.4 -lm -ldl -lX11
-INCLUDE_SOLARIS = -I/usr/imports/include -I/hivehomes/rahulp/ann_1.1.1/include/
+BIN_SRCS=code_generator.cxx
+SRCS=$(BIN_SRCS)
 
-GCC=$(GCC_LINUX)
-LIBS=$(LIBS_LINUX)
-INCLUDE=$(INCLUDE_LINUX)
+BIN_TARGETS=code_generator
 
-#GCC=$(GCC_SOLARIS)
-#LIBS=$(LIBS_SOLARIS)
-#INCLUDE=$(INCLUDE_SOLARIS)
+.PHONY: all install clean distclean
 
-LIBOBJS= code_generator.o Tokenizer.o
+all: $(BIN_TARGETS)
 
-all: code_generator parse_host_file
+install: $(BIN_TARGETS)
+	@echo "Code server must be executed from source directory (for now)."
 
-Tokenizer.o:
-	$(GCC) -c Tokenizer.cpp
+code_generator: code_generator.o $(TO_BASE)/build/libharmony.a
+	$(CXX) -L$(TO_BASE)/build $(LDFLAGS) $< -lharmony $(LDLIBS) -o $@
 
-$(TO_BASE)/build/hglobal_config.o: hglobal_config.c hglobal_config.h
-	$(MAKE) -C $(TO_BASE)/build hglobal_config.o
+%.o: %.cxx
+	$(CXX) -c $< $(CPPFLAGS) $(CXXFLAGS) -o $@
 
-code_generator.o: code_generator.c code_generator.h
-	$(GCC) -c $< -o $@
-
-code_generator: code_generator.o Tokenizer.o hglobal_config.o
-	$(GCC) $(INCLUDE) $(LIB) $^ -o $@
-
-parse_host_file: parse_host_file.c Tokenizer.o
-	$(GCC) $^ -o $@
+$(TO_BASE)/build/libharmony.a:
+	$(MAKE) -C $(TO_BASE)/build libharmony.a
 
 clean:
-	rm -f code_generator core.* *.o parse_host_file
+	rm -f core.* *.o $(TARGETS)
+
+distclean:
+	rm -f *~ *.d
+
+#
+# Auto dependency creation
+#
+%.d: %.cxx
+	@rm -f $@; \
+		$(CXX) -MM $(CPPFLAGS) $< > $@.$$$$ 2>/dev/null; \
+		sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
+		rm -f $@.$$$$
+
+-include $(SRCS:.cxx=.d)

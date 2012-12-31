@@ -17,19 +17,6 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/******************************
- * This is the header file for the client side of harmony.
- * 
- * Author: Cristian Tapus
- * History:
- *   July 9, 2000 - first version
- *   July 15, 2000 - comments and update added by Cristian Tapus
- *   Nov  20, 2000 - some changes made by Dejan Perkovic
- *   Dec  20, 2000 - comments and updates added by Cristian Tapus
- *   2010 : fix for multiple server connection by George Teodoro
- *   2004-2010 : various fixes and additions by Ananta Tiwari
- *******************************/
-
 #ifndef __HCLIENT_H__
 #define __HCLIENT_H__
 
@@ -40,81 +27,63 @@ extern "C" {
 struct hdesc_t;
 typedef struct hdesc_t hdesc_t;
 
-typedef enum harmony_iomethod_t {
-    HARMONY_IO_POLL,
-    HARMONY_IO_ASYNC,
-
-    HARMONY_DATA_MAX
-} harmony_iomethod_t;
-
-typedef enum bundle_scope_t {
-    BUNDLE_SCOPE_GLOBAL,
-    BUNDLE_SCOPE_LOCAL,
-
-    BUNDLE_SCOPE_MAX
-} bundle_scope_t;
+/* ----------------------------------------------------------------------------
+ * Allocate and initialize a Harmony descriptor.
+ *
+ * Returns a harmony handle on success, and NULL otherwise.
+ */
+hdesc_t *harmony_init(void);
 
 /* ----------------------------------------------------------------------------
- * Initialize a Harmony descriptor.
- *
- * Each Harmony session requires a unique harmony descriptor.  An application
- * name is required to distinguish client groups on the server.  The iomethod
- * parameter determines if the client will receive new configurations from
- * the server asynchronously (via signals), or by polling (via the
- * harmony_fetch function).
+ * Frees all resources associated with a Harmony descriptor.
+ */
+void harmony_fini(hdesc_t *hdesc);
+
+/* ----------------------------------------------------------------------------
+ * Binds local memory to tunable variables from the Harmony Server.
  *
  * Params:
- *   name     - Client application name
- *   iomethod - Client/Server communication method
+ *   hdesc - Harmony handle returned from harmony_init()
+ *   name  - Tunable variable name defined using hsession_xxx() routines
+ *   ptr   - Pointer to local memory that will hold configuration values
  *
  * Returns a harmony handle on success, and -1 otherwise.
  */
-hdesc_t *harmony_init(const char *name, harmony_iomethod_t iomethod);
+int harmony_bind_int(hdesc_t *hdesc, const char *name, long *ptr);
+int harmony_bind_real(hdesc_t *hdesc, const char *name, double *ptr);
+int harmony_bind_enum(hdesc_t *hdesc, const char *name, const char **ptr);
 
 /* ----------------------------------------------------------------------------
- * Connect to the Harmony server.
+ * Join a Harmony tuning session.
  *
- * Establishes a connection with the harmony server.  If host is NULL or port
- * is 0, the environment variable HARMONY_S_HOST or HARMONY_S_PORT will be
- * used, respectively.
+ * Establishes a connection with the Harmony Server on a specific host
+ * and port, and joins the named session.  All variables must be bound
+ * to local memory via harmony_bind() for this call to succeed.
  *
- * All variables must be registered prior to calling this function.
+ * If host is NULL or port is 0, values from the environment variable
+ * HARMONY_S_HOST or HARMONY_S_PORT will be used, respectively.  If
+ * either environment variable is not defined, values from defaults.h
+ * will be used as a last resort.
  *
  * Params:
  *   hdesc - Harmony handle returned from harmony_init()
  *   host  - Host of the server
  *   port  - Port of the server
+ *   sess  - Name of an existing tuning session
  *
  * Returns a harmony handle on success, and -1 otherwise.
  */
-int harmony_connect(hdesc_t *hdesc, const char *host, int port);
+int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *sess);
 
 /* ----------------------------------------------------------------------------
- * Re-connect to the Harmony server.
- *
- * Use this function to migrate a harmony client, and continue its processing
- * elsewhere.  An additional client id is necessary to inform the server which
- * client is being migrated.
- *
- * Params:
- *   hdesc - Harmony handle returned from harmony_init()
- *   host  - Host of the server
- *   port  - Port of the server
- *   cid   - Original ID of client
- *
- * Returns a harmony handle on success, and -1 otherwise.
- */
-int harmony_reconnect(hdesc_t *hdesc, const char *host, int port, int cid);
-
-/* ----------------------------------------------------------------------------
- * Close the connection to the Harmony server.
+ * Leave a Harmony tuning session.
  *
  * Params:
  *   hdesc - Harmony handle returned from harmony_init()
  *
  * Returns 0 on success, and -1 otherwise.
  */
-int harmony_disconnect(hdesc_t *hdesc);
+int harmony_leave(hdesc_t *hdesc);
 
 /* ----------------------------------------------------------------------------
  * Query the server's key/value configuration system.
@@ -123,7 +92,8 @@ int harmony_disconnect(hdesc_t *hdesc);
  * string value associated with it if found. Heap memory is allocated
  * for the result string.
  *
- * It is the caller's responsibility to free the result string.
+ * This function allocates memory for the return value.  It is the
+ * user's responsibility to free this memory.
  *
  * Params:
  *   hdesc - Harmony handle returned from harmony_init()
@@ -142,39 +112,20 @@ char *harmony_query(hdesc_t *hdesc, const char *key);
  * pairs exist only in memory, and will not be written back to the server's
  * configuration file.
  *
+ * This function allocates memory for the return value.  It is the
+ * user's responsibility to free this memory.
+ *
  * Params:
  *   hdesc - Harmony handle returned from harmony_init()
  *   key   - Config key to modify on the server
  *   val   - Config value to associate with the key
  *
- * Returns 0 on success, and -1 otherwise.
+ * Returns the original key value string on success and NULL
+ * otherwise, setting errno if appropriate.  Since this function may
+ * legitimately return NULL, errno must be cleared pre-call, and
+ * checked post-call.
  */
-int harmony_inform(hdesc_t *hdesc, const char *key, const char *val);
-
-/* ----------------------------------------------------------------------------
- * Inform the server of a new key/value pair, for non-existent keys.
- *
- * Writes the new key/value pair into the server's run-time configuration
- * database only if it does not currently exist.  Otherwise, a copy of the
- * existing value will be stored in heap memory and returned in return_val.
- * No memory is allocated if return_val is NULL.  These key/value pairs
- * exist only in in memory, and will not be written back to the server's
- * configuration file.
- *
- * It is the caller's responsibility to free the string returned in
- * return_val, if any.
- *
- * Params:
- *   hdesc      - Harmony handle returned from harmony_init()
- *   key        - Config key to modify on the server
- *   val        - Config value to associate with the key, if none exists
- *   return_val - Current value, if key pre-exists
- *
- * Returns 1 if the key/value pair was written, 0 if the key value pair
- * pre-existed, and -1 otherwise.
- */
-int harmony_inform_if_empty(hdesc_t *hdesc, const char *key, const char *val,
-                            char **return_val);
+char *harmony_inform(hdesc_t *hdesc, const char *key, const char *val);
 
 /* ----------------------------------------------------------------------------
  * Fetch a new configuration from the Harmony server.
@@ -190,22 +141,6 @@ int harmony_inform_if_empty(hdesc_t *hdesc, const char *key, const char *val,
  * variables were modified, and -1 otherwise.
  */
 int harmony_fetch(hdesc_t *hdesc);
-
-/* ----------------------------------------------------------------------------
- * Retrieve the best known configuration thus far from the Harmony server.
- *
- * The result is a heap memory allocated string consisting of the values of
- * the registered variables (in the order they were registered), joined by
- * underscores.
- *
- * It is the caller's responsibility to free the result string.
- *
- * Params:
- *   hdesc - Harmony handle returned from harmony_init()
- *
- * Returns a c-style string on success, and NULL otherwise.
- */
-char *harmony_best_config(hdesc_t *hdesc);
 
 /* ----------------------------------------------------------------------------
  * Report the performance of a configuration to the Harmony server.
@@ -224,76 +159,27 @@ int harmony_report(hdesc_t *hdesc, double value);
  * Params:
  *   hdesc - Harmony handle returned from harmony_init()
  *
- * Returns 1 if the search has converged, 0 if it has not, and -1 otherwise.
+ * Returns 1 if the search has converged, 0 if it has not, and -1 on error.
  */
 int harmony_converged(hdesc_t *hdesc);
 
 /* ----------------------------------------------------------------------------
- * Register a variable with the Harmony system.
+ * Returns a pointer to a string that describes the latest Harmony
+ * error, or NULL if no error has occurred since the last call to
+ * harmony_error_clear().
  *
  * Params:
  *   hdesc - Harmony handle returned from harmony_init()
- *   name  - Name to associate with this variable
- *   ptr   - Pointer to the pre-existing client variable
- *   min   - Minimum range value (inclusive)
- *   max   - Maximum range value (inclusive)
- *   step  - Minimum search increment/decrement
- *
- * Returns 0 on success and -1 otherwise.
  */
-int harmony_register_int(hdesc_t *hdesc, const char *name, void *ptr,
-                         int min, int max, int step);
+const char *harmony_error_string(hdesc_t *hdesc);
 
 /* ----------------------------------------------------------------------------
- * Register a variable with the Harmony system.
+ * Clears the error status of the given Harmony descriptor.
  *
  * Params:
  *   hdesc - Harmony handle returned from harmony_init()
- *   name  - Name to associate with this variable
- *   ptr   - Pointer to the pre-existing client variable
- *   min   - Minimum range value (inclusive)
- *   max   - Maximum range value (inclusive)
- *   step  - Minimum search increment/decrement
- *
- * Returns 0 on success and -1 otherwise.
  */
-int harmony_register_real(hdesc_t *hdesc, const char *name, void *ptr,
-                          double min, double max, double step);
-
-/* ----------------------------------------------------------------------------
- * Register a variable with the Harmony system.
- *
- * Params:
- *   hdesc - Harmony handle returned from harmony_init()
- *   name  - Name to associate with this variable
- *   ptr   - Pointer to the pre-existing client variable
- *
- * Returns 0 on success and -1 otherwise.
- */
-int harmony_register_enum(hdesc_t *hdesc, const char *name, void *ptr);
-
-/* ----------------------------------------------------------------------------
- * Add a member to the Harmony variable's enumeration set.
- *
- * Params:
- *   hdesc - Harmony handle returned from harmony_init()
- *   name  - Name of the Harmony variable to constrain
- *   value - Name of the enumeration member to add
- *
- * Returns 0 on success, and -1 otherwise.
- */
-int harmony_range_enum(hdesc_t *hdesc, const char *name, const char *value);
-
-/* ----------------------------------------------------------------------------
- * Unregister a variable from the Harmony system.
- *
- * Params:
- *   hdesc - Harmony handle returned from harmony_init()
- *   name  - Name of the Harmony variable to unregister
- *
- * Returns 0 on success, and -1 otherwise.
- */
-int harmony_unregister(hdesc_t *hdesc, const char *name);
+void harmony_error_clear(hdesc_t *hdesc);
 
 #ifdef __cplusplus
 }

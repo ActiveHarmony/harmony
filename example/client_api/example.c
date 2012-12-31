@@ -17,9 +17,12 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <math.h>
 #include <stdio.h>
+#include <string.h>
+#include <strings.h>
+#include "hsession.h"
 #include "hclient.h"
+#include "defaults.h"
 
 /* For illustration purposes, the performance here is defined by following
  * simple definition:
@@ -32,9 +35,9 @@
  * And a reasonable search range for all parameters is [1-100].
  * 
  */
-int application(int p1, int p2, int p3, int p4, int p5, int p6) 
+long application(long p1, long p2, long p3, long p4, long p5, long p6) 
 {
-    int perf =
+    long perf =
         (p1-15) * (p1-15) +
         (p2-30) * (p2-30) +
         (p3-45) * (p3-45) +
@@ -46,55 +49,119 @@ int application(int p1, int p2, int p3, int p4, int p5, int p6)
 
 int main(int argc, char **argv)
 {
-    hdesc_t *hd;
-    int i;
-    int loop = 200;
-    int perf = -1000;
+    const char *name, *retstr;
+    char *ptr;
+    hsession_t sess;
+    hdesc_t *hdesc;
+    int i, retval, loop = 200;
+    long perf = -1000;
+
+    /* Variables to hold the application's runtime tunable parameters.
+     * Once bound to a Harmony tuning session, these variables will be
+     * modified upon harmony_fetch() to a new testing configuration.
+     */
+    long param_1;
+    long param_2;
+    long param_3;
+    long param_4;
+    long param_5;
+    long param_6;
+
+    retval = 0;
+    for (i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+            fprintf(stderr, "Usage: %s [session_name]"
+                    " [KEY_1=VAL_1] .. [KEY_N=VAL_N]\n\n", argv[0]);
+            return 0;
+        }
+    }
+
+    /* Initialize a Harmony tuning session. */
+    hsession_init(&sess);
+
+    /* Process the program arguments. */
+    i = 1;
+    name = "Example";
+    if (argc > 1 && !strchr(argv[1], '=')) {
+        name = argv[1];
+        ++i;
+    }
+
+    if (hsession_name(&sess, name) < 0) {
+        fprintf(stderr, "Could not set session name.\n");
+        return -1;
+    }
+
+    while (i < argc) {
+        ptr = strchr(argv[i], '=');
+        if (!ptr) {
+            fprintf(stderr, "Invalid parameter '%s'\n", argv[i]);
+            return -1;
+        }
+
+        *(ptr++) = '\0';
+        if (hsession_cfg(&sess, argv[i], ptr) < 0) {
+            fprintf(stderr, "Failed to set config var %s\n", argv[i]);
+            return -1;
+        }
+        ++i;
+    }
+
+    if (hsession_int(&sess, "param_1", 1, 100, 1) < 0 ||
+        hsession_int(&sess, "param_2", 1, 100, 1) < 0 ||
+        hsession_int(&sess, "param_3", 1, 100, 1) < 0 ||
+        hsession_int(&sess, "param_4", 1, 100, 1) < 0 ||
+        hsession_int(&sess, "param_5", 1, 100, 1) < 0 ||
+        hsession_int(&sess, "param_6", 1, 100, 1) < 0)
+    {
+        fprintf(stderr, "Failed to define tuning session\n");
+        return -1;
+    }
+
+    retstr = hsession_launch(&sess, NULL, 0);
+    if (retstr) {
+        fprintf(stderr, "Could not launch tuning session: %s\n", retstr);
+        return -1;
+    }
 
     printf("Starting Harmony...\n");
 
-    /* initialize a harmony session */
-    hd = harmony_init("SearchT", HARMONY_IO_POLL);
-    if (hd == NULL) {
+    /* Initialize a Harmony client. */
+    hdesc = harmony_init();
+    if (hdesc == NULL) {
         fprintf(stderr, "Failed to initialize a harmony session.\n");
         return -1;
     }
 
-    /* declare application's runtime tunable parameters. for example, these
-     * could be blocking factor and unrolling factor for matrix
-     * multiplication program.
-     */
-    int param_1;
-    int param_2;
-    int param_3;
-    int param_4;
-    int param_5;
-    int param_6;
-
-    /* register the tunable varibles */
-    if (harmony_register_int(hd, "param_1", &param_1, 1, 100, 1) < 0 ||
-        harmony_register_int(hd, "param_2", &param_2, 1, 100, 1) < 0 ||
-        harmony_register_int(hd, "param_3", &param_3, 1, 100, 1) < 0 ||
-        harmony_register_int(hd, "param_4", &param_4, 1, 100, 1) < 0 ||
-        harmony_register_int(hd, "param_5", &param_5, 1, 100, 1) < 0 ||
-        harmony_register_int(hd, "param_6", &param_6, 1, 100, 1) < 0) {
-
+    /* Bind the session variables to local variables. */
+    if (harmony_bind_int(hdesc, "param_1", &param_1) < 0 ||
+        harmony_bind_int(hdesc, "param_2", &param_2) < 0 ||
+        harmony_bind_int(hdesc, "param_3", &param_3) < 0 ||
+        harmony_bind_int(hdesc, "param_4", &param_4) < 0 ||
+        harmony_bind_int(hdesc, "param_5", &param_5) < 0 ||
+        harmony_bind_int(hdesc, "param_6", &param_6) < 0)
+    {
         fprintf(stderr, "Failed to register variable\n");
-        return -1;
+        retval = -1;
+        goto cleanup;
     }
 
-    /* Connect to Harmony server and register ourselves as a client. */
-    if (harmony_connect(hd, NULL, 0) < 0) {
-        fprintf(stderr, "Could not connect to harmony server.\n");
-        return -1;
+    /* Join this client to the tuning session we established above. */
+    if (harmony_join(hdesc, NULL, 0, name) < 0) {
+        fprintf(stderr, "Could not connect to harmony server: %s\n",
+                harmony_error_string(hdesc));
+        retval = -1;
+        goto cleanup;
     }
 
     /* main loop */
-    for (i = 0; i < loop; i++) {
-        int hresult = harmony_fetch(hd);
+    for (i = 0; !harmony_converged(hdesc) && i < loop; i++) {
+        int hresult = harmony_fetch(hdesc);
         if (hresult < 0) {
-            fprintf(stderr, "Failed to fetch values from server.\n");
-            return -1;
+            fprintf(stderr, "Failed to fetch values from server: %s\n",
+                    harmony_error_string(hdesc));
+            retval = -1;
+            goto cleanup;
         }
         else if (hresult == 0) {
             /* New values were not available at this time.
@@ -125,22 +192,26 @@ int main(int argc, char **argv)
 
         if (hresult > 0) {
             /* Only print performance if new values were fetched. */
-            printf("%d, %d, %d, %d, %d, %d = %d\n",
+            printf("%ld, %ld, %ld, %ld, %ld, %ld = %ld\n",
                    param_1, param_2, param_3,
                    param_4, param_5, param_6, perf);
         }
 
-        /* update the performance result */
-        if (harmony_report(hd, perf) < 0) {
+        /* Report the performance we've just measured. */
+        if (harmony_report(hdesc, perf) < 0) {
             fprintf(stderr, "Failed to report performance to server.\n");
-            return -1;
+            retval = -1;
+            goto cleanup;
         }
     }
 
-    /* close the session */
-    if (harmony_disconnect(hd) < 0) {
+    /* Leave the session */
+    if (harmony_leave(hdesc) < 0) {
         fprintf(stderr, "Failed to disconnect from harmony server.\n");
-        return -1;
+        retval = -1;
     }
-    return 0;
+
+  cleanup:
+    harmony_fini(hdesc);
+    return retval;
 }

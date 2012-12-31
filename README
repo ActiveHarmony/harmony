@@ -3,82 +3,69 @@ directory. It has a short description of each file, but it does not
 get into details of implementation, as this is (or should be!) done in
 each file.
 
-The current supported platform is Linux only.
-
 * ===================
 * Directory Structure
 * ===================
 
-bin/     : executables
-doc/     : documentation
-example/ : several demo examples
-nb/      : knowledge base source files used by library specification layer
-tcl/     : Tcl scripts used by the h_server (this is where all the
-           search algorithms are implemented)
-build/   : source files
-java/    : Java Harmony API
-
-* =============
-* Notable Files
-* =============
-
-bin/harmony.cfg - This is the global configuration file.  All run-time
-                  customization such as code server type, or search
-                  algorithm selection, should be made in this file.
-build/hclient.c - Implementation of the API functions of Harmony in C.
-build/hclient.h - Prototypes of the API functions.
-build/hmesgs.c - Implementation of functions that pack/unpack
-                 (serialize/deserialize) harmony messages.
-build/hmesgs.h - Prototypes of message class functions.
-build/hserver.cxx - Implementation of the Harmony server in C++.
-build/tuna - Harmony command-line tuning shell.
+build/       : source files
+code-server/ : CHiLL-based code generation server
+doc/         : documentation
+example/     : several demo examples
 
 * ================
 * Building Harmony
 * ================
 
-Here are a few pointers on how to compile the code and run the
-example.  Just do a:
+In general, the following command should suffice to build the entire
+framework, including examples:
 
-	$ cd build
 	$ make
 
-This will build the Harmony server and Tuna for you.  You can verify a
-successful build with the following commands:
+This make system is sensitive to additional build flags supplied by
+the environment:
 
-	$ cd ../bin
-	$ ls
-	hconfig.tcl  hserver  tuna
+	$ make CFLAGS=-O3 LDFLAGS=-L/usr/local/lib64
+
+Use the "install" target to copy all binaries and supporting files
+outside of their respective source directories:
+
+	$ make install
+
+By default, the Active Harmony framework is installed in the base
+directory of the source tree.  Use the PREFIX environment variable to
+override this:
+
+	$ make install PREFIX=/usr/local
+
+* =======================
+* Notable Installed Files
+* =======================
+
+<PREFIX>/bin/hserver       - Harmony server
+<PREFIX>/bin/tuna          - Harmony command-line tuning shell.
+<PREFIX>/bin/harmony.cfg   - This is the global configuration file.  All
+                             run-time customization such as code server
+                             type, or search algorithm selection, should
+                             be made in this file.
+<PREFIX>/include/hclient.h - Prototypes of the Harmony Client API functions.
+<PREFIX>/lib/libharmony.a  - Clients that use the Harmony API must link
+                             against this archive.
 
 * ==================
 * Running An Example
 * ==================
 
-The HARMONY_CONFIG environment variable can be used to specify which
-configuration file to use.  For example:
-
-	$ HARMONY_CONFIG=<harmony_dir>/bin/harmony.cfg
-
 To run the server:
 	$ ./hserver [configuration_file]
 
-To run the example client you have to setup the environment variables:
+The HARMONY_CONFIG environment variable can also be used to specify which
+configuration file to use.  For example:
 
-at sh:
-	$ export HARMONY_S_HOST=localhost
-	$ export HARMONY_S_PORT=1977
-
-at csh:
-	$ setenv HARMONY_S_HOST localhost
-	$ setenv HARMONY_S_PORT 1977
-
-Naturally, these variables should point to the hostname and port where
-the Harmony Server is running.  If unspecified, the client will
-default to host "localhost" and port 1977.
+	$ HARMONY_CONFIG=<some_other_dir>/harmony.cfg ./hserver
 
 To build and run the example client:
 
-	$ cd ../example/client_api
+	$ cd <SRCDIR>/example/client_api
 	$ make
 
 If the server is running and the environment is set up correctly,
@@ -87,6 +74,15 @@ the C example may be run as follows:
 
 	$ ./example_c
 
-A complex example is provided in example/code_generation.  That
-example relies on our code-server, MPI, and CHiLL.  More details on
-that example can be found in example/code_generation/README.
+By default, the example will attempt to communicate with a Harmony
+Server listening on localhost:1979, as this is the default host/port
+pair for the Harmony Server.  If you wish to connect to a server
+running on a different host or port, use the HARMONY_S_HOST or
+HARMONY_S_PORT environment variables, respectively:
+
+	$ export HARMONY_S_HOST=other.host.net
+	$ export HARMONY_S_PORT=2012
+
+A complex example is provided in <SRCDIR>/example/code_generation.
+That example relies on our code-server, MPI, and CHiLL.  Additional
+details can be found in <SRCDIR>/example/code_generation/README.

@@ -16,6 +16,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,7 +36,9 @@
 #include <sys/stat.h>
 
 #include "hclient.h"
-#include "hmesgs.h"
+#include "hmesg.h"
+#include "hsession.h"
+#include "hval.h"
 
 typedef enum method_t {
     METHOD_WALL,
@@ -70,8 +73,8 @@ int prepare_client_argv();
 FILE *tuna_popen(const char *, char **, pid_t *);
 double tv_to_double(struct timeval *);
 int argv_add(char *);
-bundle_info_t *bundle_add(hval_type, char *);
-bundle_info_t *bundle_get(char **);
+bundle_info_t *tuna_bundle_add(hval_type, char *);
+bundle_info_t *tuna_bundle_get(char **);
 int is_exec(const char *filename);
 char *find_exec(const char *);
 pid_t launch_silent(const char *, char **);
@@ -79,8 +82,9 @@ pid_t launch_silent(const char *, char **);
 char prog_env[FILENAME_MAX];
 char prog_hsvr[FILENAME_MAX];
 
-hdesc_t *hdesc = NULL;
 method_t method = METHOD_WALL;
+hdesc_t *hdesc = NULL;
+hsession_t sess;
 unsigned int max_loop = 50;
 unsigned int quiet = 0;
 unsigned int verbose = 0;
@@ -99,6 +103,7 @@ int main(int argc, char **argv)
 {
     int i, hresult, line_start, count;
     char readbuf[4096], *path, *hsvr_argv[2];
+    const char *retval;
     FILE *fptr;
     double perf = 0.0;
 
@@ -139,13 +144,15 @@ int main(int argc, char **argv)
     }
 
     /* Initialize the Harmony descriptor */
-    hdesc = harmony_init("tuna", HARMONY_IO_POLL);
+    hdesc = harmony_init();
     if (hdesc == NULL) {
         fprintf(stderr, "Failed to initialize a Harmony descriptor.\n");
         return -1;
     }
 
     /* Parse the command line arguments. */
+    hsession_init(&sess);
+    hsession_name(&sess, "tuna");
     parseArgs(argc, argv);
 
     /* Sanity check before we attempt to connect to the server. */
@@ -168,10 +175,16 @@ int main(int argc, char **argv)
         sleep(1);
     }
 
+    retval = hsession_launch(&sess, NULL, 0);
+    if (retval) {
+        fprintf(stderr, "Error launching new tuning session: %s\n", retval);
+        goto cleanup;
+    }
+
     /* Connect to Harmony server and register ourselves as a client. */
     printf("Starting Harmony...\n");
     for (i = 0; i < 3; ++i) {
-        if (harmony_connect(hdesc, NULL, 0) >= 0)
+        if (harmony_join(hdesc, NULL, 0, "tuna") >= 0)
             break;
         if (verbose)
             fprintf(stderr, "Error connecting to harmony server."
@@ -187,7 +200,7 @@ int main(int argc, char **argv)
         hresult = harmony_fetch(hdesc);
         if (hresult < 0) {
             fprintf(stderr, "Failed to fetch values from server.\n");
-            return -1;
+            goto cleanup;
         }
         else if (hresult > 0) {
             /* The Harmony system modified the variable values. */
@@ -196,13 +209,12 @@ int main(int argc, char **argv)
 
         if (gettimeofday(&wall_start, NULL) != 0) {
             perror("Error on gettimeofday()");
-            return -1;
+            goto cleanup;
         }
 
         fptr = tuna_popen(client_argv[0], client_argv, &pid);
-        if (!fptr) {
-            return -1;
-        }
+        if (!fptr)
+            goto cleanup;
 
         count = 0;
         line_start = 1;
@@ -222,13 +234,13 @@ int main(int argc, char **argv)
                 exit(-1);
             } else if (pid < 0) {
                 perror("Error on wait3()");
-                return -1;
+                goto cleanup;
             }
         } while (pid == 0);
 
         if (gettimeofday(&wall_end, NULL) != 0) {
             perror("Error on gettimeofday()");
-            return -1;
+            goto cleanup;
         }
         timersub(&wall_end, &wall_start, &wall_time);
 
@@ -238,13 +250,14 @@ int main(int argc, char **argv)
         case METHOD_SYS:    perf = tv_to_double(&client_usage.ru_stime); break;
         case METHOD_OUTPUT: break;
         default:
-            assert(0 && "Unknown measurement method.");
+            fprintf(stderr, "Unknown measurement method.\n");
+            goto cleanup;
         }
 
         /* Update the performance result */
         if (harmony_report(hdesc, perf) < 0) {
             fprintf(stderr, "Failed to report performance to server.\n");
-            return -1;
+            goto cleanup;
         }
 
         if (harmony_converged(hdesc))
@@ -252,11 +265,10 @@ int main(int argc, char **argv)
     }
 
     /* Close the session */
-    if (harmony_disconnect(hdesc) < 0) {
+    if (harmony_leave(hdesc) < 0)
         fprintf(stderr, "Failed to disconnect from harmony server.\n");
-        return -1;
-    }
 
+  cleanup:
     if (svr_pid && kill(svr_pid, SIGKILL) < 0)
         fprintf(stderr, "Could not kill server process (%d).\n", svr_pid);
 
@@ -364,7 +376,7 @@ void parseArgs(int argc, char **argv)
 
         for (arg = argv[i]; *arg != '\0'; ++arg) {
             if (*arg == '%') {
-                bun = bundle_get(&arg);
+                bun = tuna_bundle_get(&arg);
                 if (bun == NULL)
                     exit(-1);
                 bun->used = 1;
@@ -386,7 +398,7 @@ void parseArgs(int argc, char **argv)
                 fprintf(stdout, "Warning: Appending unused bundle \"%s\""
                         " to target argv.\n", binfo[i].name);
 
-            arg = (char *)malloc(strlen(binfo[i].name) + 2);
+            arg = (char *) malloc(strlen(binfo[i].name) + 2);
             if (arg == NULL) {
                 perror("Malloc error");
                 exit(-1);
@@ -397,7 +409,7 @@ void parseArgs(int argc, char **argv)
         }
     }
 
-    client_argv = (char **)malloc(sizeof(char *) * (client_argc + 1));
+    client_argv = (char **) malloc(sizeof(char *) * (client_argc + 1));
     if (client_argv == NULL) {
         perror("Malloc error");
         exit(-1);
@@ -430,12 +442,17 @@ int handle_int(char *arg)
         return -1;
     }
 
-    bun = bundle_add(HVAL_INT, name);
+    bun = tuna_bundle_add(HVAL_INT, name);
     if (bun == NULL)
         return -1;
 
-    if (harmony_register_int(hdesc, name, bun->data, min, max, step) < 0) {
+    if (hsession_int(&sess, name, min, max, step) < 0) {
         fprintf(stderr, "Error registering variable '%s'.\n", name);
+        return -1;
+    }
+
+    if (harmony_bind_int(hdesc, name, bun->data) < 0) {
+        fprintf(stderr, "Error binding data to variable '%s'.\n", name);
         return -1;
     }
 
@@ -468,12 +485,17 @@ int handle_real(char *arg)
         return -1;
     }
 
-    bun = bundle_add(HVAL_REAL, name);
+    bun = tuna_bundle_add(HVAL_REAL, name);
     if (bun == NULL)
         return -1;
 
-    if (harmony_register_real(hdesc, name, bun->data, min, max, step) < 0) {
+    if (hsession_real(&sess, name, min, max, step) < 0) {
         fprintf(stderr, "Error registering variable '%s'.\n", name);
+        return -1;
+    }
+
+    if (harmony_bind_real(hdesc, name, bun->data) < 0) {
+        fprintf(stderr, "Error binding data to variable '%s'.\n", name);
         return -1;
     }
 
@@ -500,14 +522,9 @@ int handle_enum(char *arg)
     }
     *(arg++) = '\0';
 
-    bun = bundle_add(HVAL_REAL, name);
+    bun = tuna_bundle_add(HVAL_STR, name);
     if (bun == NULL)
         return -1;
-
-    if (harmony_register_enum(hdesc, name, bun->data) < 0) {
-        fprintf(stderr, "Error registering variable '%s'.\n", name);
-        return -1;
-    }
 
     while (*arg != '\0') {
         val = arg;
@@ -515,10 +532,15 @@ int handle_enum(char *arg)
         if (*arg != '\0')
             *(arg++) = '\0';
 
-        if (harmony_range_enum(hdesc, name, val) < 0) {
+        if (hsession_enum(&sess, name, val) < 0) {
             fprintf(stderr, "Invalid value string for variable '%s'.\n", name);
             return -1;
         }
+    }
+
+    if (harmony_bind_enum(hdesc, name, bun->data) < 0) {
+        fprintf(stderr, "Error binding data to variable '%s'.\n", name);
+        return -1;
     }
 
     return 0;
@@ -573,22 +595,30 @@ int handle_chapel(char *prog)
         return -1;
     }
 
-    bun = bundle_add(HVAL_INT, "dataParTsk");
+    bun = tuna_bundle_add(HVAL_INT, "dataParTsk");
     if (bun == NULL)
         return -1;
-    if (harmony_register_int(hdesc, "dataParTsk", bun->data, 1, 64, 1) < 0) {
+    if (hsession_int(&sess, "dataParTsk", 1, 64, 1) < 0) {
         fprintf(stderr, "Error registering variable 'dataParTsk'.\n");
+        return -1;
+    }
+    if (harmony_bind_int(hdesc, "dataParTsk", bun->data) < 0) {
+        fprintf(stderr, "Error binding data to variable 'dataParTsk'.\n");
         return -1;
     }
     if (argv_add("--dataParTasksPerLocale=%dataParTsk"))
         return -1;
     bun->used = 1;
 
-    bun = bundle_add(HVAL_INT, "numThr");
+    bun = tuna_bundle_add(HVAL_INT, "numThr");
     if (bun == NULL)
         return -1;
-    if (harmony_register_int(hdesc, "numThr", bun->data, 1, 32, 1) < 0) {
+    if (hsession_int(&sess, "numThr", 1, 32, 1) < 0) {
         fprintf(stderr, "Error registering variable 'numThr'.\n");
+        return -1;
+    }
+    if (harmony_bind_int(hdesc, "numThr", bun->data) < 0) {
+        fprintf(stderr, "Error binding data to variable 'numThr'.\n");
         return -1;
     }
     if (argv_add("--numThreadsPerLocale=%numThr"))
@@ -630,12 +660,16 @@ int handle_chapel(char *prog)
             return -1;
         }
         strcpy(arg, name);
-        bun = bundle_add(HVAL_INT, arg);
+        bun = tuna_bundle_add(HVAL_INT, arg);
         if (bun == NULL)
             return -1;
 
-        if (harmony_register_int(hdesc, name, bun->data, min, max, step) < 0) {
+        if (hsession_int(&sess, name, min, max, step) < 0) {
             fprintf(stderr, "Error registering variable '%s'.\n", name);
+            return -1;
+        }
+        if (harmony_bind_int(hdesc, name, bun->data) < 0) {
+            fprintf(stderr, "Error binding data to variable '%s'.\n", name);
             return -1;
         }
 
@@ -667,7 +701,7 @@ int prepare_client_argv()
 
         for (arg = arglist->str; *arg != '\0'; ++arg) {
             if (*arg == '%') {
-                bun = bundle_get(&arg);
+                bun = tuna_bundle_get(&arg);
                 if (bun == NULL)
                     return -1;
 
@@ -835,7 +869,7 @@ int argv_add(char *str)
     return 0;
 }
 
-bundle_info_t *bundle_add(hval_type type, char *name)
+bundle_info_t *tuna_bundle_add(hval_type type, char *name)
 {
     void *data;
 
@@ -864,7 +898,7 @@ bundle_info_t *bundle_add(hval_type type, char *name)
     return &binfo[bcount++];
 }
 
-bundle_info_t *bundle_get(char **name)
+bundle_info_t *tuna_bundle_get(char **name)
 {
     int i;
     char *end = NULL;
