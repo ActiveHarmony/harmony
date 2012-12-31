@@ -1,5 +1,5 @@
 #
-# Copyright 2003-2011 Jeffrey K. Hollingsworth
+# Copyright 2003-2012 Jeffrey K. Hollingsworth
 #
 # This file is part of Active Harmony.
 #
@@ -110,9 +110,9 @@ proc expand { wrt points } {
         
 	#set point_negated [scale_vect -2 $point]
   
-	set point_negated [scale_vect -1 $point]
+	set point_negated [scale_vect -2 $wrt]
 
-	set axpy__ [axpy_vect 3 $wrt $point_negated]
+	set axpy__ [axpy_vect 3 $point $point_negated]
 	
 	lappend exp_matrix $axpy__
     }
@@ -151,8 +151,8 @@ proc expand_one_point { wrt points sorted how_many } {
     }
 
     foreach point $possible_directions {
-        set point_negated [scale_vect -2 $point]
-        set axpy__ [axpy_vect 3 $wrt $point_negated]
+        set point_negated [scale_vect -2 $wrt]
+        set axpy__ [axpy_vect 3 $point $point_negated]
         lappend return_matrix $axpy__
     }
 

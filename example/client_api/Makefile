@@ -11,7 +11,9 @@ override FFLAGS+=-fno-underscoring
 override CHPLFLAGS+=-M$(TO_BASE)/build -I$(TO_BASE)/build
 override LDFLAGS+=-L$(TO_BASE)/build -lharmony
 
-all: example_c example_f example_chpl
+TARGETS=example_c #example_f example_chpl
+
+all: $(TARGETS)
 
 example_c: example.c $(TO_BASE)/build/libharmony.a
 	@if [ -x "`which $(CC) 2>&1`" ]; then                    \
@@ -41,4 +43,4 @@ $(TO_BASE)/build/libharmony.a:
 	$(MAKE) -C $(TO_BASE)/build libharmony.a
 
 clean:
-	rm -f core example_c example_f example_chpl
+	rm -f core $(TARGETS)
