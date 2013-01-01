@@ -1,6 +1,6 @@
 #!/usr/bin/tclsh
 #
-# Copyright 2003-2012 Jeffrey K. Hollingsworth
+# Copyright 2003-2013 Jeffrey K. Hollingsworth
 #
 # This file is part of Active Harmony.
 #
