@@ -82,13 +82,13 @@ To launch the code_generator:
 
 Steps to run the code generator with example gemm application:
 
-  These instructions are provided in code-server/standalone/README of
+  These instructions are provided in code-server/README of
   the Active Harmony distribution.
 
   1) Working with code generator files
 
-    a) Create a 'gemm' directory within the 'standalone' directory.
-    b) Copy all files from 'code-server/standalone/generic'
+    a) Create a 'gemm' directory within the 'code-server' directory.
+    b) Copy all files from 'code-server/generic'
        to the 'gemm' directory you created in step 1a.
     c) Rename 'chill_script.generic.sh' to 'chill_script.gemm.sh'.
     d) The following files need to be changed under 'gemm':
@@ -122,7 +122,7 @@ Additional Details
         CODEGEN_SLAVE_PATH=/tmp/codegen
 
     2) In this matrix multiplication code generation example, the
-       directory "gemm" has to be created within "standalone"
+       directory "gemm" has to be created within "code-server"
        directory.  Now copy all the files from "generic" directory to
        "gemm" directory.
 
@@ -149,7 +149,8 @@ Additional Details
         make clean
         make
 
-    6) To run the code generator, execute it inside the "standalone" directory.
+    6) The code generator should now be ready.  Launch it from the
+       "code-server" directory with the following command:
 
         ./code_generator /home/username/scratch/confs
 

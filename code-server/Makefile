@@ -1,4 +1,4 @@
-TO_BASE=../..
+TO_BASE=..
 PREFIX=$(TO_BASE)
 
 CXX=g++
@@ -28,7 +28,7 @@ $(TO_BASE)/build/libharmony.a:
 	$(MAKE) -C $(TO_BASE)/build libharmony.a
 
 clean:
-	rm -f core.* *.o $(TARGETS)
+	rm -f core.* *.o $(BIN_TARGETS)
 
 distclean:
 	rm -f *~ *.d

@@ -81,7 +81,7 @@ running on a different host or port, use the HARMONY_S_HOST or
 HARMONY_S_PORT environment variables, respectively:
 
 	$ export HARMONY_S_HOST=other.host.net
-	$ export HARMONY_S_PORT=2012
+	$ export HARMONY_S_PORT=2013
 
 A complex example is provided in <SRCDIR>/example/code_generation.
 That example relies on our code-server, MPI, and CHiLL.  Additional

@@ -41,7 +41,6 @@
 #include <sys/stat.h>
 #include <arpa/inet.h>
 
-#include "code_generator.h"
 #include "hcfg.h"
 #include "hmesg.h"
 #include "hpoint.h"
