@@ -1,1 +1,0 @@
-g++ -o code_tuner ready_server.c -O3
