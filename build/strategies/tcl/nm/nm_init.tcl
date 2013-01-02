@@ -1,5 +1,5 @@
 #
-# Copyright 2003-2013 Jeffrey K. Hollingsworth
+# Copyright 2003-2012 Jeffrey K. Hollingsworth
 #
 # This file is part of Active Harmony.
 #
@@ -38,6 +38,10 @@ proc simplex_init {appName} {
     global ${appName}_no_underscore_name
     global ${appName}_search_done
     global ${appName}_next_iteration
+
+    # simplex_history maintains recent simplices and is used in the termination test.
+    global ${appName}_simplex_history
+    set ${appName}_simplex_history {}
 
     set g_name [string range $appName 0 [expr [string last "_" $appName]-1]]
 

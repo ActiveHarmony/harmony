@@ -110,8 +110,25 @@ proc simplex_method {appName yvalue} {
     
     global temporary
     
+    # OLDPENALTY
+    # set a fake infinity function value to an infeasible point
+    # regardless of what is received from a client
+    if {0} {
+        foreach bun $bundles {
+            upvar #0 ${appName}_bundle_${bun}(domain) domain
+            upvar #0 ${appName}_bundle_${bun}(value) v
+            puts "OLDPENALTY: domain=$domain"
+            puts "OLDPENALTY: value=$v"
+            if {$v < [lindex $domain 0] || [lindex $domain end] < $v} {
+                puts "OLDPENALTY: change yvalue $yvalue to infinity"
+                set yvalue 999999999
+            }
+        }
+    }
+
     puts "Entered simplex with step: $step ; yvalue=$yvalue"
     puts $performance
+
     parr ${appName}_simplex_points
     
     incr ${appName}_simplex_time
@@ -132,35 +149,43 @@ proc simplex_method {appName yvalue} {
             set_ith_bundle_to_given_value $appName [expr $npoints-1] $init_method
         }  
     } elseif {$step == 1} {
+        # process the simplex at the current iteration
         puts "=============== Step 1 ; $yvalue"
-        
-	    low_high_index $appName 
-	    
-	    compute_centroid $appName
-	    
+
+        # execute the termination test here at the beginning of one algorithm step
+        check_for_convergence $appName
+        upvar #0 ${appName}_search_done simplex_converged
+        if {$simplex_converged == 1} {
+            puts "check_for_convergence: converged"
+            return
+        }
+
+	low_high_index $appName 
+	compute_centroid $appName
         puts "Centroid: $centroid"
-        
-	    #compute P*
-	    set temp {}
-	    for {set j 0} {$j < [llength $centroid]} {incr j} {
-            lappend temp [expr [lindex $centroid $j] * (1.0 + $alpha) - $alpha * [lindex $points($high(index)) $j]]
-	    }
-	    
-	    puts "New values for params: $temp"
-	    
-	    set_bundles_to_new_values $appName $temp
-        
-	    recollect_bundles $appName ${appName}_simplex_pstar
-        
-	    puts "Pstar: $pstar"
-        
-	    incr step
-        
-	    puts "Step: $step"
+	#compute P*: Reflection
+	set temp {}
+	for {set j 0} {$j < [llength $centroid]} {incr j} {
+        lappend temp [expr [lindex $centroid $j] * (1.0 + $alpha) - $alpha * [lindex $points($high(index)) $j]]
+	}
+	puts "New values for params: $temp"
+	set_bundles_to_new_values $appName $temp
+	recollect_bundles $appName ${appName}_simplex_pstar
+	puts "Pstar: $pstar"
+	incr step
+	puts "Step: $step"
+        if {1} {
+            if {[is_infeasible_point $appName]} {
+                puts "PENALTY: The reflection point Pstar is infeasible."
+                puts "PENALTY: Give the penalty value 999999999 to Pstar"
+                simplex_method $appName 999999999
+            }
+        }
     } elseif {$step == 2} {
+        # process Reflected simplex
         puts "********** Step 2: $performance ; $low(value) ; $yvalue ; $nhigh(value)"
         set ystar $yvalue
-        if {$low(value) < $ystar && $ystar <= $nhigh(value)} {
+        if {$low(value) <= $ystar && $ystar <= $nhigh(value)} {
             #replace Ph by P*
             puts "Replace Ph by P* : $ystar"
             puts "Performance initially: $performance"
@@ -170,7 +195,7 @@ proc simplex_method {appName yvalue} {
             set ${appName}_simplex_step 1
             simplex_method $appName $yvalue
         } elseif {$ystar < $low(value)} {
-            #compute P**
+            #compute P**: Expansion
             set temp {}
             for {set j 0} {$j < [llength $centroid]} {incr j} {
                 lappend temp [expr [lindex $centroid $j] * (1.0 - $gamma) + $gamma * [lindex $pstar $j]]
@@ -185,12 +210,26 @@ proc simplex_method {appName yvalue} {
             puts "Pdstar: $pdstar"
             
             incr step
-        } else { #means $nhigh(value) < $ystar
-            if {$ystar < [lindex $performance $high(index)]} {
+            # goto step 3
+            if {1} {
+                if {[is_infeasible_point $appName]} {
+                    puts "PENALTY: The expansion point Pdstar is infeasible."
+                    puts "PENALTY: Give the penalty value 999999999 to Pdstar"
+                    simplex_method $appName 999999999
+                }
+            }
+        } else {
+            # entering this block means $nhigh(value) < $ystar
+            # so, the pstar is worst or second worst
+
+            if {$ystar <= [lindex $performance $high(index)]} {
+                # Reflection is better than the original worst. Then contract with respect to Reflection
+                puts "Reflection point is bad but better than the original worst."
                 set ${appName}_simplex_performance [lreplace $performance $high(index) $high(index) $ystar]
+	        set ${appName}_simplex_points($high(index)) $pstar
             }
             puts "Compute P**"
-            #compute P**
+            #compute P**: Contraction
             set temp {}
             for {set j 0} {$j < [llength $centroid]} {incr j} {
                 lappend temp [expr [lindex $centroid $j] * (1.0 - $beta) + $beta * [lindex $points($high(index)) $j]]
@@ -208,11 +247,21 @@ proc simplex_method {appName yvalue} {
 
 	    incr step
 	    incr step
+            # goto step 4
+            if {1} {
+                if {[is_infeasible_point $appName]} {
+                    puts "PENALTY: The contraction point Pdstar is infeasible."
+                    puts "PENALTY: Give the penalty value 999999999 to Pdstar"
+                    simplex_method $appName 999999999
+                }
+            }
 	}
     } elseif {$step==3} {
+        # process Expanded simplex
 	set ydstar $yvalue
 	puts "============ Step 3: $performance ; $low(value) ; $low(index) ; $high(value) ; $high(index) ; $ydstar ; $ystar"
 	if {$ydstar < $low(value)} {
+            # best E
 	    puts "Replace $high(value) with $ydstar"
 	    set ${appName}_simplex_performance [lreplace $performance $high(index) $high(index) $ydstar]
 	    set ${appName}_simplex_points($high(index)) $pdstar
@@ -225,6 +274,7 @@ proc simplex_method {appName yvalue} {
 	set ${appName}_simplex_step 1
 	simplex_method $appName $yvalue
     } elseif {$step==4} {
+        # process Contracted simplex
 	puts "Step 4!!!!! $ydstar ; $npoints"
 	set ${appName}_simplex_ydstar $yvalue
 	if {$ydstar <= [min $high(value) $ystar]} {
@@ -234,6 +284,7 @@ proc simplex_method {appName yvalue} {
 	    set ${appName}_simplex_step 1
 	    simplex_method $appName $yvalue
 	} else {
+            # worst Contraction
 	    puts "Shrinking towards min! $performance"
 	    
 	    parr ${appName}_simplex_low
@@ -245,11 +296,14 @@ proc simplex_method {appName yvalue} {
 
 	    set npoints 0
 
+            # shrink first point only and move on to the next step
 	    upvar \#0 ${appName}_simplex_refp refp
 	    set temp {}
 	    for {set j 0} {$j < [llength $centroid]} {incr j} {
-		puts "Shrink from [lindex $points($npoints) $j] to [lindex $refp $j] + [lindex $points($npoints) $j])/2]"
+		puts "Shrink from [lindex $points($npoints) $j] to ([lindex $refp $j] + [lindex $points($npoints) $j])/2"
 		lappend temp [expr ([lindex $refp $j] + [lindex $points($npoints) $j])/2]
+                # @@@ do we really need this? it is redundant to just use temp...
+                # also, low point doesn't need to be recalculated...
 		if {$npoints==$low(index)} {
 		    set_ith_bundle_to_given_value $appName $j  [expr ([lindex $refp $j] + [lindex $points($npoints) $j])/2]
 		}
@@ -265,8 +319,17 @@ proc simplex_method {appName yvalue} {
 	    puts "Point 0: $points(0)"
 
 	    incr step
+            # go to step 5
+            if {1} {
+                if {[is_infeasible_point $appName]} {
+                    puts "PENALTY: The first shrinked point temp is infeasible."
+                    puts "PENALTY: Give the penalty value 999999999 to temp"
+                    simplex_method $appName 999999999
+                }
+            }
 	}
     } elseif {$step==5} {
+        # process Shrinked simplex
         puts "Step 5............ $npoints ; [llength $performance] ; $performance"
         set ${appName}_simplex_performance [lreplace $performance $npoints $npoints $yvalue]
         
@@ -275,12 +338,15 @@ proc simplex_method {appName yvalue} {
         
         incr npoints
         
+        # shrink the next point until all the points are shrinked
         if {$npoints<[llength $performance]} {
             upvar \#0 ${appName}_simplex_refp refp
             set temp {}
             for {set j 0} {$j < [llength $centroid]} {incr j} {
-                puts "Shrink from [lindex $points($npoints) $j] to [lindex $refp $j] + [lindex $points($npoints) $j])/2]"
+                puts "Shrink from [lindex $points($npoints) $j] to ([lindex $refp $j] + [lindex $points($npoints) $j])/2"
                 lappend temp [expr ([lindex $refp $j] + [lindex $points($npoints) $j])/2]
+                # @@@ do we really need this? it is redundant to just use temp...
+                # also, low point doesn't need to be recalculated...
                 if {$npoints==$low(index)} {
                     set_ith_bundle_to_given_value $appName $j  [expr ([lindex $refp $j] + [lindex $points($npoints) $j])/2]
                 }
@@ -294,6 +360,13 @@ proc simplex_method {appName yvalue} {
             }
             collect_bundles $appName $npoints
             puts "Point $npoints: $points([expr $npoints-1])"
+            if {1} {
+                if {[is_infeasible_point $appName]} {
+                    puts "PENALTY: The shrinked point temp is infeasible."
+                    puts "PENALTY: Give the penalty value 999999999 to temp"
+                    simplex_method $appName 999999999
+                }
+            }
         } else {
             set ${appName}_simplex_step 1
         }
@@ -383,7 +456,28 @@ proc recollect_bundles {appName where} {
     set $where $bundle_list
 }
 
+# This function checks if the current point (or a set of bundles)
+#   is in an infeasible area.
+# It supports only a boxed feasible area. ex) 0 < x1 < 10 and 0 < x2 < 20
+# More complicated constraints such as x1 + x2 < 30 are not supported.
+# For those complicated constraints, the Omega library is recommended to be used.
+proc is_infeasible_point {appName} {
+    upvar #0 ${appName}_bundles bundles
+    foreach bun $bundles {
+        upvar #0 ${appName}_bundle_${bun}(domain) domain
+        upvar #0 ${appName}_bundle_${bun}(value) v
+        puts "is_infeasible_point: domain=$domain"
+        puts "is_infeasible_point: value=$v"
+        if {$v < [lindex $domain 0] || [lindex $domain end] < $v} {
+            puts "is_infeasible_point: YES"
+            return 1
+        }
+    }
+    puts "is_infeasible_point: NO"
+    return 0
+}
 
+# This function computes the centroid of points of the current simplex except the worst point.
 proc compute_centroid {appName} {
 
     global ${appName}_simplex_points
@@ -394,9 +488,22 @@ proc compute_centroid {appName} {
 
     upvar #0 ${appName}_simplex_centroid centroid
 
-    set centroid $points(0)
+    upvar #0 ${appName}_simplex_high high
 
-    for {set i 1} {$i < $npoints} {incr i} {
+    # initialize a centroid point
+    set centroid {}
+    for {set i 0} {$i < [llength $points(0)]} {incr i} {
+        lappend centroid 0
+    }
+
+    # exclude worst(highest) point from centroid computation
+    for {set i 0} {$i < $npoints} {incr i} {
+        #puts "points($i): $points($i)"
+        #puts "points(high): $points($high(index))"
+        if {$points($i) == $points($high(index))} {
+            puts "skip the worst point $points($i) for centroid computation"
+            continue
+        }
 	set temp {}
 	for {set j 0} {$j < [llength $centroid]} {incr j} {
 	    lappend temp [expr [lindex $centroid $j] + [lindex $points($i) $j]]
@@ -406,9 +513,11 @@ proc compute_centroid {appName} {
 
     set temp {}
     for {set j 0} {$j < [llength $centroid]} {incr j} {
-	lappend temp [expr [lindex $centroid $j] / ($npoints + 0.0)]
+        # divide by npoints-1
+	lappend temp [expr [lindex $centroid $j] / ($npoints - 1.0)]
     }
     set ${appName}_simplex_centroid $temp
+    #puts "centroid = $centroid"
 }
 
 
@@ -418,6 +527,9 @@ proc set_bundles_to_new_values {appName values} {
     global temporary
 
     set ok 0
+    #for {set sign_i 1} {($ok==0) && ($sign_i<=1)} {incr sign_i 1}
+    #  for {set sign_j 1} {($ok==0) && ($sign_j>-2)} {incr sign_j -2}
+    #    set sign [expr $sign_i*$sign_j]
     for {set sign 1} {($ok==0) && ($sign>-2)} {incr sign -2} {
 	for {set retry -1} {($ok==0) && ($retry < [llength $values])} {incr retry} {
 	    puts "Retry : $retry ; [llength $values] ; $ok ; sign = $sign"
@@ -432,6 +544,9 @@ proc set_bundles_to_new_values {appName values} {
 		if {$i < [llength $values]} {
 		    set closestv [closest_value ${appName}_bundle_${bun} [lindex $values $i]]
 		    set proposedv [expr $closestv + $stepv*($i==$retry)*$sign]
+
+                    set val_from [lindex $values $i]
+                    puts "FROM: $val_from TO:$closestv PROPOSED:$proposedv"
  
 		    if {($proposedv >= $minv) && ($proposedv <= $maxv)} {
 			set ${bun}(value) $proposedv
@@ -453,20 +568,29 @@ proc set_bundles_to_new_values {appName values} {
 		}
 	    }
 	    recollect_bundles $appName temporary   
+            set ok 1
 	    if {[exists_point $temporary ${appName}]} {
-		set ok 0
-	    } else {
-		set ok 1
+                set ok 0
+                continue
 	    }
 	}
     }
+    if {$ok == 0} {
+        puts "proposedv not satisfied"
+    }
 }
 
-
+# check if a point temp already exists in the current simplex
 proc exists_point {temp appName} {
     upvar #0 ${appName}_simplex_npoints npoints
     upvar #0 ${appName}_simplex_points points
+    #upvar #0 ${appName}_simplex_high high
     for {set i 0} {$i < $npoints} {incr i} {
+        # skip worst point
+        #if {$i == $high(index)} {
+        #    puts "exists_point i=$i skip worst"
+        #    continue
+        #}
         if {$temp == $points($i)} {
             puts "Found equality: $temp = points($i)=$points($i)"
             return 1}
@@ -533,20 +657,23 @@ proc closest_value {bundleName value} {
 
     upvar #0 ${bundleName}(domain) domain
 
+    # @@@ too much work to find min domain that is larger than value
     for {set i 0} {($i < [llength $domain]) && ([lindex $domain $i] < $value)} {incr i} { }
+    # puts "i = $i value = $value d = [lindex $domain $i]"
     
+    # do not move infeasible points to the constraint boundary
     if {$i==0} {
-	set ${bundleName}(value) [lindex $domain $i]
+        set ${bundleName}(value) $value
     } elseif {$i >= [llength $domain]} {
-	set ${bundleName}(value) [lindex $domain end]
+        set ${bundleName}(value) $value
     } else {
-	set dif1 [expr [lindex $domain $i]-$value]
-	set dif2 [expr $value - [lindex $domain [expr $i-1]]]
-	if {$dif1 > $dif2} {
-	    set ${bundleName}(value) [lindex $domain [expr $i-1]]
-	} else {
-	    set ${bundleName}(value) [lindex $domain $i]
-	}
+        set dif1 [expr [lindex $domain $i]-$value]
+        set dif2 [expr $value - [lindex $domain [expr $i-1]]]
+        if {$dif1 > $dif2} {
+            set ${bundleName}(value) [lindex $domain [expr $i-1]]
+        } else {
+            set ${bundleName}(value) [lindex $domain $i]
+        }
     }
 } 
 
@@ -623,3 +750,114 @@ proc min {v1 v2} {
     }
 }
 
+# This function checks if the current simplex has already been explored before.
+proc check_for_convergence {appName} {
+    # I followed the implementation of MATLAB fminsearch.m for term_x and term_f tests.
+    # But term_x and term_f tests are ignored for now because we now mostly work on discrete integer domains.
+    # In discrete domains, history test works better than tolerance tests (term_x and term_f).
+    # For continuous domains, we can set tolerance values as small as we want.
+    # But for discrete domains, it is hard to decide tolerance values
+    # If it is too small, the algorithm will not be sometimes converged.
+    # And if it is too large, the algorithm will provide a bad non-optimal solution.
+    set converged_x 0
+    set converged_f 0
+    if {0} {
+        # 1) term_x: domain convergence test, simplex is sufficiently small?
+        set converged_x 0
+        set tol_x 1
+        set points [arraytolist ${appName}_simplex_points]
+        set max_x -1000
+        for {set i 0} {$i < [llength $points]} {incr i} {
+            set x_i [lindex $points $i]
+            for {set j [expr $i + 1]} {$j < [llength $points]} {incr j} {
+                set x_j [lindex $points $j]
+                # compute ||x_i - x_j||_\infty
+                set max_k -1000
+                for {set k 0} {$k < [llength $x_i]} {incr k} {
+                    set a [expr abs([lindex $x_i $k] - [lindex $x_j $k])]
+                    #puts "a = ${a}"
+                    if {$a > $max_k} {set max_k $a}
+                }
+                #puts "max_k = ${max_k}"
+                if {$max_k > $max_x} {set max_x $max_k}
+            }
+        }
+        if {$max_x <= $tol_x} {set converged_x 1}
+        set converged_x 0
+
+        # 2) term_f: function value convergence test, simplex is sufficiently flat?
+        set converged_f 0
+        set tol_f 10000000
+        upvar #0 ${appName}_simplex_performance fvalues
+        puts "fvalues = $fvalues"
+        set max_f -1000
+        for {set i 0} {$i < [llength $fvalues]} {incr i} {
+            set f_i [lindex $fvalues $i]
+            for {set j [expr $i + 1]} {$j < [llength $fvalues]} {incr j} {
+                set f_j [lindex $fvalues $j]
+                # compute |f_i - f_j|
+                set a [expr abs($f_i - $f_j)]
+                if {$a > $max_f} {set max_f $a}
+            }
+        }
+        if {$max_f <= $tol_f} {set converged_f 1}
+        set converged_f 0
+    }
+    # end of if 0
+
+    # 3) num steps
+    set converged_time 0
+    set points [arraytolist ${appName}_simplex_points]
+    set num_variables [llength [lindex $points 0]]
+    #puts "num_variables = $num_variables"
+    set tol_time [expr 200 * $num_variables]
+    #puts "tol_time = $tol_time"
+    upvar #0 ${appName}_simplex_time simplex_time
+    if {$simplex_time >= $tol_time} {set converged_time 1}
+
+    # 4) history
+    set converged_history 0
+    # 4a) set the current simplex
+    set curr_simplex [arraytolist ${appName}_simplex_points]
+    # sort curr_simplex 0 - numVar
+    lsort $curr_simplex
+    upvar #0 ${appName}_simplex_history simplex_history
+    # 4b) history existence check
+    set ii 0
+    foreach i_simplex $simplex_history {
+        puts "simplex_history $ii $i_simplex"
+        if {$i_simplex == $curr_simplex} {
+            puts "simplex_history MATCH $ii $curr_simplex"
+            set converged_history 1
+            break
+        }
+        incr ii
+    }
+    # 4c) add curr_simplex to history
+    lappend simplex_history $curr_simplex
+    if {[llength $simplex_history] > 5} {
+        set simplex_history [lreplace $simplex_history 0 0]
+    }
+
+    upvar #0 ${appName}_search_done simplex_converged
+    if {($converged_x == 1 && $converged_f == 1) || $converged_time == 1 || $converged_history == 1} {
+        set simplex_converged 1
+    } else {
+        set simplex_converged 0
+    }
+    #set simplex_converged 0
+    puts "${appName}_search_done = $simplex_converged"
+    #puts "converged_x = $converged_x  tol_x = $tol_x  max_x = $max_x"
+    #puts "converged_f = $converged_f  tol_f = $tol_f  max_f = $max_f"
+    puts "converged_time = $converged_time  tol_time = $tol_time"
+    puts "converged_history = $converged_history"
+}
+
+proc arraytolist {a} {
+    upvar #0 $a arr
+    set l {}
+    foreach tag [lsort [array names arr]] {
+        lappend l $arr($tag)
+    }
+    return $l
+}
