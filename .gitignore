@@ -1,7 +1,3 @@
-*.[ao]
+*.[aod]
 *.so
 *~
-./bin/
-./lib/
-./include/
-./libexec/

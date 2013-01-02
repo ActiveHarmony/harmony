@@ -3,6 +3,5 @@ client_api/example_f
 client_api/example_chpl
 code_generation/gemm
 synth/synth
-gmon.out
 unique_points.tuna.dat
 tuna*.log

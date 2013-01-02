@@ -1,6 +1,4 @@
 hserver
+session-core
 tuna
-libcreater
-lex.yy.c
-y.tab.[ch]
-*.d
+plugins/codegen-helper
