@@ -174,34 +174,33 @@ int main(int argc, char **argv)
             svr_pid = launch_silent(hsvr_argv[0], hsvr_argv);
             if (svr_pid < 0)
                 return -1;
-
-            /* XXX - This should be replaced with a system where the hserver
-               notifies tuna of its readiness.  Perhaps if a --slave mode was
-               added to the server. */
-            sleep(1);
         }
 
-        retval = hsession_launch(&sess, NULL, 0);
-        if (retval) {
-            fprintf(stderr, "Error connecting to new hserver instance: %s\n",
-                    retval);
+        for (i = 0; i < 3; ++i) {
+            /* XXX - This should be replaced with a system where the
+             * hserver notifies tuna of its readiness.  Perhaps if a
+             * --slave mode was added to the server.
+             */
+            sleep(i+1);
+
+            retval = hsession_launch(&sess, NULL, 0);
+            if (!retval)
+                break;  /* Success.  Leave the loop. */
+
+            fprintf(stderr, "Error connecting to new hserver instance: %s\n"
+                    "Re-try in %d second(s)...\n", retval, i+1);
+        }
+        if (i == 3) {
+            fprintf(stderr, "Could not connect to Harmony server.\n");
             goto cleanup;
         }
     }
 
     /* Connect to Harmony server and register ourselves as a client. */
     printf("Starting Harmony...\n");
-    for (i = 0; i < 3; ++i) {
-        if (harmony_join(hdesc, NULL, 0, "tuna") >= 0)
-            break;
-        if (verbose)
-            fprintf(stderr, "Error connecting to harmony server."
-                    "  Re-try in %d seconds...", i+1);
-        sleep(i+1);
-    }
-    if (i == 3) {
-        fprintf(stderr, "Could not connect to harmony server.\n");
-        return -1;
+    if (harmony_join(hdesc, NULL, 0, "tuna") > 0) {
+        fprintf(stderr, "Error joining Harmony session.\n");
+        goto cleanup;
     }
 
     for (i = 0; max_loop <= 0 || i < max_loop; ++i) {
@@ -276,18 +275,22 @@ int main(int argc, char **argv)
     if (harmony_leave(hdesc) < 0)
         fprintf(stderr, "Failed to disconnect from harmony server.\n");
 
-    harmony_best(hdesc);
-    printf("Best configuration found:\n");
-    for (i = 0; i < bcount; ++i) {
-        printf("\t%s: ", binfo[i].name);
-        switch (binfo[i].type) {
-        case HVAL_INT:  printf("%ld\n", *(long *)binfo[i].data); break;
-        case HVAL_REAL: printf("%lf\n", *(double *)binfo[i].data); break;
-        case HVAL_STR:  printf("\"%s\"\n", *(char **)binfo[i].data); break;
-        default:        assert(0 && "Invalid parameter type.");
+    if (harmony_best(hdesc) == 0) {
+        printf("Best configuration found:\n");
+        for (i = 0; i < bcount; ++i) {
+            printf("\t%s: ", binfo[i].name);
+            switch (binfo[i].type) {
+            case HVAL_INT:  printf("%ld\n", *(long *)binfo[i].data); break;
+            case HVAL_REAL: printf("%lf\n", *(double *)binfo[i].data); break;
+            case HVAL_STR:  printf("\"%s\"\n", *(char **)binfo[i].data); break;
+            default:        assert(0 && "Invalid parameter type.");
+            }
         }
+        printf("\n");
     }
-    printf("\n");
+    else {
+        printf("Best configuration could not be retrieved.\n");
+    }
 
   cleanup:
     if (svr_pid && kill(svr_pid, SIGKILL) < 0)
