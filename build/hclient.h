@@ -153,6 +153,17 @@ int harmony_fetch(hdesc_t *hdesc);
  */
 int harmony_report(hdesc_t *hdesc, double value);
 
+
+/* ----------------------------------------------------------------------------
+ * Sets variables under Harmony's control to the best known configuration.
+ *
+ * Params:
+ *   hdesc - Harmony handle returned from harmony_init()
+ *
+ * Returns 0 on success, and -1 otherwise.
+ */
+int harmony_best(hdesc_t *hdesc);
+
 /* ----------------------------------------------------------------------------
  * Retrieve the convergence state of the current search.
  *

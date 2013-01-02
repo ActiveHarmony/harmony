@@ -161,24 +161,32 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    /* Launch Harmony server if needed */
-    if (prog_hsvr[0] != '\0') {
-        hsvr_argv[0] = prog_hsvr;
-        hsvr_argv[1] = NULL;
-        svr_pid = launch_silent(hsvr_argv[0], hsvr_argv);
-        if (svr_pid < 0)
-            return -1;
-
-        /* XXX - This should be replaced with a system where the hserver
-           notifies tuna of its readiness.  Perhaps if a --slave mode was
-           added to the server. */
-        sleep(1);
-    }
-
     retval = hsession_launch(&sess, NULL, 0);
     if (retval) {
-        fprintf(stderr, "Error launching new tuning session: %s\n", retval);
-        goto cleanup;
+        if (verbose)
+            fprintf(stderr, "Error launching new tuning session: %s\n"
+                    "Attempting to start a new hserver instance...\n", retval);
+
+        /* Launch Harmony server if needed */
+        if (prog_hsvr[0] != '\0') {
+            hsvr_argv[0] = prog_hsvr;
+            hsvr_argv[1] = NULL;
+            svr_pid = launch_silent(hsvr_argv[0], hsvr_argv);
+            if (svr_pid < 0)
+                return -1;
+
+            /* XXX - This should be replaced with a system where the hserver
+               notifies tuna of its readiness.  Perhaps if a --slave mode was
+               added to the server. */
+            sleep(1);
+        }
+
+        retval = hsession_launch(&sess, NULL, 0);
+        if (retval) {
+            fprintf(stderr, "Error connecting to new hserver instance: %s\n",
+                    retval);
+            goto cleanup;
+        }
     }
 
     /* Connect to Harmony server and register ourselves as a client. */
@@ -267,6 +275,19 @@ int main(int argc, char **argv)
     /* Close the session */
     if (harmony_leave(hdesc) < 0)
         fprintf(stderr, "Failed to disconnect from harmony server.\n");
+
+    harmony_best(hdesc);
+    printf("Best configuration found:\n");
+    for (i = 0; i < bcount; ++i) {
+        printf("\t%s: ", binfo[i].name);
+        switch (binfo[i].type) {
+        case HVAL_INT:  printf("%ld\n", *(long *)binfo[i].data); break;
+        case HVAL_REAL: printf("%lf\n", *(double *)binfo[i].data); break;
+        case HVAL_STR:  printf("\"%s\"\n", *(char **)binfo[i].data); break;
+        default:        assert(0 && "Invalid parameter type.");
+        }
+    }
+    printf("\n");
 
   cleanup:
     if (svr_pid && kill(svr_pid, SIGKILL) < 0)
