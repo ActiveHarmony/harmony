@@ -1,7 +1,8 @@
 TO_BASE=../..
 
 CC=gcc
-CFLAGS=-Wall -g
+CFLAGS=-std=c99 -pedantic -Wall -Werror -g
+CPPFLAGS=-D_ISOC99_SOURCE -D_XOPEN_SOURCE=500
 FC=gfortran
 FFLAGS=-Wall -g
 CHPLC=chpl
@@ -13,14 +14,19 @@ override LDFLAGS+=-L$(TO_BASE)/build -lharmony
 
 TARGETS=example_c #example_f example_chpl
 
+.PHONY: all install clean distclean
+
 all: $(TARGETS)
 
+install: $(TARGETS)
+	@echo "Examples must be executed from source directory (for now)."
+
 example_c: example.c $(TO_BASE)/build/libharmony.a
-	@if [ -x "`which $(CC) 2>&1`" ]; then                    \
-		echo "$(CC) $(CFLAGS) $< $(LDFLAGS) -o $@";      \
-		$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LDFLAGS) -o $@; \
-	else                                                     \
-		echo "Skipping build of $@: $(CC) not found.";   \
+	@if [ -x "`which $(CC) 2>&1`" ]; then                           \
+		echo "$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LDFLAGS) -o $@"; \
+		$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LDFLAGS) -o $@;        \
+	else                                                            \
+		echo "Skipping build of $@: $(CC) not found.";          \
 	fi
 
 example_f: example.f $(TO_BASE)/build/libharmony.a
@@ -44,3 +50,5 @@ $(TO_BASE)/build/libharmony.a:
 
 clean:
 	rm -f core $(TARGETS)
+
+distclean: clean

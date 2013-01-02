@@ -5,7 +5,7 @@ CC=gcc
 CFLAGS=-std=c99 -pedantic -Wall -Werror -g
 
 override CFLAGS+=-fPIC
-override CPPFLAGS+=-D_ISOC99_SOURCE -D_XOPEN_SOURCE=500 -I..
+override CPPFLAGS+=-I.. -D_ISOC99_SOURCE -D_XOPEN_SOURCE=500
 
 SRCS=codegen.c \
      codegen-helper.c

@@ -47,6 +47,12 @@
 #define SEARCH_MAX 400
 #define N 500
 
+/* ISO C forbids conversion of object pointer to function pointer.  We
+ * get around this by first casting to a word-length integer.  (LP64
+ * compilers assumed).
+ */
+#define HACK_CAST(x) (code_t)(long)(x)
+
 /* Function signature of the tuning target function produced by CHiLL. */
 typedef void (*code_t)(void *, void *, void *, void *);
 
@@ -397,7 +403,7 @@ int update_so(const char *filename)
         return -1;
     }
 
-    code_so = (code_t)dlsym(flib_eval, SHLIB_SYMBOL_NAME);
+    code_so = HACK_CAST(dlsym(flib_eval, SHLIB_SYMBOL_NAME));
     err_str = dlerror();
     if (err_str) {
         errprint("Error finding symbol " SHLIB_SYMBOL_NAME " in %s: %s\n",

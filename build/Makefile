@@ -3,8 +3,7 @@ PREFIX=$(TO_BASE)
 
 CC=gcc
 CFLAGS=-std=c99 -pedantic -Wall -Werror -g
-
-override CPPFLAGS+=-D_ISOC99_SOURCE -D_XOPEN_SOURCE=500
+CPPFLAGS=-D_ISOC99_SOURCE -D_XOPEN_SOURCE=500
 
 SHR_SRCS=hcfg.c \
          hmesg.c \
