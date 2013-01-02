@@ -684,6 +684,8 @@ session_state_t *session_open(hmesg_t *mesg)
     if (gettimeofday(&sess->start, NULL) < 0)
         goto error;
 
+    sess->log_len = 0;
+
     FD_SET(sess->fd, &listen_fds);
     if (highest_socket < sess->fd)
         highest_socket = sess->fd;
@@ -708,7 +710,8 @@ void session_close(session_state_t *sess)
         if (sess->client[i] != -1)
             client_close(sess->client[i]);
     }
-    sess->client_len = 0;
+
+    hsignature_fini(&sess->sig);
 }
 
 void client_close(int fd)
