@@ -4,4 +4,4 @@ client_api/example_chpl
 code_generation/gemm
 synth/synth
 unique_points.tuna.dat
-tuna*.log
+*.log
