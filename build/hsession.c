@@ -49,6 +49,8 @@ int hsession_copy(hsession_t *dst, const hsession_t *src)
     if (hsignature_copy(&dst->sig, &src->sig) < 0)
         return -1;
 
+    if (dst->cfg)
+        hcfg_free(dst->cfg);
     dst->cfg = hcfg_copy(src->cfg);
     if (!dst->cfg)
         return -1;
@@ -208,9 +210,11 @@ const char *hsession_launch(hsession_t *sess, const char *host, int port)
     if (socket < 0)
         return strerror(errno);
 
+    hmesg_scrub(&mesg);
     mesg.type = HMESG_SESSION;
     mesg.status = HMESG_STATUS_REQ;
-    mesg.data.session = *sess;
+    hsession_init(&mesg.data.session);
+    hsession_copy(&mesg.data.session, sess);
 
     /* Send session information to server. */
     retval = NULL;

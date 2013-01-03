@@ -466,7 +466,9 @@ int handle_client_socket(int fd)
 
     sess = NULL;
     retval = mesg_recv(fd, &mesg_in);
-    if (retval <= 0)
+    if (retval == 0)
+        goto shutdown;
+    if (retval < 0)
         goto error;
 
     /* Sanity check input */
@@ -482,8 +484,10 @@ int handle_client_socket(int fd)
     switch (mesg_in.type) {
     case HMESG_SESSION:
         sess = session_open(&mesg_in);
-        if (!sess)
+        if (!sess) {
+            errno = EINVAL;
             goto error;
+        }
         break;
 
     case HMESG_JOIN:
@@ -563,7 +567,7 @@ int handle_client_socket(int fd)
         perror("Error forwarding message to session");
         FD_CLR(sess->fd, &listen_fds);
         session_close(sess);
-        goto error;
+        goto shutdown;
     }
     /* mesg_in data was free()'ed along with mesg_out. */
     mesg_in.type = HMESG_UNKNOWN;
@@ -572,9 +576,13 @@ int handle_client_socket(int fd)
 
   error:
     mesg_out.type = mesg_in.type;
-    mesg_out.status = HMESG_STATUS_FAIL;
-    mesg_out.data.string = strerror(errno);
+    if (mesg_out.status != HMESG_STATUS_FAIL) {
+        mesg_out.status = HMESG_STATUS_FAIL;
+        mesg_out.data.string = strerror(errno);
+    }
     mesg_send(fd, &mesg_out);
+
+  shutdown:
     return -1;
 }
 
@@ -625,20 +633,29 @@ int handle_session_socket(int idx)
 
 session_state_t *session_open(hmesg_t *mesg)
 {
-    int i, clients_expected;
+    int i, idx, clients_expected;
     session_state_t *sess;
     char *child_argv[2];
     const char *cfgstr;
 
+    idx = -1;
     for (i = 0; i < slist_cap; ++i) {
-        if (!slist[i].name)
-            break;
+        if (!slist[i].name) {
+            if (idx < 0)
+                idx = i;
+        }
+        else if (strcmp(slist[i].name, mesg->data.session.sig.name) == 0) {
+            mesg_out.status = HMESG_STATUS_FAIL;
+            mesg_out.data.string = "Session name already exists.";
+            return NULL;
+        }
     }
-    if (i == slist_cap) {
+    if (idx == -1) {
+        idx = slist_cap;
         if (array_grow(&slist, &slist_cap, sizeof(session_state_t)) < 0)
             return NULL;
     }
-    sess = &slist[i];
+    sess = &slist[idx];
 
     sess->name = stralloc(mesg->data.session.sig.name);
     if (!sess->name)
@@ -734,11 +751,6 @@ void client_close(int fd)
             break;
         }
     }
-
-    mesg_out.type = HMESG_UNKNOWN;
-    mesg_out.status = HMESG_STATUS_FAIL;
-    mesg_out.data.string = "Server closing connection.";
-    mesg_send(fd, &mesg_out);
 
     if (close(fd) < 0)
         perror("Error closing client connection post error");

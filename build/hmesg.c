@@ -254,7 +254,7 @@ int hmesg_deserialize(hmesg_t *mesg)
         /* Busy messages contain no data. */
     }
     else if (mesg->status == HMESG_STATUS_FAIL) {
-        count = scanstr_serial(&mesg->data.string, buf);
+        count = scanstr_serial(&mesg->data.string, buf + total);
         if (count < 0) goto error;
         total += count;
     }
