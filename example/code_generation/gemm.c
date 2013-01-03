@@ -312,6 +312,7 @@ int main(int argc, char *argv[])
         if (harmony_leave(hdesc) < 0)
             errprint("Error disconnecting from Harmony server.\n");
     }
+    harmony_fini(hdesc);
     return MPI_Abort(MPI_COMM_WORLD, -1);
 }
 

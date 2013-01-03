@@ -271,10 +271,6 @@ int main(int argc, char **argv)
             break;
     }
 
-    /* Close the session */
-    if (harmony_leave(hdesc) < 0)
-        fprintf(stderr, "Failed to disconnect from harmony server.\n");
-
     if (harmony_best(hdesc) == 0) {
         printf("Best configuration found:\n");
         for (i = 0; i < bcount; ++i) {
@@ -293,6 +289,11 @@ int main(int argc, char **argv)
     }
 
   cleanup:
+    /* Close the session */
+    if (harmony_leave(hdesc) < 0)
+        fprintf(stderr, "Failed to disconnect from harmony server.\n");
+    harmony_fini(hdesc);
+
     if (svr_pid && kill(svr_pid, SIGKILL) < 0)
         fprintf(stderr, "Could not kill server process (%d).\n", svr_pid);
 

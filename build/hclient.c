@@ -235,7 +235,6 @@ int harmony_leave(hdesc_t *hdesc)
     if (close(hdesc->socket) < 0 && debug_mode)
         perror("Error closing socket during harmony_leave()");
 
-    harmony_fini(hdesc);
     return 0;
 }
 
