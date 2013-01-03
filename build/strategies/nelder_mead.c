@@ -26,6 +26,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <errno.h>
 #include <math.h>
 #include <tcl.h>
@@ -106,6 +107,23 @@ int strategy_init(hmesg_t *mesg)
             return -1;
         }
     }
+
+    /* Do not allow users to shoot themselves in the foot.  Make sure
+     * the prefetch count is either 0 or 1.
+     */
+    cfgval = hcfg_get(sess->cfg, CFGKEY_PREFETCH_COUNT);
+    if (cfgval) {
+        retval = atoi(cfgval);
+        if (retval > 1 || strcasecmp(cfgval, "auto") == 0) {
+            hcfg_set(sess->cfg, CFGKEY_PREFETCH_COUNT, "1");
+        }
+        else if (retval < 0) {
+            hcfg_set(sess->cfg, CFGKEY_PREFETCH_COUNT, "0");
+        }
+    }
+
+    /* Nelder-Mead algorithm requires an atomic prefetch queue. */
+    hcfg_set(sess->cfg, CFGKEY_PREFETCH_ATOMIC, "1");
 
     if (Tcl_SetVar(tcl, "code_generation_params(enabled)", "0",
                    TCL_GLOBAL_ONLY) == NULL)

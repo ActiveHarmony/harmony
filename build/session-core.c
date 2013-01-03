@@ -45,13 +45,20 @@
 #define HACK_CAST_INT(x) (int (*)(hmesg_t *))(long)(x)
 #define HACK_CAST_VOID(x) (void (*)(void))(long)(x)
 
+/* Session structure exported to strategies and plugins. */
+hsession_t *sess;
+
+/* Be sure all remaining global definitions are declared static to
+ * avoid possible namspace conflicts in the GOT due to PIC behavior.
+ */
+
 /* Forward function declarations. */
-int strategy_load(hmesg_t *mesg);
-int plugin_list_load(hmesg_t *mesg, const char *list);
-int prefetch_init(hmesg_t *mesg);
-int plugin_workflow(hmesg_t *mesg);
-int point_enqueue(hmesg_t *mesg);
-int point_dequeue(hmesg_t *mesg);
+static int strategy_load(hmesg_t *mesg);
+static int plugin_list_load(hmesg_t *mesg, const char *list);
+static int prefetch_init(hmesg_t *mesg);
+static int plugin_workflow(hmesg_t *mesg);
+static int point_enqueue(hmesg_t *mesg);
+static int point_dequeue(hmesg_t *mesg);
 
 /* Callback registration structures. */
 typedef struct callback {
@@ -59,14 +66,14 @@ typedef struct callback {
     int (*func)(hmesg_t *);
 } callback_t;
 
-callback_t *cb = NULL;
-int cb_len = 0;
-int cb_cap = 0;
+static callback_t *cb = NULL;
+static int cb_len = 0;
+static int cb_cap = 0;
 
 /* Strategy hooks. */
-int (*strategy_fetch)(hmesg_t *);
-int (*strategy_report)(hmesg_t *);
-int (*strategy_converged)(void);
+static int (*strategy_fetch)(hmesg_t *);
+static int (*strategy_report)(hmesg_t *);
+static hpoint_t *strategy_best;
 
 /* Plugin system. */
 typedef struct plugin {
@@ -76,21 +83,19 @@ typedef struct plugin {
     const char *name;
 } plugin_t;
 
-plugin_t *plugin = NULL;
-int plugin_len = 0;
-int plugin_cap = 0;
+static plugin_t *plugin = NULL;
+static int plugin_len = 0;
+static int plugin_cap = 0;
 
 /* Prefetching variables. */
-hpoint_t *pfqueue;
-int pfq_cap, pfq_req, pfq_tail, pfq_head;
+static hpoint_t *pfqueue;
+static int pfq_cap, pfq_tail, pfq_head;
+static int pfq_requested, pfq_reported, pfq_atomic;
 
 /* Variables used for select(). */
-struct timeval polltime, *pollstate;
-fd_set fds;
-int maxfd;
-
-/* Session structure exported to strategies and plugins. */
-hsession_t *sess;
+static struct timeval polltime, *pollstate;
+static fd_set fds;
+static int maxfd;
 
 /* =================================
  * Core session routines begin here.
@@ -305,6 +310,14 @@ int main(int argc, char **argv)
                 if (mesg_send(STDIN_FILENO, &mesg) < 1)
                     goto error;
 
+                if (pfq_cap && pfq_atomic && ++pfq_reported == pfq_cap) {
+                    /* Atomic prefetch queue has been exhausted.  We
+                     * are free to begin prefetching again.
+                     */
+                    pfq_requested = 0;
+                    pfq_reported = 0;
+                    pollstate = &polltime;
+                }
                 break;
 
             default:
@@ -313,7 +326,7 @@ int main(int argc, char **argv)
         }
 
         /* Prefetch another point, if there's room in the queue. */
-        if (pfq_req < pfq_cap) {
+        if (pfq_requested < pfq_cap) {
             hmesg_scrub(&mesg);
             mesg.dest = -1;
             mesg.type = HMESG_FETCH;
@@ -331,11 +344,11 @@ int main(int argc, char **argv)
                 if (point_enqueue(&mesg) < 0)
                     goto error;
 
-            ++pfq_req;
+            ++pfq_requested;
         }
 
         /* Prefetch queue at capacity.  Stop polling. */
-        if (pfq_req == pfq_cap)
+        if (pollstate && pfq_requested == pfq_cap)
             pollstate = NULL;
     }
     goto cleanup;
@@ -376,6 +389,7 @@ int strategy_load(hmesg_t *mesg)
     init = HACK_CAST_INT(dlsym(lib, "strategy_init"));
     strategy_fetch = HACK_CAST_INT(dlsym(lib, "strategy_fetch"));
     strategy_report = HACK_CAST_INT(dlsym(lib, "strategy_report"));
+    strategy_best = (hpoint_t *) dlsym(lib, "strategy_best");
 
     if (!init) {
         mesg->data.string = "Strategy does not define strategy_init()";
@@ -389,6 +403,11 @@ int strategy_load(hmesg_t *mesg)
 
     if (!strategy_report) {
         mesg->data.string = "Strategy does not define strategy_report()";
+        return -1;
+    }
+
+    if (!strategy_best) {
+        mesg->data.string = "Strategy does not define strategy_best";
         return -1;
     }
 
@@ -485,7 +504,7 @@ int prefetch_init(hmesg_t *mesg)
     const char *cfgstr;
     int i;
 
-    cfgstr = hcfg_get(sess->cfg, CFGKEY_SESSION_PREFETCH);
+    cfgstr = hcfg_get(sess->cfg, CFGKEY_PREFETCH_COUNT);
     if (cfgstr && strcasecmp(cfgstr, "auto") == 0) {
         cfgstr = hcfg_get(sess->cfg, CFGKEY_CLIENT_COUNT);
         if (cfgstr)
@@ -497,12 +516,12 @@ int prefetch_init(hmesg_t *mesg)
         pfq_cap = atoi(cfgstr);
     }
     else {
-        pfq_cap = DEFAULT_PREFETCH_LENGTH;
+        pfq_cap = DEFAULT_PREFETCH_COUNT;
     }
 
     if (pfq_cap < 0) {
         mesg->data.string =
-            "Invalid config value for " CFGKEY_SESSION_PREFETCH;
+            "Invalid config value for " CFGKEY_PREFETCH_COUNT;
         return -1;
     }
     else if (pfq_cap) {
@@ -512,6 +531,12 @@ int prefetch_init(hmesg_t *mesg)
         for (i = 0; i < pfq_cap; ++i)
             pfqueue[i] = HPOINT_INITIALIZER;
     }
+
+    cfgstr = hcfg_get(sess->cfg, CFGKEY_PREFETCH_ATOMIC);
+    if (cfgstr && strcmp(cfgstr, "1") == 0)
+        pfq_atomic = 1;
+    else
+        pfq_atomic = DEFAULT_PREFETCH_ATOMIC;
 
     return 0;
 }
@@ -576,24 +601,29 @@ int point_enqueue(hmesg_t *mesg)
 
 int point_dequeue(hmesg_t *mesg)
 {
-    hpoint_t *head, *cand;
+    hpoint_t *head, *cand, *best;
 
     head = &pfqueue[pfq_head];
     cand = &mesg->data.fetch.cand;
+    best = &mesg->data.fetch.best;
 
-    if (pfq_cap && head->id != -1) {
+    if (head->id != -1) {
         *cand = HPOINT_INITIALIZER;
+        *best = HPOINT_INITIALIZER;
         if (hpoint_copy(cand, head) < 0)
+            return -1;
+        if (hpoint_copy(best, strategy_best) < 0)
             return -1;
 
         hpoint_fini(head);
         head->id = -1;
         pfq_head = (pfq_head + 1) % pfq_cap;
 
-        /* New queue slots available.  Polling may begin again. */
-        --pfq_req;
-        pollstate = &polltime;
-
+        if (!pfq_atomic) {
+            /* New queue slots available.  Polling may begin again. */
+            --pfq_requested;
+            pollstate = &polltime;
+        }
         mesg->status = HMESG_STATUS_OK;
     }
     else {

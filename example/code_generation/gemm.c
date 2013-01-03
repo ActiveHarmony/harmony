@@ -140,8 +140,7 @@ int main(int argc, char *argv[])
         if (hsession_name(&sess, SESSION_NAME)                        < 0 ||
             hsession_cfg(&sess, CFGKEY_CLIENT_COUNT, numbuf)          < 0 ||
             hsession_cfg(&sess, CFGKEY_SESSION_STRATEGY, "pro.so")    < 0 ||
-            hsession_cfg(&sess, CFGKEY_SESSION_PLUGINS, "codegen.so") < 0 ||
-            hsession_cfg(&sess, CFGKEY_SESSION_PREFETCH, "auto")      < 0)
+            hsession_cfg(&sess, CFGKEY_SESSION_PLUGINS, "codegen.so") < 0)
         {
             errprint("Error during session configuration.\n");
             MPI_Abort(MPI_COMM_WORLD, -1);

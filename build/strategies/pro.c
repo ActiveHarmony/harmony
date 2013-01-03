@@ -117,11 +117,6 @@ int strategy_init(hmesg_t *mesg)
         simplex_size = sess->sig.range_len + 1;
 
     snprintf(numbuf, sizeof(numbuf), "%d", simplex_size);
-    if (retval < 0) {
-        mesg->data.string = "Could not allocate memory for Tcl command";
-        return -1;
-    }
-
     if (Tcl_SetVar(tcl, "simplex_npoints", numbuf, TCL_GLOBAL_ONLY) == NULL) {
         mesg->data.string = tcl->result;
         return -1;
@@ -139,12 +134,19 @@ int strategy_init(hmesg_t *mesg)
         }
     }
 
-    /* If prefetching has been requested, make sure it is greater than
-     * or equal to the simplex size.
+    /* Do not allow users to shoot themselves in the foot.  Make sure
+     * the prefetch count is either 0 or the simplex size.
      */
     cfgval = hcfg_get(sess->cfg, CFGKEY_PREFETCH_COUNT);
-    if (cfgval && strcasecmp(cfgval, "auto") == 0)
-        hcfg_set(sess->cfg, CFGKEY_PREFETCH_COUNT, numbuf);
+    if (cfgval) {
+        retval = atoi(cfgval);
+        if (retval > 0 || strcasecmp(cfgval, "auto") == 0) {
+            hcfg_set(sess->cfg, CFGKEY_PREFETCH_COUNT, numbuf);
+        }
+        else if (retval < 0) {
+            hcfg_set(sess->cfg, CFGKEY_PREFETCH_COUNT, "0");
+        }
+    }
 
     /* PRO algorithm requires an atomic prefetch queue. */
     hcfg_set(sess->cfg, CFGKEY_PREFETCH_ATOMIC, "1");
