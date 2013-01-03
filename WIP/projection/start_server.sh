@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright 2003-2011 Jeffrey K. Hollingsworth
+# Copyright 2003-2013 Jeffrey K. Hollingsworth
 #
 # This file is part of Active Harmony.
 #

@@ -1,5 +1,5 @@
 c
-c Copyright 2003-2011 Jeffrey K. Hollingsworth
+c Copyright 2003-2013 Jeffrey K. Hollingsworth
 c
 c This file is part of Active Harmony.
 c
