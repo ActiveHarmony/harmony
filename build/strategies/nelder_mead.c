@@ -227,13 +227,7 @@ int strategy_report(hmesg_t *mesg)
     }
 
     /* Check Tcl backend to see if search has converged. */
-    count = snprintf_grow(&buf, &buflen, "nm_%d_search_done", client_id);
-    if (count < 0) {
-        mesg->data.string = "Could not allocate space for Tcl command";
-        return -1;
-    }
-
-    tclval = Tcl_GetVar(tcl, buf, 0);
+    tclval = Tcl_GetVar(tcl, "nm_search_done", 0);
     if (tclval == NULL) {
         mesg->data.string = "Could not retrieve search convergence status";
         return -1;
