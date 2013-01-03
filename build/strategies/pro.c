@@ -31,8 +31,8 @@
 #include <math.h>
 #include <tcl.h>
 
-hpoint_t best;
-double best_perf;
+hpoint_t strategy_best;
+double strategy_best_perf;
 
 /* Be sure all remaining definitions are declared static to avoid
  * possible namspace conflicts in the GOT due to PIC behavior.
@@ -55,10 +55,10 @@ int strategy_init(hmesg_t *mesg)
     const char *cfgval;
     int i, retval;
 
-    best = HPOINT_INITIALIZER;
+    strategy_best = HPOINT_INITIALIZER;
     if (hpoint_init(&curr, sess->sig.range_len) < 0)
         return -1;
-    best_perf = INFINITY;
+    strategy_best_perf = INFINITY;
 
     tcl = Tcl_CreateInterp();
     if (!tcl || Tcl_Init(tcl) != TCL_OK) {
@@ -142,11 +142,12 @@ int strategy_init(hmesg_t *mesg)
     /* If prefetching has been requested, make sure it is greater than
      * or equal to the simplex size.
      */
-    cfgval = hcfg_get(sess->cfg, CFGKEY_SESSION_PREFETCH);
-    if (cfgval) {
-        if (strcasecmp(cfgval, "auto") == 0 || atoi(cfgval) < simplex_size)
-            hcfg_set(sess->cfg, CFGKEY_SESSION_PREFETCH, numbuf);
-    }
+    cfgval = hcfg_get(sess->cfg, CFGKEY_PREFETCH_COUNT);
+    if (cfgval && strcasecmp(cfgval, "auto") == 0)
+        hcfg_set(sess->cfg, CFGKEY_PREFETCH_COUNT, numbuf);
+
+    /* PRO algorithm requires an atomic prefetch queue. */
+    hcfg_set(sess->cfg, CFGKEY_PREFETCH_ATOMIC, "1");
 
     if (Tcl_SetVar(tcl, "code_generation_params(enabled)", "0",
                    TCL_GLOBAL_ONLY) == NULL)
@@ -220,9 +221,9 @@ int strategy_fetch(hmesg_t *mesg)
         goto error;
 
     /* Send best point information, if needed. */
-    if (mesg->data.fetch.best.id < best.id) {
+    if (mesg->data.fetch.best.id < strategy_best.id) {
         mesg->data.fetch.best = HPOINT_INITIALIZER;
-        if (hpoint_copy(&mesg->data.fetch.best, &best) < 0)
+        if (hpoint_copy(&mesg->data.fetch.best, &strategy_best) < 0)
             goto error;
     }
     else {
@@ -248,9 +249,9 @@ int strategy_report(hmesg_t *mesg)
     const char *tclval;
 
     /* Update the best performing point, if necessary. */
-    if (best_perf > mesg->data.report.perf) {
-        best_perf = mesg->data.report.perf;
-        if (hpoint_copy(&best, &mesg->data.report.cand) < 0) {
+    if (strategy_best_perf > mesg->data.report.perf) {
+        strategy_best_perf = mesg->data.report.perf;
+        if (hpoint_copy(&strategy_best, &mesg->data.report.cand) < 0) {
             mesg->status = HMESG_STATUS_FAIL;
             mesg->data.string = strerror(errno);
             return -1;

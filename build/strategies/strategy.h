@@ -27,8 +27,8 @@
 extern "C" {
 #endif
 
-extern hpoint_t best;
-extern double best_perf;
+extern hpoint_t strategy_best;
+extern double strategy_best_perf;
 
 /*
  * Invoked once on strategy load.
