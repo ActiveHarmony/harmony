@@ -22,7 +22,7 @@
 #define DEFAULT_HOST "localhost"
 #define DEFAULT_PORT 1979
 #define DEFAULT_CONFIG_FILENAME "harmony.cfg"
-#define DEFAULT_STRATEGY "brute.so"
+#define DEFAULT_STRATEGY "pro.so"
 #define DEFAULT_CLIENT_COUNT 1
 #define DEFAULT_PREFETCH_COUNT 0
 #define DEFAULT_PREFETCH_ATOMIC 0
