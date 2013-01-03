@@ -77,7 +77,7 @@ int strategy_init(hmesg_t *mesg)
         return -1;
     }
 
-    retval = snprintf_grow(&buf, &buflen, "%s/libexec/%s", cfgval, 
+    retval = snprintf_grow(&buf, &buflen, "%s/libexec/%s", cfgval,
                            hcfg_get(sess->cfg, CFGKEY_NM_INITFILE));
     if (retval < 0) {
         mesg->data.string = "Could not allocate memory for Tcl init file";
@@ -133,7 +133,7 @@ int strategy_init(hmesg_t *mesg)
     }
 
     if (hcfg_set(sess->cfg, CFGKEY_STRATEGY_CONVERGED, "0") < 0) {
-        mesg->data.string = "Could not set search convergence status";        
+        mesg->data.string = "Could not set search convergence status";
         return -1;
     }
 

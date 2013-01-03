@@ -275,7 +275,7 @@ char *harmony_inform(hdesc_t *hdesc, const char *key, const char *val)
         errno = EINVAL;
         return NULL;
     }
-    
+
     if (!key) {
         hdesc->errstr = "Invalid key string.";
         errno = EINVAL;

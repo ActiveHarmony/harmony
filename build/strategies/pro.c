@@ -78,7 +78,7 @@ int strategy_init(hmesg_t *mesg)
         return -1;
     }
 
-    retval = snprintf_grow(&buf, &buflen, "%s/libexec/%s", cfgval, 
+    retval = snprintf_grow(&buf, &buflen, "%s/libexec/%s", cfgval,
                            hcfg_get(sess->cfg, CFGKEY_PRO_INITFILE));
     if (retval < 0) {
         mesg->data.string = "Could not allocate memory for Tcl init file";

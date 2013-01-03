@@ -18,10 +18,10 @@
  */
 
 /* This example illustrates the use of Active harmony to search a parameter
- * space for a parameterized compiler transformation framework. 
+ * space for a parameterized compiler transformation framework.
  * The underlying optimization algorithm is modified version of Nelder-Mead
  * Simplex algorithm. A more effective search algorithm (Parallel Rank
- * Ordering) is in the development phase. Please refer to our SC'05 paper 
+ * Ordering) is in the development phase. Please refer to our SC'05 paper
  * (can be accessed through Active Harmony's Webpage)
  * to get preliminary idea on this algorithm.
  */
@@ -40,9 +40,9 @@
  *      (15, 30, 45, 60, 75, 90)
  *
  * And a reasonable search range for all parameters is [1-100].
- * 
+ *
  */
-int application(int p1, int p2, int p3, int p4, int p5, int p6) 
+int application(int p1, int p2, int p3, int p4, int p5, int p6)
 {
     int perf =
         (p1-15) * (p1-15) +

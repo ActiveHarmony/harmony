@@ -83,7 +83,7 @@ int matrix_size = N;
 void *flib_eval;
 code_t code_so;
 
-/* 
+/*
  * Matrix definitions.
  */
 double A[N][N];

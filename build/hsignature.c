@@ -254,7 +254,7 @@ int hsignature_isolate(hsignature_t *sig)
     char **newset;
 
     sig->name = stralloc(sig->name);
-    if (!sig->name) 
+    if (!sig->name)
         return -1;
 
     for (i = 0; i < sig->range_len; ++i) {

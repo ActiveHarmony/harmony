@@ -77,7 +77,7 @@ int hsession_int(hsession_t *sess, const char *name,
     range = hrange_add(&sess->sig, name);
     if (!range)
         return -1;
- 
+
     range->type = HVAL_INT;
     range->bounds.i.min = min;
     range->bounds.i.max = max;

@@ -212,7 +212,7 @@ int hmesg_serialize(hmesg_t *mesg)
     }
 
     return total;
-    
+
   invalid:
     errno = EINVAL;
   error:

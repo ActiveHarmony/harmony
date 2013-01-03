@@ -33,9 +33,9 @@
  *      (15, 30, 45, 60, 75, 90)
  *
  * And a reasonable search range for all parameters is [1-100].
- * 
+ *
  */
-long application(long p1, long p2, long p3, long p4, long p5, long p6) 
+long application(long p1, long p2, long p3, long p4, long p5, long p6)
 {
     long perf =
         (p1-15) * (p1-15) +
