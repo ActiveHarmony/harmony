@@ -141,7 +141,7 @@ int codegen_fetch(hmesg_t *mesg)
         }
     }
 
-    if (cglog_insert(&mesg->data.fetch.cand)) {
+    if (cglog_insert(&mesg->data.fetch.cand) < 0) {
         hmesg_scrub(mesg);
         mesg->status = HMESG_STATUS_FAIL;
         mesg->data.string = "Internal error growing codegen log";

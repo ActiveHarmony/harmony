@@ -202,6 +202,7 @@ int main(int argc, char **argv)
                     if (mesg.status == HMESG_STATUS_FAIL)
                         goto error;
                 }
+                ++mesg.index;
 
                 if (plugin_workflow(&mesg) < 0) {
                     if (mesg.status == HMESG_STATUS_FAIL)
@@ -275,6 +276,8 @@ int main(int argc, char **argv)
                     /* Service fetch requests exclusively from the queue,
                      * if enabled.
                      */
+                    mesg.status = HMESG_STATUS_OK;
+                    mesg.index = plugin_len;
                     if (point_dequeue(&mesg) < 0)
                         goto error;
                 }
@@ -331,6 +334,7 @@ int main(int argc, char **argv)
             mesg.dest = -1;
             mesg.type = HMESG_FETCH;
             mesg.status = HMESG_STATUS_REQ;
+            mesg.index = 0;
             mesg.data.fetch.best.id = -1;
 
             if (strategy_fetch(&mesg) < 0)
@@ -609,11 +613,13 @@ int point_dequeue(hmesg_t *mesg)
 
     if (head->id != -1) {
         *cand = HPOINT_INITIALIZER;
-        *best = HPOINT_INITIALIZER;
         if (hpoint_copy(cand, head) < 0)
             return -1;
-        if (hpoint_copy(best, strategy_best) < 0)
-            return -1;
+
+        *best = HPOINT_INITIALIZER;
+        if (best->id < strategy_best->id)
+            if (hpoint_copy(best, strategy_best) < 0)
+                return -1;
 
         hpoint_fini(head);
         head->id = -1;
