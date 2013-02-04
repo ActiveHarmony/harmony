@@ -144,9 +144,12 @@ int main(int argc, char **argv)
 
     /* Receive initial session message. */
     if (mesg_recv(STDIN_FILENO, &session_mesg) < 1) {
+        mesg.type = HMESG_SESSION;
         mesg.data.string = "Socket or deserialization error";
         goto error;
     }
+    mesg.dest = session_mesg.dest;
+    mesg.type = session_mesg.type;
 
     if (session_mesg.type != HMESG_SESSION ||
         session_mesg.status != HMESG_STATUS_REQ)
