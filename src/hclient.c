@@ -142,17 +142,19 @@ hdesc_t *harmony_init(int *argc, char ***argv)
 
 void harmony_fini(hdesc_t *hdesc)
 {
-    hmesg_fini(&hdesc->mesg);
-    hsession_fini(&hdesc->sess);
-    hpoint_fini(&hdesc->curr);
-    hpoint_fini(&hdesc->best);
+    if (hdesc) {
+        hmesg_fini(&hdesc->mesg);
+        hsession_fini(&hdesc->sess);
+        hpoint_fini(&hdesc->curr);
+        hpoint_fini(&hdesc->best);
 
-    if (hdesc->id && hdesc->id != default_id_buf)
-        free(hdesc->id);
+        if (hdesc->id && hdesc->id != default_id_buf)
+            free(hdesc->id);
 
-    free(hdesc->cmd);
-    free(hdesc->ptr);
-    free(hdesc);
+        free(hdesc->cmd);
+        free(hdesc->ptr);
+        free(hdesc);
+    }
 }
 
 /* -------------------------------------------------------------------
