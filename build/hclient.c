@@ -90,12 +90,14 @@ hdesc_t *harmony_init(void)
 
 void harmony_fini(hdesc_t *hdesc)
 {
-    hmesg_fini(&hdesc->mesg);
-    hsignature_fini(&hdesc->sig);
-    hpoint_fini(&hdesc->curr);
-    hpoint_fini(&hdesc->best);
-    free(hdesc->ptr);
-    free(hdesc);
+    if (hdesc) {
+        hmesg_fini(&hdesc->mesg);
+        hsignature_fini(&hdesc->sig);
+        hpoint_fini(&hdesc->curr);
+        hpoint_fini(&hdesc->best);
+        free(hdesc->ptr);
+        free(hdesc);
+    }
 }
 
 int harmony_bind_int(hdesc_t *hdesc, const char *name, long *ptr)
