@@ -175,11 +175,14 @@ int vars_init(int argc, char *argv[])
 {
     FILE *fd;
     char *tmppath, *binfile, *cfgpath;
+    struct sigaction action_ignore;
 
     /*
      * Install proper signal handling.
      */
-    signal(SIGPOLL, SIG_IGN);
+    action_ignore.sa_handler = SIG_IGN;
+    sigaction(SIGPOLL, &action_ignore, NULL);
+    sigaction(SIGCHLD, &action_ignore, NULL);
 
     /*
      * Determine directory where this binary is located.
@@ -721,13 +724,15 @@ void session_close(session_state_t *sess)
 
     free(sess->name);
     sess->name = NULL;
-    hpoint_fini(&sess->best);
 
+    FD_CLR(sess->fd, &listen_fds);
+    close(sess->fd);
     for (i = 0; i < sess->client_cap; ++i) {
         if (sess->client[i] != -1)
             client_close(sess->client[i]);
     }
 
+    hpoint_fini(&sess->best);
     hsignature_fini(&sess->sig);
 }
 
