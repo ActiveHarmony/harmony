@@ -145,12 +145,12 @@ int socket_launch(const char *path, char *const argv[], pid_t *return_pid)
         /* Child Case */
         close(sockfd[0]);
         if (dup2(sockfd[1], STDIN_FILENO) != STDIN_FILENO)
-            return -1;
+            perror("Could not duplicate socket onto child STDIN");
 
-        if (execv(path, argv) < 0) {
+        if (execv(path, argv) < 0)
             perror("Could not launch child executable");
-            exit(-1);  /* Be sure to exit here. */
-        }
+
+        exit(-1);  /* Be sure to exit here. */
     }
 
     /* Parent continues here. */
