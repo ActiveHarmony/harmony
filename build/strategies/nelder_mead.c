@@ -34,17 +34,14 @@
 hpoint_t strategy_best;
 double strategy_best_perf;
 
-/* Be sure all remaining definitions are declared static to avoid
- * possible namspace conflicts in the GOT due to PIC behavior.
- */
-static Tcl_Interp *tcl;
-static hpoint_t curr;
-static int client_count;
+Tcl_Interp *tcl;
+hpoint_t curr;
+int client_count;
 
-static char *buf;
-static int buflen;
+char *buf;
+int buflen;
 
-static int simulate_application_file(char **buf, int *cap, int id);
+int simulate_application_file(char **buf, int *cap, int id);
 
 /*
  * Invoked once on strategy load.

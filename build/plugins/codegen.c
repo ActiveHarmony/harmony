@@ -18,6 +18,7 @@
  */
 
 #include "session-core.h"
+#include "hsession.h"
 #include "hmesg.h"
 #include "hpoint.h"
 #include "hutil.h"
@@ -47,22 +48,20 @@ typedef struct codegen_log {
  */
 const char harmony_plugin_name[] = "codegen";
 
-/* Be sure all remaining definitions are declared static to avoid
- * possible namspace conflicts in the GOT due to PIC behavior.
- */
-static hmesg_t cg_mesg;
-static int cg_sock;
+hsession_t *sess;
+hmesg_t cg_mesg;
+int cg_sock;
 
-static char *buf;
-static int buflen;
+char *buf;
+int buflen;
 
-static codegen_log_t *cglog;
-static int cglog_len, cglog_cap;
+codegen_log_t *cglog;
+int cglog_len, cglog_cap;
 
-static int codegen_callback(hmesg_t *mesg);
-static int url_connect(const char *url);
-static int cglog_insert(hpoint_t *pt);
-static int cglog_find(hpoint_t *pt);
+int codegen_callback(hmesg_t *mesg);
+int url_connect(const char *url);
+int cglog_insert(hpoint_t *pt);
+int cglog_find(hpoint_t *pt);
 
 /*
  * Invoked once on module load.
@@ -72,6 +71,8 @@ static int cglog_find(hpoint_t *pt);
 int codegen_init(hmesg_t *mesg)
 {
     const char *url;
+
+    sess = &mesg->data.session;
 
     cg_mesg = HMESG_INITIALIZER;
     buf = NULL;

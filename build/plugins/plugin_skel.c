@@ -31,12 +31,6 @@
  */
 const char harmony_plugin_name[] = "<plugin>";
 
-/* Be sure all remaining definitions are declared static to avoid
- * possible namspace conflicts in the GOT due to PIC behavior.
- */
-static char *buf;
-static int buflen;
-
 /*
  * Invoked once on module load.
  *

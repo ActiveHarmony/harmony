@@ -49,7 +49,7 @@
 hsession_t *sess;
 
 /* Be sure all remaining global definitions are declared static to
- * avoid possible namspace conflicts in the GOT due to PIC behavior.
+ * reduce the number of symbols exported by --export-dynamic.
  */
 
 /* Forward function declarations. */
@@ -383,7 +383,7 @@ int strategy_load(hmesg_t *mesg)
         tmp = DEFAULT_STRATEGY;
     filename = sprintf_alloc("%s/libexec/%s",
                              hcfg_get(sess->cfg, CFGKEY_HARMONY_ROOT), tmp);
-    lib = dlopen(filename, RTLD_LAZY | RTLD_GLOBAL);
+    lib = dlopen(filename, RTLD_LAZY | RTLD_LOCAL);
     free(filename);
     if (!lib) {
         mesg->data.string = dlerror();
@@ -448,7 +448,7 @@ int plugin_list_load(hmesg_t *mesg, const char *list)
             goto cleanup;
         }
 
-        lib = dlopen(fname, RTLD_LAZY);
+        lib = dlopen(fname, RTLD_LAZY | RTLD_LOCAL);
         if (!lib) {
             hmesg_scrub(mesg);
             mesg->data.string = dlerror();

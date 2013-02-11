@@ -32,12 +32,9 @@
 hpoint_t strategy_best;
 double strategy_best_perf;
 
-/* Be sure all remaining definitions are declared static to avoid
- * possible namspace conflicts in the GOT due to PIC behavior.
- */
-static hpoint_t curr;
+hpoint_t curr;
 
-static void curr_randomize(void);
+void curr_randomize(void);
 
 /*
  * Invoked once on strategy load.
