@@ -450,7 +450,6 @@ int http_overview_send(int fd)
 {
     char *buf, *ptr;
     int i, j, buflen, count, total;
-    hval_t val;
 
     sendbuf[0] = '\0';
     buf = sendbuf;
@@ -479,29 +478,25 @@ int http_overview_send(int fd)
             total += count;
         }
         else {
-            for (j = 0; j < slist[i].sig.range_len; ++j) {
-                if (index_value(&slist[i].sig, j,
-                                slist[i].best.idx[j], &val) < 0)
-                    return -1;
-
-                switch (val.type) {
+            for (j = 0; j < slist[i].best.n; ++j) {
+                switch (slist[i].best.val[j].type) {
                 case HVAL_INT:
                     count = snprintf_serial(&buf, &buflen, "%ld",
-                                            val.value.i);
+                                            slist[i].best.val[j].value.i);
                     if (count < 0)
                         return -1;
                     total += count;
                     break;
                 case HVAL_REAL:
                     count = snprintf_serial(&buf, &buflen, "%lf",
-                                            val.value.r);
+                                            slist[i].best.val[j].value.r);
                     if (count < 0)
                         return -1;
                     total += count;
                     break;
                 case HVAL_STR:
                     count = snprintf_serial(&buf, &buflen, "\"%s\"",
-                                            val.value.s);
+                                            slist[i].best.val[j].value.s);
                     if (count < 0)
                         return -1;
                     total += count;
@@ -510,7 +505,7 @@ int http_overview_send(int fd)
                     break;
                 }
 
-                if (j != slist[i].sig.range_len - 1) {
+                if (j != slist[i].best.n - 1) {
                     count = snprintf_serial(&buf, &buflen, " ");
                     if (count < 0)
                         return -1;
@@ -676,7 +671,6 @@ int report_append(char **buf, int *buflen, session_state_t *sess,
                   struct timeval *tv, const hpoint_t *pt, const double perf)
 {
     int i, count, total;
-    hval_t val;
 
     total = 0;
     if (tv) {
@@ -688,7 +682,7 @@ int report_append(char **buf, int *buflen, session_state_t *sess,
         total += count;
     }
 
-    for (i = 0; i < sess->sig.range_len; ++i) {
+    for (i = 0; i < pt->n; ++i) {
         if (pt->id == -1) {
             count = snprintf_serial(buf, buflen, ",?");
             if (count < 0)
@@ -696,9 +690,6 @@ int report_append(char **buf, int *buflen, session_state_t *sess,
             total += count;
         }
         else {
-            if (index_value(&sess->sig, i, pt->idx[i], &val) < 0)
-                return -1;
-
             count = snprintf_serial(buf, buflen, ",");
             if (count < 0)
                 return -1;
@@ -712,15 +703,18 @@ int report_append(char **buf, int *buflen, session_state_t *sess,
                 total += count;
             }
 
-            switch (sess->sig.range[i].type) {
-            case HVAL_INT:  count = snprintf_serial(buf, buflen, "%ld",
-                                                    val.value.i);
+            switch (pt->val[i].type) {
+            case HVAL_INT:
+                count = snprintf_serial(buf, buflen, "%ld",
+                                        pt->val[i].value.i);
                 break;
-            case HVAL_REAL: count = snprintf_serial(buf, buflen, "%lf",
-                                                    val.value.r);
+            case HVAL_REAL:
+                count = snprintf_serial(buf, buflen, "%lf",
+                                        pt->val[i].value.r);
                 break;
-            case HVAL_STR:  count = snprintf_serial(buf, buflen, "%s",
-                                                    val.value.s);
+            case HVAL_STR:
+                count = snprintf_serial(buf, buflen, "%s",
+                                        pt->val[i].value.s);
                 break;
             default:
                 return -1;

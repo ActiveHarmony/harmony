@@ -82,7 +82,6 @@ int hsession_int(hsession_t *sess, const char *name,
     range->bounds.i.min = min;
     range->bounds.i.max = max;
     range->bounds.i.step = step;
-    range->max_idx = ((max - min) / step) + 1;
 
     if (sess->sig.memlevel < 1)
         sess->sig.memlevel = 1;
@@ -109,12 +108,6 @@ int hsession_real(hsession_t *sess, const char *name,
     range->bounds.r.max = max;
     range->bounds.r.step = step;
 
-    /* Inflate the step calculation (max-min)/step by machine
-     * epsilon/2 to make up for floating-point inaccuracy, without
-     * affecting the index calculation.
-     */
-    range->max_idx = ((max - min) / step) + (DBL_EPSILON / 2) + 1;
-
     if (sess->sig.memlevel < 1)
         sess->sig.memlevel = 1;
 
@@ -140,27 +133,26 @@ int hsession_enum(hsession_t *sess, const char *name, const char *value)
         range->type = HVAL_STR;
     }
 
-    for (i = 0; i < range->bounds.e.set_len; ++i) {
-        if (strcmp(value, range->bounds.e.set[i]) == 0) {
+    for (i = 0; i < range->bounds.s.set_len; ++i) {
+        if (strcmp(value, range->bounds.s.set[i]) == 0) {
             errno = EINVAL;
             return -1;
         }
     }
 
-    if (range->bounds.e.set_len == range->bounds.e.set_cap) {
-        if (array_grow(&range->bounds.e.set, &range->bounds.e.set_cap,
+    if (range->bounds.s.set_len == range->bounds.s.set_cap) {
+        if (array_grow(&range->bounds.s.set, &range->bounds.s.set_cap,
                        sizeof(char *)) < 0)
         {
             return -1;
         }
     }
 
-    range->bounds.e.set[i] = stralloc(value);
-    if (!range->bounds.e.set[i])
+    range->bounds.s.set[i] = stralloc(value);
+    if (!range->bounds.s.set[i])
         return -1;
 
-    ++range->bounds.e.set_len;
-    range->max_idx = range->bounds.e.set_len;
+    ++range->bounds.s.set_len;
 
     if (sess->sig.memlevel < 2)
         sess->sig.memlevel = 2;  /* Free string memory with this session. */

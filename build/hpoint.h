@@ -20,26 +20,27 @@
 #ifndef __HPOINT_H__
 #define __HPOINT_H__
 
+#include "hval.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* --------------------------------------------------
- * Harmony structure that encapsulate configurations.
+/* ----------------------------------------------------------------
+ * Harmony structure that represents a point within a search space.
  *
- * These are stored as index values, and require an hsession_t to
- * determine the point's intended value.
  */
 typedef struct hpoint {
     int id;
-    int step; /* Only used for old Tcl-based strategies. */
-    int *idx;
-    int idx_cap;
+    int n;
+    hval_t *val;
+    int memlevel; /* 1 if *val has pointers to memory that must be freed. */
+    int step;     /* Only used for old Tcl-based strategies. */
 } hpoint_t;
 
 extern hpoint_t HPOINT_INITIALIZER;
 
-int  hpoint_init(hpoint_t *pt, int cap);
+int  hpoint_init(hpoint_t *pt, int n);
 void hpoint_fini(hpoint_t *pt);
 int  hpoint_copy(hpoint_t *dst, const hpoint_t *src);
 int  hpoint_serialize(char **buf, int *buflen, const hpoint_t *pt);

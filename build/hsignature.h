@@ -26,6 +26,24 @@
 extern "C" {
 #endif
 
+typedef struct int_bounds {
+    long min;
+    long max;
+    long step;
+} int_bounds_t;
+
+typedef struct real_bounds {
+    double min;
+    double max;
+    double step;
+} real_bounds_t;
+
+typedef struct str_bounds {
+    char **set;
+    int set_len;
+    int set_cap;
+} str_bounds_t;
+
 /*
  * Bundle structure: Holds metadata about Harmony controlled variables
  * in the client application.
@@ -34,23 +52,10 @@ typedef struct hrange {
     char *name;
     hval_type type;
     union {
-        struct int_range {
-            long min;
-            long max;
-            long step;
-        } i;
-        struct real_range {
-            double min;
-            double max;
-            double step;
-        } r;
-        struct enum_range {
-            char **set;
-            int set_len;
-            int set_cap;
-        } e;
+        int_bounds_t  i;
+        real_bounds_t r;
+        str_bounds_t  s;
     } bounds;
-    int max_idx;
 } hrange_t;
 extern hrange_t HRANGE_INITIALIZER;
 
@@ -79,7 +84,6 @@ int  hsignature_serialize(char **buf, int *buflen, const hsignature_t *sig);
 int  hsignature_deserialize(hsignature_t *sig, char *buf);
 
 /* General helper function */
-int index_value(hsignature_t *sig, int r_idx, int v_idx, hval_t *val);
 hrange_t *hrange_find(hsignature_t *sig, const char *name);
 hrange_t *hrange_add(hsignature_t *sig, const char *name);
 

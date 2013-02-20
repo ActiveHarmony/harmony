@@ -25,48 +25,66 @@
 #include <stdlib.h>
 #include <string.h>
 
-hpoint_t HPOINT_INITIALIZER = {-1};
+hpoint_t HPOINT_INITIALIZER = {-1, 0, NULL, 0, 0};
 
-int hpoint_init(hpoint_t *pt, int cap)
+void hpoint_scrub(hpoint_t *pt);
+
+int hpoint_init(hpoint_t *pt, int n)
 {
     pt->id = 0;
-    pt->idx = (int *) calloc(cap, sizeof(int));
-    if (!pt->idx)
+    pt->n = n;
+    pt->val = (hval_t *) calloc(n, sizeof(hval_t));
+    if (!pt->val)
         return -1;
-    pt->idx_cap = cap;
+    pt->memlevel = 0;
+    pt->step = -1;
 
     return 0;
 }
 
 void hpoint_fini(hpoint_t *pt)
 {
-    if (pt->idx_cap > 0) {
-        free(pt->idx);
-        pt->idx = NULL;
-        pt->idx_cap = 0;
+    if (pt->n > 0) {
+        hpoint_scrub(pt);
+        free(pt->val);
     }
+    *pt = HPOINT_INITIALIZER;
 }
 
 int hpoint_copy(hpoint_t *copy, const hpoint_t *orig)
 {
-    int *newbuf;
+    int i;
+    hval_t *newbuf;
+    char *newstr;
 
     if (orig->id == -1) {
         hpoint_fini(copy);
-        copy->id = -1;
         return 0;
     }
 
-    if (copy->idx_cap != orig->idx_cap) {
-        newbuf = (int *) realloc(copy->idx, sizeof(int) * orig->idx_cap);
+    copy->id = orig->id;
+    hpoint_scrub(copy);
+    if (copy->n != orig->n) {
+        newbuf = (hval_t *) realloc(copy->val, sizeof(hval_t) * orig->n);
         if (!newbuf)
             return -1;
-        copy->idx = newbuf;
-        copy->idx_cap = orig->idx_cap;
+        copy->val = newbuf;
+        copy->n = orig->n;
     }
-    copy->id = orig->id;
+
+    copy->memlevel = 0;
+    memcpy(copy->val, orig->val, sizeof(hval_t) * orig->n);
+    for (i = 0; i < copy->n; ++i) {
+        if (copy->val[i].type == HVAL_STR) {
+            newstr = stralloc(copy->val[i].value.s);
+            if (!newstr)
+                return -1;
+            copy->val[i].value.s = newstr;
+            copy->memlevel = 1;
+        }
+    }
+
     copy->step = orig->step;
-    memcpy(copy->idx, orig->idx, sizeof(int) * orig->idx_cap);
     return 0;
 }
 
@@ -79,12 +97,12 @@ int hpoint_serialize(char **buf, int *buflen, const hpoint_t *pt)
     total = count;
 
     if (pt->id >= 0) {
-        count = snprintf_serial(buf, buflen, "%d ", pt->idx_cap);
+        count = snprintf_serial(buf, buflen, "%d ", pt->n);
         if (count < 0) goto invalid;
         total += count;
 
-        for (i = 0; i < pt->idx_cap; ++i) {
-            count = snprintf_serial(buf, buflen, "%d ", pt->idx[i]);
+        for (i = 0; i < pt->n; ++i) {
+            count = hval_serialize(buf, buflen, &pt->val[i]);
             if (count < 0) goto error;
             total += count;
         }
@@ -99,36 +117,51 @@ int hpoint_serialize(char **buf, int *buflen, const hpoint_t *pt)
 
 int hpoint_deserialize(hpoint_t *pt, char *buf)
 {
-    int i, count, total, newcap;
-    int *newbuf;
+    int i, count, total, new_n;
+    hval_t *newbuf;
 
     if (sscanf(buf, " hpoint:%d %d%n", &pt->id, &pt->step, &count) < 2)
         goto invalid;
     total = count;
 
     if (pt->id >= 0) {
-        if (sscanf(buf + total, " %d%n", &newcap, &count) < 1)
+        if (sscanf(buf + total, " %d%n", &new_n, &count) < 1)
             goto invalid;
         total += count;
 
-        if (pt->idx_cap != newcap) {
-            newbuf = (int *) realloc(pt->idx, sizeof(int) * newcap);
+        if (pt->n != new_n) {
+            newbuf = (hval_t *) realloc(pt->val, sizeof(hval_t) * new_n);
             if (!newbuf)
                 goto error;
-            pt->idx = newbuf;
-            pt->idx_cap = newcap;
+            pt->val = newbuf;
+            pt->n = new_n;
         }
 
-        for (i = 0; i < pt->idx_cap; ++i) {
-            if (sscanf(buf + total, " %d%n", &pt->idx[i], &count) < 1)
-                goto invalid;
+        for (i = 0; i < pt->n; ++i) {
+            count = hval_deserialize(&pt->val[i], buf + total);
+            if (count < 0) goto error;
             total += count;
         }
     }
+
+    pt->memlevel = 0;
     return total;
 
   invalid:
     errno = EINVAL;
   error:
     return -1;
+}
+
+void hpoint_scrub(hpoint_t *pt)
+{
+    int i;
+
+    if (pt->memlevel == 1) {
+        for (i = 0; i < pt->n; ++i) {
+            if (pt->val[i].type == HVAL_STR)
+                free((char *)pt->val[i].value.s);
+        }
+        pt->memlevel = 0;
+    }
 }

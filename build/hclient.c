@@ -477,28 +477,21 @@ int mesg_send_and_recv(hdesc_t *hdesc)
 int set_values(hdesc_t *hdesc, const hpoint_t *pt)
 {
     int i;
-    hval_t val;
 
-    if (hdesc->ptr_len != pt->idx_cap) {
+    if (hdesc->ptr_len != pt->n) {
         hdesc->errstr = "Invalid internal point structure.";
         errno = EINVAL;
         return -1;
     }
 
-    for (i = 0; i < pt->idx_cap; ++i) {
-        if (index_value(&hdesc->sig, i, pt->idx[i], &val) < 0) {
-            hdesc->errstr = "Invalid internal point structure.";
-            errno = EINVAL;
-            return -1;
-        }
-
-        switch (hdesc->sig.range[i].type) {
+    for (i = 0; i < pt->n; ++i) {
+        switch (pt->val[i].type) {
         case HVAL_INT:
-            (*((       long *)hdesc->ptr[i])) = val.value.i; break;
+            (*((       long *)hdesc->ptr[i])) = pt->val[i].value.i; break;
         case HVAL_REAL:
-            (*((     double *)hdesc->ptr[i])) = val.value.r; break;
+            (*((     double *)hdesc->ptr[i])) = pt->val[i].value.r; break;
         case HVAL_STR:
-            (*((const char **)hdesc->ptr[i])) = val.value.s; break;
+            (*((const char **)hdesc->ptr[i])) = pt->val[i].value.s; break;
         default:
             hdesc->errstr = "Invalid internal point structure.";
             errno = EINVAL;

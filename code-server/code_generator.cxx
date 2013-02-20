@@ -642,14 +642,13 @@ vector<long> values_of(hpoint_t *pt)
     hval_t val;
     vector<long> retval;
 
-    for (int i = 0; i < pt->idx_cap; ++i) {
-        index_value(&sess->sig, i, pt->idx[i], &val);
+    for (int i = 0; i < pt->n; ++i) {
         if (val.type != HVAL_INT) {
             cerr << "Codeserver only implemented for int ranges for now.\n";
             retval.clear();
             break;
         }
-        retval.push_back(val.value.i);
+        retval.push_back(pt->val[i].value.i);
     }
     return retval;
 }

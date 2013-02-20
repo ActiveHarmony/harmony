@@ -244,7 +244,7 @@ int cglog_find(hpoint_t *pt)
     int i;
 
     for (i = 0; i < cglog_len; ++i)
-        if (memcmp(pt->idx, cglog[i].pt.idx, pt->idx_cap * sizeof(int)) == 0)
+        if (memcmp(pt->val, cglog[i].pt.val, pt->n * sizeof(hval_t)) == 0)
             return i;
 
     return -1;

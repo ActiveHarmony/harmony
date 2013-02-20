@@ -111,12 +111,12 @@ int hrange_serialize(char **buf, int *buflen, const hrange_t *range)
         break;
 
     case HVAL_STR:
-        count = snprintf_serial(buf, buflen, "%d ", range->bounds.e.set_len);
+        count = snprintf_serial(buf, buflen, "%d ", range->bounds.s.set_len);
         if (count < 0) goto invalid;
         total += count;
 
-        for (i = 0; i < range->bounds.e.set_len; ++i) {
-            count = printstr_serial(buf, buflen, range->bounds.e.set[i]);
+        for (i = 0; i < range->bounds.s.set_len; ++i) {
+            count = printstr_serial(buf, buflen, range->bounds.s.set[i]);
             if (count < 0) goto invalid;
             total += count;
         }
@@ -125,11 +125,6 @@ int hrange_serialize(char **buf, int *buflen, const hrange_t *range)
     default:
         goto invalid;
     }
-
-    count = snprintf_serial(buf, buflen, "%d ", range->max_idx);
-    if (count < 0) goto invalid;
-    total += count;
-
     return total;
 
   invalid:
@@ -186,37 +181,32 @@ int hrange_deserialize(hrange_t *range, char *buf)
 
     case HVAL_STR:
         if (sscanf(buf + total, " %d%n",
-                   &range->bounds.e.set_len, &count) < 1)
+                   &range->bounds.s.set_len, &count) < 1)
             goto invalid;
         total += count;
 
-        if (range->bounds.e.set_cap < range->bounds.e.set_len) {
-            newbuf = (char **) realloc(range->bounds.e.set,
+        if (range->bounds.s.set_cap < range->bounds.s.set_len) {
+            newbuf = (char **) realloc(range->bounds.s.set,
                                        sizeof(char *) *
-                                       range->bounds.e.set_len);
+                                       range->bounds.s.set_len);
             if (!newbuf) goto error;
-            range->bounds.e.set = newbuf;
-            range->bounds.e.set_cap = range->bounds.e.set_len;
+            range->bounds.s.set = newbuf;
+            range->bounds.s.set_cap = range->bounds.s.set_len;
         }
 
-        for (i = 0; i < range->bounds.e.set_len; ++i) {
+        for (i = 0; i < range->bounds.s.set_len; ++i) {
             count = scanstr_serial(&strptr, buf + total);
             if (count < 0) goto invalid;
             total += count;
 
-            range->bounds.e.set[i] = stralloc(strptr);
-            if (!range->bounds.e.set[i]) goto error;
+            range->bounds.s.set[i] = stralloc(strptr);
+            if (!range->bounds.s.set[i]) goto error;
         }
         break;
 
     default:
         goto invalid;
     }
-
-    if (sscanf(buf + total, " %d%n", &range->max_idx, &count) < 1)
-        goto invalid;
-    total += count;
-
     return total;
 
   invalid:
@@ -266,17 +256,17 @@ int hsignature_isolate(hsignature_t *sig)
             continue;
 
         newset = (char **) malloc(sizeof(char *) *
-                                  sig->range[i].bounds.e.set_len);
+                                  sig->range[i].bounds.s.set_len);
         if (!newset)
             return -1;
 
-        for (j = 0; j < sig->range[i].bounds.e.set_len; ++j) {
-            newset[j] = stralloc(sig->range[i].bounds.e.set[j]);
-            if (!sig->range[i].bounds.e.set[j])
+        for (j = 0; j < sig->range[i].bounds.s.set_len; ++j) {
+            newset[j] = stralloc(sig->range[i].bounds.s.set[j]);
+            if (!sig->range[i].bounds.s.set[j])
                 return -1;
         }
-        sig->range[i].bounds.e.set = newset;
-        sig->range[i].bounds.e.set_cap = sig->range[i].bounds.e.set_len;
+        sig->range[i].bounds.s.set = newset;
+        sig->range[i].bounds.s.set_cap = sig->range[i].bounds.s.set_len;
     }
     sig->memlevel = 2;
 
@@ -294,9 +284,9 @@ void hsignature_fini(hsignature_t *sig)
             if (sig->range[i].type != HVAL_STR)
                 continue;
 
-            for (j = 0; j < sig->range[i].bounds.e.set_len; ++j)
-                free(sig->range[i].bounds.e.set[j]);
-            free(sig->range[i].bounds.e.set);
+            for (j = 0; j < sig->range[i].bounds.s.set_len; ++j)
+                free(sig->range[i].bounds.s.set[j]);
+            free(sig->range[i].bounds.s.set);
         }
         free((char *)sig->name);
     }
@@ -397,33 +387,4 @@ int hsignature_deserialize(hsignature_t *sig, char *buf)
     errno = EINVAL;
   error:
     return -1;
-}
-
-int index_value(hsignature_t *sig, int r_idx, int v_idx, hval_t *val)
-{
-    /* Bounds check the input. */
-    if (r_idx < 0 || sig->range_len <= r_idx)
-        return -1;
-
-    if (v_idx < 0 || sig->range[r_idx].max_idx <= v_idx)
-        return -1;
-
-    /* We can trust that both indexes are within range now. */
-    val->type = sig->range[r_idx].type;
-    switch (val->type) {
-        case HVAL_INT:
-            val->value.i = (sig->range[r_idx].bounds.i.min +
-                            v_idx * sig->range[r_idx].bounds.i.step);
-            break;
-        case HVAL_REAL:
-            val->value.r = (sig->range[r_idx].bounds.r.min +
-                            v_idx * sig->range[r_idx].bounds.r.step);
-            break;
-        case HVAL_STR:
-            val->value.s = sig->range[r_idx].bounds.e.set[v_idx];
-            break;
-        default:
-            break;
-    }
-    return 0;
 }
