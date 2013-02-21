@@ -14,32 +14,13 @@ TCL_LIBDIR?=/usr/lib64
 LIBEXEC_SRCS=libvertex.c \
              brute.c \
              random.c \
-             nelder_mead.c \
+             nm.c \
              pro.c
 SRCS=$(LIBEXEC_SRCS)
 
-LIBEXEC_FILES=hconfig.nm.tcl \
-              tcl/nm/parseApp.tcl \
-              tcl/nm/newparseApp.tcl \
-              tcl/nm/utilities.tcl \
-              tcl/nm/nm.tcl \
-              tcl/nm/nm_init.tcl \
-              hconfig.pro.tcl \
-              tcl/pro/utilities.tcl \
-              tcl/pro/parseApp_version_8.tcl \
-              tcl/pro/proparseApp_version_8.tcl \
-              tcl/pro/pro.tcl \
-              tcl/pro/initial_simplex_construction.tcl \
-              tcl/pro/random_uniform.tcl \
-              tcl/pro/matrix.tcl \
-              tcl/pro/pro_transformations.tcl \
-              tcl/pro/projection.tcl \
-              tcl/pro/combine.tcl \
-              tcl/pro/pro_init.tcl
-
 LIBEXEC_TARGETS=brute.so \
                 random.so \
-                nelder_mead.so \
+                nm.so \
                 pro.so
 TARGETS=$(LIBEXEC_TARGETS)
 
@@ -48,25 +29,21 @@ TARGETS=$(LIBEXEC_TARGETS)
 all: $(TARGETS)
 
 install: $(TARGETS)
-	@if [ ! -d $(INST_DIR) ]; then                   \
-		echo mkdir $(INST_DIR);                  \
-		mkdir $(INST_DIR);                       \
-	fi;                                              \
-	if [ ! -d $(INST_DIR)/tcl ]; then                \
-		echo mkdir $(INST_DIR)/tcl;              \
-		mkdir $(INST_DIR)/tcl;                   \
-	fi;                                              \
-	if [ ! -d $(INST_DIR)/tcl/nm ]; then             \
-		echo mkdir $(INST_DIR)/tcl/nm;           \
-		mkdir $(INST_DIR)/tcl/nm;                \
-	fi;                                              \
-	if [ ! -d $(INST_DIR)/tcl/pro ]; then            \
-		echo mkdir $(INST_DIR)/tcl/pro;          \
-		mkdir $(INST_DIR)/tcl/pro;               \
-	fi;                                              \
-	for i in $(LIBEXEC_TARGETS) $(LIBEXEC_FILES); do \
-		echo cp $$i $(INST_DIR)/$$i;             \
-		cp $$i $(INST_DIR)/$$i;                  \
+	@if [ ! -d $(INST_DIR) ]; then          \
+		echo mkdir $(INST_DIR);         \
+		mkdir $(INST_DIR);              \
+	fi;                                     \
+	if [ ! -d $(INST_DIR)/tcl ]; then       \
+		echo mkdir $(INST_DIR)/tcl;     \
+		mkdir $(INST_DIR)/tcl;          \
+	fi;                                     \
+	if [ ! -d $(INST_DIR)/tcl/pro ]; then   \
+		echo mkdir $(INST_DIR)/tcl/pro; \
+		mkdir $(INST_DIR)/tcl/pro;      \
+	fi;                                     \
+	for i in $(LIBEXEC_TARGETS); do         \
+		echo cp $$i $(INST_DIR)/$$i;    \
+		cp $$i $(INST_DIR)/$$i;         \
 	done
 
 brute.so: override LDLIBS+=-lm
@@ -75,11 +52,11 @@ brute.so: libvertex.o
 random.so: override LDLIBS+=-lm
 random.so: libvertex.o
 
-nelder_mead.o: override CPPFLAGS+=-I$(TCL_INCDIR)
-nelder_mead.so: override LDFLAGS+=-L$(TCL_LIBDIR) -ltcl
+nm.so: override LDLIBS+=-lm
+nm.so: libvertex.o
 
-pro.o: override CPPFLAGS+=-I$(TCL_INCDIR)
-pro.so: override LDFLAGS+=-L$(TCL_LIBDIR) -ltcl
+pro.so: override LDLIBS+=-lm
+pro.so: libvertex.o
 
 %.so: %.o
 	$(CC) -shared $(LDFLAGS) $(CFLAGS) $^ $(LOADLIBES) $(LDLIBS) -o $@
