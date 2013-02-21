@@ -23,6 +23,7 @@
 #include "hutil.h"
 #include "hcfg.h"
 #include "defaults.h"
+#include "libvertex.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -32,36 +33,52 @@
 hpoint_t strategy_best;
 double strategy_best_perf;
 
-int remaining_passes;
-hpoint_t curr;
+/* Forward function definitions. */
+int strategy_cfg(hmesg_t *mesg);
 
-int curr_increment(void);
+/* Variables to track current search state. */
+vertex_t *curr;
+int remaining_passes;
 
 /*
  * Invoked once on strategy load.
  */
 int strategy_init(hmesg_t *mesg)
 {
-    const char *cfgstr;
+    if (libvertex_init(sess) != 0) {
+        mesg->data.string = "Could not initialize vertex library.";
+        return -1;
+    }
+
+    if (strategy_cfg(mesg) != 0)
+        return -1;
 
     strategy_best = HPOINT_INITIALIZER;
     strategy_best_perf = INFINITY;
 
-    if (hpoint_init(&curr, sess->sig.range_len) < 0) {
-        mesg->data.string = "Could not allocate memory for point structure";
+    curr = vertex_alloc();
+    if (!curr) {
+        mesg->data.string = "Could not allocate memory for testing vertex.";
         return -1;
     }
-    curr.id = 0;
+    curr->id = 1;
+    vertex_min(curr);
+
+    if (hcfg_set(sess->cfg, CFGKEY_STRATEGY_CONVERGED, "0") < 0) {
+        mesg->data.string =
+            "Could not set " CFGKEY_STRATEGY_CONVERGED " config variable.";
+        return -1;
+    }
+    return 0;
+}
+
+int strategy_cfg(hmesg_t *mesg)
+{
+    const char *cfgstr;
 
     cfgstr = hcfg_get(sess->cfg, CFGKEY_BRUTE_PASSES);
     if (cfgstr)
         remaining_passes = atoi(cfgstr);
-
-    if (hcfg_set(sess->cfg, CFGKEY_STRATEGY_CONVERGED, "0") < 0) {
-        mesg->data.string =
-            "Could not set " CFGKEY_STRATEGY_CONVERGED " config var.";
-        return -1;
-    }
 
     return 0;
 }
@@ -72,13 +89,19 @@ int strategy_init(hmesg_t *mesg)
  */
 int strategy_fetch(hmesg_t *mesg)
 {
-    mesg->data.fetch.cand = HPOINT_INITIALIZER;
-    if (curr.id >= 0) {
-        if (hpoint_copy(&mesg->data.fetch.cand, &curr) < 0)
+    if (curr->id > 0) {
+        if (vertex_to_hpoint(curr, &mesg->data.fetch.cand) != 0)
             goto error;
 
-        if (curr_increment() < 0)
-            goto error;
+        if (vertex_incr(curr)) {
+            if (--remaining_passes < 0) {
+                if (hcfg_set(sess->cfg, CFGKEY_STRATEGY_CONVERGED, "1") != 0)
+                    return -1;
+
+                /* Search has converged.  End the search. */
+                curr->id = -1;
+            }
+        }
     }
     else {
         if (hpoint_copy(&mesg->data.fetch.cand, &strategy_best) < 0)
@@ -119,31 +142,5 @@ int strategy_report(hmesg_t *mesg)
     }
 
     mesg->status = HMESG_STATUS_OK;
-    return 0;
-}
-
-int curr_increment(void)
-{
-    int i;
-
-    ++curr.id;
-    for (i = 0; i <= curr.idx_cap; ++i) {
-        if (i == curr.idx_cap) {
-            if (--remaining_passes < 0) {
-                if (hcfg_set(sess->cfg, CFGKEY_STRATEGY_CONVERGED, "1") < 0)
-                    return -1;
-
-                /* Search has converged.  End the search. */
-                curr.id = -1;
-            }
-            break;
-        }
-
-        if (++curr.idx[i] == sess->sig.range[i].max_idx) {
-            curr.idx[i] = 0;
-            continue;
-        }
-        break;
-    }
     return 0;
 }

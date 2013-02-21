@@ -69,6 +69,12 @@ install: $(TARGETS)
 		cp $$i $(INST_DIR)/$$i;                  \
 	done
 
+brute.so: override LDLIBS+=-lm
+brute.so: libvertex.o
+
+random.so: override LDLIBS+=-lm
+random.so: libvertex.o
+
 nelder_mead.o: override CPPFLAGS+=-I$(TCL_INCDIR)
 nelder_mead.so: override LDFLAGS+=-L$(TCL_LIBDIR) -ltcl
 
@@ -76,7 +82,7 @@ pro.o: override CPPFLAGS+=-I$(TCL_INCDIR)
 pro.so: override LDFLAGS+=-L$(TCL_LIBDIR) -ltcl
 
 %.so: %.o
-	$(CC) -shared $(LDFLAGS) $(CFLAGS) $^ -o $@ 
+	$(CC) -shared $(LDFLAGS) $(CFLAGS) $^ $(LOADLIBES) $(LDLIBS) -o $@
 
 clean:
 	rm -f core a.out *.o $(TARGETS)

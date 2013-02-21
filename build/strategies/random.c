@@ -23,6 +23,7 @@
 #include "hutil.h"
 #include "hcfg.h"
 #include "defaults.h"
+#include "libvertex.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -32,33 +33,52 @@
 hpoint_t strategy_best;
 double strategy_best_perf;
 
-hpoint_t curr;
+/* Forward function definitions. */
+int strategy_cfg(hmesg_t *mesg);
 
-void curr_randomize(void);
+/* Variables to track current search state. */
+vertex_t *curr;
+int remaining_passes;
 
 /*
  * Invoked once on strategy load.
  */
 int strategy_init(hmesg_t *mesg)
 {
-    const char *cfgstr;
+    if (libvertex_init(sess) != 0) {
+        mesg->data.string = "Could not initialize vertex library.";
+        return -1;
+    }
+
+    if (strategy_cfg(mesg) != 0)
+        return -1;
 
     strategy_best = HPOINT_INITIALIZER;
     strategy_best_perf = INFINITY;
+
+    curr = vertex_alloc();
+    if (!curr) {
+        mesg->data.string = "Could not allocate memory for testing vertex.";
+        return -1;
+    }
+    curr->id = 1;
+
+    if (hcfg_set(sess->cfg, CFGKEY_STRATEGY_CONVERGED, "0") < 0) {
+        mesg->data.string =
+            "Could not set " CFGKEY_STRATEGY_CONVERGED " config variable.";
+        return -1;
+    }
+    return 0;
+}
+
+int strategy_cfg(hmesg_t *mesg)
+{
+    const char *cfgstr;
 
     cfgstr = hcfg_get(sess->cfg, CFGKEY_RANDOM_SEED);
     if (cfgstr)
         srand(atoi(cfgstr));
 
-    if (hcfg_set(sess->cfg, CFGKEY_STRATEGY_CONVERGED, "0") < 0)
-        return -1;
-
-    if (hpoint_init(&curr, sess->sig.range_len) < 0) {
-        mesg->data.string = "Could not allocate memory for point structure";
-        return -1;
-    }
-
-    curr_randomize();
     return 0;
 }
 
@@ -68,10 +88,10 @@ int strategy_init(hmesg_t *mesg)
  */
 int strategy_fetch(hmesg_t *mesg)
 {
-    mesg->data.fetch.cand = HPOINT_INITIALIZER;
-    if (hpoint_copy(&mesg->data.fetch.cand, &curr) < 0)
+    vertex_rand(curr);
+    if (vertex_to_hpoint(curr, &mesg->data.fetch.cand) != 0)
         goto error;
-    curr_randomize();
+    ++curr->id;
 
     if (mesg->data.fetch.best.id < strategy_best.id) {
         mesg->data.fetch.best = HPOINT_INITIALIZER;
@@ -108,13 +128,4 @@ int strategy_report(hmesg_t *mesg)
 
     mesg->status = HMESG_STATUS_OK;
     return 0;
-}
-
-void curr_randomize(void)
-{
-    int i;
-
-    ++curr.id;
-    for (i = 0; i < curr.idx_cap; ++i)
-        curr.idx[i] = rand() % sess->sig.range[i].max_idx;
 }
