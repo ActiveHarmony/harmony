@@ -79,6 +79,7 @@ static hpoint_t *strategy_best;
 typedef struct plugin {
     int (*report)(hmesg_t *mesg);
     int (*fetch)(hmesg_t *mesg);
+	int (*inform)(hmesg_t *mesg);
     void (*fini)(void);
     const char *name;
 } plugin_t;
@@ -156,6 +157,7 @@ int main(int argc, char **argv)
     }
 
     /* Load and initialize the strategy code object. */
+	printf("Loading strategies.\n");
     sess = &session_mesg.data.session;
     if (strategy_load(&session_mesg) < 0) {
         mesg.data.string = session_mesg.data.string;
@@ -163,11 +165,14 @@ int main(int argc, char **argv)
     }
 
     /* Load and initialize requested plugin's. */
+	printf("Loading plugins.\n");
     list = hcfg_get(sess->cfg, CFGKEY_SESSION_PLUGINS);
     if (list && plugin_list_load(&session_mesg, list) < 0) {
         mesg.data.string = session_mesg.data.string;
         goto error;
     }
+
+	printf("Everything Loaded.\n");
 
     session_mesg.status = HMESG_STATUS_OK;
     if (mesg_send(STDIN_FILENO, &session_mesg) < 1) {
@@ -252,6 +257,11 @@ int main(int argc, char **argv)
                 break;
 
             case HMESG_INFORM:
+                if (plugin_workflow(&mesg) < 0) {
+   	                if (mesg.status == HMESG_STATUS_FAIL)
+       	                goto error;
+           	    }
+
                 hcfg_parse((char *)mesg.data.string, &key, &val);
                 if (key) {
                     mesg.data.string = hcfg_get(sess->cfg, key);
@@ -267,6 +277,7 @@ int main(int argc, char **argv)
                     mesg.data.string = strerror(EINVAL);
                     mesg.status = HMESG_STATUS_FAIL;
                 }
+
                 if (mesg_send(STDIN_FILENO, &mesg) < 1)
                     goto error;
                 break;
@@ -457,6 +468,7 @@ int plugin_list_load(hmesg_t *mesg, const char *list)
         }
 
         prefix = (const char *) dlsym(lib, "harmony_plugin_name");
+
         if (!prefix) {
             hmesg_scrub(mesg);
             mesg->data.string = dlerror();
@@ -487,6 +499,13 @@ int plugin_list_load(hmesg_t *mesg, const char *list)
             goto cleanup;
         }
         plugin[plugin_len].fetch = HACK_CAST_INT(dlsym(lib, fname));
+
+
+        if (snprintf_grow(&fname, &fname_len, "%s_inform", prefix) < 0) {
+            retval = -1;
+            goto cleanup;
+        }
+        plugin[plugin_len].inform = HACK_CAST_INT(dlsym(lib, fname));
 
         if (snprintf_grow(&fname, &fname_len, "%s_fini", prefix) < 0) {
             retval = -1;
@@ -570,6 +589,16 @@ int plugin_workflow(hmesg_t *mesg)
             return -1;
         }
     }
+
+	else if (mesg->type == HMESG_INFORM) {
+		while (mesg->index < plugin_len) {
+        	if (plugin[mesg->index].inform) {
+            	if (plugin[mesg->index].inform(mesg) < 0)
+                	return -1;
+        	}
+        	++mesg->index;
+      	}
+	}
 
     else {
         mesg->status = HMESG_STATUS_FAIL;
