@@ -47,7 +47,7 @@ tauDB.so: override CFLAGS+=
 #xmlWriter.so: override CFLAGS+=${XML_INCLUDE}
 
 
-%.so: %.o libharmony.a ${TAUDB_LIB}
+%.so: %.o ../libharmony.a ${TAUDB_LIB}
 	$(CC) -shared $(LDFLAGS) $(CFLAGS) $^ -o $@
 
 clean:
