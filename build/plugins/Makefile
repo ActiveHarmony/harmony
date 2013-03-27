@@ -19,11 +19,11 @@ override CPPFLAGS+=-I.. -D_ISOC99_SOURCE -D_XOPEN_SOURCE=500
 
 SRCS=codegen.c \
      codegen-helper.c \
-	 tauDB.c
+#	 tauDB.c
 
 LIBEXEC_TARGETS=codegen.so \
 				codegen-helper \
-				tauDB.so
+#				tauDB.so
 
 TARGETS=$(LIBEXEC_TARGETS)
 
