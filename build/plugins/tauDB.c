@@ -24,9 +24,11 @@
 
 char harmony_plugin_name[] = "tauDB";
 
+static TAUDB_METRIC *metric;
 static TAUDB_TRIAL * trial;
 static TAUDB_CONNECTION * connection;
 static TAUDB_THREAD * thread;
+static TAUDB_TIMER_GROUP *timer_group;
 
 static hsession_t session;
 static int paramNum;
@@ -34,6 +36,7 @@ static int nodeNum;
 static int *clientMap; //A table to manage clientID vs socketID
 static int clientIdx = 0;
 static int save_counter = 0;
+static int *timer_id;
 
 /*Several Pre-declaration*/
 int get_config_dim(char *config);
@@ -63,12 +66,23 @@ int tauDB_init(hmesg_t *mesg) {
     taudb_check_connection(connection);
 	printf("Connected to TauDB.\n");
 
+	
 	/*Initializing Trial*/
 	trial = harmony_taudb_trial_init(mesg->data.session.sig.name, mesg->data.session.sig.name);
 	if (trial == NULL) {
 		fprintf(stderr, "Failed to create TauDB trial.\n");
 		return -1;
 	}
+
+    /*Create a metric*/
+    metric = taudb_create_metrics(1);
+    metric->name = taudb_strdup("TIME");
+    taudb_add_metric_to_trial(trial, metric);
+
+	/*Initializing Timer group*/
+	timer_group = taudb_create_timer_groups(1);
+	timer_group->name = taudb_strdup("Harmony Perf");
+	taudb_add_timer_group_to_trial(trial, timer_group);
 
 	char nodeNumStr[10];
 	paramNum = mesg->data.session.sig.range_cap;
@@ -78,12 +92,17 @@ int tauDB_init(hmesg_t *mesg) {
 	printf("Number of nodes is %d\n", nodeNum);	
 	printf("Number of parameters is %d\n", paramNum);
 
+	/*Socket id map to thread id*/
 	thread = harmony_taudb_create_thread(nodeNum);
 	clientMap = (int*)malloc(sizeof(int)*(2*nodeNum + CLIENTID_INIT));
 	for (int i = 0; i < 2*nodeNum+4; i++) {
 		clientMap[i] = -1;
 	}
 	clientMap[mesg->dest] = clientIdx;
+
+	/*Timer counter for each thread*/
+	timer_id = (int*)malloc(sizeof(int) * nodeNum);
+	for (int i = 0; i < nodeNum; i++) timer_id[i] = 0;
 
 	/*Inserting metadata to the trial*/
 	hsession_copy(&session, &mesg->data.session);
@@ -157,15 +176,12 @@ int tauDB_inform(hmesg_t *mesg) {
 /*Insert a config-pair to TauDB*/
 void harmony_taudb_insert(hmesg_t *mesg) {
 	int clientID;
+	char timer_name[REG_STR_LEN];
 	/*Get client info*/
 	clientID = clientMap[mesg->dest];
 	
 	printf("Incoming socket is %d %d\n", mesg->dest, clientID);	
 
-    /*Create a metric*/
-    TAUDB_METRIC* metric = taudb_create_metrics(1);
-    metric->name = taudb_strdup("TIME");
-    taudb_add_metric_to_trial(trial, metric);
 	//taudb_save_metrics(connection, trial, 1);
 
     /*create a timer*/
@@ -173,13 +189,20 @@ void harmony_taudb_insert(hmesg_t *mesg) {
     TAUDB_TIMER_VALUE* timer_value = taudb_create_timer_values(1);
     TAUDB_TIMER_CALLPATH* timer_callpath = taudb_create_timer_callpaths(1);
     TAUDB_TIMER_CALL_DATA* timer_call_data = taudb_create_timer_call_data(1);
+	//TAUDB_TIMER_GROUP *timer_group = taudb_create_timer_groups(1);
 
     /*parse input string and get param information*/
     printf("Parsing input string and get param info.\n");
     
+	//timer_group->name = taudb_strdup("Harmony Perf");
+	timer_id[clientID]++;
+	snprintf(timer_name, sizeof(timer_name), "Runtime_%d_%d", clientID, timer_id[clientID]);
+		
+    timer->name = taudb_strdup(timer_name);
 
-    timer->name = taudb_strdup("Runtime");
-    taudb_add_timer_to_trial(trial, timer);
+	taudb_add_timer_to_trial(trial, timer);
+	//taudb_add_timer_group_to_trial(trial, timer_group);
+	taudb_add_timer_to_timer_group(timer_group, timer);
     //taudb_save_timers(connection, trial, 1);
 
     timer_callpath->timer = timer;
@@ -193,9 +216,15 @@ void harmony_taudb_insert(hmesg_t *mesg) {
     taudb_add_timer_call_data_to_trial(trial, timer_call_data);
 
     timer_value->metric = metric;
+	timer_value->inclusive = mesg->data.report.perf;
     timer_value->exclusive = mesg->data.report.perf;
+	timer_value->inclusive_percentage = 100.0;
+	timer_value->exclusive_percentage = 100.0;
+	timer_value->sum_exclusive_squared = 0.0;
     taudb_add_timer_value_to_timer_call_data(timer_call_data, timer_value);
     
+
+
     //printf("Loading data.\n");
     timer = save_timer_parameter(timer, mesg);
 
@@ -207,6 +236,7 @@ void harmony_taudb_insert(hmesg_t *mesg) {
 	if (save_counter < POINTS_PER_SAVE) {
 		save_counter++;
 	} else {
+		taudb_compute_statistics(trial);
 	    taudb_save_trial(connection, trial, update, cascade);
 		save_counter = 0;
 	}
