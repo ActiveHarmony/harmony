@@ -14,7 +14,6 @@
 #include "hsockutil.h"
 #include "defaults.h"
 
-#define TAUDB_CONFIG "test"
 #define CLIENTID_INIT 16
 #define SECONDARY_METADATA_NUM 10
 #define REG_STR_LEN 32
@@ -50,19 +49,20 @@ void harmony_taudb_get_secondary_metadata(TAUDB_THREAD* thread, char* opsys, cha
  *Return 0 for success, -1 for error
  */
 int tauDB_init(hmesg_t *mesg) {	
+	char taudb_name[32];
 	printf("Initializing session %s\n", mesg->data.session.sig.name);	
 
 	/*Connecting to TauDB*/
-    if (TAUDB_CONFIG !=  NULL) {
+	snprintf(taudb_name, sizeof(taudb_name), "%s", hcfg_get(mesg->data.session.cfg, "TAUDB_NAME"));
+    if (taudb_name !=  NULL) {
 		printf("Connecting to TauDB.\n");
-		connection = taudb_connect_config(TAUDB_CONFIG);
+		connection = taudb_connect_config(taudb_name);
     } else { 
 		fprintf(stderr, "TAUdb config file not found! Connection failed.\n");
 		return -1;
     }
 
     /*Check if the connection has been established*/
-	printf("Checking connection.\n");
     taudb_check_connection(connection);
 	printf("Connected to TauDB.\n");
 
@@ -89,8 +89,6 @@ int tauDB_init(hmesg_t *mesg) {
 	snprintf(nodeNumStr, 10, "%s", hcfg_get(mesg->data.session.cfg, CFGKEY_CLIENT_COUNT));
 
 	nodeNum = atoi(nodeNumStr);
-	printf("Number of nodes is %d\n", nodeNum);	
-	printf("Number of parameters is %d\n", paramNum);
 
 	/*Socket id map to thread id*/
 	thread = harmony_taudb_create_thread(nodeNum);

@@ -1,4 +1,4 @@
-all_subsystems = build code-server example/client_api example/code_generation example/synth
+all_subsystems = build code-server example/client_api example/code_generation example/synth example/tauDB
 
 .PHONY: all install clean distclean
 

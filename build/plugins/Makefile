@@ -41,7 +41,7 @@ install: $(TARGETS)
 
 codegen-helper: override LDLIBS+=-L.. -lharmony
 codegen-helper: codegen-helper.o
-tauDB.so: override LDFLAGS+=${PQ_LIBS} -L.. -lharmony -L -ltaudb
+tauDB.so: override LDFLAGS+=${PQ_LIBS} -L.. -lharmony
 tauDB.so: override CFLAGS+=
 #xmlWriter.so: override LDFLAGS+=${XML_LIBS}
 #xmlWriter.so: override CFLAGS+=${XML_INCLUDE}
