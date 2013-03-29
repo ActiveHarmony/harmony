@@ -12,7 +12,7 @@ override FFLAGS+=-fno-underscoring
 override CHPLFLAGS+=-M$(TO_BASE)/build -I$(TO_BASE)/build
 override LDFLAGS+=-L$(TO_BASE)/build -lharmony
 
-TARGETS=example #example_mpi
+TARGETS=example example_mpi
 
 .PHONY: all install clean distclean
 
@@ -31,8 +31,8 @@ example: example.c $(TO_BASE)/build/libharmony.a
 
 
 
-#example_mpi: example_mpi.c $(TO_BASE)/build/libharmony.a
-#	@if [ -x "`which $(CC) 2>&1`" ]; then                           \
+example_mpi: example_mpi.c $(TO_BASE)/build/libharmony.a
+	@if [ -x "`which $(CC) 2>&1`" ]; then                           \
 		echo "$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LDFLAGS) -o $@"; \
 		$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LDFLAGS) -o $@;        \
 	else                                                            \

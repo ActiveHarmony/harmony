@@ -89,6 +89,7 @@ int tauDB_init(hmesg_t *mesg) {
 	snprintf(nodeNumStr, 10, "%s", hcfg_get(mesg->data.session.cfg, CFGKEY_CLIENT_COUNT));
 
 	nodeNum = atoi(nodeNumStr);
+	trial->node_count = nodeNum;
 
 	/*Socket id map to thread id*/
 	thread = harmony_taudb_create_thread(nodeNum);
