@@ -93,13 +93,17 @@ int tauDB_init(hmesg_t *mesg) {
 	nodeNum = atoi(nodeNumStr);
 	trial->node_count = nodeNum;
 
-	char taudb_store_method[10];
-	snprintf(taudb_store_method, sizeof(taudb_store_method), "%s", hcfg_get(mesg->data.session.cfg, "TAUDB_STORE_METHOD"));
-	if (!strcmp(taudb_store_method, "real_time"))
+	char taudb_store[10];
+	snprintf(taudb_store, sizeof(taudb_store), "%s", hcfg_get(mesg->data.session.cfg, "TAUDB_STORE_METHOD"));
+	if (!strcmp(taudb_store, "real_time")){
 		taudb_store_type = 1;
-	else {
+		snprintf(taudb_store, sizeof(taudb_store), "%s", hcfg_get(mesg->data.session.cfg, "TAUDB_STORE_NUM"));
+		total_record_num = atoi(taudb_store);
+	}
+	else if (!strcmp(taudb_store, "one_time")){
 		taudb_store_type = 0;
-		total_record_num = atoi(taudb_store_method);
+		snprintf(taudb_store, sizeof(taudb_store), "%s", hcfg_get(mesg->data.session.cfg, "TAUDB_STORE_NUM"));
+		total_record_num = atoi(taudb_store);
 	}
 
 	/*Socket id map to thread id*/
@@ -255,7 +259,12 @@ void harmony_taudb_insert(hmesg_t *mesg) {
 			taudb_store_type = -1;	
 		}
 	} else if (taudb_store_type == 1){
-		taudb_save_trial(connection, trial, update, cascade);
+		if (save_counter < total_record_num)
+			save_counter++;
+		else {
+			taudb_save_trial(connection, trial, update, cascade);
+			save_counter = 0;
+		}
 	}
 }
 

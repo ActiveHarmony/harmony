@@ -180,7 +180,8 @@ int main(int argc, char **argv)
 		hsession_cfg(&sess, CFGKEY_SESSION_PLUGINS, "tauDB.so") < 0 ||
 		hsession_cfg(&sess, CFGKEY_SESSION_STRATEGY, "brute.so") < 0 ||
 		hsession_cfg(&sess, CFGKEY_CLIENT_COUNT, "1") < 0 ||
-		hsession_cfg(&sess, "TAUDB_STORE_METHOD", "150") < 0) {
+		hsession_cfg(&sess, "TAUDB_STORE_METHOD", "one_time") < 0 ||
+		hsession_cfg(&sess, "TAUDB_STORE_NUM", "150") < 0) {
         fprintf(stderr, "Error during session configuration.\n");
         return -1;
     }
