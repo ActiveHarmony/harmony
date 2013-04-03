@@ -172,9 +172,15 @@ int main(int argc, char **argv)
         ++i;
     }
 
+	/*TAUDB_STORE_METHOD can be "real_time" or any number
+	 *If assign as a number: that number pieces of data will be loaded at the end
+	 *"real_time": data will be loaded at real time, but can't use paraprof or perfexplorer to visualize the data
+	 */
     if (hsession_name(&sess, name) < 0 ||
 		hsession_cfg(&sess, CFGKEY_SESSION_PLUGINS, "tauDB.so") < 0 ||
-		hsession_cfg(&sess, CFGKEY_SESSION_STRATEGY, "brute.so") < 0) {
+		hsession_cfg(&sess, CFGKEY_SESSION_STRATEGY, "brute.so") < 0 ||
+		hsession_cfg(&sess, CFGKEY_CLIENT_COUNT, "1") < 0 ||
+		hsession_cfg(&sess, "TAUDB_STORE_METHOD", "150") < 0) {
         fprintf(stderr, "Error during session configuration.\n");
         return -1;
     }

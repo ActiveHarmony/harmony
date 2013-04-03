@@ -36,6 +36,8 @@ static int *clientMap; //A table to manage clientID vs socketID
 static int clientIdx = 0;
 static int save_counter = 0;
 static int *timer_id;
+static int taudb_store_type; //1 for real time, 0 for one-time
+static int total_record_num = 0;
 
 /*Several Pre-declaration*/
 int get_config_dim(char *config);
@@ -91,10 +93,20 @@ int tauDB_init(hmesg_t *mesg) {
 	nodeNum = atoi(nodeNumStr);
 	trial->node_count = nodeNum;
 
+	char taudb_store_method[10];
+	snprintf(taudb_store_method, sizeof(taudb_store_method), "%s", hcfg_get(mesg->data.session.cfg, "TAUDB_STORE_METHOD"));
+	if (!strcmp(taudb_store_method, "real_time"))
+		taudb_store_type = 1;
+	else {
+		taudb_store_type = 0;
+		total_record_num = atoi(taudb_store_method);
+	}
+
 	/*Socket id map to thread id*/
 	thread = harmony_taudb_create_thread(nodeNum);
+	printf("Number of threads is %d\n", nodeNum);
 	clientMap = (int*)malloc(sizeof(int)*(2*nodeNum + CLIENTID_INIT));
-	for (int i = 0; i < 2*nodeNum+4; i++) {
+	for (int i = 0; i < 2*nodeNum+CLIENTID_INIT; i++) {
 		clientMap[i] = -1;
 	}
 	clientMap[mesg->dest] = clientIdx;
@@ -194,22 +206,24 @@ void harmony_taudb_insert(hmesg_t *mesg) {
     printf("Parsing input string and get param info.\n");
     
 	//timer_group->name = taudb_strdup("Harmony Perf");
-	timer_id[clientID]++;
+
+	++timer_id[clientID];
+	printf("Client ID is %d, timer id is %d\n", clientID, timer_id[clientID]);
 	snprintf(timer_name, sizeof(timer_name), "Runtime_%d_%d", clientID, timer_id[clientID]);
 		
     timer->name = taudb_strdup(timer_name);
 
 	taudb_add_timer_to_trial(trial, timer);
-	//taudb_add_timer_group_to_trial(trial, timer_group);
+	
 	taudb_add_timer_to_timer_group(timer_group, timer);
-    //taudb_save_timers(connection, trial, 1);
+    
 
     timer_callpath->timer = timer;
     timer_callpath->parent = NULL;
     taudb_add_timer_callpath_to_trial(trial, timer_callpath);
 
     timer_call_data->key.timer_callpath = timer_callpath;
-    timer_call_data->key.thread = &(thread[clientID]);
+    timer_call_data->key.thread = &thread[clientID];
     timer_call_data->calls = 1;
     timer_call_data->subroutines = 0;
     taudb_add_timer_call_data_to_trial(trial, timer_call_data);
@@ -231,15 +245,18 @@ void harmony_taudb_insert(hmesg_t *mesg) {
     printf("Saving timer in the trial.\n");
     boolean update = 1;
     boolean cascade = 1;
-
-	if (save_counter < POINTS_PER_SAVE) {
-		save_counter++;
-	} else {
-		taudb_compute_statistics(trial);
-	    taudb_save_trial(connection, trial, update, cascade);
-		save_counter = 0;
+	
+	if (taudb_store_type == 0){
+		if (save_counter < total_record_num) {
+			save_counter++;
+		} else {
+			taudb_compute_statistics(trial);
+		    taudb_save_trial(connection, trial, update, cascade);
+			taudb_store_type = -1;	
+		}
+	} else if (taudb_store_type == 1){
+		taudb_save_trial(connection, trial, update, cascade);
 	}
-	//taudb_save_timers(connection, trial, update);
 }
 
 TAUDB_TIMER* save_timer_parameter(TAUDB_TIMER* timer, hmesg_t *mesg) {
@@ -373,7 +390,7 @@ TAUDB_THREAD* harmony_taudb_create_thread(int threadNum) {
     	thread[i].thread_rank = 1;
     	thread[i].context_rank = 1;
     	thread[i].index = 1;
-    	taudb_add_thread_to_trial(trial, &(thread[i])); 
+    	taudb_add_thread_to_trial(trial, &thread[i]); 
 	}
     return thread;
 }
@@ -469,11 +486,12 @@ void harmony_taudb_get_secondary_metadata(TAUDB_THREAD* thread, char* opsys, cha
 }
 
 /*Finalize a trial*/
-void taudb_finalize() {
+void taudb_fini() {
     printf("Saving trial to taudb\n");
-    //boolean update = 0;
-    //boolean cascade = 1;
-    //taudb_save_trial(connection, trial, update, cascade);
+    boolean update = 1;
+    boolean cascade = 1;
+	taudb_compute_statistics(trial);
+    taudb_save_trial(connection, trial, update, cascade);
     printf("Disconnecting from TAUdb.\n");
     /*Disconnect from taudb*/
     taudb_disconnect(connection);

@@ -109,7 +109,8 @@ int main(int argc, char **argv)
 			hsession_cfg(&sess, CFGKEY_SESSION_PLUGINS, "tauDB.so") < 0 ||
 			hsession_cfg(&sess, CFGKEY_SESSION_STRATEGY, "pro.so") < 0 ||
 			hsession_cfg(&sess, CFGKEY_CLIENT_COUNT, numbuf) < 0 ||
-			hsession_cfg(&sess, CFGKEY_PREFETCH_COUNT, "auto") < 0) {
+			hsession_cfg(&sess, CFGKEY_PREFETCH_COUNT, "auto") < 0 ||
+			hsession_cfg(&sess, "TAUDB_STORE_METHOD", "150") < 0) {
 	        fprintf(stderr, "Error during session configuration.\n");
 	        MPI_Abort(MPI_COMM_WORLD, -1);
 	    }
