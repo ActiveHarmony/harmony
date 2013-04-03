@@ -173,8 +173,8 @@ int main(int argc, char **argv)
     }
 
 	/*TAUDB_STORE_METHOD can be "real_time" or any number
-	 *If assign as a number: that number pieces of data will be loaded at the end
-	 *"real_time": data will be loaded at real time, but can't use paraprof or perfexplorer to visualize the data
+	 *"one_time": First "TAUDB_STORE_NUM" number of data will be loaded at the end
+	 *"real_time": data will be loaded at real time, but can't use paraprof or perfexplorer to visualize the data, storing interval is "TAUDB_STORE_NUM" number of data per save (to reduce the overhead for taudb_save_trial())
 	 */
     if (hsession_name(&sess, name) < 0 ||
 		hsession_cfg(&sess, CFGKEY_SESSION_PLUGINS, "tauDB.so") < 0 ||
