@@ -11,7 +11,8 @@ override CPPFLAGS+=-I.. -D_ISOC99_SOURCE -D_XOPEN_SOURCE=500
 TCL_INCDIR?=/usr/include
 TCL_LIBDIR?=/usr/lib64
 
-LIBEXEC_SRCS=brute.c \
+LIBEXEC_SRCS=libvertex.c \
+             brute.c \
              random.c \
              nelder_mead.c \
              pro.c
