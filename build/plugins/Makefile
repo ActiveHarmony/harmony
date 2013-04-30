@@ -20,11 +20,11 @@ override CPPFLAGS+=-I.. -D_ISOC99_SOURCE -D_XOPEN_SOURCE=500
 SRCS=codegen.c \
      codegen-helper.c \
 #	 tauDB.c
-
+#	 xmlWriter.c
 LIBEXEC_TARGETS=codegen.so \
 				codegen-helper \
 #				tauDB.so
-
+#				xmlWriter.so
 TARGETS=$(LIBEXEC_TARGETS)
 
 .PHONY: all install clean distclean
