@@ -25,7 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-hpoint_t HPOINT_INITIALIZER = {-1, 0, NULL, 0, 0};
+const hpoint_t HPOINT_INITIALIZER = {-1, 0, NULL, 0};
 
 void hpoint_scrub(hpoint_t *pt);
 
@@ -37,7 +37,6 @@ int hpoint_init(hpoint_t *pt, int n)
     if (!pt->val)
         return -1;
     pt->memlevel = 0;
-    pt->step = -1;
 
     return 0;
 }
@@ -84,7 +83,6 @@ int hpoint_copy(hpoint_t *copy, const hpoint_t *orig)
         }
     }
 
-    copy->step = orig->step;
     return 0;
 }
 
@@ -92,7 +90,7 @@ int hpoint_serialize(char **buf, int *buflen, const hpoint_t *pt)
 {
     int i, count, total;
 
-    count = snprintf_serial(buf, buflen, "hpoint:%d %d ", pt->id, pt->step);
+    count = snprintf_serial(buf, buflen, "hpoint:%d ", pt->id);
     if (count < 0) goto invalid;
     total = count;
 
@@ -120,7 +118,7 @@ int hpoint_deserialize(hpoint_t *pt, char *buf)
     int i, count, total, new_n;
     hval_t *newbuf;
 
-    if (sscanf(buf, " hpoint:%d %d%n", &pt->id, &pt->step, &count) < 2)
+    if (sscanf(buf, " hpoint:%d%n", &pt->id, &count) < 1)
         goto invalid;
     total = count;
 

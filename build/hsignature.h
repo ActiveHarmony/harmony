@@ -57,7 +57,7 @@ typedef struct hrange {
         str_bounds_t  s;
     } bounds;
 } hrange_t;
-extern hrange_t HRANGE_INITIALIZER;
+extern const hrange_t HRANGE_INITIALIZER;
 
 /*
  * Harmony session signature: Clients provide this on join to verify
@@ -73,7 +73,7 @@ typedef struct hsignature {
                       * 0 == Shallow copy of another hsession
                       */
 } hsignature_t;
-extern hsignature_t HSIGNATURE_INITIALIZER;
+extern const hsignature_t HSIGNATURE_INITIALIZER;
 
 /* Harmony signature functions */
 int  hsignature_copy(hsignature_t *dst, const hsignature_t *src);

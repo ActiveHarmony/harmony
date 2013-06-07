@@ -27,8 +27,8 @@
 #include <string.h>
 #include <ctype.h>
 
-hrange_t HRANGE_INITIALIZER = {0};
-hsignature_t HSIGNATURE_INITIALIZER = {0};
+const hrange_t HRANGE_INITIALIZER = {0};
+const hsignature_t HSIGNATURE_INITIALIZER = {0};
 
 /*
  * Harmony range related function definitions.

@@ -77,7 +77,7 @@ typedef struct {
     char *buf;
     int buflen;
 } hmesg_t;
-extern hmesg_t HMESG_INITIALIZER;
+extern const hmesg_t HMESG_INITIALIZER;
 
 void hmesg_init(hmesg_t *mesg);
 void hmesg_scrub(hmesg_t *mesg);

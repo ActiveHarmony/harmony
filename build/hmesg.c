@@ -29,7 +29,7 @@
 #include <string.h>
 #include <arpa/inet.h>
 
-hmesg_t HMESG_INITIALIZER = {0};
+const hmesg_t HMESG_INITIALIZER = {0};
 
 void hmesg_scrub(hmesg_t *mesg)
 {

@@ -35,10 +35,9 @@ typedef struct hpoint {
     int n;
     hval_t *val;
     int memlevel; /* 1 if *val has pointers to memory that must be freed. */
-    int step;     /* Only used for old Tcl-based strategies. */
 } hpoint_t;
 
-extern hpoint_t HPOINT_INITIALIZER;
+extern const hpoint_t HPOINT_INITIALIZER;
 
 int  hpoint_init(hpoint_t *pt, int n);
 void hpoint_fini(hpoint_t *pt);

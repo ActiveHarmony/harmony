@@ -25,7 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-hval_t HVAL_INITIALIZER = {0};
+const hval_t HVAL_INITIALIZER = {0};
 
 int hval_serialize(char **buf, int *buflen, const hval_t *val)
 {
