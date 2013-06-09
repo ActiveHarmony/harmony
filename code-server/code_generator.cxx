@@ -40,6 +40,7 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <arpa/inet.h>
+#include <sys/select.h>
 
 #include "hcfg.h"
 #include "hmesg.h"
@@ -707,47 +708,84 @@ int file_type(const char *fileName)
     return 0;
 }
 
+#define POLL_TIME 250000
+
 int mesg_read(const char *filename, hmesg_t *msg)
 {
-    int fd;
-    unsigned short msglen;
-    char hdr[HARMONY_HDRLEN], *newbuf;
+    int msglen, fd, retries, retval;
+    char *newbuf;
+    struct stat sb;
+    struct timeval polltime;
 
+    retval = 0;
+    retries = 3;
+
+  top:
     fd = open(filename, O_RDONLY);
-    if (fd < 0) {
-        cerr << "Could not open mesg file " << filename
-             << ": " << strerror(errno) << "\n";
-        return -1;
+    if (fd == -1) {
+        cerr << "Could not open file: " << strerror(errno) << ".\n";
+        retval = -1;
+        goto cleanup;
     }
 
-    if (read_loop(fd, hdr, sizeof(hdr)) < 0)
-        return -1;
+    /* Obtain file size */
+    if (fstat(fd, &sb) == 0) {
+        cerr << "Could not fstat file: " << strerror(errno) << ". Retrying.\n";
+        goto retry;
+    }
 
-    if (ntohl(*(unsigned int *)hdr) != HARMONY_MAGIC)
-        return -1;
-
-    msglen = ntohs(*(unsigned short *)(hdr + sizeof(int)));
-    if (msg->buflen <= msglen) {
-        newbuf = (char *) realloc(msg->buf, msglen + 1);
-        if (!newbuf)
-            return -1;
+    msglen = sb.st_size + 1;
+    if (msg->buflen < msglen) {
+        newbuf = (char *) realloc(msg->buf, msglen);
+        if (!newbuf) {
+            cerr << "Could not allocate memory for message data.\n";
+            retval = -1;
+            goto cleanup;
+        }
         msg->buf = newbuf;
-        msg->buflen = msglen + 1;
+        msg->buflen = msglen;
     }
+    msg->buf[sb.st_size] = '\0';
 
-    memcpy(msg->buf, hdr, sizeof(hdr));
-    if (read_loop(fd, msg->buf + sizeof(hdr), msglen - sizeof(hdr)) < 0)
-        return -1;
-    msg->buf[msglen] = '\0';
+    if (read_loop(fd, msg->buf, sb.st_size) != 0) {
+        cerr << "Error reading message file. Retrying.\n";
+        goto retry;
+    }
 
     if (close(fd) < 0) {
-        cerr << "Error closing mesg file " << filename
-             << ": " << strerror(errno) << "\n";
-        return -1;
+        cerr << "Error closing code completion message file.\n";
+        retval = -1;
+        goto cleanup;
     }
+    fd = -1;
 
-    hmesg_scrub(msg);
-    return hmesg_deserialize(msg);
+    if (hmesg_deserialize(msg) != 0) {
+        cerr << "Error decoding message file. Retrying.\n";
+        goto retry;
+    }
+    retval = 1;
+
+  cleanup:
+    if (fd >= 0)
+        close(fd);
+    return retval;
+
+  retry:
+    /* Avoid the race condition where we attempt to read a message
+     * before the remote code server scp process has completely
+     * written the file.
+     *
+     * At some point, this retry method should probably be replaced
+     * with file locks as a more complete solution.
+     */
+    close(fd);
+    if (--retries) {
+        polltime.tv_sec = 0;
+        polltime.tv_usec = POLL_TIME;
+        select(0, NULL, NULL, NULL, &polltime);
+        goto top;
+    }
+    return -1;
 }
 
 int mesg_write(hmesg_t &mesg, int step)

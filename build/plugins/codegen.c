@@ -28,6 +28,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 typedef enum {
     CODEGEN_STATUS_UNKNOWN = 0x0,
@@ -39,8 +40,11 @@ typedef enum {
 
 typedef struct codegen_log {
     codegen_status status;
-    hpoint_t pt;
+    hpoint_t point;
 } codegen_log_t;
+
+codegen_log_t *cglog;
+int cglog_len, cglog_cap;
 
 /*
  * Name used to identify this plugin.  All Harmony plugins must define
@@ -48,70 +52,69 @@ typedef struct codegen_log {
  */
 const char harmony_plugin_name[] = "codegen";
 
-hsession_t *sess;
-hmesg_t cg_mesg;
-int cg_sock;
+hmesg_t mesg;
+int sockfd;
 
 char *buf;
 int buflen;
 
-codegen_log_t *cglog;
-int cglog_len, cglog_cap;
-
-int codegen_callback(hmesg_t *mesg);
+int codegen_callback(int fd, hflow_t *flow, int n, htrial_t **trial);
 int url_connect(const char *url);
-int cglog_insert(hpoint_t *pt);
-int cglog_find(hpoint_t *pt);
+int cglog_insert(const hpoint_t *pt);
+int cglog_find(const hpoint_t *pt);
 
 /*
  * Invoked once on module load.
  *
  * This routine should return 0 on success, and -1 otherwise.
  */
-int codegen_init(hmesg_t *mesg)
+int codegen_init(hsignature_t *sig)
 {
     const char *url;
+    hcfg_t *cfg;
 
-    sess = &mesg->data.session;
-
-    cg_mesg = HMESG_INITIALIZER;
-    buf = NULL;
-    buflen = 0;
-
-    url = hcfg_get(sess->cfg, CFGKEY_CG_TARGET_URL);
+    url = session_query(CFGKEY_CG_TARGET_URL);
     if (!url || url[0] == '\0') {
-        mesg->data.string =
-            "Destination URL for generated code objects not specified";
+        session_error("Destination URL for"
+                      " generated code objects not specified");
         return -1;
     }
 
-    url = hcfg_get(sess->cfg, CFGKEY_CG_SERVER_URL);
+    url = session_query(CFGKEY_CG_SERVER_URL);
     if (!url || url[0] == '\0') {
-        mesg->data.string = "Codegen server URL not specified";
+        session_error("Codegen server URL not specified");
         return -1;
     }
 
-    cg_sock = url_connect(url);
-    if (cg_sock == -1) {
-        mesg->data.string = "Invalid codegen server URL";
+    sockfd = url_connect(url);
+    if (sockfd == -1) {
+        session_error("Invalid codegen server URL");
         return -1;
     }
 
-    cg_mesg.type = HMESG_SESSION;
-    cg_mesg.status = HMESG_STATUS_REQ;
-    if (hsession_copy(&cg_mesg.data.session, &mesg->data.session) < 0) {
-        mesg->data.string = "Internal error copying session data";
-        return -1;
-    }
+    /* In the future, we should rewrite the code generator system to
+     * avoid using hmesg_t types.  Until then, generate a fake
+     * HMESG_SESSION message to maintain compatibility.
+     */
+    mesg = HMESG_INITIALIZER;
 
-    if (mesg_send(cg_sock, &cg_mesg) < 1)
+    hsignature_copy(&mesg.data.session.sig, sig);
+    cfg = hcfg_alloc();
+    hcfg_set(cfg, CFGKEY_CG_SERVER_URL, session_query(CFGKEY_CG_SERVER_URL));
+    hcfg_set(cfg, CFGKEY_CG_TARGET_URL, session_query(CFGKEY_CG_TARGET_URL));
+    hcfg_set(cfg, CFGKEY_CG_REPLY_URL, session_query(CFGKEY_CG_REPLY_URL));
+    hcfg_set(cfg, CFGKEY_CG_SLAVE_LIST, session_query(CFGKEY_CG_SLAVE_LIST));
+    mesg.data.session.cfg = cfg;
+
+    mesg.type = HMESG_SESSION;
+    if (mesg_send(sockfd, &mesg) < 1)
         return -1;
 
-    if (mesg_recv(cg_sock, &cg_mesg) < 1)
+    if (mesg_recv(sockfd, &mesg) < 1)
         return -1;
 
-    if (callback_register(cg_sock, codegen_callback) < 0) {
-        mesg->data.string = "Could not register callback for codegen plugin";
+    if (callback_generate(sockfd, codegen_callback) != 0) {
+        session_error("Could not register callback for codegen plugin");
         return -1;
     }
 
@@ -122,53 +125,44 @@ int codegen_init(hmesg_t *mesg)
  * Called after search driver generates a candidate point, but before
  * that point is returned to the client API.
  *
- * This routine should return 0 if it is completely done processing
- * the message.  Otherwise, -1 should be returned with mesg->status
- * (and possibly errno) set appropriately.
+ * This routine should fill the flow variable appropriately and return
+ * 0 upon success.  Otherwise, it should call session_error() with a
+ * human-readable error message and return -1.
  */
-int codegen_fetch(hmesg_t *mesg)
+int codegen_generate(hflow_t *flow, htrial_t *trial)
 {
     int i;
 
-    i = cglog_find(&mesg->data.fetch.cand);
+    i = cglog_find(&trial->point);
     if (i >= 0) {
         if (cglog[i].status == CODEGEN_STATUS_COMPLETE)
-            return 0;
+            flow->status = HFLOW_ACCEPT;
 
-        if (cglog[i].status == CODEGEN_STATUS_REQUESTED) {
-            hmesg_scrub(mesg);
-            mesg->status = HMESG_STATUS_BUSY;
-            return -1;
-        }
+        if (cglog[i].status == CODEGEN_STATUS_REQUESTED)
+            flow->status = HFLOW_WAIT;
+
+        return 0;
     }
 
-    if (cglog_insert(&mesg->data.fetch.cand) < 0) {
-        hmesg_scrub(mesg);
-        mesg->status = HMESG_STATUS_FAIL;
-        mesg->data.string = "Internal error growing codegen log";
+    if (cglog_insert(&trial->point) != 0) {
+        session_error("Internal error: Could not grow codegen log");
         return -1;
     }
 
-    cg_mesg.dest = mesg->dest;
-    cg_mesg.type = mesg->type;
-    cg_mesg.status = mesg->status;
-    cg_mesg.index = mesg->index;
-    cg_mesg.data.fetch.cand = HPOINT_INITIALIZER;
-    cg_mesg.data.fetch.best = HPOINT_INITIALIZER;
-    hpoint_copy(&cg_mesg.data.fetch.cand, &mesg->data.fetch.cand);
+    mesg = HMESG_INITIALIZER;
+    mesg.type = HMESG_FETCH;
+    mesg.status = HMESG_STATUS_REQ;
+    mesg.data.fetch.cand = HPOINT_INITIALIZER;
+    mesg.data.fetch.best = HPOINT_INITIALIZER;
+    hpoint_copy(&mesg.data.fetch.cand, &trial->point);
 
-    hmesg_scrub(mesg);
-    if (mesg_send(cg_sock, &cg_mesg) < 1)
-        mesg->status = HMESG_STATUS_FAIL;
-    else
-        mesg->status = HMESG_STATUS_BUSY;
+    if (mesg_send(sockfd, &mesg) < 1) {
+        session_error( strerror(errno) );
+        return -1;
+    }
 
-    /* Either an error has occurred, or the message has been forwarded
-     * to the code server for processing.  In both cases, we should
-     * return -1 and inform our parent session that the workflow has
-     * been interrupted.
-     */
-    return -1;
+    flow->status = HFLOW_WAIT;
+    return 0;
 }
 
 /*
@@ -179,19 +173,30 @@ void codegen_fini(void)
     free(buf);
 }
 
-int codegen_callback(hmesg_t *mesg)
+int codegen_callback(int fd, hflow_t *flow, int n, htrial_t **trial)
 {
     int i;
 
-    i = cglog_find(&mesg->data.fetch.cand);
-    if (i < 0)
+    if (mesg_recv(fd, &mesg) < 1)
         return -1;
 
-    if (mesg->status != HMESG_STATUS_OK)
+    i = cglog_find(&mesg.data.fetch.cand);
+    if (i < 0) {
+        session_error("Could not find point from code server in log");
         return -1;
-
+    }
     cglog[i].status = CODEGEN_STATUS_COMPLETE;
-    return 0;
+
+    /* Search waitlist for index of returned point. */
+    for (i = 0; i < n; ++i) {
+        if (trial[i]->point.id == mesg.data.fetch.cand.id) {
+            flow->status = HFLOW_ACCEPT;
+            return i;
+        }
+    }
+
+    session_error("Could not find point from code server in waitlist");
+    return -1;
 }
 
 int url_connect(const char *url)
@@ -207,7 +212,7 @@ int url_connect(const char *url)
     if (strncmp("dir:", url, ptr - url) == 0 ||
         strncmp("ssh:", url, ptr - url) == 0)
     {
-        ptr = hcfg_get(sess->cfg, CFGKEY_HARMONY_ROOT);
+        ptr = session_query(CFGKEY_HARMONY_ROOT);
         if (!ptr)
             return -1;
 
@@ -225,27 +230,29 @@ int url_connect(const char *url)
     return -1;
 }
 
-int cglog_insert(hpoint_t *pt)
+int cglog_insert(const hpoint_t *point)
 {
     if (cglog_len == cglog_cap)
         if (array_grow(&cglog, &cglog_cap, sizeof(codegen_log_t)) < 0)
             return -1;
 
-    cglog[cglog_len].pt = HPOINT_INITIALIZER;
-    hpoint_copy(&cglog[cglog_len].pt, pt);
+    cglog[cglog_len].point = HPOINT_INITIALIZER;
+    hpoint_copy(&cglog[cglog_len].point, point);
     cglog[cglog_len].status = CODEGEN_STATUS_REQUESTED;
     ++cglog_len;
 
     return 0;
 }
 
-int cglog_find(hpoint_t *pt)
+int cglog_find(const hpoint_t *point)
 {
     int i;
+    int len = point->n * sizeof(hval_t);
 
-    for (i = 0; i < cglog_len; ++i)
-        if (memcmp(pt->val, cglog[i].pt.val, pt->n * sizeof(hval_t)) == 0)
+    for (i = 0; i < cglog_len; ++i) {
+        if (memcmp(point->val, cglog[i].point.val, len) == 0)
             return i;
+    }
 
     return -1;
 }

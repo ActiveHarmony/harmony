@@ -19,7 +19,6 @@
 
 #include "strategy.h"
 #include "session-core.h"
-#include "hsession.h"
 #include "hutil.h"
 #include "hcfg.h"
 #include "defaults.h"
@@ -30,11 +29,12 @@
 #include <errno.h>
 #include <math.h>
 
-hpoint_t strategy_best;
-double strategy_best_perf;
+hpoint_t best;
+double   best_perf;
 
 /* Forward function definitions. */
-int strategy_cfg(hmesg_t *mesg);
+int strategy_cfg(void);
+int increment(void);
 
 /* Variables to track current search state. */
 vertex_t *curr;
@@ -43,40 +43,40 @@ int remaining_passes;
 /*
  * Invoked once on strategy load.
  */
-int strategy_init(hmesg_t *mesg)
+int strategy_init(hsignature_t *sig)
 {
-    if (libvertex_init(sess) != 0) {
-        mesg->data.string = "Could not initialize vertex library.";
+    if (libvertex_init(sig) != 0) {
+        session_error("Could not initialize vertex library.");
         return -1;
     }
 
-    if (strategy_cfg(mesg) != 0)
+    if (strategy_cfg() != 0)
         return -1;
 
-    strategy_best = HPOINT_INITIALIZER;
-    strategy_best_perf = INFINITY;
+    best = HPOINT_INITIALIZER;
+    best_perf = INFINITY;
 
     curr = vertex_alloc();
     if (!curr) {
-        mesg->data.string = "Could not allocate memory for testing vertex.";
+        session_error("Could not allocate memory for testing vertex.");
         return -1;
     }
-    curr->id = 1;
     vertex_min(curr);
+    curr->id = 1;
 
-    if (hcfg_set(sess->cfg, CFGKEY_STRATEGY_CONVERGED, "0") < 0) {
-        mesg->data.string =
-            "Could not set " CFGKEY_STRATEGY_CONVERGED " config variable.";
+    if (session_inform(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
+        session_error("Could not set "
+                      CFGKEY_STRATEGY_CONVERGED " config variable.");
         return -1;
     }
     return 0;
 }
 
-int strategy_cfg(hmesg_t *mesg)
+int strategy_cfg(void)
 {
     const char *cfgstr;
 
-    cfgstr = hcfg_get(sess->cfg, CFGKEY_BRUTE_PASSES);
+    cfgstr = session_query(CFGKEY_BRUTE_PASSES);
     if (cfgstr)
         remaining_passes = atoi(cfgstr);
 
@@ -84,63 +84,97 @@ int strategy_cfg(hmesg_t *mesg)
 }
 
 /*
- * Generate a new candidate configuration message in the space provided
- * by the hmesg_t parameter.
+ * Generate a new candidate configuration.
  */
-int strategy_fetch(hmesg_t *mesg)
+int strategy_generate(hflow_t *flow, hpoint_t *point)
 {
     if (curr->id > 0) {
-        if (vertex_to_hpoint(curr, &mesg->data.fetch.cand) != 0)
-            goto error;
-
-        if (vertex_incr(curr)) {
-            if (--remaining_passes < 0) {
-                if (hcfg_set(sess->cfg, CFGKEY_STRATEGY_CONVERGED, "1") != 0)
-                    return -1;
-
-                /* Search has converged.  End the search. */
-                curr->id = -1;
-            }
+        if (vertex_to_hpoint(curr, point) != 0) {
+            session_error("Internal error: Could not make point from vertex.");
+            return -1;
         }
+
+        if (increment() != 0)
+            return -1;
     }
     else {
-        if (hpoint_copy(&mesg->data.fetch.cand, &strategy_best) < 0)
-            goto error;
-    }
-
-    if (mesg->data.fetch.best.id < strategy_best.id) {
-        mesg->data.fetch.best = HPOINT_INITIALIZER;
-        if (hpoint_copy(&mesg->data.fetch.best, &strategy_best) < 0)
-            goto error;
-    }
-    else {
-        mesg->data.fetch.best.id = -1;
-    }
-
-    mesg->status = HMESG_STATUS_OK;
-    return 0;
-
-  error:
-    mesg->status = HMESG_STATUS_FAIL;
-    mesg->data.string = strerror(errno);
-    return -1;
-}
-
-/*
- * Inform the search strategy of an observed performance associated with
- * a configuration point.
- */
-int strategy_report(hmesg_t *mesg)
-{
-    if (strategy_best_perf > mesg->data.report.perf) {
-        strategy_best_perf = mesg->data.report.perf;
-        if (hpoint_copy(&strategy_best, &mesg->data.report.cand) < 0) {
-            mesg->status = HMESG_STATUS_FAIL;
-            mesg->data.string = strerror(errno);
+        if (hpoint_copy(point, &best) != 0) {
+            session_error("Internal error: Could not copy point.");
             return -1;
         }
     }
 
-    mesg->status = HMESG_STATUS_OK;
+    flow->status = HFLOW_ACCEPT;
+    return 0;
+}
+
+/*
+ * Regenerate a point deemed invalid by a later plug-in.
+ */
+int strategy_rejected(hpoint_t *point, hpoint_t *hint)
+{
+    int orig_id = point->id;
+
+    if (hint && hint->id != -1) {
+        if (hpoint_copy(point, hint) != 0) {
+            session_error("Internal error: Could not copy point.");
+            return -1;
+        }
+    }
+    else {
+        if (vertex_to_hpoint(curr, point) != 0) {
+            session_error("Internal error: Could not make point from vertex.");
+            return -1;
+        }
+
+        if (increment() != 0)
+            return -1;
+    }
+    point->id = orig_id;
+
+    return 0;
+}
+
+int increment(void)
+{
+    if (curr->id == 0)
+        return 0;
+
+    if (vertex_incr(curr)) {
+        if (--remaining_passes < 0) {
+            if (session_inform(CFGKEY_STRATEGY_CONVERGED, "1") != 0) {
+                session_error("Internal error: Could not increment vertex.");
+                return -1;
+            }
+            curr->id = 0;
+        }
+    }
+    return 0;
+}
+
+/*
+ * Analyze the observed performance for this configuration point.
+ */
+int strategy_analyze(htrial_t *trial)
+{
+    if (best_perf > trial->perf) {
+        best_perf = trial->perf;
+        if (hpoint_copy(&best, &trial->point) != 0) {
+            session_error("Internal error: Could not copy point.");
+            return -1;
+        }
+    }
+    return 0;
+}
+
+/*
+ * Return the best performing point thus far in the search.
+ */
+int strategy_best(hpoint_t *point)
+{
+    if (hpoint_copy(point, &best) != 0) {
+        session_error("Internal error: Could not copy point.");
+        return -1;
+    }
     return 0;
 }

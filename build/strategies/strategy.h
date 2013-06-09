@@ -20,36 +20,131 @@
 #ifndef __SEARCH_STRATEGY_H__
 #define __SEARCH_STRATEGY_H__
 
-#include "hmesg.h"
+#include "session-core.h"
+#include "hsignature.h"
 #include "hpoint.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-extern hpoint_t strategy_best;
-extern double strategy_best_perf;
+/* ===================================================================
+ * The following functions are required.  Active Harmony will not
+ * recognize shared objects as search strategies unless these
+ * functions exist.
+ */
+
+/*
+ * Generate a new candidate configuration point.
+ *
+ * Params:
+ *   point - New candidate point to be sent to a client.
+ *
+ * Upon error, this function should call session_error() with a
+ * human-readable string explaining the problem and return -1.
+ * Otherwise, returning 0 indicates success.
+ */
+int strategy_generate(hflow_t *flow, hpoint_t *point);
+
+/*
+ * Regenerate a rejected candidate configuration point.
+ *
+ * Params:
+ *   point - Rejected candidate point to regenerate.
+ *   hint  - Possibly contains hint from layer plug-ins.
+ *
+ * Upon error, this function should call session_error() with a
+ * human-readable string explaining the problem and return -1.
+ * Otherwise, returning 0 indicates success.
+ */
+int strategy_rejected(hpoint_t *point, hpoint_t *hint);
+
+/*
+ * Analyze the observed performance associated with a configuration point.
+ *
+ * Params:
+ *   trial - Observed point/performance pair.
+ *
+ * Upon error, this function should call session_error() with a
+ * human-readable string explaining the problem and return -1.
+ * Otherwise, returning 0 indicates success.
+ */
+int strategy_analyze(htrial_t *trial);
+
+/*
+ * Return the best performing configuration point thus far in the search.
+ *
+ * Params:
+ *   point - Location to store best performing configuration point data.
+ *
+ * Upon error, this function should call session_error() with a
+ * human-readable string explaining the problem and return -1.
+ * Otherwise, returning 0 indicates success.
+ */
+int strategy_best(hpoint_t *point);
+
+/* ===================================================================
+ * The following functions are optional.  They will be invoked at the
+ * appropriate time if and only if they exist.
+ */
 
 /*
  * Invoked once on strategy load.
+ *
+ * Param:
+ *   sig - Details of the parameter space (dimensions, bounds, etc.).
+ *
+ * Upon error, this function should call session_error() with a
+ * human-readable string explaining the problem and return -1.
+ * Otherwise, returning 0 indicates success.
  */
-int strategy_init(hmesg_t *mesg);
+int strategy_init(hsignature_t *sig);
 
 /*
- * Generate a new candidate configuration message the space provided
- * by the hmesg_t parameter.
+ * Invoked when a client joins the tuning session.
+ *
+ * Params:
+ *   id - Uniquely identifying string for the new client.
+ *
+ * Upon error, this function should call session_error() with a
+ * human-readable string explaining the problem and return -1.
+ * Otherwise, returning 0 indicates success.
  */
-int strategy_fetch(hmesg_t *mesg);
+int strategy_join(const char *id);
 
 /*
- * Inform the search strategy of an observed performance associated with
- * a configuration point.
+ * Invoked when a client reads from the configuration system.
+ *
+ * Params:
+ *   key - Configuration key requested.
+ *
+ * Upon error, this function should call session_error() with a
+ * human-readable string explaining the problem and return -1.
+ * Otherwise, returning 0 indicates success.
  */
-int strategy_report(hmesg_t *mesg);
+int strategy_query(const char *key);
 
 /*
- * Note that search strategies do not support a fini function (yet).
+ * Invoked when a client writes to the configuration system.
+ *
+ * Params:
+ *   key - Configuration key to be modified.
+ *   val - New value for configuration key.
+ *
+ * Upon error, this function should call session_error() with a
+ * human-readable string explaining the problem and return -1.
+ * Otherwise, returning 0 indicates success.
  */
+int strategy_inform(const char *key, const char *val);
+
+/*
+ * Invoked on session exit.
+ *
+ * Upon error, this function should call session_error() with a
+ * human-readable string explaining the problem and return -1.
+ * Otherwise, returning 0 indicates success.
+ */
+int strategy_fini(void);
 
 #ifdef __cplusplus
 }

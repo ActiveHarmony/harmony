@@ -34,22 +34,6 @@
 extern "C" {
 #endif
 
-/* Header Layout:
- *
- *  0             15 16            31
- * |----------------|----------------|
- * |          HARMONY_MAGIC          |
- * |---------------------------------|
- * | Message Length |  HMESG_VERSION |
- * |---------------------------------|
- * |  Message Data ...               |
- * |                                 |
- */
-
-/* Magic number for messages between the harmony server and its clients. */
-#define HARMONY_MAGIC  0x5261793a
-#define HARMONY_HDRLEN 6 /* sizeof(int) + sizeof(short) */
-
 int tcp_connect(const char *host, int port);
 
 /**

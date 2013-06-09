@@ -20,23 +20,72 @@
 #ifndef __SESSION_CORE_H__
 #define __SESSION_CORE_H__
 
-#include "hmesg.h"
+#include "hpoint.h"
+#include "hsignature.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-extern hsession_t *sess;
+typedef enum hflow_status {
+    HFLOW_UNKNOWN,
+    HFLOW_ACCEPT,
+    HFLOW_RETURN,
+    HFLOW_WAIT,
+    HFLOW_REJECT,
+    HFLOW_RETRY,
 
-/* Requests a callback to func() when the socket fd has data available
- * to read.
+    HFLOW_MAX
+} hflow_status_t;
+
+typedef struct hflow {
+    hflow_status_t status;
+    hpoint_t point;
+} hflow_t;
+
+typedef struct htrial {
+    const hpoint_t point;
+    double perf;
+} htrial_t;
+
+/* Generic plug-in event-hook signatures. */
+typedef int (*hook_init_t)(hsignature_t *sig);
+typedef int (*hook_join_t)(const char *id);
+typedef int (*hook_query_t)(const char *key);
+typedef int (*hook_inform_t)(const char *key, const char *val);
+typedef int (*hook_fini_t)(void);
+
+/* Strategy plug-in function signatures. */
+typedef int (*strategy_generate_t)(hflow_t *flow, hpoint_t *point);
+typedef int (*strategy_rejected_t)(hpoint_t *point, hpoint_t *hint);
+typedef int (*strategy_analyze_t)(htrial_t *trial);
+typedef int (*strategy_best_t)(hpoint_t *point);
+
+/* Layer plug-in function signatures. */
+typedef int (*layer_generate_t)(hflow_t *flow, htrial_t *trial);
+typedef int (*layer_analyze_t)(hflow_t *flow, htrial_t *trial);
+
+/* Callback function signatures. */
+typedef int (*cb_func_t)(int fd, hflow_t *flow, int n, htrial_t **trial);
+
+/* Interface for pluggable modules to register callbacks.
  *
- * The supplied routine should return 0 if it is completely done
- * processing the message.  Otherwise, -1 should be returned with
- * mesg->status (and possibly errno) set appropriately.
+ * When data is available to read on the given file descriptor, the
+ * associated routine will be launched.
  */
-int callback_register(int fd, int (*func)(hmesg_t *));
-int callback_unregister(int fd);
+int callback_generate(int fd, cb_func_t func);
+int callback_analyze(int fd, cb_func_t func);
+
+/* Central interface for shared configuration between pluggable modules.
+ *
+ * Requests through this interface will propagate through all
+ * strategies and layers that define query and inform hooks.
+ */
+const char *session_query(const char *key);
+int session_inform(const char *key, const char *val);
+
+/* Central interface for error messages from pluggable modules. */
+void session_error(const char *msg);
 
 #ifdef __cplusplus
 }

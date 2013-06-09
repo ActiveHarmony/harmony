@@ -32,8 +32,8 @@
 #include <time.h>
 #include <math.h>
 
-hpoint_t strategy_best;
-double strategy_best_perf;
+hpoint_t best;
+double   best_perf;
 
 hpoint_t curr;
 
@@ -59,7 +59,7 @@ typedef enum simplex_state {
 } simplex_state_t;
 
 /* Forward function definitions. */
-int  strategy_cfg(hmesg_t *mesg);
+int  strategy_cfg(hsignature_t *sig);
 int  init_by_random(void);
 int  init_by_point(int fast);
 int  pro_algorithm(void);
@@ -95,37 +95,37 @@ int reported;
 /*
  * Invoked once on strategy load.
  */
-int strategy_init(hmesg_t *mesg)
+int strategy_init(hsignature_t *sig)
 {
-    if (libvertex_init(sess) != 0) {
-        mesg->data.string = "Could not initialize vertex library.";
+    if (libvertex_init(sig) != 0) {
+        session_error("Could not initialize vertex library.");
         return -1;
     }
 
     init_point = vertex_alloc();
     if (!init_point) {
-        mesg->data.string = "Could not allocate memory for initial point.";
+        session_error("Could not allocate memory for initial point.");
         return -1;
     }
 
-    if (strategy_cfg(mesg) != 0)
+    if (strategy_cfg(sig) != 0)
         return -1;
 
-    strategy_best = HPOINT_INITIALIZER;
-    strategy_best_perf = INFINITY;
+    best = HPOINT_INITIALIZER;
+    best_perf = INFINITY;
 
-    if (hpoint_init(&curr, sess->sig.range_len) < 0)
+    if (hpoint_init(&curr, sig->range_len) < 0)
         return -1;
 
     test = simplex_alloc(simplex_size);
     if (!test) {
-        mesg->data.string = "Could not allocate memory for candidate simplex.";
+        session_error("Could not allocate memory for candidate simplex.");
         return -1;
     }
 
     base = simplex_alloc(simplex_size);
     if (!base) {
-        mesg->data.string = "Could not allocate memory for reference simplex.";
+        session_error("Could not allocate memory for reference simplex.");
         return -1;
     }
 
@@ -142,57 +142,41 @@ int strategy_init(hmesg_t *mesg)
     case SIMPLEX_INIT_POINT:      init_by_point(0); break;
     case SIMPLEX_INIT_POINT_FAST: init_by_point(1); break;
     default:
-        mesg->data.string = "Invalid initial search method.";
+        session_error("Invalid initial search method.");
         return -1;
     }
 
     next_id = 1;
     state = SIMPLEX_STATE_INIT;
 
-    if (hcfg_set(sess->cfg, CFGKEY_STRATEGY_CONVERGED, "0") < 0) {
-        mesg->data.string =
-            "Could not set " CFGKEY_STRATEGY_CONVERGED " config variable.";
+    if (session_inform(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
+        session_error("Could not set "
+                      CFGKEY_STRATEGY_CONVERGED " config variable.");
         return -1;
     }
 
-    /* PRO algorithm requires an atomic prefetch queue. */
-    hcfg_set(sess->cfg, CFGKEY_PREFETCH_ATOMIC, "1");
-
     if (pro_next_simplex(test) != 0) {
-        mesg->data.string = "Could not initiate the simplex.";
+        session_error("Could not initiate the simplex.");
         return -1;
     }
 
     return 0;
 }
 
-int strategy_cfg(hmesg_t *mesg)
+int strategy_cfg(hsignature_t *sig)
 {
     const char *cfgval;
     char *endp;
-    int retval;
 
     /* Make sure the simplex size is N+1 or greater. */
-    cfgval = hcfg_get(sess->cfg, CFGKEY_PRO_SIMPLEX_SIZE);
+    cfgval = session_query(CFGKEY_PRO_SIMPLEX_SIZE);
     if (cfgval)
         simplex_size = atoi(cfgval);
 
-    if (simplex_size < sess->sig.range_len + 1)
-        simplex_size = sess->sig.range_len + 1;
+    if (simplex_size < sig->range_len + 1)
+        simplex_size = sig->range_len + 1;
 
-    /* Make sure the prefetch count is either 0 or 1. */
-    cfgval = hcfg_get(sess->cfg, CFGKEY_PREFETCH_COUNT);
-    if (cfgval) {
-        retval = atoi(cfgval);
-        if (retval > 1 || strcasecmp(cfgval, "auto") == 0) {
-            hcfg_set(sess->cfg, CFGKEY_PREFETCH_COUNT, "1");
-        }
-        else if (retval < 0) {
-            hcfg_set(sess->cfg, CFGKEY_PREFETCH_COUNT, "0");
-        }
-    }
-
-    cfgval = hcfg_get(sess->cfg, CFGKEY_RANDOM_SEED);
+    cfgval = session_query(CFGKEY_RANDOM_SEED);
     if (cfgval) {
         srand(atoi(cfgval));
     }
@@ -200,7 +184,7 @@ int strategy_cfg(hmesg_t *mesg)
         srand(time(NULL));
     }
 
-    cfgval = hcfg_get(sess->cfg, CFGKEY_PRO_INIT_METHOD);
+    cfgval = session_query(CFGKEY_PRO_INIT_METHOD);
     if (cfgval) {
         if (strcasecmp(cfgval, "random") == 0) {
             init_method = SIMPLEX_INIT_RANDOM;
@@ -212,103 +196,103 @@ int strategy_cfg(hmesg_t *mesg)
             init_method = SIMPLEX_INIT_POINT_FAST;
         }
         else {
-            mesg->data.string = "Invalid value for "
-                CFGKEY_PRO_INIT_METHOD " configuration key.";
+            session_error("Invalid value for "
+                CFGKEY_PRO_INIT_METHOD " configuration key.");
             return -1;
         }
     }
 
-    cfgval = hcfg_get(sess->cfg, CFGKEY_PRO_INIT_PERCENT);
+    cfgval = session_query(CFGKEY_PRO_INIT_PERCENT);
     if (cfgval) {
         init_percent = strtod(cfgval, &endp);
         if (*endp != '\0') {
-            mesg->data.string = "Invalid value for " CFGKEY_PRO_INIT_PERCENT
-                " configuration key.";
+            session_error("Invalid value for " CFGKEY_PRO_INIT_PERCENT
+                " configuration key.");
             return -1;
         }
         if (init_percent <= 0 || init_percent > 1) {
-            mesg->data.string = "Configuration key " CFGKEY_PRO_INIT_PERCENT
-                " must be between 0.0 and 1.0 (exclusive).";
+            session_error("Configuration key " CFGKEY_PRO_INIT_PERCENT
+                " must be between 0.0 and 1.0 (exclusive).");
             return -1;
         }
     }
 
-    cfgval = hcfg_get(sess->cfg, CFGKEY_PRO_REFLECT);
+    cfgval = session_query(CFGKEY_PRO_REFLECT);
     if (cfgval) {
         reflect_coefficient = strtod(cfgval, &endp);
         if (*endp != '\0') {
-            mesg->data.string = "Invalid value for " CFGKEY_PRO_REFLECT
-                " configuration key.";
+            session_error("Invalid value for " CFGKEY_PRO_REFLECT
+                " configuration key.");
             return -1;
         }
         if (reflect_coefficient <= 0) {
-            mesg->data.string = "Configuration key " CFGKEY_PRO_REFLECT
-                " must be positive.";
+            session_error("Configuration key " CFGKEY_PRO_REFLECT
+                " must be positive.");
             return -1;
         }
     }
 
-    cfgval = hcfg_get(sess->cfg, CFGKEY_PRO_EXPAND);
+    cfgval = session_query(CFGKEY_PRO_EXPAND);
     if (cfgval) {
         expand_coefficient = strtod(cfgval, &endp);
         if (*endp != '\0') {
-            mesg->data.string = "Invalid value for " CFGKEY_PRO_EXPAND
-                " configuration key.";
+            session_error("Invalid value for " CFGKEY_PRO_EXPAND
+                " configuration key.");
             return -1;
         }
         if (reflect_coefficient <= 1) {
-            mesg->data.string = "Configuration key " CFGKEY_PRO_EXPAND
-                " must be greater than 1.0.";
+            session_error("Configuration key " CFGKEY_PRO_EXPAND
+                " must be greater than 1.0.");
             return -1;
         }
     }
 
-    cfgval = hcfg_get(sess->cfg, CFGKEY_PRO_CONTRACT);
+    cfgval = session_query(CFGKEY_PRO_CONTRACT);
     if (cfgval) {
         contract_coefficient = strtod(cfgval, &endp);
         if (*endp != '\0') {
-            mesg->data.string = "Invalid value for " CFGKEY_PRO_CONTRACT
-                " configuration key.";
+            session_error("Invalid value for " CFGKEY_PRO_CONTRACT
+                " configuration key.");
             return -1;
         }
         if (reflect_coefficient <= 0 || reflect_coefficient >= 1) {
-            mesg->data.string = "Configuration key " CFGKEY_PRO_CONTRACT
-                " must be between 0.0 and 1.0 (exclusive).";
+            session_error("Configuration key " CFGKEY_PRO_CONTRACT
+                " must be between 0.0 and 1.0 (exclusive).");
             return -1;
         }
     }
 
-    cfgval = hcfg_get(sess->cfg, CFGKEY_PRO_SHRINK);
+    cfgval = session_query(CFGKEY_PRO_SHRINK);
     if (cfgval) {
         shrink_coefficient = strtod(cfgval, &endp);
         if (*endp != '\0') {
-            mesg->data.string = "Invalid value for " CFGKEY_PRO_SHRINK
-                " configuration key.";
+            session_error("Invalid value for " CFGKEY_PRO_SHRINK
+                " configuration key.");
             return -1;
         }
         if (reflect_coefficient <= 0 || reflect_coefficient >= 1) {
-            mesg->data.string = "Configuration key " CFGKEY_PRO_SHRINK
-                " must be between 0.0 and 1.0 (exclusive).";
+            session_error("Configuration key " CFGKEY_PRO_SHRINK
+                " must be between 0.0 and 1.0 (exclusive).");
             return -1;
         }
     }
 
-    cfgval = hcfg_get(sess->cfg, CFGKEY_PRO_CONVERGE_FV);
+    cfgval = session_query(CFGKEY_PRO_CONVERGE_FV);
     if (cfgval) {
         converge_fv_tol = strtod(cfgval, &endp);
         if (*endp != '\0') {
-            mesg->data.string = "Invalid value for " CFGKEY_PRO_CONVERGE_FV
-                " configuration key.";
+            session_error("Invalid value for " CFGKEY_PRO_CONVERGE_FV
+                " configuration key.");
             return -1;
         }
     }
 
-    cfgval = hcfg_get(sess->cfg, CFGKEY_PRO_CONVERGE_SZ);
+    cfgval = session_query(CFGKEY_PRO_CONVERGE_SZ);
     if (cfgval) {
         converge_sz_tol = strtod(cfgval, &endp);
         if (*endp != '\0') {
-            mesg->data.string = "Invalid value for " CFGKEY_PRO_CONVERGE_SZ
-                " configuration key.";
+            session_error("Invalid value for " CFGKEY_PRO_CONVERGE_SZ
+                " configuration key.");
             return -1;
         }
     }
@@ -327,7 +311,7 @@ int init_by_random(void)
 
 int init_by_point(int fast)
 {
-    if (init_point->id == -1)
+    if (init_point->id == 0)
         vertex_center(init_point);
 
     if (fast)
@@ -337,68 +321,97 @@ int init_by_point(int fast)
 }
 
 /*
- * Generate a new candidate configuration point in the space provided
- * by the hpoint_t parameter.
+ * Generate a new candidate configuration point.
  */
-int strategy_fetch(hmesg_t *mesg)
+int strategy_generate(hflow_t *flow, hpoint_t *point)
 {
     if (send_idx == simplex_size) {
-        mesg->status = HMESG_STATUS_BUSY;
+        flow->status = HFLOW_WAIT;
         return 0;
     }
 
     test->vertex[send_idx]->id = next_id;
-    if (vertex_to_hpoint(test->vertex[send_idx], &mesg->data.fetch.cand) < 0) {
-        mesg->status = HMESG_STATUS_FAIL;
+    if (vertex_to_hpoint(test->vertex[send_idx], point) != 0) {
+        session_error( strerror(errno) );
         return -1;
     }
     ++next_id;
     ++send_idx;
 
-    /* Send best point information, if needed. */
-    if (mesg->data.fetch.best.id < strategy_best.id) {
-        mesg->data.fetch.best = HPOINT_INITIALIZER;
-        if (hpoint_copy(&mesg->data.fetch.best, &strategy_best) < 0) {
-            mesg->status = HMESG_STATUS_FAIL;
-            return -1;
-        }
-    }
-    else {
-        mesg->data.fetch.best = HPOINT_INITIALIZER;
-    }
-
-    mesg->status = HMESG_STATUS_OK;
+    flow->status = HFLOW_ACCEPT;
     return 0;
 }
 
 /*
- * Inform the search strategy of an observed performance associated with
- * a configuration point.
+ * Regenerate a point deemed invalid by a later plug-in.
  */
-int strategy_report(hmesg_t *mesg)
+int strategy_rejected(hpoint_t *point, hpoint_t *hint)
+{
+    int i, orig_id = point->id;
+
+    /* Find the rejected vertex. */
+    for (i = 0; i < simplex_size; ++i) {
+        if (test->vertex[i]->id == point->id)
+            break;
+    }
+    if (i == simplex_size) {
+        session_error("Internal error: Could not find rejected point.");
+        return -1;
+    }
+
+    if (hint && hint->id != -1) {
+        /* Update our state to include the hint point. */
+        if (vertex_from_hpoint(hint, test->vertex[i]) != 0) {
+            session_error("Internal error: Could not make vertex from point.");
+            return -1;
+        }
+
+        if (hpoint_copy(point, hint) != 0) {
+            session_error("Internal error: Could not copy point.");
+            return -1;
+        }
+    }
+    else {
+        /* Replace rejected point with a random one. */
+        if (vertex_rand(test->vertex[i]) != 0) {
+            session_error("Internal error: Could not get random vertex.");
+            return -1;
+        }
+
+        if (vertex_to_hpoint(test->vertex[i], point) != 0) {
+            session_error("Internal error: Could not make point from vertex.");
+            return -1;
+        }
+    }
+    point->id = orig_id;
+
+    return 0;
+}
+
+/*
+ * Analyze the observed performance for this configuration point.
+ */
+int strategy_analyze(htrial_t *trial)
 {
     int i;
 
     for (i = 0; i < simplex_size; ++i) {
-        if (mesg->data.report.cand.id == test->vertex[i]->id)
+        if (test->vertex[i]->id == trial->point.id)
             break;
     }
-
     if (i == simplex_size) {
         /* Ignore rouge vertex reports. */
-        mesg->status = HMESG_STATUS_OK;
         return 0;
     }
 
     ++reported;
-    test->vertex[i]->perf = mesg->data.report.perf;
+    test->vertex[i]->perf = trial->perf;
     if (test->vertex[i]->perf < test->vertex[best_test]->perf)
         best_test = i;
 
     if (reported == simplex_size) {
         if (pro_algorithm() != 0) {
-            mesg->status = HMESG_STATUS_FAIL;
-            mesg->data.string = "Internal error: PRO algorithm failure.";
+            session_error("Internal error: PRO algorithm failure.");
             return -1;
         }
         reported = 0;
@@ -406,16 +419,25 @@ int strategy_report(hmesg_t *mesg)
     }
 
     /* Update the best performing point, if necessary. */
-    if (strategy_best_perf > mesg->data.report.perf) {
-        strategy_best_perf = mesg->data.report.perf;
-        if (hpoint_copy(&strategy_best, &mesg->data.report.cand) < 0) {
-            mesg->status = HMESG_STATUS_FAIL;
-            mesg->data.string = strerror(errno);
+    if (best_perf > trial->perf) {
+        best_perf = trial->perf;
+        if (hpoint_copy(&best, &trial->point) != 0) {
+            session_error( strerror(errno) );
             return -1;
         }
     }
+    return 0;
+}
 
-    mesg->status = HMESG_STATUS_OK;
+/*
+ * Return the best performing point thus far in the search.
+ */
+int strategy_best(hpoint_t *point)
+{
+    if (hpoint_copy(point, &best) != 0) {
+        session_error("Internal error: Could not copy point.");
+        return -1;
+    }
     return 0;
 }
 
@@ -593,5 +615,5 @@ void check_convergence(void)
 
   converged:
     state = SIMPLEX_STATE_CONVERGED;
-    hcfg_set(sess->cfg, CFGKEY_STRATEGY_CONVERGED, "1");
+    session_inform(CFGKEY_STRATEGY_CONVERGED, "1");
 }

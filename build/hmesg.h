@@ -23,8 +23,25 @@
 #include "hpoint.h"
 #include "hsession.h"
 
-#define HMESG_MAGIC   0x5261793a /* Magic number for packet identification. */
-#define HMESG_VERSION 0x04       /* Protocol version.                       */
+/* Message header layout:
+ *
+ *  0             15 16            31
+ * |----------------|----------------|
+ * |          HARMONY_MAGIC          |
+ * |---------------------------------|
+ * |          Message Length         |
+ * |---------------------------------|
+ * |  HMESG_VERSION |  Message Data  |
+ * |-----------------                |
+ * |  Message Data (cont.)           |
+ * |                                 |
+ */
+
+/* Magic number for messages between the harmony server and its clients.    */
+#define HMESG_HDRLEN    10         /* int32 + char[4] + char[2]             */
+#define HMESG_OLD_MAGIC 0x5261793a /* Magic number for packets (pre v4.5).  */
+#define HMESG_MAGIC     0x5261797c /* Magic number for packet.              */
+#define HMESG_VERSION   0x04       /* Protocol version.                     */
 
 #ifdef __cplusplus
 extern "C" {
@@ -59,7 +76,7 @@ typedef struct {
     int dest;
     hmesg_type type;
     hmesg_status status;
-    int index;
+    const char *src_id;
     union {
         hsession_t session;
         hsignature_t join;
@@ -82,8 +99,8 @@ extern const hmesg_t HMESG_INITIALIZER;
 void hmesg_init(hmesg_t *mesg);
 void hmesg_scrub(hmesg_t *mesg);
 void hmesg_fini(hmesg_t *mesg);
-int hmesg_serialize(hmesg_t *mesg);
-int hmesg_deserialize(hmesg_t *mesg);
+int  hmesg_serialize(hmesg_t *mesg);
+int  hmesg_deserialize(hmesg_t *mesg);
 
 #ifdef __cplusplus
 }

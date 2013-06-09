@@ -423,7 +423,7 @@ int handle_unknown_connection(int fd)
             perror("Error closing connection");
         return -1;
     }
-    else if (ntohl(header) == HARMONY_MAGIC) {
+    else if (ntohl(header) == HMESG_MAGIC) {
         /* This is a communication socket from a Harmony client. */
         idx = available_index(&client_fds, &client_cap);
         if (idx < 0) {
@@ -561,7 +561,7 @@ int handle_client_socket(int fd)
     mesg_out.dest = fd;
     mesg_out.type = mesg_in.type;
     mesg_out.status = mesg_in.status;
-    mesg_out.index = mesg_in.index;
+    mesg_out.src_id = mesg_in.src_id;
     mesg_out.data = mesg_in.data;
     if (mesg_send(sess->fd, &mesg_out) < 1) {
         perror("Error forwarding message to session");
@@ -615,7 +615,7 @@ int handle_session_socket(int idx)
     mesg_out.dest = idx;
     mesg_out.type = mesg_in.type;
     mesg_out.status = mesg_in.status;
-    mesg_out.index = mesg_in.index;
+    mesg_out.src_id = mesg_in.src_id;
     mesg_out.data = mesg_in.data;
     if (mesg_send(mesg_in.dest, &mesg_out) < 1) {
         perror("Error forwarding message to client");

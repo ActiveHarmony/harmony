@@ -172,12 +172,7 @@ int mesg_send(int sock, hmesg_t *mesg)
     if (msglen < 0)
         return -1;
 
-    *(unsigned   int *)(mesg->buf              ) = htonl(HARMONY_MAGIC);
-    *(unsigned short *)(mesg->buf + sizeof(int)) = htons(msglen);
-
-    /* // DEBUG
-    fprintf(stderr, "(%d)<<< [%d] %s\n", sock, msglen - 6,
-            mesg->buf + HARMONY_HDRLEN); // */
+    /* fprintf(stderr, "(%2d)<<< '%s'\n", sock, mesg->buf); */
     if (socket_write(sock, mesg->buf, msglen) < msglen)
         return -1;
 
@@ -191,18 +186,24 @@ int mesg_send(int sock, hmesg_t *mesg)
  */
 int mesg_recv(int sock, hmesg_t *mesg)
 {
-    char hdr[HARMONY_HDRLEN];
+    char hdr[HMESG_HDRLEN];
     char *newbuf;
     int msglen, retval;
+    unsigned int msgver;
 
     retval = recv(sock, hdr, sizeof(hdr), MSG_PEEK);
     if (retval <  0) goto error;
     if (retval == 0) return 0;
 
-    if (ntohl(*(unsigned int *)hdr) != HARMONY_MAGIC)
+    if (ntohl(*(unsigned int *)hdr) != HMESG_MAGIC)
         goto invalid;
 
-    msglen = ntohs(*(unsigned short *)(hdr + sizeof(int)));
+    if (sscanf(hdr + sizeof(int), "%4d%2x", &msglen, &msgver) < 2)
+        goto invalid;
+
+    if (msgver != HMESG_VERSION)
+        goto invalid;
+
     if (mesg->buflen <= msglen) {
         newbuf = (char *) realloc(mesg->buf, msglen + 1);
         if (!newbuf)
@@ -215,10 +216,8 @@ int mesg_recv(int sock, hmesg_t *mesg)
     if (retval == 0) return 0;
     if (retval < msglen) goto error;
     mesg->buf[retval] = '\0';  /* A strlen() safety net. */
+    /* fprintf(stderr, "(%2d)>>> '%s'\n", sock, mesg->buf); */
 
-    /* // DEBUG
-    fprintf(stderr, "(%d)>>> [%d] %s\n", sock, msglen - 6,
-            mesg->buf + HARMONY_HDRLEN); // */
     hmesg_scrub(mesg);
     if (hmesg_deserialize(mesg) < 0)
         goto error;

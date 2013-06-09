@@ -49,10 +49,10 @@ vertex_t *vmin;
 vertex_t *vmax;
 long sizeof_vertex;
 
-int libvertex_init(hsession_t *sess)
+int libvertex_init(hsignature_t *sig)
 {
-    N = sess->sig.range_len;
-    range = sess->sig.range;
+    N = sig->range_len;
+    range = sig->range;
     sizeof_vertex = sizeof(vertex_t) + N * sizeof(double);
 
     free(vmin);

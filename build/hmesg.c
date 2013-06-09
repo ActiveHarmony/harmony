@@ -74,6 +74,7 @@ void hmesg_fini(hmesg_t *mesg)
 int hmesg_serialize(hmesg_t *mesg)
 {
     const char *type_str, *status_str;
+    char hdr[HMESG_HDRLEN + 1];
     char *buf;
     int buflen, count, total;
 
@@ -82,11 +83,11 @@ int hmesg_serialize(hmesg_t *mesg)
     buflen = mesg->buflen;
 
     /* Leave room for a header. */
-    buf += HARMONY_HDRLEN;
-    buflen -= HARMONY_HDRLEN;
+    buf += HMESG_HDRLEN;
+    buflen -= HMESG_HDRLEN;
     if (buflen < 0)
         buflen = 0;
-    total = HARMONY_HDRLEN;
+    total = HMESG_HDRLEN;
 
     switch (mesg->type) {
     case HMESG_UNKNOWN: type_str = "UNK"; break;
@@ -107,8 +108,12 @@ int hmesg_serialize(hmesg_t *mesg)
     default: goto invalid;
     }
 
-    count = snprintf_serial(&buf, &buflen, "%d:%s:%s:%d ", mesg->dest,
-                            type_str, status_str, mesg->index);
+    count = snprintf_serial(&buf, &buflen, ":%d:%s:%s:", mesg->dest,
+                            type_str, status_str);
+    if (count < 0) goto error;
+    total += count;
+
+    count = printstr_serial(&buf, &buflen, mesg->src_id);
     if (count < 0) goto error;
     total += count;
 
@@ -192,6 +197,10 @@ int hmesg_serialize(hmesg_t *mesg)
         goto top;
     }
 
+    snprintf(hdr, sizeof(hdr), "XXXX%04d%02x", total, HMESG_VERSION);
+    *(unsigned int *)(hdr) = htonl(HMESG_MAGIC);
+    memcpy(mesg->buf, hdr, HMESG_HDRLEN);
+
     return total;
 
   invalid:
@@ -204,13 +213,27 @@ int hmesg_deserialize(hmesg_t *mesg)
 {
     char type_str[4], status_str[4];
     int count, total;
+    unsigned int msgver;
     char *buf = mesg->buf;
 
-    /* Skip past the Harmony datagram header. */
-    total = HARMONY_HDRLEN;
-    if (sscanf(buf + total, " %d:%3s:%3s:%d%n", &mesg->dest,
-               type_str, status_str, &mesg->index, &count) < 4)
+    /* Verify HMESG_MAGIC and HMESG_VERSION */
+    if (ntohl(*(unsigned int *)buf) != HMESG_MAGIC)
         goto invalid;
+
+    if (sscanf(buf + sizeof(unsigned int), "%*4d%2x", &msgver) < 1)
+        goto invalid;
+
+    if (msgver != HMESG_VERSION)
+        goto invalid;
+    total = HMESG_HDRLEN;
+
+    if (sscanf(buf + total, " :%d:%3s:%3s:%n", &mesg->dest,
+               type_str, status_str, &count) < 3)
+        goto invalid;
+    total += count;
+
+    count = scanstr_serial(&mesg->src_id, buf + total);
+    if (count < 0) goto invalid;
     total += count;
 
     /* Before we overwrite this message's type, make sure memory allocated

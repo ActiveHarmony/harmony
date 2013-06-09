@@ -31,7 +31,7 @@ extern "C" {
  * Defined configuration key convention
  */
 #define SESSION_CORE_EXECFILE "session-core"
-#define SESSION_PLUGIN_SEP    ':'
+#define SESSION_LAYER_SEP     ':'
 
 /*
  * Harmony session structure: Holds bookkeeping info to uniquely

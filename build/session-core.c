@@ -33,66 +33,115 @@
 #include <strings.h>
 #include <errno.h>
 #include <dlfcn.h>
+#include <math.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/select.h>
 
-/* ISO C forbids conversion of object pointer to function pointer.  We
- * get around this by first casting to a word-length integer.  (LP64
- * compilers assumed).
- */
-#define HACK_CAST_INT(x) (int (*)(hmesg_t *))(long)(x)
-#define HACK_CAST_VOID(x) (void (*)(void))(long)(x)
-
-/* Session structure exported to strategies and plugins. */
+/* Session structure exported to 3rd party plug-ins. */
 hsession_t *sess;
 
 /* Be sure all remaining global definitions are declared static to
  * reduce the number of symbols exported by --export-dynamic.
  */
 
-/* Forward function declarations. */
-static int strategy_load(hmesg_t *mesg);
-static int plugin_list_load(hmesg_t *mesg, const char *list);
-static int prefetch_init(hmesg_t *mesg);
-static int plugin_workflow(hmesg_t *mesg);
-static int point_enqueue(hmesg_t *mesg);
-static int point_dequeue(hmesg_t *mesg);
-
-/* Callback registration structures. */
+/* --------------------------------
+ * Callback registration variables.
+ */
 typedef struct callback {
     int fd;
-    int (*func)(hmesg_t *);
+    int index;
+    cb_func_t func;
 } callback_t;
 
 static callback_t *cb = NULL;
 static int cb_len = 0;
 static int cb_cap = 0;
 
-/* Strategy hooks. */
-static int (*strategy_fetch)(hmesg_t *);
-static int (*strategy_report)(hmesg_t *);
-static hpoint_t *strategy_best;
+/* -------------------------
+ * Plug-in system variables.
+ */
+static strategy_generate_t strategy_generate;
+static strategy_rejected_t strategy_rejected;
+static strategy_analyze_t  strategy_analyze;
+static strategy_best_t     strategy_best;
 
-/* Plugin system. */
-typedef struct plugin {
-    int (*report)(hmesg_t *mesg);
-    int (*fetch)(hmesg_t *mesg);
-    void (*fini)(void);
+static hook_init_t         strategy_init;
+static hook_join_t         strategy_join;
+static hook_query_t        strategy_query;
+static hook_inform_t       strategy_inform;
+static hook_fini_t         strategy_fini;
+
+typedef struct layer {
     const char *name;
-} plugin_t;
 
-static plugin_t *plugin = NULL;
-static int plugin_len = 0;
-static int plugin_cap = 0;
+    layer_generate_t generate;
+    layer_analyze_t  analyze;
 
-/* Prefetching variables. */
-static hpoint_t *pfqueue;
-static int pfq_cap, pfq_tail, pfq_head;
-static int pfq_requested, pfq_reported, pfq_atomic;
+    hook_init_t      init;
+    hook_join_t      join;
+    hook_query_t     query;
+    hook_inform_t    inform;
+    hook_fini_t      fini;
 
-/* Variables used for select(). */
+    htrial_t **wait_generate;
+    int wait_generate_len;
+    int wait_generate_cap;
+
+    htrial_t **wait_analyze;
+    int wait_analyze_len;
+    int wait_analyze_cap;
+} layer_t;
+
+/* Stack of layer objects. */
+static layer_t *lstack = NULL;
+static int lstack_len = 0;
+static int lstack_cap = 0;
+
+/* ------------------------------
+ * Forward function declarations.
+ */
+static int plugin_workflow(htrial_t *trial);
+static int generate_trial(void);
+static int handle_callback(callback_t *cb);
+static int handle_join(hmesg_t *mesg);
+static int handle_query(hmesg_t *mesg);
+static int handle_inform(hmesg_t *mesg);
+static int handle_fetch(hmesg_t *mesg);
+static int handle_report(hmesg_t *mesg);
+static int workflow_transition(htrial_t *trial);
+static int handle_reject(htrial_t *trial);
+static int handle_wait(htrial_t *trial);
+static int load_strategy(const char *file);
+static int load_layers(const char *list);
+static int extend_lists(int target_cap);
+static void reverse_array(void *ptr, int head, int tail);
+
+/* -------------------
+ * Workflow variables.
+ */
+static const char *errmsg;
+static int curr_layer = 0;
+static hflow_t flow;
+
+/* List of all points generated, but not yet returned to the strategy. */
+static htrial_t *pending = NULL;
+static int pending_cap = 0;
+static int pending_len = 0;
+
+/* List of all trials (point/performance pairs) waiting for client fetch. */
+static htrial_t **ready = NULL;
+static int ready_head = 0;
+static int ready_tail = 0;
+static int ready_cap = 0;
+
+static int per_client = DEFAULT_PER_CLIENT;
+static int num_clients = 0;
+
+/* ----------------------------
+ * Variables used for select().
+ */
 static struct timeval polltime, *pollstate;
 static fd_set fds;
 static int maxfd;
@@ -100,15 +149,14 @@ static int maxfd;
 /* =================================
  * Core session routines begin here.
  */
-
 int main(int argc, char **argv)
 {
     struct stat sb;
     int i, retval;
     fd_set ready_fds;
-    char *key, *val;
-    const char *list;
-    hmesg_t session_mesg, mesg;
+    const char *ptr;
+    hmesg_t mesg = HMESG_INITIALIZER;
+    hmesg_t session_mesg = HMESG_INITIALIZER;
 
     /* Check that we have been launched correctly by checking that
      * STDIN_FILENO is a socket descriptor.
@@ -128,10 +176,7 @@ int main(int argc, char **argv)
     }
 
     /* Initialize data structures. */
-    mesg = HMESG_INITIALIZER;
-    session_mesg = HMESG_INITIALIZER;
     pollstate = &polltime;
-
     FD_ZERO(&fds);
     FD_SET(STDIN_FILENO, &fds);
     maxfd = STDIN_FILENO;
@@ -139,10 +184,11 @@ int main(int argc, char **argv)
     if (array_grow(&cb, &cb_cap, sizeof(callback_t)) < 0)
         goto error;
 
-    if (array_grow(&plugin, &plugin_cap, sizeof(plugin_t)) < 0)
+    if (array_grow(&lstack, &lstack_cap, sizeof(layer_t)) < 0)
         goto error;
 
     /* Receive initial session message. */
+    mesg.type = HMESG_SESSION;
     if (mesg_recv(STDIN_FILENO, &session_mesg) < 1) {
         mesg.data.string = "Socket or deserialization error";
         goto error;
@@ -157,34 +203,48 @@ int main(int argc, char **argv)
 
     /* Load and initialize the strategy code object. */
     sess = &session_mesg.data.session;
-    if (strategy_load(&session_mesg) < 0) {
-        mesg.data.string = session_mesg.data.string;
-        goto error;
-    }
 
-    /* Load and initialize requested plugin's. */
-    list = hcfg_get(sess->cfg, CFGKEY_SESSION_PLUGINS);
-    if (list && plugin_list_load(&session_mesg, list) < 0) {
-        mesg.data.string = session_mesg.data.string;
+    ptr = hcfg_get(sess->cfg, CFGKEY_SESSION_STRATEGY);
+    if (load_strategy(ptr) < 0)
         goto error;
-    }
+
+    /* Load and initialize requested layer's. */
+    ptr = hcfg_get(sess->cfg, CFGKEY_SESSION_LAYERS);
+    if (ptr && load_layers(ptr) < 0)
+        goto error;
 
     session_mesg.status = HMESG_STATUS_OK;
     if (mesg_send(STDIN_FILENO, &session_mesg) < 1) {
-        mesg.data.string = session_mesg.data.string;
+        errmsg = session_mesg.data.string;
         goto error;
     }
 
-    /* Initialize prefetching.
-     *
-     * This must happen after the strategy and all plugin's have been
-     * initialize, since the request to prefetch points might be coming
-     * from them.
-     */
-    if (prefetch_init(&mesg) < 0)
+    ptr = hcfg_get(sess->cfg, CFGKEY_PER_CLIENT_STORAGE);
+    if (ptr) {
+        per_client = atoi(ptr);
+        if (per_client < 1) {
+            errmsg = "Invalid config value for " CFGKEY_PER_CLIENT_STORAGE ".";
+            goto error;
+        }
+    }
+
+    retval = 0;
+    ptr = hcfg_get(sess->cfg, CFGKEY_CLIENT_COUNT);
+    if (ptr) {
+        retval = atoi(ptr);
+        if (retval < 1) {
+            errmsg = "Invalid config value for " CFGKEY_CLIENT_COUNT ".";
+            goto error;
+        }
+        retval *= per_client;
+    }
+    if (extend_lists(retval) != 0)
         goto error;
 
     while (1) {
+        flow.status = HFLOW_ACCEPT;
+        flow.point  = HPOINT_INITIALIZER;
+
         ready_fds = fds;
         retval = select(maxfd + 1, &ready_fds, NULL, NULL, pollstate);
         if (retval < 0)
@@ -192,36 +252,8 @@ int main(int argc, char **argv)
 
         /* Launch callbacks, if needed. */
         for (i = 0; i < cb_len; ++i) {
-            if (FD_ISSET(cb[i].fd, &ready_fds)) {
-                if (mesg_recv(cb[i].fd, &mesg) < 1)
-                    goto error;
-
-                if (cb[i].func && cb[i].func(&mesg) < 0) {
-                    if (mesg.status == HMESG_STATUS_BUSY)
-                        continue;
-                    if (mesg.status == HMESG_STATUS_FAIL)
-                        goto error;
-                }
-                ++mesg.index;
-
-                if (plugin_workflow(&mesg) < 0) {
-                    if (mesg.status == HMESG_STATUS_FAIL)
-                        goto error;
-                }
-
-                if (mesg.type == HMESG_FETCH &&
-                    mesg.status == HMESG_STATUS_OK)
-                {
-                    if (pfq_cap) {
-                        if (point_enqueue(&mesg) < 0)
-                            goto error;
-                    }
-                    else {
-                        if (mesg_send(STDIN_FILENO, &mesg) < 1)
-                            goto error;
-                    }
-                }
-            }
+            if (FD_ISSET(cb[i].fd, &ready_fds))
+                handle_callback(&cb[i]);
         }
 
         /* Handle hmesg_t, if needed. */
@@ -230,435 +262,633 @@ int main(int argc, char **argv)
                 goto error;
 
             switch (mesg.type) {
-            case HMESG_JOIN:
-                if (hsignature_equal(&mesg.data.join, &sess->sig)) {
-                    if (hsignature_copy(&mesg.data.join, &sess->sig) < 0)
-                        goto error;
-                    mesg.status = HMESG_STATUS_OK;
-                }
-                else {
-                    mesg.status = HMESG_STATUS_FAIL;
-                    mesg.data.string = "Incompatible join signature.";
-                }
-                if (mesg_send(STDIN_FILENO, &mesg) < 1)
-                    goto error;
-                break;
-
-            case HMESG_QUERY:
-                mesg.data.string = hcfg_get(sess->cfg, mesg.data.string);
-                mesg.status = HMESG_STATUS_OK;
-                if (mesg_send(STDIN_FILENO, &mesg) < 1)
-                    goto error;
-                break;
-
-            case HMESG_INFORM:
-                hcfg_parse((char *)mesg.data.string, &key, &val);
-                if (key) {
-                    mesg.data.string = hcfg_get(sess->cfg, key);
-                    if (hcfg_set(sess->cfg, key, val) < 0) {
-                        mesg.status = HMESG_STATUS_FAIL;
-                        mesg.data.string = "Internal hcfg error";
-                    }
-                    else {
-                        mesg.status = HMESG_STATUS_OK;
-                    }
-                }
-                else {
-                    mesg.data.string = strerror(EINVAL);
-                    mesg.status = HMESG_STATUS_FAIL;
-                }
-                if (mesg_send(STDIN_FILENO, &mesg) < 1)
-                    goto error;
-                break;
-
-            case HMESG_FETCH:
-                if (pfq_cap) {
-                    /* Service fetch requests exclusively from the queue,
-                     * if enabled.
-                     */
-                    mesg.status = HMESG_STATUS_OK;
-                    mesg.index = plugin_len;
-                    if (point_dequeue(&mesg) < 0)
-                        goto error;
-                }
-                else {
-                    /* Otherwise, fetch a fresh point, and report to the
-                     * client directly.
-                     */
-                    if (strategy_fetch(&mesg) < 0)
-                        goto error;
-
-                    if (plugin_workflow(&mesg) < 0) {
-                        if (mesg.status == HMESG_STATUS_FAIL)
-                            goto error;
-                    }
-                }
-
-                if (mesg_send(STDIN_FILENO, &mesg) < 1)
-                    goto error;
-                break;
-
-            case HMESG_REPORT:
-                mesg.index = plugin_len;
-                if (plugin_workflow(&mesg) < 0) {
-                    if (mesg.status == HMESG_STATUS_FAIL)
-                        goto error;
-                }
-
-                /* Always return HMESG_STATUS_OK, unless a failure is
-                 * detected.
-                 */
-                hpoint_fini(&mesg.data.report.cand);
-                mesg.status = HMESG_STATUS_OK;
-                if (mesg_send(STDIN_FILENO, &mesg) < 1)
-                    goto error;
-
-                if (pfq_cap && pfq_atomic && ++pfq_reported == pfq_cap) {
-                    /* Atomic prefetch queue has been exhausted.  We
-                     * are free to begin prefetching again.
-                     */
-                    pfq_requested = 0;
-                    pfq_reported = 0;
-                    pollstate = &polltime;
-                }
-                break;
-
+            case HMESG_JOIN:   retval = handle_join(&mesg); break;
+            case HMESG_QUERY:  retval = handle_query(&mesg); break;
+            case HMESG_INFORM: retval = handle_inform(&mesg); break;
+            case HMESG_FETCH:  retval = handle_fetch(&mesg); break;
+            case HMESG_REPORT: retval = handle_report(&mesg); break;
             default:
+                errmsg = "Internal error: Unknown message type.";
                 goto error;
             }
-        }
 
-        /* Prefetch another point, if there's room in the queue. */
-        if (pfq_requested < pfq_cap) {
-            hmesg_scrub(&mesg);
-            mesg.dest = -1;
-            mesg.type = HMESG_FETCH;
-            mesg.status = HMESG_STATUS_REQ;
-            mesg.index = 0;
-            mesg.data.fetch.best.id = -1;
-
-            if (strategy_fetch(&mesg) < 0)
+            if (retval != 0 || mesg_send(STDIN_FILENO, &mesg) < 1)
                 goto error;
-
-            if (plugin_workflow(&mesg) < 0)
-                if (mesg.status == HMESG_STATUS_FAIL)
-                    goto error;
-
-            if (mesg.status == HMESG_STATUS_OK)
-                if (point_enqueue(&mesg) < 0)
-                    goto error;
-
-            ++pfq_requested;
         }
 
-        /* Prefetch queue at capacity.  Stop polling. */
-        if (pollstate && pfq_requested == pfq_cap)
-            pollstate = NULL;
+        /* Generate another point, if there's room in the queue. */
+        while (pollstate != NULL && pending_len < pending_cap) {
+            generate_trial();
+        }
     }
     goto cleanup;
 
   error:
     mesg.status = HMESG_STATUS_FAIL;
+    mesg.data.string = errmsg;
     mesg_send(STDIN_FILENO, &mesg);
-    retval = -1;
 
   cleanup:
-    for (i = plugin_len - 1; i >= 0; --i) {
-        if (plugin[i].fini)
-            plugin[i].fini();
+    for (i = lstack_len - 1; i >= 0; --i) {
+        if (lstack[i].fini)
+            lstack[i].fini();
     }
-
     return retval;
 }
 
-int strategy_load(hmesg_t *mesg)
+int generate_trial(void)
 {
-    const char *tmp;
-    char *filename;
+    int i;
+    hpoint_t *point;
+
+    /* Find a free point. */
+    for (i = 0; i < pending_cap; ++i) {
+        if (pending[i].point.id == -1) {
+            point = (hpoint_t *) &pending[i].point;
+            break;
+        }
+    }
+    if (i == pending_cap) {
+        errmsg = "Internal error: Point generation overflow.";
+        return -1;
+    }
+
+    /* Call strategy generation routine. */
+    if (strategy_generate(&flow, point) != 0)
+        return -1;
+
+    if (flow.status == HFLOW_WAIT) {
+        /* Strategy requests that we pause point generation. */
+        pollstate = NULL;
+        return 0;
+    }
+
+    /* Begin generation workflow for new point. */
+    ++pending_len;
+    pending[i].perf = INFINITY;
+    curr_layer = 1;
+
+    return plugin_workflow(&pending[i]);
+}
+
+int plugin_workflow(htrial_t *trial)
+{
+    while (curr_layer != 0 && curr_layer <= lstack_len)
+    {
+        int idx = abs(curr_layer) - 1;
+        int retval;
+
+        if (curr_layer < 0) {
+            /* Analyze workflow. */
+            if (lstack[idx].analyze) {
+                if (lstack[idx].analyze(&flow, trial) != 0)
+                    return -1;
+            }
+        }
+        else {
+            /* Generate workflow. */
+            if (lstack[idx].generate) {
+                if (lstack[idx].generate(&flow, trial) != 0)
+                    return -1;
+            }
+        }
+
+        retval = workflow_transition(trial);
+        if (retval < 0) return -1;
+        if (retval > 0) return  0;
+    }
+
+    if (curr_layer == 0) {
+        hpoint_t *point = (hpoint_t *) &trial->point;
+
+        /* Completed analysis layers.  Send trial to strategy. */
+        if (strategy_analyze(trial) != 0)
+            return -1;
+
+        /* Remove point data from pending list. */
+        hpoint_fini(point);
+        *point = HPOINT_INITIALIZER;
+        --pending_len;
+
+        /* Point generation attempts may begin again. */
+        pollstate = &polltime;
+    }
+    else if (curr_layer > lstack_len) {
+        /* Completed generation layers.  Enqueue trial in ready queue. */
+        if (ready[ready_tail] != NULL) {
+            errmsg = "Internal error: Ready queue overflow.";
+            return -1;
+        }
+
+        ready[ready_tail] = trial;
+        ready_tail = (ready_tail + 1) % ready_cap;
+    }
+    else {
+        errmsg = "Internal error: Invalid current plug-in layer.";
+        return -1;
+    }
+
+    return 0;
+}
+
+/* Layer state machine transitions. */
+int workflow_transition(htrial_t *trial)
+{
+    switch (flow.status) {
+    case HFLOW_ACCEPT:
+        curr_layer += 1;
+        break;
+
+    case HFLOW_WAIT:
+        if (handle_wait(trial) != 0) {
+            return -1;
+        }
+        return 1;
+
+    case HFLOW_RETURN:
+    case HFLOW_RETRY:
+        curr_layer = -curr_layer;
+        break;
+
+    case HFLOW_REJECT:
+        if (handle_reject(trial) != 0) {
+            return -1;
+        }
+        curr_layer = 1;
+        break;
+
+    default:
+        errmsg = "Internal error: Invalid workflow status.";
+        return -1;
+    }
+    return 0;
+}
+
+int handle_reject(htrial_t *trial)
+{
+    if (curr_layer < 0) {
+        errmsg = "Internal error: REJECT invalid for analysis workflow.";
+        return -1;
+    }
+
+    /* Regenerate this rejected point. */
+    if (strategy_rejected((hpoint_t *) &trial->point, &flow.point) != 0)
+        return -1;
+
+    return 0;
+}
+
+int handle_wait(htrial_t *trial)
+{
+    int idx = abs(curr_layer) - 1;
+    htrial_t ***list;
+    int *len, *cap;
+
+    if (curr_layer < 0) {
+        list = &lstack[idx].wait_analyze;
+        len  = &lstack[idx].wait_analyze_len;
+        cap  = &lstack[idx].wait_analyze_cap;
+    }
+    else {
+        list = &lstack[idx].wait_generate;
+        len  = &lstack[idx].wait_generate_len;
+        cap  = &lstack[idx].wait_generate_cap;
+    }
+
+    if (*len == *cap)
+        array_grow(list, cap, sizeof(htrial_t *));
+
+    if ((*list)[*len] != NULL) {
+        errmsg = "Internal error: Could not append to wait list.";
+        return -1;
+    }
+
+    (*list)[*len] = trial;
+    ++(*len);
+    return 0;
+}
+
+int handle_callback(callback_t *cb)
+{
+    htrial_t **list, *trial;
+    int *len, idx, retval;
+
+    curr_layer = cb->index;
+    idx = abs(curr_layer) - 1;
+
+    /* The idx variable represents layer plugin index for now. */
+    if (curr_layer < 0) {
+        list = lstack[idx].wait_analyze;
+        len = &lstack[idx].wait_analyze_len;
+    }
+    else {
+        list = lstack[idx].wait_generate;
+        len = &lstack[idx].wait_generate_len;
+    }
+
+    if (*len < 1) {
+        errmsg = "Internal error: Callback on layer with empty waitlist.";
+        return -1;
+    }
+
+    /* Reusing idx to represent waitlist index.  (Shame on me.) */
+    idx = cb->func(cb->fd, &flow, *len, list);
+    trial = list[idx];
+
+    retval = workflow_transition(trial);
+    if (retval < 0) return -1;
+    if (retval > 0) return  0;
+
+    --(*len);
+    list[ idx] = list[*len];
+    list[*len] = NULL;
+    return plugin_workflow(trial);
+}
+
+int handle_join(hmesg_t *mesg)
+{
+    int i;
+
+    /* Verify that client signature matches current session. */
+    if (!hsignature_equal(&mesg->data.join, &sess->sig)) {
+        errmsg = "Incompatible join signature.";
+        return -1;
+    }
+
+    if (hsignature_copy(&mesg->data.join, &sess->sig) < 0) {
+        errmsg = "Internal error: Could not copy signature.";
+        return -1;
+    }
+
+    /* Grow the pending and ready queues. */
+    ++num_clients;
+    if (extend_lists(num_clients * per_client) != 0)
+        return -1;
+
+    /* Launch all join hooks defined in the plug-in stack. */
+    if (strategy_join && strategy_join(mesg->src_id) != 0)
+        return -1;
+
+    for (i = 0; i < lstack_len; ++i) {
+        if (lstack[i].join && lstack[i].join(mesg->src_id) != 0)
+            return -1;
+    }
+
+    mesg->status = HMESG_STATUS_OK;
+    return 0;
+}
+
+int handle_query(hmesg_t *mesg)
+{
+    int i;
+    const char *key;
+
+    key = mesg->data.string;
+
+    /* Launch all query hooks defined in the plug-in stack. */
+    if (strategy_query && strategy_query(key) != 0)
+        return -1;
+
+    for (i = 0; i < lstack_len; ++i) {
+        if (lstack[i].query && lstack[i].query(key) != 0)
+            return -1;
+    }
+
+    /* Prepare query response message for client. */
+    mesg->data.string = hcfg_get(sess->cfg, key);
+    mesg->status = HMESG_STATUS_OK;
+    return 0;
+}
+
+int handle_inform(hmesg_t *mesg)
+{
+    static char *buf = NULL;
+    static int buflen = 0;
+
+    int i;
+    char *key, *val;
+    const char *oldval;
+
+    hcfg_parse((char *)mesg->data.string, &key, &val);
+
+    /* Launch all inform hooks defined in the plug-in stack. */
+    for (i = 0; i < lstack_len; ++i) {
+        if (lstack[i].query && lstack[i].query(key) != 0)
+            return -1;
+    }
+
+    /* Prepare query response message for client. */
+    if (!key) {
+        errmsg = strerror(EINVAL);
+        return -1;
+    }
+
+    /* Store the original value, possibly allocating memory for it. */
+    oldval = hcfg_get(sess->cfg, key);
+    if (oldval) {
+        snprintf_grow(&buf, &buflen, "%s", oldval);
+        oldval = buf;
+    }
+
+    /* Finally, update the configuration system. */
+    if (hcfg_set(sess->cfg, key, val) < 0) {
+        errmsg = "Internal error: Could not modify configuration.";
+        return -1;
+    }
+
+    mesg->data.string = oldval;
+    mesg->status = HMESG_STATUS_OK;
+    return 0;
+}
+
+int handle_fetch(hmesg_t *mesg)
+{
+    htrial_t *head = ready[ready_head];
+    hpoint_t *cand = &mesg->data.fetch.cand;
+    hpoint_t *best = &mesg->data.fetch.best;
+
+    /* If ready queue is empty, inform client that we're busy. */
+    if (!head) {
+        mesg->status = HMESG_STATUS_BUSY;
+        return 0;
+    }
+
+    /* Otherwise, prepare a response to the client. */
+    *cand = HPOINT_INITIALIZER;
+    if (hpoint_copy(cand, &head->point) != 0) {
+        errmsg = "Internal error: Could not copy candidate point data.";
+        return -1;
+    }
+
+    *best = HPOINT_INITIALIZER;
+    if (strategy_best(best) != 0)
+        return -1;
+
+    /* Remove the first point from the ready queue. */
+    ready[ready_head] = NULL;
+    ready_head = (ready_head + 1) % ready_cap;
+
+    mesg->status = HMESG_STATUS_OK;
+    return 0;
+}
+
+int handle_report(hmesg_t *mesg)
+{
+    int i;
+
+    /* Find the associated trial in the pending list. */
+    for (i = 0; i < pending_cap; ++i) {
+        if (pending[i].point.id == mesg->data.report.cand.id)
+            break;
+    }
+    if (i == pending_cap) {
+        errmsg = "Rouge point support not yet implemented.";
+        return -1;
+    }
+
+    /* Update performance in our local records. */
+    pending[i].perf = mesg->data.report.perf;
+
+    /* Begin the workflow at the outermost analysis layer. */
+    curr_layer = -lstack_len;
+    if (plugin_workflow(&pending[i]) != 0)
+        return -1;
+
+    mesg->status = HMESG_STATUS_OK;
+    return 0;
+}
+
+/* ISO C forbids conversion of object pointer to function pointer,
+ * making it difficult to use dlsym() for functions.  We get around
+ * this by first casting to a word-length integer.  (ILP32/LP64
+ * compilers assumed).
+ */
+#define dlfptr(x, y) ((void (*)(void))(long)(dlsym((x), (y))))
+
+int load_strategy(const char *file)
+{
+    const char *root;
+    char *path;
     void *lib;
-    int (*init)(hmesg_t *);
 
-    tmp = hcfg_get(sess->cfg, CFGKEY_SESSION_STRATEGY);
-    if (!tmp)
-        tmp = DEFAULT_STRATEGY;
-    filename = sprintf_alloc("%s/libexec/%s",
-                             hcfg_get(sess->cfg, CFGKEY_HARMONY_ROOT), tmp);
-    lib = dlopen(filename, RTLD_LAZY | RTLD_LOCAL);
-    free(filename);
+    if (!file)
+        file = DEFAULT_STRATEGY;
+
+    root = hcfg_get(sess->cfg, CFGKEY_HARMONY_ROOT);
+    path = sprintf_alloc("%s/libexec/%s", root, file);
+
+    lib = dlopen(path, RTLD_LAZY | RTLD_LOCAL);
+    free(path);
     if (!lib) {
-        mesg->data.string = dlerror();
+        errmsg = dlerror();
         return -1;
     }
 
-    init = HACK_CAST_INT(dlsym(lib, "strategy_init"));
-    strategy_fetch = HACK_CAST_INT(dlsym(lib, "strategy_fetch"));
-    strategy_report = HACK_CAST_INT(dlsym(lib, "strategy_report"));
-    strategy_best = (hpoint_t *) dlsym(lib, "strategy_best");
+    strategy_generate = (strategy_generate_t) dlfptr(lib, "strategy_generate");
+    strategy_rejected = (strategy_rejected_t) dlfptr(lib, "strategy_rejected");
+    strategy_analyze  =  (strategy_analyze_t) dlfptr(lib, "strategy_analyze");
+    strategy_best     =     (strategy_best_t) dlfptr(lib, "strategy_best");
 
-    if (!init) {
-        mesg->data.string = "Strategy does not define strategy_init()";
+    strategy_init     =         (hook_init_t) dlfptr(lib, "strategy_init");
+    strategy_join     =         (hook_join_t) dlfptr(lib, "strategy_join");
+    strategy_query    =        (hook_query_t) dlfptr(lib, "strategy_query");
+    strategy_inform   =       (hook_inform_t) dlfptr(lib, "strategy_inform");
+    strategy_fini     =         (hook_fini_t) dlfptr(lib, "strategy_fini");
+
+    if (!strategy_generate) {
+        errmsg = "Strategy does not define strategy_generate()";
         return -1;
     }
 
-    if (!strategy_fetch) {
-        mesg->data.string = "Strategy does not define strategy_fetch()";
+    if (!strategy_rejected) {
+        errmsg = "Strategy does not define strategy_rejected()";
         return -1;
     }
 
-    if (!strategy_report) {
-        mesg->data.string = "Strategy does not define strategy_report()";
+    if (!strategy_analyze) {
+        errmsg = "Strategy does not define strategy_analyze()";
         return -1;
     }
 
     if (!strategy_best) {
-        mesg->data.string = "Strategy does not define strategy_best";
+        errmsg = "Strategy does not define strategy_best()";
         return -1;
     }
 
-    return init(mesg);
+    if (strategy_init)
+        return strategy_init(&sess->sig);
+
+    return 0;
 }
 
-int plugin_list_load(hmesg_t *mesg, const char *list)
+int load_layers(const char *list)
 {
     const char *prefix, *end;
-    char *fname;
-    int fname_len, retval;
+    char *path;
+    int path_len, retval;
     void *lib;
-    int (*init)(hmesg_t *);
 
-    fname = NULL;
-    fname_len = 0;
+    path = NULL;
+    path_len = 0;
     retval = 0;
     while (list && *list) {
-        if (plugin_len == plugin_cap) {
-            if (array_grow(&plugin, &plugin_cap, sizeof(plugin_t)) < 0) {
+        if (lstack_len == lstack_cap) {
+            if (array_grow(&lstack, &lstack_cap, sizeof(layer_t)) < 0) {
                 retval = -1;
                 goto cleanup;
             }
         }
-        end = strchr(list, SESSION_PLUGIN_SEP);
+        end = strchr(list, SESSION_LAYER_SEP);
         if (!end)
             end = list + strlen(list);
 
         prefix = hcfg_get(sess->cfg, CFGKEY_HARMONY_ROOT);
-        if (snprintf_grow(&fname, &fname_len, "%s/libexec/%.*s",
+        if (snprintf_grow(&path, &path_len, "%s/libexec/%.*s",
                           prefix, end - list, list) < 0)
         {
             retval = -1;
             goto cleanup;
         }
 
-        lib = dlopen(fname, RTLD_LAZY | RTLD_LOCAL);
+        lib = dlopen(path, RTLD_LAZY | RTLD_LOCAL);
         if (!lib) {
-            hmesg_scrub(mesg);
-            mesg->data.string = dlerror();
+            errmsg = dlerror();
             retval = -1;
             goto cleanup;
         }
 
-        prefix = (const char *) dlsym(lib, "harmony_plugin_name");
+        prefix = (const char *) dlsym(lib, "harmony_layer_name");
         if (!prefix) {
-            hmesg_scrub(mesg);
-            mesg->data.string = dlerror();
+            errmsg = dlerror();
             retval = -1;
             goto cleanup;
         }
+        lstack[lstack_len].name = prefix;
 
-        plugin[plugin_len].name = prefix;
-        if (snprintf_grow(&fname, &fname_len, "%s_init", prefix) < 0) {
+        if (snprintf_grow(&path, &path_len, "%s_init", prefix) < 0) {
             retval = -1;
             goto cleanup;
         }
+        lstack[lstack_len].init = (hook_init_t) dlfptr(lib, path);
 
-        init = HACK_CAST_INT(dlsym(lib, fname));
-        if (init && init(mesg) < 0) {
+        if (snprintf_grow(&path, &path_len, "%s_join", prefix) < 0) {
             retval = -1;
             goto cleanup;
         }
+        lstack[lstack_len].join = (hook_join_t) dlfptr(lib, path);
 
-        if (snprintf_grow(&fname, &fname_len, "%s_report", prefix) < 0) {
+        if (snprintf_grow(&path, &path_len, "%s_generate", prefix) < 0) {
             retval = -1;
             goto cleanup;
         }
-        plugin[plugin_len].report = HACK_CAST_INT(dlsym(lib, fname));
+        lstack[lstack_len].generate = (layer_generate_t) dlfptr(lib, path);
 
-        if (snprintf_grow(&fname, &fname_len, "%s_fetch", prefix) < 0) {
+        if (snprintf_grow(&path, &path_len, "%s_analyze", prefix) < 0) {
             retval = -1;
             goto cleanup;
         }
-        plugin[plugin_len].fetch = HACK_CAST_INT(dlsym(lib, fname));
+        lstack[lstack_len].analyze = (layer_analyze_t) dlfptr(lib, path);
 
-        if (snprintf_grow(&fname, &fname_len, "%s_fini", prefix) < 0) {
+        if (snprintf_grow(&path, &path_len, "%s_query", prefix) < 0) {
             retval = -1;
             goto cleanup;
         }
-        plugin[plugin_len].fini = HACK_CAST_VOID(dlsym(lib, fname));
+        lstack[lstack_len].query = (hook_query_t) dlfptr(lib, path);
 
-        ++plugin_len;
-        list = *end ? end + 1 : NULL;
+        if (snprintf_grow(&path, &path_len, "%s_inform", prefix) < 0) {
+            retval = -1;
+            goto cleanup;
+        }
+        lstack[lstack_len].inform = (hook_inform_t) dlfptr(lib, path);
+
+        if (snprintf_grow(&path, &path_len, "%s_fini", prefix) < 0) {
+            retval = -1;
+            goto cleanup;
+        }
+        lstack[lstack_len].fini = (hook_fini_t) dlfptr(lib, path);
+
+        if (lstack[lstack_len].init) {
+            curr_layer = lstack_len + 1;
+            if (lstack[lstack_len].init(&sess->sig) < 0) {
+                retval = -1;
+                goto cleanup;
+            }
+        }
+        ++lstack_len;
+
+        if (*end)
+            list = end + 1;
+        else
+            list = NULL;
     }
 
   cleanup:
-    free(fname);
+    free(path);
     return retval;
 }
 
-int prefetch_init(hmesg_t *mesg)
+int extend_lists(int target_cap)
 {
-    const char *cfgstr;
+    int orig_cap = pending_cap;
     int i;
 
-    cfgstr = hcfg_get(sess->cfg, CFGKEY_PREFETCH_COUNT);
-    if (cfgstr && strcasecmp(cfgstr, "auto") == 0) {
-        cfgstr = hcfg_get(sess->cfg, CFGKEY_CLIENT_COUNT);
-        if (cfgstr)
-            pfq_cap = atoi(cfgstr);
-        else
-            pfq_cap = DEFAULT_CLIENT_COUNT;
-    }
-    else if (cfgstr) {
-        pfq_cap = atoi(cfgstr);
-    }
-    else {
-        pfq_cap = DEFAULT_PREFETCH_COUNT;
+    if (pending_cap >= target_cap && pending_cap != 0)
+        return 0;
+
+    if (ready && ready_tail <= ready_head && ready[ready_head] != NULL) {
+        /* Shift ready array to align head with array index 0. */
+        reverse_array(ready, 0, ready_cap);
+        reverse_array(ready, 0, ready_head);
+        reverse_array(ready, ready_head, ready_cap);
+
+        ready_head = 0;
+        ready_tail = ready_cap;
     }
 
-    if (pfq_cap < 0) {
-        mesg->data.string =
-            "Invalid config value for " CFGKEY_PREFETCH_COUNT;
+    ready_cap = target_cap;
+    if (array_grow(&ready, &ready_cap, sizeof(htrial_t *)) != 0) {
+        errmsg = "Internal error: Could not extend ready array.";
         return -1;
     }
-    else if (pfq_cap) {
-        pfqueue = (hpoint_t *) malloc(pfq_cap * sizeof(hpoint_t));
-        if (!pfqueue)
-            return -1;
-        for (i = 0; i < pfq_cap; ++i)
-            pfqueue[i] = HPOINT_INITIALIZER;
+
+    pending_cap = target_cap;
+    if (array_grow(&pending, &pending_cap, sizeof(htrial_t)) != 0) {
+        errmsg = "Internal error: Could not extend pending array.";
+        return -1;
     }
 
-    cfgstr = hcfg_get(sess->cfg, CFGKEY_PREFETCH_ATOMIC);
-    if (cfgstr && strcmp(cfgstr, "1") == 0)
-        pfq_atomic = 1;
-    else
-        pfq_atomic = DEFAULT_PREFETCH_ATOMIC;
-
+    for (i = orig_cap; i < pending_cap; ++i) {
+        hpoint_t *point = (hpoint_t *) &pending[i].point;
+        *point = HPOINT_INITIALIZER;
+    }
     return 0;
 }
 
-int plugin_workflow(hmesg_t *mesg)
+void reverse_array(void *ptr, int head, int tail)
 {
-    if (mesg->type == HMESG_FETCH) {
-        while (mesg->index < plugin_len) {
-            if (plugin[mesg->index].fetch) {
-                if (plugin[mesg->index].fetch(mesg) < 0)
-                    return -1;
-            }
-            ++mesg->index;
-        }
+    unsigned long *arr = (unsigned long *) ptr;
+
+    while (head < --tail) {
+        /* Swap head and tail entries. */
+        arr[head] ^= arr[tail];
+        arr[tail] ^= arr[head];
+        arr[head] ^= arr[tail];
+        ++head;
     }
-
-    else if (mesg->type == HMESG_REPORT) {
-        while (mesg->index > 0) {
-            --mesg->index;
-            if (plugin[mesg->index].report) {
-                if (plugin[mesg->index].report(mesg) < 0)
-                    return -1;
-            }
-        }
-        if (strategy_report(mesg) < 0) {
-            mesg->status = HMESG_STATUS_FAIL;
-            return -1;
-        }
-    }
-
-    else {
-        mesg->status = HMESG_STATUS_FAIL;
-        errno = EINVAL;
-        return -1;
-    }
-
-    return 0;
-}
-
-int point_enqueue(hmesg_t *mesg)
-{
-    hpoint_t *tail, *cand;
-
-    tail = &pfqueue[pfq_tail];
-    cand = &mesg->data.fetch.cand;
-
-    /* Stash this message in the prefetch buffer. */
-    if (tail->id != -1) {
-        fprintf(stderr, "Internal error: fetch buffer overflow.\n");
-        return -1;
-    }
-
-    *tail = HPOINT_INITIALIZER;
-    if (hpoint_copy(tail, cand) < 0) {
-        perror("Internal error copying message to prefetch queue");
-        return -1;
-    }
-
-    pfq_tail = (pfq_tail + 1) % pfq_cap;
-    return 0;
-}
-
-int point_dequeue(hmesg_t *mesg)
-{
-    hpoint_t *head, *cand, *best;
-
-    head = &pfqueue[pfq_head];
-    cand = &mesg->data.fetch.cand;
-    best = &mesg->data.fetch.best;
-
-    if (head->id != -1) {
-        *cand = HPOINT_INITIALIZER;
-        if (hpoint_copy(cand, head) < 0)
-            return -1;
-
-        *best = HPOINT_INITIALIZER;
-        if (best->id < strategy_best->id)
-            if (hpoint_copy(best, strategy_best) < 0)
-                return -1;
-
-        hpoint_fini(head);
-        head->id = -1;
-        pfq_head = (pfq_head + 1) % pfq_cap;
-
-        if (!pfq_atomic) {
-            /* New queue slots available.  Polling may begin again. */
-            --pfq_requested;
-            pollstate = &polltime;
-        }
-        mesg->status = HMESG_STATUS_OK;
-    }
-    else {
-        mesg->status = HMESG_STATUS_BUSY;
-    }
-
-    return 0;
 }
 
 /* ========================================================
- * Exported functions for 3rd party plugins and strategies.
+ * Exported functions for pluggable modules.
  */
 
-/* Allows 3rd party plugins to receive notification of a data event. */
-int callback_register(int fd, int (*func)(hmesg_t *))
+int callback_generate(int fd, cb_func_t func)
 {
-    struct stat sb;
-
-    /* Sanity check input. */
-    if (fstat(fd, &sb) < 0 || !S_ISSOCK(sb.st_mode)) {
-        errno = ENOTSOCK;
-        return -1;
-    }
-
     if (cb_len >= cb_cap) {
         if (array_grow(&cb, &cb_cap, sizeof(callback_t)) < 0)
             return -1;
     }
     cb[cb_len].fd = fd;
+    cb[cb_len].index = curr_layer;
     cb[cb_len].func = func;
     ++cb_len;
 
@@ -669,23 +899,30 @@ int callback_register(int fd, int (*func)(hmesg_t *))
     return 0;
 }
 
-/* Removes a file descriptor from the listen set. */
-int callback_unregister(int fd)
+int callback_analyze(int fd, cb_func_t func)
 {
-    int i;
-
-    for (i = 0; i < cb_len; ++i)
-        if (cb[i].fd == fd)
-            break;
-
-    if (i == cb_len)
-        return -1;
-
-    FD_CLR(fd, &fds);
-    while (i < cb_len) {
-        cb[i].fd = cb[i+1].fd;
-        cb[i].func = cb[i+1].func;
+    if (cb_len >= cb_cap) {
+        if (array_grow(&cb, &cb_cap, sizeof(callback_t)) < 0)
+            return -1;
     }
-    --cb_len;
+    cb[cb_len].fd = fd;
+    cb[cb_len].index = -curr_layer;
+    cb[cb_len].func = func;
+    ++cb_len;
+
+    FD_SET(fd, &fds);
+    if (maxfd < fd)
+        maxfd = fd;
+
     return 0;
+}
+
+const char *session_query(const char *key)
+{
+    return hcfg_get(sess->cfg, key);
+}
+
+int session_inform(const char *key, const char *val)
+{
+    return hcfg_set(sess->cfg, key, val);
 }

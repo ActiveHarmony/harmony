@@ -20,7 +20,7 @@
 #ifndef __LIBVERTEX_H__
 #define __LIBVERTEX_H__
 
-#include "hsession.h"
+#include "hsignature.h"
 #include "hpoint.h"
 
 #ifdef __cplusplus
@@ -38,7 +38,7 @@ typedef struct simplex {
     vertex_t *vertex[];
 } simplex_t;
 
-int        libvertex_init(hsession_t *sess);
+int        libvertex_init(hsignature_t *sig);
 
 vertex_t  *vertex_alloc();
 int        vertex_copy(vertex_t *dst, const vertex_t *src);

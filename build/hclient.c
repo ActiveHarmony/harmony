@@ -42,9 +42,13 @@ typedef enum harmony_state_t {
     HARMONY_STATE_MAX
 } harmony_state_t;
 
+#define MAX_HOSTNAME_STRLEN 64
+#define MAX_ID_LEN (MAX_HOSTNAME_STRLEN + 32) /* Add room for two integers. */
+
 struct hdesc_t {
     harmony_state_t state;
     int socket;
+    char id[MAX_ID_LEN];
 
     hsignature_t sig;
     hmesg_t mesg;
@@ -174,10 +178,15 @@ int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *name)
     }
     hdesc->state = HARMONY_STATE_CONNECTED;
 
+    gethostname(hdesc->id, MAX_HOSTNAME_STRLEN);
+    hdesc->id[MAX_HOSTNAME_STRLEN] = '\0';
+    sprintf(hdesc->id + strlen(hdesc->id), "_%d_%d", getpid(), hdesc->socket);
+
     /* Prepare a Harmony message. */
     hmesg_scrub(&hdesc->mesg);
     hdesc->mesg.type = HMESG_JOIN;
     hdesc->mesg.status = HMESG_STATUS_REQ;
+    hdesc->mesg.src_id = hdesc->id;
 
     hdesc->sig.name = stralloc(name);
     if (!hdesc->sig.name) {
@@ -250,6 +259,7 @@ char *harmony_query(hdesc_t *hdesc, const char *key)
     hmesg_scrub(&hdesc->mesg);
     hdesc->mesg.type = HMESG_QUERY;
     hdesc->mesg.status = HMESG_STATUS_REQ;
+    hdesc->mesg.src_id = hdesc->id;
     hdesc->mesg.data.string = key;
 
     if (mesg_send_and_recv(hdesc) < 0)
@@ -299,6 +309,7 @@ char *harmony_inform(hdesc_t *hdesc, const char *key, const char *val)
     hmesg_scrub(&hdesc->mesg);
     hdesc->mesg.type = HMESG_INFORM;
     hdesc->mesg.status = HMESG_STATUS_REQ;
+    hdesc->mesg.src_id = hdesc->id;
     retval = mesg_send_and_recv(hdesc);
     free(buf);
 
@@ -329,6 +340,7 @@ int harmony_fetch(hdesc_t *hdesc)
     hmesg_scrub(&hdesc->mesg);
     hdesc->mesg.type = HMESG_FETCH;
     hdesc->mesg.status = HMESG_STATUS_REQ;
+    hdesc->mesg.src_id = hdesc->id;
     hdesc->mesg.data.fetch.best.id = hdesc->best.id;
 
     if (mesg_send_and_recv(hdesc) < 0)
@@ -395,6 +407,8 @@ int harmony_report(hdesc_t *hdesc, double value)
     hmesg_scrub(&hdesc->mesg);
     hdesc->mesg.type = HMESG_REPORT;
     hdesc->mesg.status = HMESG_STATUS_REQ;
+    hdesc->mesg.src_id = hdesc->id;
+
     hdesc->mesg.data.report.cand = HPOINT_INITIALIZER;
     hpoint_copy(&hdesc->mesg.data.report.cand, &hdesc->curr);
     hdesc->mesg.data.report.perf = value;

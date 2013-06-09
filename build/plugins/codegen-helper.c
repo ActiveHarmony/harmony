@@ -383,9 +383,10 @@ int reply_url_build(void)
 int mesg_read(int id)
 {
     static const char in_filename[] = "code_complete";
-    unsigned short msglen;
-    int fd, retries, retval;
-    char hdr[HARMONY_HDRLEN], *fullpath, *newbuf;
+
+    int msglen, fd, retries, retval;
+    char *fullpath, *newbuf;
+    struct stat sb;
     struct timeval polltime;
     const char *errmsg;
 
@@ -397,9 +398,10 @@ int mesg_read(int id)
 
     retval = 0;
     retries = 3;
+
   top:
     fd = open(fullpath, O_RDONLY);
-    if (fd == -1 && (errno == ENOENT || errno == ENOENT))
+    if (fd == -1 && errno == ENOENT)
         goto cleanup;
 
     if (fd == -1) {
@@ -407,17 +409,13 @@ int mesg_read(int id)
         goto retry;
     }
 
-    if (read_loop(fd, hdr, sizeof(hdr)) < 0) {
-        errmsg = "Error reading code completion message file header";
+    /* Obtain file size */
+    if (fstat(fd, &sb) == 0) {
+        errmsg = strerror(errno);
         goto retry;
     }
 
-    if (ntohl(*(unsigned int *)hdr) != HARMONY_MAGIC) {
-        errmsg = "Invalid message found in code completion file";
-        goto retry;
-    }
-
-    msglen = ntohs(*(unsigned short *)(hdr + sizeof(int)));
+    msglen = sb.st_size + 1;
     if (buflen < msglen) {
         newbuf = (char *) realloc(buf, msglen);
         if (!newbuf) {
@@ -428,18 +426,25 @@ int mesg_read(int id)
         buf = newbuf;
         buflen = msglen;
     }
+    buf[sb.st_size] = '\0';
 
-    memcpy(buf, hdr, sizeof(hdr));
-    if (read_loop(fd, buf + sizeof(hdr), msglen - sizeof(hdr)) < 0) {
-        errmsg = "Error reading code completion message file";
+    if (mesg.buflen < msglen) {
+        newbuf = (char *) realloc(mesg.buf, msglen);
+        if (!newbuf) {
+            mesg.data.string = "Could not allocate memory for message data.";
+            retval = -1;
+            goto cleanup;
+        }
+        mesg.buf = newbuf;
+        mesg.buflen = msglen;
+    }
+    mesg.buf[sb.st_size] = '\0';
+
+    if (read_loop(fd, buf, sb.st_size) != 0) {
+        errmsg = "Error reading message file";
         goto retry;
     }
-
-    if (socket_write(STDIN_FILENO, buf, msglen) < 0) {
-        mesg.data.string = "Error sending code completion message to session";
-        retval = -1;
-        goto cleanup;
-    }
+    memcpy(mesg.buf, buf, sb.st_size);
 
     if (close(fd) < 0) {
         mesg.data.string = "Error closing code completion message file";
@@ -447,6 +452,17 @@ int mesg_read(int id)
         goto cleanup;
     }
     fd = -1;
+
+    if (hmesg_deserialize(&mesg) != 0) {
+        errmsg = "Error decoding message file";
+        goto retry;
+    }
+
+    if (socket_write(STDIN_FILENO, buf, sb.st_size) < 0) {
+        mesg.data.string = "Error sending code completion message to session";
+        retval = -1;
+        goto cleanup;
+    }
     retval = 1;
 
     if (remove(fullpath) < 0) {
@@ -499,11 +515,8 @@ int mesg_write(int id)
         return -1;
     }
 
-    msglen = HARMONY_HDRLEN + strlen(mesg.buf + HARMONY_HDRLEN);
-    *(unsigned   int *)(mesg.buf              ) = htonl(HARMONY_MAGIC);
-    *(unsigned short *)(mesg.buf + sizeof(int)) = htons(msglen);
-
-    if (write_loop(fd, mesg.buf, msglen) < 0) {
+    msglen = strlen(mesg.buf);
+    if (write_loop(fd, mesg.buf, msglen) != 0) {
         mesg.data.string = strerror(errno);
         return -1;
     }

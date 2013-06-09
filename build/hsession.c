@@ -176,9 +176,9 @@ int hsession_strategy(hsession_t *sess, const char *strategy)
     return 0;
 }
 
-int hsession_plugin_list(hsession_t *sess, const char *list)
+int hsession_layer_list(hsession_t *sess, const char *list)
 {
-    if (hcfg_set(sess->cfg, CFGKEY_SESSION_PLUGINS, list) < 0)
+    if (hcfg_set(sess->cfg, CFGKEY_SESSION_LAYERS, list) < 0)
         return -1;
     return 0;
 }
