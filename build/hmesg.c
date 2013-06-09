@@ -65,25 +65,6 @@ void hmesg_scrub(hmesg_t *mesg)
     }
 }
 
-int hmesg_copy(hmesg_t *copy, const hmesg_t *orig)
-{
-    char *newbuf;
-
-    if (copy->buflen < orig->buflen) {
-        newbuf = (char *) realloc(copy->buf, orig->buflen);
-        if (!newbuf)
-            return -1;
-        copy->buf = newbuf;
-        copy->buflen = orig->buflen;
-    }
-
-    memcpy(copy->buf, orig->buf, orig->buflen);
-    if (hmesg_deserialize(copy) < 0)
-        return -1;
-
-    return 0;
-}
-
 void hmesg_fini(hmesg_t *mesg)
 {
     hmesg_scrub(mesg);

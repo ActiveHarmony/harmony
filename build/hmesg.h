@@ -81,7 +81,6 @@ extern const hmesg_t HMESG_INITIALIZER;
 
 void hmesg_init(hmesg_t *mesg);
 void hmesg_scrub(hmesg_t *mesg);
-int  hmesg_copy(hmesg_t *copy, const hmesg_t *orig);
 void hmesg_fini(hmesg_t *mesg);
 int hmesg_serialize(hmesg_t *mesg);
 int hmesg_deserialize(hmesg_t *mesg);
