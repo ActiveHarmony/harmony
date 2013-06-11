@@ -375,16 +375,30 @@ int strategy_rejected(hpoint_t *point, hpoint_t *hint)
         point->id = orig_id;
     }
     else {
-        /* Replace rejected point with a random one. */
-        if (vertex_rand(test->vertex[i]) != 0) {
-            session_error("Internal error: Could not get random vertex.");
-            return -1;
+        /* If the rejecting layer does not provide a hint, apply an
+         * infinite penalty to the invalid point and allow the
+         * algorithm to determine the next point to try.
+         */
+        test->vertex[i]->perf = INFINITY;
+        ++reported;
+        ++i;
+
+        if (reported == simplex_size) {
+            if (pro_algorithm() != 0) {
+                session_error("Internal error: PRO algorithm failure.");
+                return -1;
+            }
+            reported = 0;
+            send_idx = 0;
+            i = 0;
         }
 
+        test->vertex[i]->id = next_id;
         if (vertex_to_hpoint(test->vertex[i], point) != 0) {
             session_error("Internal error: Could not make point from vertex.");
             return -1;
         }
+        ++next_id;
     }
     return 0;
 }
