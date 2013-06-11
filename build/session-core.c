@@ -414,6 +414,7 @@ int workflow_transition(htrial_t *trial)
         if (handle_reject(trial) != 0) {
             return -1;
         }
+        flow.status = HFLOW_ACCEPT;
         curr_layer = 1;
         break;
 
@@ -860,6 +861,7 @@ int extend_lists(int target_cap)
     for (i = orig_cap; i < pending_cap; ++i) {
         hpoint_t *point = (hpoint_t *) &pending[i].point;
         *point = HPOINT_INITIALIZER;
+        ready[i] = NULL;
     }
     return 0;
 }
@@ -925,4 +927,9 @@ const char *session_query(const char *key)
 int session_inform(const char *key, const char *val)
 {
     return hcfg_set(sess->cfg, key, val);
+}
+
+void session_error(const char *msg)
+{
+    errmsg = msg;
 }
