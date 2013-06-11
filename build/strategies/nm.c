@@ -398,13 +398,14 @@ int strategy_rejected(hpoint_t *point, hpoint_t *hint)
          * infinite penalty to the invalid point and allow the
          * algorithm to determine the next point to try.
          */
-        test->perf = INFINITY;
+        next->perf = INFINITY;
         if (nm_algorithm() != 0) {
             session_error("Internal error: Nelder-Mead algorithm failure.");
             return -1;
         }
 
-        if (vertex_to_hpoint(test, point) != 0) {
+        next->id = next_id;
+        if (vertex_to_hpoint(next, point) != 0) {
             session_error("Internal error: Could not make point from vertex.");
             return -1;
         }
