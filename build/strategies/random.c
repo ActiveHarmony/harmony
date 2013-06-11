@@ -102,13 +102,14 @@ int strategy_generate(hflow_t *flow, hpoint_t *point)
  */
 int strategy_rejected(hpoint_t *point, hpoint_t *hint)
 {
-    int orig_id = point->id;
-
     if (hint && hint->id != -1) {
+        int orig_id = point->id;
+
         if (hpoint_copy(point, hint) != 0) {
             session_error("Internal error: Could not copy point.");
             return -1;
         }
+        point->id = orig_id;
     }
     else {
         vertex_rand(curr);
@@ -117,7 +118,6 @@ int strategy_rejected(hpoint_t *point, hpoint_t *hint)
             return -1;
         }
     }
-    point->id = orig_id;
 
     return 0;
 }

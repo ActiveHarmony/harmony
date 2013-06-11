@@ -378,9 +378,9 @@ int strategy_generate(hflow_t *flow, hpoint_t *point)
  */
 int strategy_rejected(hpoint_t *point, hpoint_t *hint)
 {
-    int orig_id = point->id;
-
     if (hint && hint->id != -1) {
+        int orig_id = point->id;
+
         /* Update our state to include the hint point. */
         if (vertex_from_hpoint(hint, next) != 0) {
             session_error("Internal error: Could not make vertex from point.");
@@ -391,8 +391,13 @@ int strategy_rejected(hpoint_t *point, hpoint_t *hint)
             session_error("Internal error: Could not copy point.");
             return -1;
         }
+        point->id = orig_id;
     }
     else {
+        /* If the rejecting layer does not provide a hint, apply an
+         * infinite penalty to the invalid point and allow the
+         * algorithm to determine the next point to try.
+         */
         test->perf = INFINITY;
         if (nm_algorithm() != 0) {
             session_error("Internal error: Nelder-Mead algorithm failure.");
@@ -404,7 +409,6 @@ int strategy_rejected(hpoint_t *point, hpoint_t *hint)
             return -1;
         }
     }
-    point->id = orig_id;
 
     return 0;
 }

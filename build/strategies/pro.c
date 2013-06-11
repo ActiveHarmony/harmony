@@ -347,7 +347,7 @@ int strategy_generate(hflow_t *flow, hpoint_t *point)
  */
 int strategy_rejected(hpoint_t *point, hpoint_t *hint)
 {
-    int i, orig_id = point->id;
+    int i;
 
     /* Find the rejected vertex. */
     for (i = 0; i < simplex_size; ++i) {
@@ -360,6 +360,8 @@ int strategy_rejected(hpoint_t *point, hpoint_t *hint)
     }
 
     if (hint && hint->id != -1) {
+        int orig_id = point->id;
+
         /* Update our state to include the hint point. */
         if (vertex_from_hpoint(hint, test->vertex[i]) != 0) {
             session_error("Internal error: Could not make vertex from point.");
@@ -370,6 +372,7 @@ int strategy_rejected(hpoint_t *point, hpoint_t *hint)
             session_error("Internal error: Could not copy point.");
             return -1;
         }
+        point->id = orig_id;
     }
     else {
         /* Replace rejected point with a random one. */
@@ -383,8 +386,6 @@ int strategy_rejected(hpoint_t *point, hpoint_t *hint)
             return -1;
         }
     }
-    point->id = orig_id;
-
     return 0;
 }
 
