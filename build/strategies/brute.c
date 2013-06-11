@@ -94,6 +94,7 @@ int strategy_generate(hflow_t *flow, hpoint_t *point)
             return -1;
         }
 
+        ++curr->id;
         if (increment() != 0)
             return -1;
     }
