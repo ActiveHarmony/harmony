@@ -57,7 +57,7 @@ typedef int (*hook_fini_t)(void);
 
 /* Strategy plug-in function signatures. */
 typedef int (*strategy_generate_t)(hflow_t *flow, hpoint_t *point);
-typedef int (*strategy_rejected_t)(hpoint_t *point, hpoint_t *hint);
+typedef int (*strategy_rejected_t)(hflow_t *flow, hpoint_t *point);
 typedef int (*strategy_analyze_t)(htrial_t *trial);
 typedef int (*strategy_best_t)(hpoint_t *point);
 

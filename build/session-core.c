@@ -411,10 +411,12 @@ int workflow_transition(htrial_t *trial)
         break;
 
     case HFLOW_REJECT:
-        if (handle_reject(trial) != 0) {
+        if (handle_reject(trial) != 0)
             return -1;
-        }
-        flow.status = HFLOW_ACCEPT;
+
+        if (flow.status == HFLOW_WAIT)
+            return 1;
+
         curr_layer = 1;
         break;
 
@@ -433,8 +435,11 @@ int handle_reject(htrial_t *trial)
     }
 
     /* Regenerate this rejected point. */
-    if (strategy_rejected((hpoint_t *) &trial->point, &flow.point) != 0)
+    if (strategy_rejected(&flow, (hpoint_t *) &trial->point) != 0)
         return -1;
+
+    if (flow.status == HFLOW_WAIT)
+        pollstate = NULL;
 
     return 0;
 }

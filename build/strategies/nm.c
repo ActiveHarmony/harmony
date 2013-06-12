@@ -376,8 +376,10 @@ int strategy_generate(hflow_t *flow, hpoint_t *point)
 /*
  * Regenerate a point deemed invalid by a later plug-in.
  */
-int strategy_rejected(hpoint_t *point, hpoint_t *hint)
+int strategy_rejected(hflow_t *flow, hpoint_t *point)
 {
+    hpoint_t *hint = &flow->point;
+
     if (hint && hint->id != -1) {
         int orig_id = point->id;
 
@@ -411,6 +413,7 @@ int strategy_rejected(hpoint_t *point, hpoint_t *hint)
         }
     }
 
+    flow->status = HFLOW_ACCEPT;
     return 0;
 }
 

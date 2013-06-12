@@ -345,9 +345,10 @@ int strategy_generate(hflow_t *flow, hpoint_t *point)
 /*
  * Regenerate a point deemed invalid by a later plug-in.
  */
-int strategy_rejected(hpoint_t *point, hpoint_t *hint)
+int strategy_rejected(hflow_t *flow, hpoint_t *point)
 {
     int i;
+    hpoint_t *hint = &flow->point;
 
     /* Find the rejected vertex. */
     for (i = 0; i < simplex_size; ++i) {
@@ -381,7 +382,6 @@ int strategy_rejected(hpoint_t *point, hpoint_t *hint)
          */
         test->vertex[i]->perf = INFINITY;
         ++reported;
-        ++i;
 
         if (reported == simplex_size) {
             if (pro_algorithm() != 0) {
@@ -393,13 +393,21 @@ int strategy_rejected(hpoint_t *point, hpoint_t *hint)
             i = 0;
         }
 
-        test->vertex[i]->id = next_id;
-        if (vertex_to_hpoint(test->vertex[i], point) != 0) {
+        if (send_idx == simplex_size) {
+            flow->status = HFLOW_WAIT;
+            return 0;
+        }
+
+        test->vertex[send_idx]->id = next_id;
+        if (vertex_to_hpoint(test->vertex[send_idx], point) != 0) {
             session_error("Internal error: Could not make point from vertex.");
             return -1;
         }
         ++next_id;
+        ++send_idx;
     }
+
+    flow->status = HFLOW_ACCEPT;
     return 0;
 }
 

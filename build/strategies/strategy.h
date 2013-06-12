@@ -38,11 +38,13 @@ extern "C" {
  * Generate a new candidate configuration point.
  *
  * Params:
+ *   flow  - Inform plug-in manager of search state.
  *   point - New candidate point to be sent to a client.
  *
  * Upon error, this function should call session_error() with a
  * human-readable string explaining the problem and return -1.
- * Otherwise, returning 0 indicates success.
+ * Otherwise, this routine should return 0, and the contents of the
+ * "flow" variable should be set appropriately.
  */
 int strategy_generate(hflow_t *flow, hpoint_t *point);
 
@@ -50,14 +52,16 @@ int strategy_generate(hflow_t *flow, hpoint_t *point);
  * Regenerate a rejected candidate configuration point.
  *
  * Params:
+ *   flow  - Inform plug-in manager of search state. Also may contain a search
+ *           hint from the rejecting layer.
  *   point - Rejected candidate point to regenerate.
- *   hint  - Possibly contains hint from layer plug-ins.
  *
  * Upon error, this function should call session_error() with a
  * human-readable string explaining the problem and return -1.
- * Otherwise, returning 0 indicates success.
+ * Otherwise, this routine should return 0, and the contents of the
+ * "flow" variable should be set appropriately.
  */
-int strategy_rejected(hpoint_t *point, hpoint_t *hint);
+int strategy_rejected(hflow_t *flow, hpoint_t *point);
 
 /*
  * Analyze the observed performance associated with a configuration point.
