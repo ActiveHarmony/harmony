@@ -8,10 +8,12 @@ override CFLAGS+=-fPIC
 override CPPFLAGS+=-I.. -D_ISOC99_SOURCE -D_XOPEN_SOURCE=500
 
 SRCS=codegen.c \
-     codegen-helper.c
+     codegen-helper.c \
+#	 constraint.c
 
 LIBEXEC_TARGETS=codegen.so \
-                codegen-helper
+                codegen-helper \
+#				constraint.so
 TARGETS=$(LIBEXEC_TARGETS)
 
 .PHONY: all install clean distclean
