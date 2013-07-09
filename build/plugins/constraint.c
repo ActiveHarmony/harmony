@@ -152,7 +152,7 @@ static void call_omega_calc() {
 
 int constraint_init(hsignature_t *sig) {
 	/*Initializaing constraint*/
-	fprintf(stderr, "Initializing constraint plugin for session %s, please make sure the omega calculator is installed under 'bin' directory.\nPlease specify parameter dependencies in 'constraint.in' under 'bin' directory.\n", sig->name);
+	fprintf(stderr, "Initializing constraint plugin for session %s, please make sure the omega calculator is installed under 'bin' directory.\nPlease specify parameter dependencies in 'constraint.in' under 'bin' directory.\n The example of the content of 'constraint.in' is as follows:\n To assign a dependency for two parameters named 'x' and 'y', simply type in constraints like 'x + y < 10' in the file.", sig->name);
 
 	/*Have a copy of signature*/
 	hsignature_copy(&signature, sig);
