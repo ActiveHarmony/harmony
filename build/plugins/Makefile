@@ -7,12 +7,14 @@ CFLAGS=-std=c99 -pedantic -Wall -Werror -g
 override CFLAGS+=-fPIC
 override CPPFLAGS+=-I.. -D_ISOC99_SOURCE -D_XOPEN_SOURCE=500
 
-SRCS=codegen.c \
+SRCS=agg.c \
+     codegen.c \
      codegen-helper.c \
      log.c \
 #	 constraint.c
 
-LIBEXEC_TARGETS=codegen.so \
+LIBEXEC_TARGETS=agg.so \
+                codegen.so \
                 codegen-helper \
                 log.so
 #				constraint.so
