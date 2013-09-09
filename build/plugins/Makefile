@@ -9,10 +9,12 @@ override CPPFLAGS+=-I.. -D_ISOC99_SOURCE -D_XOPEN_SOURCE=500
 
 SRCS=codegen.c \
      codegen-helper.c \
+     log.c \
 #	 constraint.c
 
 LIBEXEC_TARGETS=codegen.so \
                 codegen-helper \
+                log.so
 #				constraint.so
 TARGETS=$(LIBEXEC_TARGETS)
 
