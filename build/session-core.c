@@ -842,13 +842,15 @@ int extend_lists(int target_cap)
         return 0;
 
     if (ready && ready_tail <= ready_head && ready[ready_head] != NULL) {
+        i = ready_cap - ready_head;
+
         /* Shift ready array to align head with array index 0. */
         reverse_array(ready, 0, ready_cap);
-        reverse_array(ready, 0, ready_head);
-        reverse_array(ready, ready_head, ready_cap);
+        reverse_array(ready, 0, i);
+        reverse_array(ready, i, ready_cap);
 
         ready_head = 0;
-        ready_tail = ready_cap;
+        ready_tail = ready_cap - ready_tail + ready_head;
     }
 
     ready_cap = target_cap;
