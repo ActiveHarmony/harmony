@@ -17,6 +17,16 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/**
+ * \page codesvr Code Server (codegen.so)
+ *
+ * This processing layer passes messages from the tuning session to a
+ * running code generation server.
+ *
+ * \note The code server must be separately installed, configured, and
+ * launched.
+ */
+
 #include "session-core.h"
 #include "hsession.h"
 #include "hmesg.h"

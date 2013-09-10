@@ -17,6 +17,21 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/**
+ * \page omega Omega Constraint (constraint.so)
+ *
+ * This processing layer allows for a more sophisticated specification
+ * of the [search space](\ref ov_search) through algebraic statements
+ * such as:
+ *
+ * - \f$x < y\f$, or
+ * - \f$x + y = 10\f$
+ *
+ * \note This processing layer requires the Omega Calculator, which is
+ * available at:<br>
+ * <https://github.com/davewathaverford/the-omega-project/>.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>

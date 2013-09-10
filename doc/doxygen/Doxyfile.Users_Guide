@@ -1,0 +1,17 @@
+@INCLUDE = doxygen/Doxyfile.base
+
+PROJECT_NAME = "Active Harmony User's Guide"
+LATEX_OUTPUT = Users_Guide.latex
+HTML_OUTPUT  = Users_Guide.html
+
+INPUT = doxygen/Users_Guide.dox \
+        ../build/strategies/brute.c \
+        ../build/strategies/random.c \
+        ../build/strategies/nm.c \
+        ../build/strategies/pro.c \
+        ../build/plugins/log.c \
+        ../build/plugins/agg.c \
+        ../build/plugins/codegen.c \
+        ../build/plugins/constraint.c \
+        ../build/hclient.h \
+        ../build/hsession.h
