@@ -92,7 +92,7 @@ vertex_t *next;
 
 int index_best;
 int index_worst;
-int index_curr;
+int index_curr; /* for INIT or SHRINK */
 int next_id;
 
 /*
@@ -556,6 +556,7 @@ int nm_state_transition(void)
             /* Contracted test vertex has worst known performance.
              * Shrink the entire simplex towards the best point.
              */
+            index_curr = -1; /* to notify the beginning of SHRINK */
             state = SIMPLEX_STATE_SHRINK;
         }
         break;
@@ -599,18 +600,24 @@ int nm_next_vertex(void)
         break;
 
     case SIMPLEX_STATE_SHRINK:
-        /* Shrink the entire simplex towards the best known vertex
-         * thus far. */
-        simplex_transform(base, base->vertex[index_best],
-                          shrink_coefficient, base);
-        index_curr = 0;
-        next = base->vertex[index_curr];
+        if (index_curr == -1) {
+          /* Shrink the entire simplex towards the best known vertex
+           * thus far. */
+          simplex_transform(base, base->vertex[index_best],
+                            shrink_coefficient, base);
+          index_curr = 0;
+          next = base->vertex[index_curr];
+        } else {
+          /* Test individual vertices of the initial simplex. */
+          next = base->vertex[index_curr];
+        }
         break;
 
     case SIMPLEX_STATE_CONVERGED:
         /* Simplex has converged.  Nothing to do.
          * In the future, we may consider new search at this point. */
         next = base->vertex[index_best];
+        break;
 
     default:
         return -1;
