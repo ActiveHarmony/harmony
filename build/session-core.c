@@ -102,7 +102,7 @@ static int lstack_cap = 0;
 /* ------------------------------
  * Forward function declarations.
  */
-static int plugin_workflow(htrial_t *trial);
+static int plugin_workflow(int idx);
 static int generate_trial(void);
 static int handle_callback(callback_t *cb);
 static int handle_join(hmesg_t *mesg);
@@ -131,7 +131,7 @@ static int pending_cap = 0;
 static int pending_len = 0;
 
 /* List of all trials (point/performance pairs) waiting for client fetch. */
-static htrial_t **ready = NULL;
+static int *ready = NULL;
 static int ready_head = 0;
 static int ready_tail = 0;
 static int ready_cap = 0;
@@ -298,17 +298,17 @@ int main(int argc, char **argv)
 
 int generate_trial(void)
 {
-    int i;
+    int idx;
     hpoint_t *point;
 
     /* Find a free point. */
-    for (i = 0; i < pending_cap; ++i) {
-        if (pending[i].point.id == -1) {
-            point = (hpoint_t *) &pending[i].point;
+    for (idx = 0; idx < pending_cap; ++idx) {
+        if (pending[idx].point.id == -1) {
+            point = (hpoint_t *) &pending[idx].point;
             break;
         }
     }
-    if (i == pending_cap) {
+    if (idx == pending_cap) {
         errmsg = "Internal error: Point generation overflow.";
         return -1;
     }
@@ -325,30 +325,32 @@ int generate_trial(void)
 
     /* Begin generation workflow for new point. */
     ++pending_len;
-    pending[i].perf = INFINITY;
+    pending[idx].perf = INFINITY;
     curr_layer = 1;
 
-    return plugin_workflow(&pending[i]);
+    return plugin_workflow(idx);
 }
 
-int plugin_workflow(htrial_t *trial)
+int plugin_workflow(int trial_idx)
 {
+    htrial_t *trial = &pending[trial_idx];
+
     while (curr_layer != 0 && curr_layer <= lstack_len)
     {
-        int idx = abs(curr_layer) - 1;
+        int stack_idx = abs(curr_layer) - 1;
         int retval;
 
         if (curr_layer < 0) {
             /* Analyze workflow. */
-            if (lstack[idx].analyze) {
-                if (lstack[idx].analyze(&flow, trial) != 0)
+            if (lstack[stack_idx].analyze) {
+                if (lstack[stack_idx].analyze(&flow, trial) != 0)
                     return -1;
             }
         }
         else {
             /* Generate workflow. */
-            if (lstack[idx].generate) {
-                if (lstack[idx].generate(&flow, trial) != 0)
+            if (lstack[stack_idx].generate) {
+                if (lstack[stack_idx].generate(&flow, trial) != 0)
                     return -1;
             }
         }
@@ -375,12 +377,12 @@ int plugin_workflow(htrial_t *trial)
     }
     else if (curr_layer > lstack_len) {
         /* Completed generation layers.  Enqueue trial in ready queue. */
-        if (ready[ready_tail] != NULL) {
+        if (ready[ready_tail] != -1) {
             errmsg = "Internal error: Ready queue overflow.";
             return -1;
         }
 
-        ready[ready_tail] = trial;
+        ready[ready_tail] = trial_idx;
         ready_tail = (ready_tail + 1) % ready_cap;
     }
     else {
@@ -508,7 +510,7 @@ int handle_callback(callback_t *cb)
     --(*len);
     list[ idx] = list[*len];
     list[*len] = NULL;
-    return plugin_workflow(trial);
+    return plugin_workflow(idx);
 }
 
 int handle_join(hmesg_t *mesg)
@@ -609,19 +611,21 @@ int handle_inform(hmesg_t *mesg)
 
 int handle_fetch(hmesg_t *mesg)
 {
-    htrial_t *head = ready[ready_head];
+    int idx = ready[ready_head];
     hpoint_t *cand = &mesg->data.fetch.cand;
     hpoint_t *best = &mesg->data.fetch.best;
+    htrial_t *next;
 
     /* If ready queue is empty, inform client that we're busy. */
-    if (!head) {
+    if (idx == -1) {
         mesg->status = HMESG_STATUS_BUSY;
         return 0;
     }
+    next = &pending[idx];
 
     /* Otherwise, prepare a response to the client. */
     *cand = HPOINT_INITIALIZER;
-    if (hpoint_copy(cand, &head->point) != 0) {
+    if (hpoint_copy(cand, &next->point) != 0) {
         errmsg = "Internal error: Could not copy candidate point data.";
         return -1;
     }
@@ -631,7 +635,7 @@ int handle_fetch(hmesg_t *mesg)
         return -1;
 
     /* Remove the first point from the ready queue. */
-    ready[ready_head] = NULL;
+    ready[ready_head] = -1;
     ready_head = (ready_head + 1) % ready_cap;
 
     mesg->status = HMESG_STATUS_OK;
@@ -640,24 +644,24 @@ int handle_fetch(hmesg_t *mesg)
 
 int handle_report(hmesg_t *mesg)
 {
-    int i;
+    int idx;
 
     /* Find the associated trial in the pending list. */
-    for (i = 0; i < pending_cap; ++i) {
-        if (pending[i].point.id == mesg->data.report.cand.id)
+    for (idx = 0; idx < pending_cap; ++idx) {
+        if (pending[idx].point.id == mesg->data.report.cand.id)
             break;
     }
-    if (i == pending_cap) {
+    if (idx == pending_cap) {
         errmsg = "Rouge point support not yet implemented.";
         return -1;
     }
 
     /* Update performance in our local records. */
-    pending[i].perf = mesg->data.report.perf;
+    pending[idx].perf = mesg->data.report.perf;
 
     /* Begin the workflow at the outermost analysis layer. */
     curr_layer = -lstack_len;
-    if (plugin_workflow(&pending[i]) != 0)
+    if (plugin_workflow(idx) != 0)
         return -1;
 
     mesg->status = HMESG_STATUS_OK;
@@ -841,7 +845,7 @@ int extend_lists(int target_cap)
     if (pending_cap >= target_cap && pending_cap != 0)
         return 0;
 
-    if (ready && ready_tail <= ready_head && ready[ready_head] != NULL) {
+    if (ready && ready_tail <= ready_head && ready[ready_head] != -1) {
         i = ready_cap - ready_head;
 
         /* Shift ready array to align head with array index 0. */
@@ -868,7 +872,7 @@ int extend_lists(int target_cap)
     for (i = orig_cap; i < pending_cap; ++i) {
         hpoint_t *point = (hpoint_t *) &pending[i].point;
         *point = HPOINT_INITIALIZER;
-        ready[i] = NULL;
+        ready[i] = -1;
     }
     return 0;
 }
