@@ -43,7 +43,6 @@
 
 #define SESSION_NAME      "gemm"
 #define SHLIB_SYMBOL_NAME "gemm_"
-#define DEFAULT_SO        "./gemm_default.so"
 #define SEARCH_MAX 400
 #define N 500
 
@@ -140,8 +139,7 @@ int main(int argc, char *argv[])
         if (hsession_name(&sess, SESSION_NAME)                        < 0 ||
             hsession_cfg(&sess, CFGKEY_CLIENT_COUNT, numbuf)          < 0 ||
             hsession_cfg(&sess, CFGKEY_SESSION_STRATEGY, "pro.so")    < 0 ||
-            hsession_cfg(&sess, CFGKEY_SESSION_PLUGINS, "codegen.so") < 0 ||
-            hsession_cfg(&sess, CFGKEY_PREFETCH_COUNT, "auto")        < 0)
+            hsession_cfg(&sess, CFGKEY_SESSION_LAYERS, "codegen.so")  < 0)
         {
             errprint("Error during session configuration.\n");
             MPI_Abort(MPI_COMM_WORLD, -1);
@@ -216,11 +214,6 @@ int main(int argc, char *argv[])
            hostname, new_code_path);
 
     initialize_matrices();
-    if (update_so(DEFAULT_SO) < 0) {
-        errprint("Error loading default shared object.\n");
-        goto cleanup;
-    }
-    code_so(&matrix_size, A, B, C_TRUTH);
 
     dprint("Entering main loop.\n");
     harmonized = 0;
@@ -231,7 +224,7 @@ int main(int argc, char *argv[])
         if (fetch_configuration() < 0)
             goto cleanup;
 
-        initialize_matrices();
+        memset(C, 0, sizeof(C));
 
         /* Perform and measure the client application code. */
         time_start = timer();
@@ -332,26 +325,27 @@ double timer()
  */
 int fetch_configuration(void)
 {
-    int changed;
+    int changed = 0;
 
-    changed = harmony_fetch(hdesc);
-    if (changed == 1) {
-        /* Harmony updated variable values.  Load a new shared object. */
-        if (update_so(construct_so_filename()) < 0) {
-            errprint("Could not load new code object.");
+    while (changed == 0) {
+        changed = harmony_fetch(hdesc);
+
+        if (changed == 1) {
+            /* Harmony updated variable values.  Load a new shared object. */
+            if (update_so(construct_so_filename()) < 0) {
+                errprint("Could not load new code object.");
+                return -1;
+            }
+        }
+        else if (changed == 0) {
+            /* No points available from Harmony, and harmony_best() failed. */
+            sleep(1);
+            continue;
+        }
+        else {
+            errprint("Error fetching new values from Harmony server.\n");
             return -1;
         }
-    }
-    else if (changed == 0) {
-        /* Harmony was not yet ready with a point to test.  Use the default.*/
-        if (update_so(DEFAULT_SO) < 0) {
-            errprint("Error loading default shared object.\n");
-            return -1;
-        }
-    }
-    else {
-        errprint("Error fetching new values from Harmony server.\n");
-        return -1;
     }
     return 0;
 }
@@ -416,19 +410,24 @@ int update_so(const char *filename)
     return 0;
 }
 
-void initialize_matrices()
+void initialize_matrices(void)
 {
-    int i,j;
-    for (i=0; i<N; i++) {
-        for (j=0; j<N; j++) {
+    int i, j, k;
+
+    for (i = 0; i < N; ++i) {
+        for (j = 0; j < N; ++j) {
             A[i][j] = i;
             B[i][j] = j;
-            C[i][j] = 0.0;
         }
     }
+
+    for (i = 0; i < N; ++i)
+        for (k = 0; k < N; ++k)
+            for (j = 0; j < N; ++j)
+                C_TRUTH[i][j] += A[k][i] * B[j][k];
 }
 
-int check_code_correctness()
+int check_code_correctness(void)
 {
     int i, j;
     for (i=0; i<N; i++) {

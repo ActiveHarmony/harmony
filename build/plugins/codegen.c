@@ -50,7 +50,7 @@ int cglog_len, cglog_cap;
  * Name used to identify this plugin.  All Harmony plugins must define
  * this variable.
  */
-const char harmony_plugin_name[] = "codegen";
+const char harmony_layer_name[] = "codegen";
 
 hmesg_t mesg;
 int sockfd;
@@ -104,9 +104,11 @@ int codegen_init(hsignature_t *sig)
     hcfg_set(cfg, CFGKEY_CG_TARGET_URL, session_query(CFGKEY_CG_TARGET_URL));
     hcfg_set(cfg, CFGKEY_CG_REPLY_URL, session_query(CFGKEY_CG_REPLY_URL));
     hcfg_set(cfg, CFGKEY_CG_SLAVE_LIST, session_query(CFGKEY_CG_SLAVE_LIST));
+    hcfg_set(cfg, CFGKEY_CG_SLAVE_PATH, session_query(CFGKEY_CG_SLAVE_PATH));
     mesg.data.session.cfg = cfg;
 
     mesg.type = HMESG_SESSION;
+    mesg.status = HMESG_STATUS_REQ;
     if (mesg_send(sockfd, &mesg) < 1)
         return -1;
 
@@ -151,7 +153,7 @@ int codegen_generate(hflow_t *flow, htrial_t *trial)
 
     mesg = HMESG_INITIALIZER;
     mesg.type = HMESG_FETCH;
-    mesg.status = HMESG_STATUS_REQ;
+    mesg.status = HMESG_STATUS_OK;
     mesg.data.fetch.cand = HPOINT_INITIALIZER;
     mesg.data.fetch.best = HPOINT_INITIALIZER;
     hpoint_copy(&mesg.data.fetch.cand, &trial->point);

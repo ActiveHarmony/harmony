@@ -15,4 +15,3 @@ gemm_default.f
 gemm.sp2
 gemm.f
 chill_script.gemm.sh
-chill.v.0.1.8

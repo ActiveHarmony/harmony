@@ -85,11 +85,11 @@ typedef struct layer {
     hook_inform_t    inform;
     hook_fini_t      fini;
 
-    htrial_t **wait_generate;
+    int *wait_generate;
     int wait_generate_len;
     int wait_generate_cap;
 
-    htrial_t **wait_analyze;
+    int *wait_analyze;
     int wait_analyze_len;
     int wait_analyze_cap;
 } layer_t;
@@ -102,17 +102,17 @@ static int lstack_cap = 0;
 /* ------------------------------
  * Forward function declarations.
  */
-static int plugin_workflow(int idx);
 static int generate_trial(void);
+static int plugin_workflow(int trial_idx);
+static int workflow_transition(int trial_idx);
 static int handle_callback(callback_t *cb);
 static int handle_join(hmesg_t *mesg);
 static int handle_query(hmesg_t *mesg);
 static int handle_inform(hmesg_t *mesg);
 static int handle_fetch(hmesg_t *mesg);
 static int handle_report(hmesg_t *mesg);
-static int workflow_transition(htrial_t *trial);
-static int handle_reject(htrial_t *trial);
-static int handle_wait(htrial_t *trial);
+static int handle_reject(int trial_idx);
+static int handle_wait(int trial_idx);
 static int load_strategy(const char *file);
 static int load_layers(const char *list);
 static int extend_lists(int target_cap);
@@ -355,7 +355,7 @@ int plugin_workflow(int trial_idx)
             }
         }
 
-        retval = workflow_transition(trial);
+        retval = workflow_transition(trial_idx);
         if (retval < 0) return -1;
         if (retval > 0) return  0;
     }
@@ -394,7 +394,7 @@ int plugin_workflow(int trial_idx)
 }
 
 /* Layer state machine transitions. */
-int workflow_transition(htrial_t *trial)
+int workflow_transition(int trial_idx)
 {
     switch (flow.status) {
     case HFLOW_ACCEPT:
@@ -402,7 +402,7 @@ int workflow_transition(htrial_t *trial)
         break;
 
     case HFLOW_WAIT:
-        if (handle_wait(trial) != 0) {
+        if (handle_wait(trial_idx) != 0) {
             return -1;
         }
         return 1;
@@ -413,7 +413,7 @@ int workflow_transition(htrial_t *trial)
         break;
 
     case HFLOW_REJECT:
-        if (handle_reject(trial) != 0)
+        if (handle_reject(trial_idx) != 0)
             return -1;
 
         if (flow.status == HFLOW_WAIT)
@@ -429,8 +429,10 @@ int workflow_transition(htrial_t *trial)
     return 0;
 }
 
-int handle_reject(htrial_t *trial)
+int handle_reject(int trial_idx)
 {
+    htrial_t *trial = &pending[trial_idx];
+
     if (curr_layer < 0) {
         errmsg = "Internal error: REJECT invalid for analysis workflow.";
         return -1;
@@ -446,10 +448,10 @@ int handle_reject(htrial_t *trial)
     return 0;
 }
 
-int handle_wait(htrial_t *trial)
+int handle_wait(int trial_idx)
 {
     int idx = abs(curr_layer) - 1;
-    htrial_t ***list;
+    int **list;
     int *len, *cap;
 
     if (curr_layer < 0) {
@@ -463,23 +465,29 @@ int handle_wait(htrial_t *trial)
         cap  = &lstack[idx].wait_generate_cap;
     }
 
-    if (*len == *cap)
-        array_grow(list, cap, sizeof(htrial_t *));
+    if (*len == *cap) {
+        int i;
 
-    if ((*list)[*len] != NULL) {
+        array_grow(list, cap, sizeof(int));
+        for (i = *len; i < *cap; ++i)
+            (*list)[i] = -1;
+    }
+
+    if ((*list)[*len] != -1) {
         errmsg = "Internal error: Could not append to wait list.";
         return -1;
     }
 
-    (*list)[*len] = trial;
+    (*list)[*len] = trial_idx;
     ++(*len);
     return 0;
 }
 
 int handle_callback(callback_t *cb)
 {
-    htrial_t **list, *trial;
-    int *len, idx, retval;
+    htrial_t **trial_list;
+    int *list, *len, trial_idx;
+    int i, idx, retval;
 
     curr_layer = cb->index;
     idx = abs(curr_layer) - 1;
@@ -499,18 +507,24 @@ int handle_callback(callback_t *cb)
         return -1;
     }
 
-    /* Reusing idx to represent waitlist index.  (Shame on me.) */
-    idx = cb->func(cb->fd, &flow, *len, list);
-    trial = list[idx];
+    /* Prepare a list of htrial_t pointers. */
+    trial_list = (htrial_t **) malloc(*len * sizeof(htrial_t *));
+    for (i = 0; i < *len; ++i)
+        trial_list[i] = &pending[ list[i] ];
 
-    retval = workflow_transition(trial);
+    /* Reusing idx to represent waitlist index.  (Shame on me.) */
+    idx = cb->func(cb->fd, &flow, *len, trial_list);
+    free(trial_list);
+
+    trial_idx = list[idx];
+    retval = workflow_transition(trial_idx);
     if (retval < 0) return -1;
     if (retval > 0) return  0;
 
     --(*len);
     list[ idx] = list[*len];
-    list[*len] = NULL;
-    return plugin_workflow(idx);
+    list[*len] = -1;
+    return plugin_workflow(trial_idx);
 }
 
 int handle_join(hmesg_t *mesg)

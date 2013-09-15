@@ -204,8 +204,8 @@ int main(int argc, char **argv)
 
     if (argc != 2) {
         cerr << "Usage: ./code_generator <codegen_path>\n";
-        cerr << " Where <codegen_path> should match the path specified"
-                " in the harmony server's configuration file.\n";
+        cerr << " Where <codegen_path> matches the " CFGKEY_CG_SERVER_URL
+                " Harmony configuration key.\n";
         return -1;
     }
 
@@ -314,7 +314,6 @@ int main(int argc, char **argv)
 
 int codeserver_init(string &filename)
 {
-    int msglen;
     const char *cfgval;
     stringstream ss;
 
@@ -414,9 +413,6 @@ int codeserver_init(string &filename)
 
     /* Respond to the harmony server. */
     session_mesg.status = HMESG_STATUS_OK;
-    msglen = hmesg_serialize(&session_mesg);
-    *(unsigned short *)(session_mesg.buf + sizeof(int)) = ntohs(msglen);
-
     if (mesg_write(session_mesg, -1) < 0) {
         cerr << "Could not write/send initial reply message.\n";
         return -1;
@@ -629,22 +625,25 @@ int slave_complete(pid_t pid)
 {
     for (unsigned i = 0; i < gen_list.size(); ++i) {
         if (gen_list[i].pid == pid) {
-            mesg_write(gen_list[i].mesg, gen_list[i].step);
+            if (mesg_write(gen_list[i].mesg, gen_list[i].step) != 0) {
+                return -1;
+            }
             hmesg_scrub(&gen_list[i].mesg);
             gen_list[i].pid = 0;
             return 0;
         }
     }
+
+    cerr << "Could not find information for slave pid " << pid << "\n";
     return -1;
 }
 
 vector<long> values_of(hpoint_t *pt)
 {
-    hval_t val;
     vector<long> retval;
 
     for (int i = 0; i < pt->n; ++i) {
-        if (val.type != HVAL_INT) {
+        if (pt->val[i].type != HVAL_INT) {
             cerr << "Codeserver only implemented for int ranges for now.\n";
             retval.clear();
             break;
@@ -729,7 +728,7 @@ int mesg_read(const char *filename, hmesg_t *msg)
     }
 
     /* Obtain file size */
-    if (fstat(fd, &sb) == 0) {
+    if (fstat(fd, &sb) != 0) {
         cerr << "Could not fstat file: " << strerror(errno) << ". Retrying.\n";
         goto retry;
     }
@@ -759,7 +758,7 @@ int mesg_read(const char *filename, hmesg_t *msg)
     }
     fd = -1;
 
-    if (hmesg_deserialize(msg) != 0) {
+    if (hmesg_deserialize(msg) < 0) {
         cerr << "Error decoding message file. Retrying.\n";
         goto retry;
     }
@@ -792,8 +791,7 @@ int mesg_write(hmesg_t &mesg, int step)
 {
     stringstream ss;
     string filename;
-    unsigned short msglen;
-    int fd;
+    int msglen, fd;
 
     ss << local_url.path << "/" << outfile_name << "." << step;
     filename = ss.str();
@@ -801,7 +799,12 @@ int mesg_write(hmesg_t &mesg, int step)
     if (!fd)
         return -1;
 
-    msglen = ntohs(*(unsigned short *)(mesg.buf + sizeof(int)));
+    mesg.status = HMESG_STATUS_OK;
+    msglen = hmesg_serialize(&mesg);
+    if (msglen < 0) {
+        cerr << "Error encoding message file.\n";
+        return -1;
+    }
 
     if (write_loop(fd, mesg.buf, msglen) < 0)
         return -1;

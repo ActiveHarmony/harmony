@@ -77,7 +77,7 @@ int main(int argc, char *argv[])
      * should be the only time an error message is printed to stdout
      * or stderr.
      */
-    if (fstat(STDIN_FILENO, &sb) < 0) {
+    if (fstat(STDIN_FILENO, &sb) != 0) {
         perror("Could not determine the status of STDIN");
         return -1;
     }
@@ -410,7 +410,7 @@ int mesg_read(int id)
     }
 
     /* Obtain file size */
-    if (fstat(fd, &sb) == 0) {
+    if (fstat(fd, &sb) != 0) {
         errmsg = strerror(errno);
         goto retry;
     }
@@ -453,7 +453,7 @@ int mesg_read(int id)
     }
     fd = -1;
 
-    if (hmesg_deserialize(&mesg) != 0) {
+    if (hmesg_deserialize(&mesg) < 0) {
         errmsg = "Error decoding message file";
         goto retry;
     }
