@@ -187,9 +187,6 @@ int strategy_cfg(hsignature_t *sig)
     if (simplex_size < sig->range_len + 1)
         simplex_size = sig->range_len + 1;
 
-    /* Nelder-Mead algorithm requires an atomic prefetch queue. */
-    session_inform(CFGKEY_PREFETCH_ATOMIC, "1");
-
     cfgval = session_query(CFGKEY_NM_INIT_METHOD);
     if (cfgval) {
         if (strcasecmp(cfgval, "random") == 0) {
