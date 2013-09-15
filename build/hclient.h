@@ -103,7 +103,7 @@ int harmony_bind_int(hdesc_t *hdesc, const char *name, long *ptr);
 int harmony_bind_real(hdesc_t *hdesc, const char *name, double *ptr);
 
 /**
- * \brief Bind a local variable of type `char *` to a enumerated
+ * \brief Bind a local variable of type `char *` to an enumerated
  *        string-based session variable.
  *
  * This function associates a local variable with a session variable

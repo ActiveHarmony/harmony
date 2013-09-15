@@ -21,7 +21,7 @@
  * \page omega Omega Constraint (constraint.so)
  *
  * This processing layer allows for a more sophisticated specification
- * of the [search space](\ref ov_search) through algebraic statements
+ * of the [search space](\ref intro_space) through algebraic statements
  * such as:
  *
  * - \f$x < y\f$, or

@@ -21,10 +21,10 @@
  * \page agg Aggregator (agg.so)
  *
  * This processing layer forces each point to be evaluated multiple
- * times before it may proceed through the auto-tuning [feedback
- * loop](\ref ov_tuning).  When the requisite number of evaluations
- * has been reached, an aggregating function is applied to consolidate
- * the set performance values.
+ * times before it may proceed through the auto-tuning
+ * [feedback loop](\ref intro_feedback).  When the requisite number of
+ * evaluations has been reached, an aggregating function is applied to
+ * consolidate the set performance values.
  *
  * **Configuration Variables**
  * Key       | Type    | Default | Description

@@ -16,7 +16,7 @@ Tiwari solved this problem by allowing an auto-tuner to search for optimal loop 
 We refer to this example throughout the rest of this manual.
 
 \section intro_tunevar Tuning Variables
-Tuning variables in Active Harmony require a distinct name must be declared as one of the following three types:
+Tuning variables in Active Harmony require a distinct name, and must be declared as one of the following three types:
 
 - `INT` (Integer numbers)\n
   This value range is constrained by a minimum (`m`), maximum (`M`), and a stepping value (`s`) where `m<=M` and `s>0`.
@@ -36,7 +36,7 @@ tile          | `m=1, M=4,  s=1`
 unroll        | `m=2, M=16, s=2`
 compiler      | `list={"GCC", "Intel", "PGI"}`
 
-Then the search will be conducted within a `3`-dimensional space, and `(4, 12, "Intel")` would be a valid point within that space.
+The search will then be conducted within a `3`-dimensional space, and `(4, 12, "Intel")` would be a valid point within that space.
 
 \section intro_feedback The Feedback Loop
 Active Harmony works in tandem with a target application by manipulating tuning variables and observing the resulting performance.  This creates a feedback loop where Active Harmony uses each incoming performance observation to further refine its search for optimal values.  In Active Harmony, the tuning element is called the **tuning session** and the target application is called the **client**.  They are connected in the following manner:
@@ -44,7 +44,7 @@ Active Harmony works in tandem with a target application by manipulating tuning 
 -# The tuning session **generates** a new point.
 -# The client **fetches** the point, and operates for some period of time while measuring performance.
 -# The client **reports** the performance value back to the tuning session.
--# The tuning session **analyses** the report to guide its search for optimal points.
+-# The tuning session **analyzes** the report to guide its search for optimal points.
 -# Repeat until the search converges.
 
 \image html feedback.svg "The generalized auto-tuning feedback loop."
@@ -62,7 +62,7 @@ The processing layers handle any additional tasks that must occur either before 
 
 The search strategy sits at the core of the tuning session, surrounded by concentric rings that represent processing layers.  As points leave the search strategy, they must pass through the **generation** phase of each processing layer before it is made available to the client.  Similarly, as performance reports are returned, they must pass through the **analyze** phase of each processing layer before it is received by the search strategy.
 
-The processing layers are executed sequentially, in forward-order when leaving the search strategy, and backwards-order upon return.  An individual processing layer may implement only the generate action, only an analyze action, or both to support paired functionality.
+The processing layers are executed sequentially &mdash; in forward-order when leaving the search strategy, and backwards-order upon return.  An individual processing layer may implement the generate action analyze action independent of one another, or both together to support paired functionality.
 
 Finally, Active Harmony provides flexibility by implementing search strategies and processing layers as plug-ins that are loaded by the tuning session.  This structure allows Active Harmony to meet the needs of any auto-tuning application with minimal effort.  A specialized auto-tuner can effectively be built by parts.
 
@@ -138,7 +138,7 @@ This should produce output similar to the following:
 \page apps Harmony Applications
 
 \section apps_svr Harmony Server
-For some advanced uses of auto-tuning, multiple clients need to communicate to a single tuning session.  For instance, if an MPI program is being tuned and each rank participates in the search in parallel.  In this case, the Active Harmony Server must be used as a central multiplexing unit.
+For some advanced uses of auto-tuning, multiple clients need to communicate to a single tuning session.  For instance, if an MPI program is being tuned, all the constituent ranks may participate in parallel to expedite the search.  In this case, the Active Harmony Server must be used as a central multiplexing unit.
 
 \image html multi-client.svg "Supporting multiple clients within the feedback loop."
 \image latex multi-client.pdf "Supporting multiple clients within the feedback loop." width=5in
@@ -150,7 +150,7 @@ For some advanced uses of auto-tuning, multiple clients need to communicate to a
 The server has no mandatory parameters, and can be started with a plain invocation.  A configuration file may optionally be provided as a parameter, otherwise `harmony.cfg` will be used (if it exists).  The configuration system provides a unified key/value store that may be queried by all members of the Active Harmony framework.  See the [Configuration](\ref cfg) section for more details.
 
 ## Client Modification ##
-Using the Active Harmony server is functionally equivalent to a the stand-alone case.  Users need only change two environment variables on the client machines.
+Using the Active Harmony server is functionally equivalent to the stand-alone case.  Users need only change two environment variables on the client machines.
 
 Environment Variable | Description
 -------------------- | -----------
@@ -222,7 +222,7 @@ Each tuning session has a unique configuration environment.  It can take configu
 
 -# [harmony_inform()](\ref harmony_inform) function calls.
 -# [hsession_cfg()](\ref hsession_cfg) function calls.
--# [Harmony server](\ref intro_svr) configuration file.
+-# [Harmony server](\ref apps_svr) configuration file.
 
 The documentation for plug-ins will list information about the configuration keys that affect them.   The list will be organized in a table with the following columns:
 
