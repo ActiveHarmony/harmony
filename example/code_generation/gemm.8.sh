@@ -13,4 +13,4 @@ export HARMONY_S_HOST
 #export PATH HARMONY_S_PORT
 
 cd $HARMONY_HOME/example/code_generation
-mpirun -np 8 ./gemm /tmp/codegen-gemm CODEGEN_TARGET_URL=ssh://brood00//hivehomes/rchen/scratch/code CODEGEN_SERVER_URL=ssh://mashie.cs.umd.edu//tmp/codegen-tmp
+mpirun -np 8 ./gemm /tmp/codegen-gemm TARGET_URL=ssh://brood00//hivehomes/rchen/scratch/code SERVER_URL=ssh://mashie.cs.umd.edu//tmp/codegen-tmp

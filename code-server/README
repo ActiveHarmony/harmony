@@ -20,8 +20,8 @@ To use the code_generator:
   1) Make sure the Harmony session properly defines the following
      configuration keys:
 
-        CODEGEN_SERVER_URL
-        CODEGEN_TARGET_URL
+        SERVER_URL
+        TARGET_URL
 
      Explanations and examples for these keys can be found in the sample
      harmony.cfg provided with this distribution.
@@ -115,10 +115,10 @@ Additional Details
   Follow these steps for running the code_generator:
 
     1) The harmony configuration should have the following directives:
-        CODEGEN_SERVER_URL=ssh://maxfli//home/username/scratch/confs
-        CODEGEN_TARGET_URL=ssh://brood00//scratch0/username/code
-        CODEGEN_SLAVE_LIST=armour 6, maxfli 3
-        CODEGEN_SLAVE_PATH=/tmp/codegen
+        SERVER_URL=ssh://maxfli//home/username/scratch/confs
+        TARGET_URL=ssh://brood00//scratch0/username/code
+        SLAVE_LIST=armour 6, maxfli 3
+        SLAVE_PATH=/tmp/codegen
 
     2) In this matrix multiplication code generation example, the
        directory "gemm" has to be created within "code-server"

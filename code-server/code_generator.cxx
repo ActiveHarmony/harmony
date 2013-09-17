@@ -204,7 +204,7 @@ int main(int argc, char **argv)
 
     if (argc != 2) {
         cerr << "Usage: ./code_generator <codegen_path>\n";
-        cerr << " Where <codegen_path> matches the " CFGKEY_CG_SERVER_URL
+        cerr << " Where <codegen_path> matches the " CFGKEY_SERVER_URL
                 " Harmony configuration key.\n";
         return -1;
     }
@@ -330,7 +330,7 @@ int codeserver_init(string &filename)
 
     appname = sess->sig.name;
 
-    cfgval = hcfg_get(sess->cfg, CFGKEY_CG_SERVER_URL);
+    cfgval = hcfg_get(sess->cfg, CFGKEY_SERVER_URL);
     if (!cfgval) {
         cerr << "Session does not define local URL.\n";
         return -1;
@@ -340,7 +340,7 @@ int codeserver_init(string &filename)
         return -1;
     }
 
-    cfgval = hcfg_get(sess->cfg, CFGKEY_CG_TARGET_URL);
+    cfgval = hcfg_get(sess->cfg, CFGKEY_TARGET_URL);
     if (!cfgval) {
         cerr << "Session does not define target URL.\n";
         return -1;
@@ -350,7 +350,7 @@ int codeserver_init(string &filename)
         return -1;
     }
 
-    cfgval = hcfg_get(sess->cfg, CFGKEY_CG_REPLY_URL);
+    cfgval = hcfg_get(sess->cfg, CFGKEY_REPLY_URL);
     if (!cfgval) {
         cerr << "Session does not define reply URL.\n";
         return -1;
@@ -360,7 +360,7 @@ int codeserver_init(string &filename)
         return -1;
     }
 
-    cfgval = hcfg_get(sess->cfg, CFGKEY_CG_SLAVE_LIST);
+    cfgval = hcfg_get(sess->cfg, CFGKEY_SLAVE_LIST);
     if (!cfgval) {
         cerr << "Session does not define slave list.\n";
         return -1;
@@ -371,7 +371,7 @@ int codeserver_init(string &filename)
         return -1;
     }
 
-    cfgval = hcfg_get(sess->cfg, CFGKEY_CG_SLAVE_PATH);
+    cfgval = hcfg_get(sess->cfg, CFGKEY_SLAVE_PATH);
     if (!cfgval) {
         cerr << "Session does not define slave directory.\n";
         return -1;

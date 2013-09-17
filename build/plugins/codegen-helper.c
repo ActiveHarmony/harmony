@@ -209,7 +209,7 @@ int init_comm(void)
     sess = &session_mesg.data.session;
 
     /* Get the URL for the code generation server, and open a socket to it */
-    cfgval = hcfg_get(sess->cfg, CFGKEY_CG_SERVER_URL);
+    cfgval = hcfg_get(sess->cfg, CFGKEY_SERVER_URL);
     if (!cfgval) {
         mesg.data.string = "Codegen server URL not specified";
         return -1;
@@ -218,18 +218,18 @@ int init_comm(void)
     if (url_parse(cfgval) < 0)
         return -1;
 
-    if (scp_cmd && !hcfg_get(sess->cfg, CFGKEY_CG_REPLY_URL)) {
+    if (scp_cmd && !hcfg_get(sess->cfg, CFGKEY_REPLY_URL)) {
         /* User did not supply a reply URL.  Build one ourselves. */
         if (reply_url_build() < 0)
             return -1;
 
-        if (hcfg_set(sess->cfg, CFGKEY_CG_REPLY_URL, buf) < 0) {
+        if (hcfg_set(sess->cfg, CFGKEY_REPLY_URL, buf) < 0) {
             mesg.data.string = "Could not set reply URL config val";
             return -1;
         }
     }
     else if (!scp_cmd) {
-        if (hcfg_set(sess->cfg, CFGKEY_CG_REPLY_URL, reply_dir) < 0) {
+        if (hcfg_set(sess->cfg, CFGKEY_REPLY_URL, reply_dir) < 0) {
             mesg.data.string = "Could not set reply URL config val";
             return -1;
         }
@@ -287,7 +287,7 @@ int url_parse(const char *url)
          * First, create a local directory to temporarily hold outgoing
          * messages, and receive incoming messages.
          */
-        cfgval = hcfg_get(sess->cfg, CFGKEY_CG_LOCAL_TMPDIR);
+        cfgval = hcfg_get(sess->cfg, CFGKEY_TMPDIR);
         if (!cfgval)
             cfgval = "/tmp";
 
