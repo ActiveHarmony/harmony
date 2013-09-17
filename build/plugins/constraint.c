@@ -20,12 +20,27 @@
 /**
  * \page omega Omega Constraint (constraint.so)
  *
- * This processing layer allows for a more sophisticated specification
- * of the [search space](\ref intro_space) through algebraic statements
- * such as:
+ * Active Harmony allows for basic bounds on tuning variables during
+ * session specification, where each tuning variable is bounded
+ * individually.  However, some target applications require tuning
+ * variables that are dependent upon one another, reducing the number
+ * of valid parameters from the strict Cartesian product.
  *
- * - \f$x < y\f$, or
- * - \f$x + y = 10\f$
+ * This processing layer allows for the specification of such variable
+ * dependencies through algebraic statements.  For example, consider a
+ * target application with tuning variables `x` and `y`.  If `x` may
+ * never be greater than `y`, one could use the following statement:
+ *
+ *     x < y
+ *
+ * Also, if the sum of `x` and `y` must remain under a certain
+ * constant, one could use the following statement:
+ *
+ *     x + y = 10
+ *
+ * If multiple constraint statements are specified, the logical
+ * conjunction of the set is applied to the [search space](\ref
+ * intro_space).
  *
  * \note This processing layer requires the Omega Calculator, which is
  * available at:<br>

@@ -20,7 +20,7 @@
 /**
  * \page logger Point Logger (log.so)
  *
- * This processing layer keeps a log of point/performance pairs as
+ * This processing layer writes a log of point/performance pairs to disk as
  * they flow through the auto-tuning [feedback loop](\ref intro_feedback).
  *
  * **Configuration Variables**

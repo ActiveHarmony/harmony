@@ -3,6 +3,8 @@
 \mainpage Welcome
 Welcome to the Active Harmony User's Guide.  This manual is designed for users new to auto-tuning, and provides the information necessary for incorporating auto-tuning into a new project.  It describes in detail the terms and concepts involved in auto-tuning, how they are implemented in the Active Harmony framework, and how to incorporate them into your client application.
 
+
+
 \page intro Introduction
 Auto-tuning refers to the automated search for values to improve the performance of a target application.  In this case, performance is an abstract term used to represent a measurable quantity.  A common example of performance for auto-tuning is time, where the goal is to minimize execution time.  Other possible examples include minimizing power usage or maximizing floating-point operations per second.  In general, the Active Harmony framework seeks to minimize performance values and handles maximization via negation.
 
@@ -135,6 +137,8 @@ This should produce output similar to the following:
     8, 32, 45, 56, 77, 74 = 329
     9, 32, 48, 53, 77, 75 = 327
 
+
+
 \page apps Harmony Applications
 
 \section apps_svr Harmony Server
@@ -160,7 +164,7 @@ Environment Variable | Description
 When defined, these environment variables instruct clients to connect to the specified hostname:port pair instead of spawning a local tuning session.  Multiple clients may then work together on a single search problem.
 
 ## Web Server ##
-The Harmony Server also provides a built-in web server as an interface to the sessions it controls.  Use a modern Javascript-enabled web browser to connect to the host and port the server is running on.  For example, the URL for connecting to a locally-running server on the default port would be:
+The Harmony Server also provides a built-in web server as an interface to the sessions it controls.  Use a Javascript-enabled web browser to connect to the host and port the server is running on.  For example, the URL for connecting to a locally-running server on the default port would be:
 
     http://localhost:1979
 
@@ -213,16 +217,13 @@ Tuna makes any command-line application that provides performance related parame
 
 
 \page cfg Configuring Active Harmony
-Each tuning session provides a centralized configuration environment.  Similar to shell environment variables, tuning session configuration directives take the form of simple key/value string pairs.  All entities involved with a tuning session (clients, search strategies, processing layers, etc.) may query this system.
+Each tuning session provides a centralized configuration environment.  Similar to shell environment variables, tuning session configuration directives take the form of simple key/value string pairs.  Key strings are case insensitive and may not contain whitespace.  Value strings are stored as-is, and interpretation depends on the key.
 
-Keys are case insensitive and may not contain whitespace.  Values are stored as-is, and interpretation depends on the key.
-An Active Harmony configuration file is an unstructured text file containing one key/value pair per line.  The first equals sign (`=`) separates key strings from value strings, and value strings extend until a newline (`\n`) character.
+Configuration directives may also be read from a file containing one key/value pair per line.  The first equals sign (`=`) separates the key from the value string, and the value string extends until a newline (`\n`).
 
-Each tuning session has a unique configuration environment.  It can take configuration directives from the following sources, in order of descending precedence:
+Each tuning session has a unique configuration environment.  All entities involved with a tuning session (clients, search strategies, processing layers, etc.) may query this system.  The configuration environment is initialized at session creation time through [hsession_cfg()](\ref hsession_cfg) function calls.  After a session has been launched, clients may query the configuration environment through [harmony_query()](\ref harmony_query) and [harmony_inform()](\ref harmony_inform) function calls.
 
--# [harmony_inform()](\ref harmony_inform) function calls.
--# [hsession_cfg()](\ref hsession_cfg) function calls.
--# [Harmony server](\ref apps_svr) configuration file.
+\note The Harmony Server is a special case.  It contains its own private configuration environment that is merged with any sessions that it manages.  If there is a key conflict between the server and session configuration environment, the session's key takes precedence.
 
 The documentation for plug-ins will list information about the configuration keys that affect them.   The list will be organized in a table with the following columns:
 
@@ -238,30 +239,42 @@ Description | Textual description of the directive's function.
 \page plugin Plug-ins
 As described in the [Tuning Session](\ref intro_session) section, Active Harmony provides a modular interface for flexible functionality.  The session API functions [hsession_strategy()](\ref hsession_strategy) and [hsession_plugins()](\ref hsession_plugins) specify which plug-in's will be loaded by the tuning session.  See their individual documentation page for details on their use.
 
-A number of plug-in's come packaged with the distribution.
+The Active Harmony framework currently allows for two types of plug-ins, [search strategies](\ref strategies) and [processing layers](\ref layers).
 
+\latexonly \begin{comment} \endlatexonly
 - \subpage strategies
 - \subpage layers
 
-
+\latexonly \end{comment}
+\endlatexonly
 
 \page strategies Search Strategies
-Active Harmony comes bundled with the following search strategies:
+Search strategies encapsulate the core search logic of an Active Harmony tuning session.  Ultimately, it decides the next search space point to be tested.  While each search strategy may have radically different methods for selecting the next point, all strategies share the same interface.  This allows tuning sessions to easily switch from one strategy to another.
 
+See the [Tuning Session](\ref intro_session) section for an overview of the search strategy's role within the larger tuning session context.
+
+\latexonly \begin{comment} \endlatexonly
 - \subpage brute
 - \subpage random
 - \subpage nm
 - \subpage pro
 
-
+\latexonly \end{comment}
+\endlatexonly
 
 \page layers Processing Layers
-Active Harmony comes bundled with the following processing layers:
+Processing layers functionally surround the tuning session.  They allow for additional processing before a strategy receives a performance report, or before a strategy receives a performance report, or both.  Processing layers are stackable, which allow for an arbitrarily complex auto-tuner to be built by parts.
 
+See the [Tuning Session](\ref intro_session) section for an overview of the processing layer's role within the larger tuning session context.
+
+\latexonly \begin{comment} \endlatexonly
 - \subpage logger
 - \subpage agg
 - \subpage codesvr
 - \subpage omega
+
+\latexonly \end{comment}
+\endlatexonly
 
 
 
@@ -269,7 +282,9 @@ Active Harmony comes bundled with the following processing layers:
 Active Harmony provides two separate interfaces for the general user.  One for establishing tuning sessions and the other for interacting with existing tuning sessions.
 
 \section example_session_launch Launching a New Session
-This example demonstrates how to use the session API to establish a session with four variables.
+This example demonstrates how to use the session API to establish a session with four variables.  It defines a function called `launch_tuner()` which, similar to the MPI's `mpi_init()` routine, is designed to accept the `argc` and argv` parameters from `main()`.
+
+Code similar to `launch_tuner()` should be added to any target application that must establish a new tuning session for itself (as opposed to connecting to an existing tuning session, through the [Harmony Server](\ref apps_svr).
 
 \note To increase clarity, return values of API calls are not checked in this example.  This is not recommended for production code.
 
@@ -277,7 +292,7 @@ This example demonstrates how to use the session API to establish a session with
     #include <stdio.h>
     #include "hsession.h"
 
-    int main(int argc, char **argv)
+    int launch_tuner(int argc, char **argv)
     {
         hsession_t sess;
 
@@ -366,6 +381,8 @@ The following code snippet extends the code example in the [session launch](\ref
 
 \section example_client Using the Client API
 The example demonstrates how to use the client API to join, fetch, and report to the tuning session established in the [session launch](\ref example_session_launch) example.
+
+If this client was required to establish its own tuning session, a call to [launch_tuner()](\ref example_session_launch) from the example above could be added prior to the call to [harmony_init()](\ref harmony_init) on line 15.
 
 \note To increase clarity, return values of API calls are not checked in this example.  This is not recommended for production code.
 

@@ -15,10 +15,9 @@ IMGS = images/feedback \
 
 all: $(addsuffix .pdf, $(DOCS))
 
-$(addsuffix .pdf, $(DOCS)): %.pdf: doxygen/Doxyfile.% doxygen/Doxyfile.base doxygen/%.dox $(addsuffix .pdf, $(IMGS)) images/hserver1.png images/hserver2.png
+$(addsuffix .pdf, $(DOCS)): %.pdf: doxygen/Doxyfile.% doxygen/Doxyfile.base doxygen/%.dox doxygen/harmony.sty $(addsuffix .pdf, $(IMGS)) images/hserver1.png images/hserver2.png
 	$(DOXYGEN) $< && \
-	sed 's/^\\section/\\pagebreak\\section/' $*.latex/refman.tex > $*.latex/refman2.tex && \
-	mv -f $*.latex/refman2.tex $*.latex/refman.tex && \
+	./doxygen/postprocess.sh $* && \
 	$(MAKE) -C $*.latex && \
 	cp $*.latex/refman.pdf $@
 
