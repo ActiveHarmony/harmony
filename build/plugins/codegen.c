@@ -83,14 +83,14 @@ int codegen_init(hsignature_t *sig)
     const char *url;
     hcfg_t *cfg;
 
-    url = session_query(CFGKEY_CG_TARGET_URL);
+    url = session_getcfg(CFGKEY_CG_TARGET_URL);
     if (!url || url[0] == '\0') {
         session_error("Destination URL for"
                       " generated code objects not specified");
         return -1;
     }
 
-    url = session_query(CFGKEY_CG_SERVER_URL);
+    url = session_getcfg(CFGKEY_CG_SERVER_URL);
     if (!url || url[0] == '\0') {
         session_error("Codegen server URL not specified");
         return -1;
@@ -110,11 +110,11 @@ int codegen_init(hsignature_t *sig)
 
     hsignature_copy(&mesg.data.session.sig, sig);
     cfg = hcfg_alloc();
-    hcfg_set(cfg, CFGKEY_CG_SERVER_URL, session_query(CFGKEY_CG_SERVER_URL));
-    hcfg_set(cfg, CFGKEY_CG_TARGET_URL, session_query(CFGKEY_CG_TARGET_URL));
-    hcfg_set(cfg, CFGKEY_CG_REPLY_URL, session_query(CFGKEY_CG_REPLY_URL));
-    hcfg_set(cfg, CFGKEY_CG_SLAVE_LIST, session_query(CFGKEY_CG_SLAVE_LIST));
-    hcfg_set(cfg, CFGKEY_CG_SLAVE_PATH, session_query(CFGKEY_CG_SLAVE_PATH));
+    hcfg_set(cfg, CFGKEY_CG_SERVER_URL, session_getcfg(CFGKEY_CG_SERVER_URL));
+    hcfg_set(cfg, CFGKEY_CG_TARGET_URL, session_getcfg(CFGKEY_CG_TARGET_URL));
+    hcfg_set(cfg, CFGKEY_CG_REPLY_URL, session_getcfg(CFGKEY_CG_REPLY_URL));
+    hcfg_set(cfg, CFGKEY_CG_SLAVE_LIST, session_getcfg(CFGKEY_CG_SLAVE_LIST));
+    hcfg_set(cfg, CFGKEY_CG_SLAVE_PATH, session_getcfg(CFGKEY_CG_SLAVE_PATH));
     mesg.data.session.cfg = cfg;
 
     mesg.type = HMESG_SESSION;
@@ -224,7 +224,7 @@ int url_connect(const char *url)
     if (strncmp("dir:", url, ptr - url) == 0 ||
         strncmp("ssh:", url, ptr - url) == 0)
     {
-        ptr = session_query(CFGKEY_HARMONY_ROOT);
+        ptr = session_getcfg(CFGKEY_HARMONY_ROOT);
         if (!ptr)
             return -1;
 

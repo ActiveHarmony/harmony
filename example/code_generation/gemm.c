@@ -136,10 +136,10 @@ int main(int argc, char *argv[])
         hsession_init(&sess);
         snprintf(numbuf, sizeof(numbuf), "%d", node_count);
 
-        if (hsession_name(&sess, SESSION_NAME)                        < 0 ||
-            hsession_cfg(&sess, CFGKEY_CLIENT_COUNT, numbuf)          < 0 ||
-            hsession_cfg(&sess, CFGKEY_SESSION_STRATEGY, "pro.so")    < 0 ||
-            hsession_cfg(&sess, CFGKEY_SESSION_LAYERS, "codegen.so")  < 0)
+        if (hsession_name(&sess, SESSION_NAME)                          < 0 ||
+            hsession_setcfg(&sess, CFGKEY_CLIENT_COUNT, numbuf)         < 0 ||
+            hsession_setcfg(&sess, CFGKEY_SESSION_STRATEGY, "pro.so")   < 0 ||
+            hsession_setcfg(&sess, CFGKEY_SESSION_LAYERS, "codegen.so") < 0)
         {
             errprint("Error during session configuration.\n");
             MPI_Abort(MPI_COMM_WORLD, -1);
@@ -166,7 +166,7 @@ int main(int argc, char *argv[])
             }
 
             *(ptr++) = '\0';
-            if (hsession_cfg(&sess, argv[i], ptr) < 0) {
+            if (hsession_setcfg(&sess, argv[i], ptr) < 0) {
                 fprintf(stderr, "Failed to set config var %s\n", argv[i]);
                 MPI_Abort(MPI_COMM_WORLD, -1);
             }

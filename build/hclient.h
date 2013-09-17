@@ -162,7 +162,7 @@ int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *sess);
 int harmony_leave(hdesc_t *hdesc);
 
 /**
- * \brief Query the server's key/value configuration system.
+ * \brief Get a key value from the session's configuration.
  *
  * Searches the server's configuration system for key, and returns
  * the string value associated with it if found. Heap memory is
@@ -177,10 +177,10 @@ int harmony_leave(hdesc_t *hdesc);
  *
  * \return Returns a c-style string on success, and NULL otherwise.
  */
-char *harmony_query(hdesc_t *hdesc, const char *key);
+char *harmony_getcfg(hdesc_t *hdesc, const char *key);
 
 /**
- * \brief Inform the server of a new key/value pair.
+ * \brief Set a new key/value pair in the session's configuration.
  *
  * Writes the new key/value pair into the server's run-time
  * configuration database.  If the key exists in the database, its
@@ -201,7 +201,7 @@ char *harmony_query(hdesc_t *hdesc, const char *key);
  *         function may legitimately return NULL, errno must be
  *         cleared pre-call, and checked post-call.
  */
-char *harmony_inform(hdesc_t *hdesc, const char *key, const char *val);
+char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val);
 
 /**
  * \brief Fetch a new configuration from the Harmony server.

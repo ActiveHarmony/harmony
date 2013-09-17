@@ -88,8 +88,9 @@ int main(int argc, char **argv)
     }
 
     if (hsession_name(&sess, name) < 0 ||
-		hsession_cfg(&sess, CFGKEY_SESSION_STRATEGY, "nm.so") < 0 ||
-		hsession_cfg(&sess, CFGKEY_SESSION_LAYERS, "constraint.so") < 0) {
+        hsession_setcfg(&sess, CFGKEY_SESSION_STRATEGY, "nm.so") < 0 ||
+        hsession_setcfg(&sess, CFGKEY_SESSION_LAYERS, "constraint.so") < 0)
+    {
         fprintf(stderr, "Could not set session name.\n");
         return -1;
     }
@@ -102,7 +103,7 @@ int main(int argc, char **argv)
         }
 
         *(ptr++) = '\0';
-        if (hsession_cfg(&sess, argv[i], ptr) < 0) {
+        if (hsession_setcfg(&sess, argv[i], ptr) < 0) {
             fprintf(stderr, "Failed to set config var %s\n", argv[i]);
             return -1;
         }

@@ -221,7 +221,7 @@ Each tuning session provides a centralized configuration environment.  Similar t
 
 Configuration directives may also be read from a file containing one key/value pair per line.  The first equals sign (`=`) separates the key from the value string, and the value string extends until a newline (`\n`).
 
-Each tuning session has a unique configuration environment.  All entities involved with a tuning session (clients, search strategies, processing layers, etc.) may query this system.  The configuration environment is initialized at session creation time through [hsession_cfg()](\ref hsession_cfg) function calls.  After a session has been launched, clients may query the configuration environment through [harmony_query()](\ref harmony_query) and [harmony_inform()](\ref harmony_inform) function calls.
+Each tuning session has a unique configuration environment.  All entities involved with a tuning session (clients, search strategies, processing layers, etc.) may query this system.  The configuration environment is initialized at session creation time through [hsession_setcfg()](\ref hsession_setcfg) function calls.  After a session has been launched, clients may query the configuration environment through [harmony_getcfg()](\ref harmony_getcfg) and [harmony_setcfg()](\ref harmony_setcfg) function calls.
 
 \note The Harmony Server is a special case.  It contains its own private configuration environment that is merged with any sessions that it manages.  If there is a key conflict between the server and session configuration environment, the session's key takes precedence.
 
@@ -361,7 +361,7 @@ The following code snippet extends the code example in the [session launch](\ref
         /* Instruct the strategy to use an initial simplex roughly half
          * the size of the search space.
          */
-        hsession_cfg(&sess, "NM_INIT_PERCENT", "0.50");
+        hsession_setcfg(&sess, "NM_INIT_PERCENT", "0.50");
 
         /* This tuning session should surround the search strategy with
          * a logger layer first, and an aggregator layer second.
@@ -369,14 +369,14 @@ The following code snippet extends the code example in the [session launch](\ref
         hsession_plugins(&sess, "log.so:agg.so");
 
         /* Instruct the logger to use /tmp/tuning.run as the logfile. */
-        hsession_cfg(&sess, "LOGFILE", "/tmp/tuning.run");
+        hsession_setcfg(&sess, "LOGFILE", "/tmp/tuning.run");
 
         /* Instruct the aggregator to collect 10 performance values for
          * each point, and allow the median performance to continue through
          * the feedback loop.
          */
-        hsession_cfg(&sess, "AGG_TIMES", "10");
-        hsession_cfg(&sess, "AGG_FUNC", "median");
+        hsession_setcfg(&sess, "AGG_TIMES", "10");
+        hsession_setcfg(&sess, "AGG_FUNC", "median");
     \endcode
 
 \section example_client Using the Client API

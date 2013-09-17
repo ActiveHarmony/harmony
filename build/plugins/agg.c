@@ -74,7 +74,7 @@ int agg_init(hsignature_t *sig)
 {
     const char *val;
 
-    val = session_query("AGG_FUNCTION");
+    val = session_getcfg("AGG_FUNCTION");
     if (!val) {
         session_error("AGG_FUNCTION configuration key empty");
         return -1;
@@ -88,7 +88,7 @@ int agg_init(hsignature_t *sig)
         return -1;
     }
 
-    val = session_query("AGG_TIMES");
+    val = session_getcfg("AGG_TIMES");
     if (!val) {
         session_error("AGG_TIMES configuration key empty");
         return -1;

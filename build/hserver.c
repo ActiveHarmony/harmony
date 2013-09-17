@@ -513,8 +513,8 @@ int handle_client_socket(int fd)
         break;
 
     case HMESG_FETCH:
-    case HMESG_QUERY:
-    case HMESG_INFORM:
+    case HMESG_GETCFG:
+    case HMESG_SETCFG:
         break;
 
     case HMESG_REPORT:
@@ -597,8 +597,8 @@ int handle_session_socket(int idx)
     switch (mesg_in.type) {
     case HMESG_SESSION:
     case HMESG_JOIN:
-    case HMESG_INFORM:
-    case HMESG_QUERY:
+    case HMESG_SETCFG:
+    case HMESG_GETCFG:
     case HMESG_FETCH:
         break;
 

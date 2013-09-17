@@ -37,12 +37,11 @@ int harmony_disconnect_(int *hdesc)
     return harmony_disconnect(*hdesc);
 }
 
-int harmony_query_server_config_(int *hdesc, const char *key,
-                                 char *value, long len)
+int harmony_getcfg_(int *hdesc, const char *key, char *value, long len)
 {
     int retval;
     char *newstr;
-    retval = harmony_query_server_config(*hdesc, key, &newstr);
+    retval = harmony_getcfg(*hdesc, key, &newstr);
     strncpy(value, newstr, len);
     free(newstr);
 

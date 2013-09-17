@@ -193,7 +193,7 @@ int strategy_init(hsignature_t *sig)
     next_id = 1;
     state = SIMPLEX_STATE_INIT;
 
-    if (session_inform(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
+    if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
         session_error("Could not set "
                       CFGKEY_STRATEGY_CONVERGED " config variable.");
         return -1;
@@ -213,14 +213,14 @@ int strategy_cfg(hsignature_t *sig)
     char *endp;
 
     /* Make sure the simplex size is N+1 or greater. */
-    cfgval = session_query(CFGKEY_NM_SIMPLEX_SIZE);
+    cfgval = session_getcfg(CFGKEY_NM_SIMPLEX_SIZE);
     if (cfgval)
         simplex_size = atoi(cfgval);
 
     if (simplex_size < sig->range_len + 1)
         simplex_size = sig->range_len + 1;
 
-    cfgval = session_query(CFGKEY_NM_INIT_METHOD);
+    cfgval = session_getcfg(CFGKEY_NM_INIT_METHOD);
     if (cfgval) {
         if (strcasecmp(cfgval, "random") == 0) {
             init_method = SIMPLEX_INIT_RANDOM;
@@ -241,7 +241,7 @@ int strategy_cfg(hsignature_t *sig)
         }
     }
 
-    cfgval = session_query(CFGKEY_NM_INIT_PERCENT);
+    cfgval = session_getcfg(CFGKEY_NM_INIT_PERCENT);
     if (cfgval) {
         init_percent = strtod(cfgval, &endp);
         if (*endp != '\0') {
@@ -256,7 +256,7 @@ int strategy_cfg(hsignature_t *sig)
         }
     }
 
-    cfgval = session_query(CFGKEY_NM_REFLECT);
+    cfgval = session_getcfg(CFGKEY_NM_REFLECT);
     if (cfgval) {
         reflect_coefficient = strtod(cfgval, &endp);
         if (*endp != '\0') {
@@ -271,7 +271,7 @@ int strategy_cfg(hsignature_t *sig)
         }
     }
 
-    cfgval = session_query(CFGKEY_NM_EXPAND);
+    cfgval = session_getcfg(CFGKEY_NM_EXPAND);
     if (cfgval) {
         expand_coefficient = strtod(cfgval, &endp);
         if (*endp != '\0') {
@@ -286,7 +286,7 @@ int strategy_cfg(hsignature_t *sig)
         }
     }
 
-    cfgval = session_query(CFGKEY_NM_CONTRACT);
+    cfgval = session_getcfg(CFGKEY_NM_CONTRACT);
     if (cfgval) {
         contract_coefficient = strtod(cfgval, &endp);
         if (*endp != '\0') {
@@ -301,7 +301,7 @@ int strategy_cfg(hsignature_t *sig)
         }
     }
 
-    cfgval = session_query(CFGKEY_NM_SHRINK);
+    cfgval = session_getcfg(CFGKEY_NM_SHRINK);
     if (cfgval) {
         shrink_coefficient = strtod(cfgval, &endp);
         if (*endp != '\0') {
@@ -316,7 +316,7 @@ int strategy_cfg(hsignature_t *sig)
         }
     }
 
-    cfgval = session_query(CFGKEY_NM_CONVERGE_FV);
+    cfgval = session_getcfg(CFGKEY_NM_CONVERGE_FV);
     if (cfgval) {
         converge_fv_tol = strtod(cfgval, &endp);
         if (*endp != '\0') {
@@ -326,7 +326,7 @@ int strategy_cfg(hsignature_t *sig)
         }
     }
 
-    cfgval = session_query(CFGKEY_NM_CONVERGE_SZ);
+    cfgval = session_getcfg(CFGKEY_NM_CONVERGE_SZ);
     if (cfgval) {
         converge_sz_tol = strtod(cfgval, &endp);
         if (*endp != '\0') {
@@ -709,5 +709,5 @@ void check_convergence(void)
 
   converged:
     state = SIMPLEX_STATE_CONVERGED;
-    session_inform(CFGKEY_STRATEGY_CONVERGED, "1");
+    session_setcfg(CFGKEY_STRATEGY_CONVERGED, "1");
 }

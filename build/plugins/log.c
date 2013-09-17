@@ -53,13 +53,13 @@ int logger_init(hsignature_t *sig)
     const char *mode;
     time_t tm;
 
-    filename = session_query("LOGFILE");
+    filename = session_getcfg("LOGFILE");
     if (!filename) {
         session_error("LOGFILE config key empty");
         return -1;
     }
 
-    mode = session_query("LOGFILE_MODE");
+    mode = session_getcfg("LOGFILE_MODE");
     if (!mode)
         mode = "a";
 

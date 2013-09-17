@@ -83,7 +83,7 @@ int strategy_init(hsignature_t *sig)
     vertex_min(curr);
     curr->id = 1;
 
-    if (session_inform(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
+    if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
         session_error("Could not set "
                       CFGKEY_STRATEGY_CONVERGED " config variable.");
         return -1;
@@ -95,7 +95,7 @@ int strategy_cfg(void)
 {
     const char *cfgstr;
 
-    cfgstr = session_query(CFGKEY_BRUTE_PASSES);
+    cfgstr = session_getcfg(CFGKEY_BRUTE_PASSES);
     if (cfgstr)
         remaining_passes = atoi(cfgstr);
 
@@ -165,7 +165,7 @@ int increment(void)
 
     if (vertex_incr(curr)) {
         if (--remaining_passes < 0) {
-            if (session_inform(CFGKEY_STRATEGY_CONVERGED, "1") != 0) {
+            if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "1") != 0) {
                 session_error("Internal error: Could not increment vertex.");
                 return -1;
             }

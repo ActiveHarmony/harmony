@@ -280,7 +280,7 @@ int constraint_init(hsignature_t *sig) {
 }
 
 
-int constriant_inform(hmesg_t *mesg) {
+int constriant_setcfg(hmesg_t *mesg) {
 	return 0;
 }
 

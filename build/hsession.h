@@ -173,7 +173,7 @@ int hsession_plugins(hsession_t *sess, const char *plugins);
  *
  * \return Returns 0 on success, and -1 otherwise.
  */
-int hsession_cfg(hsession_t *sess, const char *key, const char *val);
+int hsession_setcfg(hsession_t *sess, const char *key, const char *val);
 
 /**
  * \brief Instantiate a new Harmony tuning session.

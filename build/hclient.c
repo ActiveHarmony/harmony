@@ -247,7 +247,7 @@ int harmony_leave(hdesc_t *hdesc)
     return 0;
 }
 
-char *harmony_query(hdesc_t *hdesc, const char *key)
+char *harmony_getcfg(hdesc_t *hdesc, const char *key)
 {
     if (hdesc->state < HARMONY_STATE_CONNECTED) {
         hdesc->errstr = "Descriptor not currently joined to any session.";
@@ -257,7 +257,7 @@ char *harmony_query(hdesc_t *hdesc, const char *key)
 
     /* Prepare a Harmony message. */
     hmesg_scrub(&hdesc->mesg);
-    hdesc->mesg.type = HMESG_QUERY;
+    hdesc->mesg.type = HMESG_GETCFG;
     hdesc->mesg.status = HMESG_STATUS_REQ;
     hdesc->mesg.src_id = hdesc->id;
     hdesc->mesg.data.string = key;
@@ -275,7 +275,7 @@ char *harmony_query(hdesc_t *hdesc, const char *key)
     return stralloc(hdesc->mesg.data.string);
 }
 
-char *harmony_inform(hdesc_t *hdesc, const char *key, const char *val)
+char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val)
 {
     char *buf;
     int retval;
@@ -307,7 +307,7 @@ char *harmony_inform(hdesc_t *hdesc, const char *key, const char *val)
 
     /* Prepare a Harmony message. */
     hmesg_scrub(&hdesc->mesg);
-    hdesc->mesg.type = HMESG_INFORM;
+    hdesc->mesg.type = HMESG_SETCFG;
     hdesc->mesg.status = HMESG_STATUS_REQ;
     hdesc->mesg.src_id = hdesc->id;
     retval = mesg_send_and_recv(hdesc);
@@ -439,7 +439,7 @@ int harmony_converged(hdesc_t *hdesc)
     char *str;
 
     retval = 0;
-    str = harmony_query(hdesc, CFGKEY_STRATEGY_CONVERGED);
+    str = harmony_getcfg(hdesc, CFGKEY_STRATEGY_CONVERGED);
     if (str && str[0] == '1') {
         hdesc->state = HARMONY_STATE_CONVERGED;
         retval = 1;

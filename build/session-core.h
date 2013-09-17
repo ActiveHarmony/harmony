@@ -51,8 +51,8 @@ typedef struct htrial {
 /* Generic plug-in event-hook signatures. */
 typedef int (*hook_init_t)(hsignature_t *sig);
 typedef int (*hook_join_t)(const char *id);
-typedef int (*hook_query_t)(const char *key);
-typedef int (*hook_inform_t)(const char *key, const char *val);
+typedef int (*hook_getcfg_t)(const char *key);
+typedef int (*hook_setcfg_t)(const char *key, const char *val);
 typedef int (*hook_fini_t)(void);
 
 /* Strategy plug-in function signatures. */
@@ -79,10 +79,10 @@ int callback_analyze(int fd, cb_func_t func);
 /* Central interface for shared configuration between pluggable modules.
  *
  * Requests through this interface will propagate through all
- * strategies and layers that define query and inform hooks.
+ * strategies and layers that define getcfg and setcfg hooks.
  */
-const char *session_query(const char *key);
-int session_inform(const char *key, const char *val);
+const char *session_getcfg(const char *key);
+int session_setcfg(const char *key, const char *val);
 
 /* Central interface for error messages from pluggable modules. */
 void session_error(const char *msg);

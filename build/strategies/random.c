@@ -79,7 +79,7 @@ int strategy_init(hsignature_t *sig)
     }
     curr->id = 1;
 
-    if (session_inform(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
+    if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
         session_error("Could not set "
                       CFGKEY_STRATEGY_CONVERGED " config variable.");
         return -1;
@@ -91,7 +91,7 @@ int strategy_cfg(void)
 {
     const char *cfgstr;
 
-    cfgstr = session_query(CFGKEY_RANDOM_SEED);
+    cfgstr = session_getcfg(CFGKEY_RANDOM_SEED);
     if (cfgstr)
         srand(atoi(cfgstr));
 

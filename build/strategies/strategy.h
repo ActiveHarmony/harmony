@@ -126,7 +126,7 @@ int strategy_join(const char *id);
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int strategy_query(const char *key);
+int strategy_getcfg(const char *key);
 
 /*
  * Invoked when a client writes to the configuration system.
@@ -139,7 +139,7 @@ int strategy_query(const char *key);
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int strategy_inform(const char *key, const char *val);
+int strategy_setcfg(const char *key, const char *val);
 
 /*
  * Invoked on session exit.

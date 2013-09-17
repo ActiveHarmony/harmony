@@ -93,8 +93,8 @@ int hmesg_serialize(hmesg_t *mesg)
     case HMESG_UNKNOWN: type_str = "UNK"; break;
     case HMESG_SESSION: type_str = "SES"; break;
     case HMESG_JOIN:    type_str = "JOI"; break;
-    case HMESG_QUERY:   type_str = "QRY"; break;
-    case HMESG_INFORM:  type_str = "INF"; break;
+    case HMESG_GETCFG:  type_str = "QRY"; break;
+    case HMESG_SETCFG:  type_str = "INF"; break;
     case HMESG_FETCH:   type_str = "FET"; break;
     case HMESG_REPORT:  type_str = "REP"; break;
     default: goto invalid;
@@ -141,8 +141,8 @@ int hmesg_serialize(hmesg_t *mesg)
             total += count;
             break;
 
-        case HMESG_QUERY:
-        case HMESG_INFORM:
+        case HMESG_GETCFG:
+        case HMESG_SETCFG:
             count = printstr_serial(&buf, &buflen, mesg->data.string);
             if (count < 0) goto error;
             total += count;
@@ -242,8 +242,8 @@ int hmesg_deserialize(hmesg_t *mesg)
     if      (strcmp(type_str, "UNK") == 0) mesg->type = HMESG_UNKNOWN;
     else if (strcmp(type_str, "SES") == 0) mesg->type = HMESG_SESSION;
     else if (strcmp(type_str, "JOI") == 0) mesg->type = HMESG_JOIN;
-    else if (strcmp(type_str, "QRY") == 0) mesg->type = HMESG_QUERY;
-    else if (strcmp(type_str, "INF") == 0) mesg->type = HMESG_INFORM;
+    else if (strcmp(type_str, "QRY") == 0) mesg->type = HMESG_GETCFG;
+    else if (strcmp(type_str, "INF") == 0) mesg->type = HMESG_SETCFG;
     else if (strcmp(type_str, "FET") == 0) mesg->type = HMESG_FETCH;
     else if (strcmp(type_str, "REP") == 0) mesg->type = HMESG_REPORT;
     else goto invalid;
@@ -280,8 +280,8 @@ int hmesg_deserialize(hmesg_t *mesg)
             total += count;
             break;
 
-        case HMESG_QUERY:
-        case HMESG_INFORM:
+        case HMESG_GETCFG:
+        case HMESG_SETCFG:
             count = scanstr_serial(&mesg->data.string, buf + total);
             if (count < 0) goto error;
             total += count;

@@ -67,7 +67,7 @@ int <plugin>_join(const char *id)
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int <plugin>_query(const char *key)
+int <plugin>_getcfg(const char *key)
 {
     return 0;
 }
@@ -83,7 +83,7 @@ int <plugin>_query(const char *key)
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int <plugin>_inform(const char *key, const char *val)
+int <plugin>_setcfg(const char *key, const char *val)
 {
     return 0;
 }

@@ -52,12 +52,12 @@ extern "C" {
  */
 typedef enum {
     HMESG_UNKNOWN = 0x00,
-    HMESG_SESSION, /* Tuning session description           */
-    HMESG_JOIN,    /* Client registration info             */
-    HMESG_QUERY,   /* Query server for non-bundle info     */
-    HMESG_INFORM,  /* Inform server of new non-bundle info */
-    HMESG_FETCH,   /* Retrieve configuration to test       */
-    HMESG_REPORT,  /* Report configuration performance     */
+    HMESG_SESSION, /* Tuning session description            */
+    HMESG_JOIN,    /* Client registration info              */
+    HMESG_GETCFG,  /* Get session cfg key/value pair        */
+    HMESG_SETCFG,  /* Set new session cfg key/value pair    */
+    HMESG_FETCH,   /* Retrieve search space point to test   */
+    HMESG_REPORT,  /* Report search space point performance */
 
     HMESG_TYPE_MAX
 } hmesg_type;

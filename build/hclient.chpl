@@ -30,7 +30,7 @@ module hclient
                                 host : string,
                                 port : int(16)) : int(32);
     extern proc harmony_disconnect(hd : opaque) : int(32);
-    extern proc harmony_query(hd : opaque, key : string) : string;
+    extern proc harmony_getcfg(hd : opaque, key : string) : string;
     extern proc harmony_fetch(hd : opaque) : int(32);
     extern proc harmony_best_config(hd : opaque) : string;
     extern proc harmony_report(hd : opaque, value : real(64)) : int(32);

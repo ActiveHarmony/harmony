@@ -183,7 +183,7 @@ int hsession_layer_list(hsession_t *sess, const char *list)
     return 0;
 }
 
-int hsession_cfg(hsession_t *sess, const char *key, const char *val)
+int hsession_setcfg(hsession_t *sess, const char *key, const char *val)
 {
     return hcfg_set(sess->cfg, key, val);
 }

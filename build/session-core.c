@@ -69,8 +69,8 @@ static strategy_best_t     strategy_best;
 
 static hook_init_t         strategy_init;
 static hook_join_t         strategy_join;
-static hook_query_t        strategy_query;
-static hook_inform_t       strategy_inform;
+static hook_getcfg_t       strategy_getcfg;
+static hook_setcfg_t       strategy_setcfg;
 static hook_fini_t         strategy_fini;
 
 typedef struct layer {
@@ -81,8 +81,8 @@ typedef struct layer {
 
     hook_init_t      init;
     hook_join_t      join;
-    hook_query_t     query;
-    hook_inform_t    inform;
+    hook_getcfg_t    getcfg;
+    hook_setcfg_t    setcfg;
     hook_fini_t      fini;
 
     int *wait_generate;
@@ -107,8 +107,8 @@ static int plugin_workflow(int trial_idx);
 static int workflow_transition(int trial_idx);
 static int handle_callback(callback_t *cb);
 static int handle_join(hmesg_t *mesg);
-static int handle_query(hmesg_t *mesg);
-static int handle_inform(hmesg_t *mesg);
+static int handle_getcfg(hmesg_t *mesg);
+static int handle_setcfg(hmesg_t *mesg);
 static int handle_fetch(hmesg_t *mesg);
 static int handle_report(hmesg_t *mesg);
 static int handle_reject(int trial_idx);
@@ -263,8 +263,8 @@ int main(int argc, char **argv)
 
             switch (mesg.type) {
             case HMESG_JOIN:   retval = handle_join(&mesg); break;
-            case HMESG_QUERY:  retval = handle_query(&mesg); break;
-            case HMESG_INFORM: retval = handle_inform(&mesg); break;
+            case HMESG_GETCFG: retval = handle_getcfg(&mesg); break;
+            case HMESG_SETCFG: retval = handle_setcfg(&mesg); break;
             case HMESG_FETCH:  retval = handle_fetch(&mesg); break;
             case HMESG_REPORT: retval = handle_report(&mesg); break;
             default:
@@ -560,29 +560,29 @@ int handle_join(hmesg_t *mesg)
     return 0;
 }
 
-int handle_query(hmesg_t *mesg)
+int handle_getcfg(hmesg_t *mesg)
 {
     int i;
     const char *key;
 
     key = mesg->data.string;
 
-    /* Launch all query hooks defined in the plug-in stack. */
-    if (strategy_query && strategy_query(key) != 0)
+    /* Launch all getcfg hooks defined in the plug-in stack. */
+    if (strategy_getcfg && strategy_getcfg(key) != 0)
         return -1;
 
     for (i = 0; i < lstack_len; ++i) {
-        if (lstack[i].query && lstack[i].query(key) != 0)
+        if (lstack[i].getcfg && lstack[i].getcfg(key) != 0)
             return -1;
     }
 
-    /* Prepare query response message for client. */
+    /* Prepare getcfg response message for client. */
     mesg->data.string = hcfg_get(sess->cfg, key);
     mesg->status = HMESG_STATUS_OK;
     return 0;
 }
 
-int handle_inform(hmesg_t *mesg)
+int handle_setcfg(hmesg_t *mesg)
 {
     static char *buf = NULL;
     static int buflen = 0;
@@ -593,13 +593,13 @@ int handle_inform(hmesg_t *mesg)
 
     hcfg_parse((char *)mesg->data.string, &key, &val);
 
-    /* Launch all inform hooks defined in the plug-in stack. */
+    /* Launch all setcfg hooks defined in the plug-in stack. */
     for (i = 0; i < lstack_len; ++i) {
-        if (lstack[i].query && lstack[i].query(key) != 0)
+        if (lstack[i].setcfg && lstack[i].setcfg(key, val) != 0)
             return -1;
     }
 
-    /* Prepare query response message for client. */
+    /* Prepare setcfg response message for client. */
     if (!key) {
         errmsg = strerror(EINVAL);
         return -1;
@@ -715,8 +715,8 @@ int load_strategy(const char *file)
 
     strategy_init     =         (hook_init_t) dlfptr(lib, "strategy_init");
     strategy_join     =         (hook_join_t) dlfptr(lib, "strategy_join");
-    strategy_query    =        (hook_query_t) dlfptr(lib, "strategy_query");
-    strategy_inform   =       (hook_inform_t) dlfptr(lib, "strategy_inform");
+    strategy_getcfg   =       (hook_getcfg_t) dlfptr(lib, "strategy_getcfg");
+    strategy_setcfg   =       (hook_setcfg_t) dlfptr(lib, "strategy_setcfg");
     strategy_fini     =         (hook_fini_t) dlfptr(lib, "strategy_fini");
 
     if (!strategy_generate) {
@@ -813,17 +813,17 @@ int load_layers(const char *list)
         }
         lstack[lstack_len].analyze = (layer_analyze_t) dlfptr(lib, path);
 
-        if (snprintf_grow(&path, &path_len, "%s_query", prefix) < 0) {
+        if (snprintf_grow(&path, &path_len, "%s_getcfg", prefix) < 0) {
             retval = -1;
             goto cleanup;
         }
-        lstack[lstack_len].query = (hook_query_t) dlfptr(lib, path);
+        lstack[lstack_len].getcfg = (hook_getcfg_t) dlfptr(lib, path);
 
-        if (snprintf_grow(&path, &path_len, "%s_inform", prefix) < 0) {
+        if (snprintf_grow(&path, &path_len, "%s_setcfg", prefix) < 0) {
             retval = -1;
             goto cleanup;
         }
-        lstack[lstack_len].inform = (hook_inform_t) dlfptr(lib, path);
+        lstack[lstack_len].setcfg = (hook_setcfg_t) dlfptr(lib, path);
 
         if (snprintf_grow(&path, &path_len, "%s_fini", prefix) < 0) {
             retval = -1;
@@ -944,12 +944,12 @@ int callback_analyze(int fd, cb_func_t func)
     return 0;
 }
 
-const char *session_query(const char *key)
+const char *session_getcfg(const char *key)
 {
     return hcfg_get(sess->cfg, key);
 }
 
-int session_inform(const char *key, const char *val)
+int session_setcfg(const char *key, const char *val)
 {
     return hcfg_set(sess->cfg, key, val);
 }
