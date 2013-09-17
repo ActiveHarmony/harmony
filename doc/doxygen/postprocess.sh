@@ -9,7 +9,7 @@ set -e
 cat doxygen/harmony.sty >> $DIR/doxygen.sty
 
 # Force new sections to begin on a new page.
-sed 's/^\\section/\\newpage\\section/' $DIR/refman.tex > $DIR/tmp.tex
+sed 's/^\\section/\\clearpage\\newpage\\section/' $DIR/refman.tex > $DIR/tmp.tex
 mv -f $DIR/tmp.tex $DIR/refman.tex
 
 # Use \TabularEnv for "Configuration Variables" tables.

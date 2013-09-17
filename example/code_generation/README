@@ -51,10 +51,10 @@ CODEGEN_TARGET_URL Harmony configuration variables.  See the README
 file in ../../code-server for more details.
 
 Since the search sapce of this application has 5 dimensions, the
-Harmony configuration key PRO_SIMPLEX_SIZE should be at least 6
-(eg. N+1).  The PRO search strategy will correct the value if
-undefined or undervalued.  Of course, the search will be more
-efficient as PRO_SIMPLEX_SIZE increases.
+Harmony configuration key SIMPLEX_SIZE should be at least 6 (eg. N+1).
+The PRO search strategy will correct the value if undefined or
+undervalued.  Of course, the search will be more efficient as
+SIMPLEX_SIZE increases.
 
 Running
 =======

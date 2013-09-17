@@ -28,16 +28,16 @@
  * MPI programs.
  *
  * **Configuration Variables**
- * Key                           | Type    | Default                 | Description
- * ----------------------------- | ------- | ----------------------- | -----------
- * PRO_SIMPLEX_SIZE              | Integer | <Space dimension + 1>   | Number of vertices in the simplex.
- * PRO_INIT_METHOD               | String  | point                   | Initial simplex generation method.  Valid values are "point", "point_fast", and "random" (without quotes).
- * PRO_INIT_PERCENT              | Real    | 0.35                    | Initial simplex size as a percentage of the total search space.  Only for "point" and "point_fast" initial simplex methods.
- * PRO_REFLECT_COEFFICIENT       | Real    | 1.0                     | Multiplicative coefficient for simplex reflection step.
- * PRO_EXPAND_COEFFICIENT        | Real    | 2.0                     | Multiplicative coefficient for simplex expansion step.
- * PRO_SHRINK_COEFFICIENT        | Real    | 0.5                     | Multiplicative coefficient for simplex shrink step.
- * PRO_CONVERGE_FUNC_EVAL_TOL    | Real    | 0.0001                  | Convergence test succeeds if difference between all vertex performance values fall below this value.
- * PRO_CONVERGE_SIMPLEX_SIZE_TOL | Real    | <5% of initial simplex> | Convergence test succeeds if simplex size falls below this value.
+ * Key          | Type    | Default      | Description
+ * -------------| ------- | ------------ | -----------
+ * SIMPLEX_SIZE | Integer | <N+1>        | Number of vertices in the simplex.  Defaults to the number of tuning variables + 1.
+ * INIT_METHOD  | String  | point        | Initial simplex generation method.  Valid values are "point", "point_fast", and "random" (without quotes).
+ * INIT_PERCENT | Real    | 0.35         | Initial simplex size as a percentage of the total search space.  Only for "point" and "point_fast" initial simplex methods.
+ * REFLECT      | Real    | 1.0          | Multiplicative coefficient for simplex reflection step.
+ * EXPAND       | Real    | 2.0          | Multiplicative coefficient for simplex expansion step.
+ * SHRINK       | Real    | 0.5          | Multiplicative coefficient for simplex shrink step.
+ * FVAL_TOL     | Real    | 0.0001       | Convergence test succeeds if difference between all vertex performance values fall below this value.
+ * SIZE_TOL     | Real    | <.05*r> | Convergence test succeeds if simplex size falls below this value.  Default is 5% of the initial simplex radius.
  */
 
 #include "strategy.h"
@@ -95,12 +95,12 @@ simplex_init_t init_method  = SIMPLEX_INIT_POINT;
 vertex_t *     init_point;
 double         init_percent = 0.35;
 
-double reflect_coefficient  = 1.0;
-double expand_coefficient   = 2.0;
-double contract_coefficient = 0.5;
-double shrink_coefficient   = 0.5;
-double converge_fv_tol      = 1e-4;
-double converge_sz_tol;
+double reflect  = 1.0;
+double expand   = 2.0;
+double contract = 0.5;
+double shrink   = 0.5;
+double fval_tol = 1e-4;
+double size_tol;
 int simplex_size;
 
 /* Variables to track current search state. */
@@ -153,11 +153,10 @@ int strategy_init(hsignature_t *sig)
     }
 
     /* Default stopping criteria: 0.5% of dist(vertex_min, vertex_max). */
-    if (converge_sz_tol == 0.0) {
+    if (size_tol == 0.0) {
         vertex_min(base->vertex[0]);
         vertex_max(base->vertex[1]);
-        converge_sz_tol = vertex_dist(base->vertex[0],
-                                      base->vertex[1]) * 0.005;
+        size_tol = vertex_dist(base->vertex[0], base->vertex[1]) * 0.005;
     }
 
     switch (init_method) {
@@ -192,7 +191,7 @@ int strategy_cfg(hsignature_t *sig)
     char *endp;
 
     /* Make sure the simplex size is N+1 or greater. */
-    cfgval = session_getcfg(CFGKEY_PRO_SIMPLEX_SIZE);
+    cfgval = session_getcfg(CFGKEY_SIMPLEX_SIZE);
     if (cfgval)
         simplex_size = atoi(cfgval);
 
@@ -207,7 +206,7 @@ int strategy_cfg(hsignature_t *sig)
         srand(time(NULL));
     }
 
-    cfgval = session_getcfg(CFGKEY_PRO_INIT_METHOD);
+    cfgval = session_getcfg(CFGKEY_INIT_METHOD);
     if (cfgval) {
         if (strcasecmp(cfgval, "random") == 0) {
             init_method = SIMPLEX_INIT_RANDOM;
@@ -220,101 +219,101 @@ int strategy_cfg(hsignature_t *sig)
         }
         else {
             session_error("Invalid value for "
-                CFGKEY_PRO_INIT_METHOD " configuration key.");
+                CFGKEY_INIT_METHOD " configuration key.");
             return -1;
         }
     }
 
-    cfgval = session_getcfg(CFGKEY_PRO_INIT_PERCENT);
+    cfgval = session_getcfg(CFGKEY_INIT_PERCENT);
     if (cfgval) {
         init_percent = strtod(cfgval, &endp);
         if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_PRO_INIT_PERCENT
+            session_error("Invalid value for " CFGKEY_INIT_PERCENT
                 " configuration key.");
             return -1;
         }
         if (init_percent <= 0 || init_percent > 1) {
-            session_error("Configuration key " CFGKEY_PRO_INIT_PERCENT
+            session_error("Configuration key " CFGKEY_INIT_PERCENT
                 " must be between 0.0 and 1.0 (exclusive).");
             return -1;
         }
     }
 
-    cfgval = session_getcfg(CFGKEY_PRO_REFLECT);
+    cfgval = session_getcfg(CFGKEY_REFLECT);
     if (cfgval) {
-        reflect_coefficient = strtod(cfgval, &endp);
+        reflect = strtod(cfgval, &endp);
         if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_PRO_REFLECT
+            session_error("Invalid value for " CFGKEY_REFLECT
                 " configuration key.");
             return -1;
         }
-        if (reflect_coefficient <= 0) {
-            session_error("Configuration key " CFGKEY_PRO_REFLECT
+        if (reflect <= 0) {
+            session_error("Configuration key " CFGKEY_REFLECT
                 " must be positive.");
             return -1;
         }
     }
 
-    cfgval = session_getcfg(CFGKEY_PRO_EXPAND);
+    cfgval = session_getcfg(CFGKEY_EXPAND);
     if (cfgval) {
-        expand_coefficient = strtod(cfgval, &endp);
+        expand = strtod(cfgval, &endp);
         if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_PRO_EXPAND
+            session_error("Invalid value for " CFGKEY_EXPAND
                 " configuration key.");
             return -1;
         }
-        if (reflect_coefficient <= 1) {
-            session_error("Configuration key " CFGKEY_PRO_EXPAND
+        if (reflect <= 1) {
+            session_error("Configuration key " CFGKEY_EXPAND
                 " must be greater than 1.0.");
             return -1;
         }
     }
 
-    cfgval = session_getcfg(CFGKEY_PRO_CONTRACT);
+    cfgval = session_getcfg(CFGKEY_CONTRACT);
     if (cfgval) {
-        contract_coefficient = strtod(cfgval, &endp);
+        contract = strtod(cfgval, &endp);
         if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_PRO_CONTRACT
+            session_error("Invalid value for " CFGKEY_CONTRACT
                 " configuration key.");
             return -1;
         }
-        if (reflect_coefficient <= 0 || reflect_coefficient >= 1) {
-            session_error("Configuration key " CFGKEY_PRO_CONTRACT
+        if (reflect <= 0 || reflect >= 1) {
+            session_error("Configuration key " CFGKEY_CONTRACT
                 " must be between 0.0 and 1.0 (exclusive).");
             return -1;
         }
     }
 
-    cfgval = session_getcfg(CFGKEY_PRO_SHRINK);
+    cfgval = session_getcfg(CFGKEY_SHRINK);
     if (cfgval) {
-        shrink_coefficient = strtod(cfgval, &endp);
+        shrink = strtod(cfgval, &endp);
         if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_PRO_SHRINK
+            session_error("Invalid value for " CFGKEY_SHRINK
                 " configuration key.");
             return -1;
         }
-        if (reflect_coefficient <= 0 || reflect_coefficient >= 1) {
-            session_error("Configuration key " CFGKEY_PRO_SHRINK
+        if (reflect <= 0 || reflect >= 1) {
+            session_error("Configuration key " CFGKEY_SHRINK
                 " must be between 0.0 and 1.0 (exclusive).");
             return -1;
         }
     }
 
-    cfgval = session_getcfg(CFGKEY_PRO_CONVERGE_FV);
+    cfgval = session_getcfg(CFGKEY_FVAL_TOL);
     if (cfgval) {
-        converge_fv_tol = strtod(cfgval, &endp);
+        fval_tol = strtod(cfgval, &endp);
         if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_PRO_CONVERGE_FV
+            session_error("Invalid value for " CFGKEY_FVAL_TOL
                 " configuration key.");
             return -1;
         }
     }
 
-    cfgval = session_getcfg(CFGKEY_PRO_CONVERGE_SZ);
+    cfgval = session_getcfg(CFGKEY_SIZE_TOL);
     if (cfgval) {
-        converge_sz_tol = strtod(cfgval, &endp);
+        size_tol = strtod(cfgval, &endp);
         if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_PRO_CONVERGE_SZ
+            session_error("Invalid value for " CFGKEY_SIZE_TOL
                 " configuration key.");
             return -1;
         }
@@ -586,8 +585,7 @@ int pro_next_simplex(simplex_t *output)
     case SIMPLEX_STATE_REFLECT:
         /* Reflect all original simplex vertices around the best known
          * vertex thus far. */
-        simplex_transform(base, base->vertex[best_base],
-                          -reflect_coefficient, output);
+        simplex_transform(base, base->vertex[best_base], -reflect, output);
         break;
 
     case SIMPLEX_STATE_EXPAND_ONE:
@@ -595,7 +593,7 @@ int pro_next_simplex(simplex_t *output)
          * And the rest should be copies of the best known vertex.
          */
         vertex_transform(test->vertex[best_test], base->vertex[best_base],
-                         expand_coefficient, output->vertex[0]);
+                         expand, output->vertex[0]);
 
         for (i = 1; i < simplex_size; ++i)
             vertex_copy(output->vertex[i], base->vertex[best_base]);
@@ -604,15 +602,13 @@ int pro_next_simplex(simplex_t *output)
     case SIMPLEX_STATE_EXPAND_ALL:
         /* Expand all original simplex vertices away from the best
          * known vertex thus far. */
-        simplex_transform(base, base->vertex[best_base],
-                          expand_coefficient, output);
+        simplex_transform(base, base->vertex[best_base], expand, output);
         break;
 
     case SIMPLEX_STATE_SHRINK:
         /* Shrink all original simplex vertices towards the best
          * known vertex thus far. */
-        simplex_transform(base, base->vertex[best_base],
-                          shrink_coefficient, output);
+        simplex_transform(base, base->vertex[best_base], shrink, output);
         break;
 
     case SIMPLEX_STATE_CONVERGED:
@@ -629,7 +625,7 @@ int pro_next_simplex(simplex_t *output)
 void check_convergence(void)
 {
     int i;
-    double fv_err, sz_max, dist;
+    double fval_err, size_max, dist;
     static vertex_t *centroid;
 
     if (!centroid)
@@ -640,21 +636,21 @@ void check_convergence(void)
 
     simplex_centroid(base, centroid);
 
-    fv_err = 0;
+    fval_err = 0;
     for (i = 0; i < simplex_size; ++i) {
-        fv_err += ((base->vertex[i]->perf - centroid->perf) *
-                   (base->vertex[i]->perf - centroid->perf));
+        fval_err += ((base->vertex[i]->perf - centroid->perf) *
+                     (base->vertex[i]->perf - centroid->perf));
     }
-    fv_err /= simplex_size;
+    fval_err /= simplex_size;
 
-    sz_max = 0;
+    size_max = 0;
     for (i = 0; i < simplex_size; ++i) {
         dist = vertex_dist(base->vertex[i], centroid);
-        if (sz_max < dist)
-            sz_max = dist;
+        if (size_max < dist)
+            size_max = dist;
     }
 
-    if (fv_err < converge_fv_tol && sz_max < converge_sz_tol)
+    if (fval_err < fval_tol && size_max < size_tol)
         goto converged;
 
     return;

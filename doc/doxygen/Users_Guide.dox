@@ -361,7 +361,7 @@ The following code snippet extends the code example in the [session launch](\ref
         /* Instruct the strategy to use an initial simplex roughly half
          * the size of the search space.
          */
-        hsession_setcfg(&sess, "NM_INIT_PERCENT", "0.50");
+        hsession_setcfg(&sess, "INIT_PERCENT", "0.50");
 
         /* This tuning session should surround the search strategy with
          * a logger layer first, and an aggregator layer second.
