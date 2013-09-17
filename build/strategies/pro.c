@@ -17,6 +17,29 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/**
+ * \page pro Parallel Rank Order (pro.so)
+ *
+ * This search strategy uses a simplex-based method similar to the
+ * Nelder-Mead algorithm.  It improves upon the Nelder-Mead algorithm
+ * by allowing the simultaneous search of all simplex points at each
+ * step of the algorithm.  As such, it is ideal for a parallel search
+ * utilizing multiple nodes, for instance when integrated in OpenMP or
+ * MPI programs.
+ *
+ * **Configuration Variables**
+ * Key                           | Type    | Default                 | Description
+ * ----------------------------- | ------- | ----------------------- | -----------
+ * PRO_SIMPLEX_SIZE              | Integer | <Space dimension + 1>   | Number of vertices in the simplex.
+ * PRO_INIT_METHOD               | String  | point                   | Initial simplex generation method.  Valid values are "point", "point_fast", and "random" (without quotes).
+ * PRO_INIT_PERCENT              | Real    | 0.35                    | Initial simplex size as a percentage of the total search space.  Only for "point" and "point_fast" initial simplex methods.
+ * PRO_REFLECT_COEFFICIENT       | Real    | 1.0                     | Multiplicative coefficient for simplex reflection step.
+ * PRO_EXPAND_COEFFICIENT        | Real    | 2.0                     | Multiplicative coefficient for simplex expansion step.
+ * PRO_SHRINK_COEFFICIENT        | Real    | 0.5                     | Multiplicative coefficient for simplex shrink step.
+ * PRO_CONVERGE_FUNC_EVAL_TOL    | Real    | 0.0001                  | Convergence test succeeds if difference between all vertex performance values fall below this value.
+ * PRO_CONVERGE_SIMPLEX_SIZE_TOL | Real    | <5% of initial simplex> | Convergence test succeeds if simplex size falls below this value.
+ */
+
 #include "strategy.h"
 #include "session-core.h"
 #include "hsession.h"
@@ -174,7 +197,7 @@ int strategy_cfg(hsignature_t *sig)
         simplex_size = atoi(cfgval);
 
     if (simplex_size < sig->range_len + 1)
-        simplex_size = sig->range_len + 1;
+        simplex_size = sig->range_len * 2;
 
     cfgval = session_query(CFGKEY_RANDOM_SEED);
     if (cfgval) {

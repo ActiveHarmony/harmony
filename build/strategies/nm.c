@@ -17,6 +17,39 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/**
+ * \page nm Nelder-Mead (nm.so)
+ *
+ * This search strategy uses a simplex-based method to estimate the
+ * relative slope of a search space without calculating gradients.  It
+ * functions by evaluating the performance for each point of the
+ * simplex, and systematically replacing the worst performing point
+ * with a reflection, expansion, or contraction in relation to the
+ * simplex centroid.  In some cases, the entire simplex may also be
+ * shrunken.
+ *
+ * \note Due to the nature of the underlying algorithm, this strategy
+ * is best suited for serial tuning tasks.  It often waits on a single
+ * performance report before a new point may be generated.
+ *
+ * For details of the algorithm, see:
+ * > Nelder, John A.; R. Mead (1965). "A simplex method for function minimization".
+ * > Computer Journal 7: 308–313. doi:10.1093/comjnl/7.4.308
+ *
+ * **Configuration Variables**
+ * Key                          | Type    | Default                 | Description
+ * ---------------------------- | ------- | ----------------------- | -----------
+ * NM_SIMPLEX_SIZE              | Integer | <Space dimension + 1>   | Number of vertices in the simplex.
+ * NM_INIT_METHOD               | String  | point                   | Initial simplex generation method.  Valid values are "point", "point_fast", and "random" (without quotes).
+ * NM_INIT_PERCENT              | Real    | 0.35                    | Initial simplex size as a percentage of the total search space.  Only for "point" and "point_fast" initial simplex methods.
+ * NM_REFLECT_COEFFICIENT       | Real    | 1.0                     | Multiplicative coefficient for vertex reflection step.
+ * NM_EXPAND_COEFFICIENT        | Real    | 2.0                     | Multiplicative coefficient for vertex expansion step.
+ * NM_CONTRACT_COEFFICIENT      | Real    | 0.5                     | Multiplicative coefficient for vertex contraction step.
+ * NM_SHRINK_COEFFICIENT        | Real    | 0.5                     | Multiplicative coefficient for simplex shrink step.
+ * NM_CONVERGE_FUNC_EVAL_TOL    | Real    | 0.0001                  | Convergence test succeeds if difference between all vertex performance values fall below this value.
+ * NM_CONVERGE_SIMPLEX_SIZE_TOL | Real    | <5% of initial simplex> | Convergence test succeeds if simplex size falls below this value.
+ */
+
 #include "strategy.h"
 #include "session-core.h"
 #include "hsignature.h"

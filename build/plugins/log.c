@@ -17,6 +17,19 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/**
+ * \page logger Point Logger (log.so)
+ *
+ * This processing layer writes a log of point/performance pairs to disk as
+ * they flow through the auto-tuning [feedback loop](\ref intro_feedback).
+ *
+ * **Configuration Variables**
+ * Key          | Type   | Default | Description
+ * ------------ | ------ | ------- | -----------
+ * LOGFILE      | String | <none>  | Name of point/performance log file.
+ * LOGFILE_MODE | String | a       | Mode to use with `fopen()`.  Valid values are "a" and "w" (without quotes).
+ */
+
 #include "session-core.h"
 #include "hsignature.h"
 #include "hpoint.h"

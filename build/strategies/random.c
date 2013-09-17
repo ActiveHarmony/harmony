@@ -17,6 +17,23 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/**
+ * \page random Random (random.so)
+ *
+ * This search strategy generates random points within the search
+ * space.  Using* a pseudo-random method, a value is selected for each
+ * tuning variable according to its defined bounds.  This search will
+ * never reach a converged state.
+ *
+ * It is mainly used as a basis of comparison for more intelligent
+ * search strategies.
+ *
+ * **Configuration Variables**
+ * Key          | Type       | Default | Description
+ * ------------ | ---------- | ------- | -----------
+ * RANDOM_SEED  | Integer    | 0       | Value to seed the pseudo-random number generator.
+ */
+
 #include "strategy.h"
 #include "session-core.h"
 #include "hsignature.h"

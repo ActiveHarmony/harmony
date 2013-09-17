@@ -17,6 +17,25 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/**
+ * \page brute Brute Force (brute.so)
+ *
+ * This search strategy starts with the minimum-value point (i.e.,
+ * using the minimum value for each tuning variable), and incrementing
+ * the tuning variables like an odometer until the maximum-value point
+ * is reached.  This strategy is guaranteed to visit all points within
+ * a search space.
+ *
+ * It is mainly used as a basis of comparison for more intelligent
+ * search strategies.
+ *
+ *
+ * **Configuration Variables**
+ * Key          | Type       | Default | Description
+ * ------------ | ---------- | ------- | -----------
+ * BRUTE_PASSES | Integer    | 1       | Number of passes through the search space before the search is considered converged.
+ */
+
 #include "strategy.h"
 #include "session-core.h"
 #include "hutil.h"

@@ -17,6 +17,22 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/**
+ * \page agg Aggregator (agg.so)
+ *
+ * This processing layer forces each point to be evaluated multiple
+ * times before it may proceed through the auto-tuning
+ * [feedback loop](\ref intro_feedback).  When the requisite number of
+ * evaluations has been reached, an aggregating function is applied to
+ * consolidate the set performance values.
+ *
+ * **Configuration Variables**
+ * Key       | Type    | Default | Description
+ * --------- | ------- | ------- | -----------
+ * AGG_FUNC  | String  | <none>  | Aggregation function to use.  Valid values are "min", "max", "mean", and "median" (without quotes).
+ * AGG_TIMES | Integer | <none>  | Number of performance values to collect before performing the aggregation function.
+ */
+
 #include "session-core.h"
 #include "hsignature.h"
 #include "hpoint.h"

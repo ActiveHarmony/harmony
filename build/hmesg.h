@@ -72,6 +72,8 @@ typedef enum {
     HMESG_STATUS_MAX
 } hmesg_status;
 
+/** \brief The hmesg_t structure.
+ */
 typedef struct {
     int dest;
     hmesg_type type;
