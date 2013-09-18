@@ -37,7 +37,6 @@ int hsession_init(hsession_t *sess)
 {
     sess->sig = HSIGNATURE_INITIALIZER;
     sess->cfg = hcfg_alloc();
-    sess->sig.memlevel = 1;
     if (sess->cfg == NULL)
         return -1;
 
@@ -62,163 +61,6 @@ void hsession_fini(hsession_t *sess)
 {
     hsignature_fini(&sess->sig);
     hcfg_free(sess->cfg);
-}
-
-int hsession_int(hsession_t *sess, const char *name,
-                 long min, long max, long step)
-{
-    hrange_t *range;
-
-    if (max < min) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    range = hrange_add(&sess->sig, name);
-    if (!range)
-        return -1;
-
-    range->type = HVAL_INT;
-    range->bounds.i.min = min;
-    range->bounds.i.max = max;
-    range->bounds.i.step = step;
-
-    if (sess->sig.memlevel < 1)
-        sess->sig.memlevel = 1;
-
-    return 0;
-}
-
-int hsession_real(hsession_t *sess, const char *name,
-                  double min, double max, double step)
-{
-    hrange_t *range;
-
-    if (max < min) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    range = hrange_add(&sess->sig, name);
-    if (!range)
-        return -1;
-
-    range->type = HVAL_REAL;
-    range->bounds.r.min = min;
-    range->bounds.r.max = max;
-    range->bounds.r.step = step;
-
-    if (sess->sig.memlevel < 1)
-        sess->sig.memlevel = 1;
-
-    return 0;
-}
-
-int hsession_enum(hsession_t *sess, const char *name, const char *value)
-{
-    int i;
-    hrange_t *range;
-
-    range = hrange_find(&sess->sig, name);
-    if (range && range->type != HVAL_STR) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    if (!range) {
-        range = hrange_add(&sess->sig, name);
-        if (!range)
-            return -1;
-
-        range->type = HVAL_STR;
-    }
-
-    for (i = 0; i < range->bounds.s.set_len; ++i) {
-        if (strcmp(value, range->bounds.s.set[i]) == 0) {
-            errno = EINVAL;
-            return -1;
-        }
-    }
-
-    if (range->bounds.s.set_len == range->bounds.s.set_cap) {
-        if (array_grow(&range->bounds.s.set, &range->bounds.s.set_cap,
-                       sizeof(char *)) < 0)
-        {
-            return -1;
-        }
-    }
-
-    range->bounds.s.set[i] = stralloc(value);
-    if (!range->bounds.s.set[i])
-        return -1;
-
-    ++range->bounds.s.set_len;
-
-    if (sess->sig.memlevel < 2)
-        sess->sig.memlevel = 2;  /* Free string memory with this session. */
-
-    return 0;
-}
-
-int hsession_name(hsession_t *sess, const char *name)
-{
-    sess->sig.name = stralloc(name);
-    if (!sess->sig.name)
-        return -1;
-    sess->sig.memlevel = 2;
-    return 0;
-}
-
-int hsession_strategy(hsession_t *sess, const char *strategy)
-{
-    if (hcfg_set(sess->cfg, CFGKEY_SESSION_STRATEGY, strategy) < 0)
-        return -1;
-    return 0;
-}
-
-int hsession_layer_list(hsession_t *sess, const char *list)
-{
-    if (hcfg_set(sess->cfg, CFGKEY_SESSION_LAYERS, list) < 0)
-        return -1;
-    return 0;
-}
-
-int hsession_setcfg(hsession_t *sess, const char *key, const char *val)
-{
-    return hcfg_set(sess->cfg, key, val);
-}
-
-const char *hsession_launch(hsession_t *sess, const char *host, int port)
-{
-    static hmesg_t mesg;
-    const char *retval;
-    int socket;
-
-    /* Sanity check input */
-    if (!sess->sig.name || sess->sig.range_len < 1)
-        return strerror(EINVAL);
-
-    socket = tcp_connect(host, port);
-    if (socket < 0)
-        return strerror(errno);
-
-    hmesg_scrub(&mesg);
-    mesg.type = HMESG_SESSION;
-    mesg.status = HMESG_STATUS_REQ;
-    hsession_init(&mesg.data.session);
-    hsession_copy(&mesg.data.session, sess);
-
-    /* Send session information to server. */
-    retval = NULL;
-    if (mesg_send(socket, &mesg) < 1 ||
-        mesg_recv(socket, &mesg) < 1 ||
-        mesg.status != HMESG_STATUS_OK)
-    {
-        retval = mesg.data.string;
-    }
-
-    close(socket);
-    return retval;
 }
 
 int hsession_serialize(char **buf, int *buflen, const hsession_t *sess)
@@ -262,7 +104,6 @@ int hsession_deserialize(hsession_t *sess, char *buf)
     if (count < 0) goto error;
     total += count;
 
-    sess->sig.memlevel = 1;
     return total;
 
   invalid:

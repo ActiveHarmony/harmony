@@ -37,7 +37,6 @@
 
 #include "hclient.h"
 #include "hmesg.h"
-#include "hsession.h"
 #include "hval.h"
 
 typedef enum method_t {
@@ -77,14 +76,12 @@ bundle_info_t *tuna_bundle_add(hval_type, char *);
 bundle_info_t *tuna_bundle_get(char **);
 int is_exec(const char *filename);
 char *find_exec(const char *);
-pid_t launch_silent(const char *, char **);
 
 char prog_env[FILENAME_MAX];
 char prog_hsvr[FILENAME_MAX];
 
 method_t method = METHOD_WALL;
 hdesc_t *hdesc = NULL;
-hsession_t sess;
 unsigned int max_loop = 50;
 unsigned int quiet = 0;
 unsigned int verbose = 0;
@@ -102,8 +99,7 @@ int argv_buflen = 0;
 int main(int argc, char **argv)
 {
     int i, hresult, line_start, count;
-    char readbuf[4096], *path, *hsvr_argv[2];
-    const char *retval;
+    char readbuf[4096], *path;
     FILE *fptr;
     double perf = 0.0;
 
@@ -129,20 +125,6 @@ int main(int argc, char **argv)
                 "  Will attempt direct execution.\n");
     }
 
-    snprintf(prog_hsvr, sizeof(prog_hsvr), "%s/hserver", dirname(argv[0]));
-    if (!is_exec(prog_hsvr)) {
-        path = find_exec("hserver");
-        if (path != NULL) {
-            strncpy(prog_hsvr, path, sizeof(prog_hsvr));
-            if (argv_add(prog_env) < 0)
-                return -1;
-        } else {
-            fprintf(stderr, "*** Could not find hserver executable in $PATH."
-                    "  Will attempt to connect to remote server.\n");
-            prog_hsvr[0] = '\0';
-        }
-    }
-
     /* Initialize the Harmony descriptor */
     hdesc = harmony_init();
     if (hdesc == NULL) {
@@ -151,9 +133,10 @@ int main(int argc, char **argv)
     }
 
     /* Parse the command line arguments. */
-    hsession_init(&sess);
-    hsession_name(&sess, "tuna");
     parseArgs(argc, argv);
+
+    /* Name the session after the target application. */
+    harmony_session_name(hdesc, argv_template[0].str);
 
     /* Sanity check before we attempt to connect to the server. */
     if (bcount < 1) {
@@ -161,45 +144,16 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    retval = hsession_launch(&sess, NULL, 0);
-    if (retval) {
-        if (verbose)
-            fprintf(stderr, "Error launching new tuning session: %s\n"
-                    "Attempting to start a new hserver instance...\n", retval);
-
-        /* Launch Harmony server if needed */
-        if (prog_hsvr[0] != '\0') {
-            hsvr_argv[0] = prog_hsvr;
-            hsvr_argv[1] = NULL;
-            svr_pid = launch_silent(hsvr_argv[0], hsvr_argv);
-            if (svr_pid < 0)
-                return -1;
-        }
-
-        for (i = 0; i < 3; ++i) {
-            /* XXX - This should be replaced with a system where the
-             * hserver notifies tuna of its readiness.  Perhaps if a
-             * --slave mode was added to the server.
-             */
-            sleep(i+1);
-
-            retval = hsession_launch(&sess, NULL, 0);
-            if (!retval)
-                break;  /* Success.  Leave the loop. */
-
-            fprintf(stderr, "Error connecting to new hserver instance: %s\n"
-                    "Re-try in %d second(s)...\n", retval, i+1);
-        }
-        if (i == 3) {
-            fprintf(stderr, "Could not connect to Harmony server.\n");
-            goto cleanup;
-        }
+    if (harmony_launch(hdesc, NULL, 0) != 0) {
+        fprintf(stderr, "Error launching new tuning session: %s\n",
+                harmony_error_string(hdesc));
+        return -1;
     }
 
     /* Connect to Harmony server and register ourselves as a client. */
-    printf("Starting Harmony...\n");
-    if (harmony_join(hdesc, NULL, 0, "tuna") > 0) {
-        fprintf(stderr, "Error joining Harmony session.\n");
+    if (harmony_join(hdesc, NULL, 0, argv_template[0].str) != 0) {
+        fprintf(stderr, "Error joining Harmony session: %s\n",
+                harmony_error_string(hdesc));
         goto cleanup;
     }
 
@@ -471,7 +425,7 @@ int handle_int(char *arg)
     if (bun == NULL)
         return -1;
 
-    if (hsession_int(&sess, name, min, max, step) < 0) {
+    if (harmony_int(hdesc, name, min, max, step) < 0) {
         fprintf(stderr, "Error registering variable '%s'.\n", name);
         return -1;
     }
@@ -514,7 +468,7 @@ int handle_real(char *arg)
     if (bun == NULL)
         return -1;
 
-    if (hsession_real(&sess, name, min, max, step) < 0) {
+    if (harmony_real(hdesc, name, min, max, step) < 0) {
         fprintf(stderr, "Error registering variable '%s'.\n", name);
         return -1;
     }
@@ -557,7 +511,7 @@ int handle_enum(char *arg)
         if (*arg != '\0')
             *(arg++) = '\0';
 
-        if (hsession_enum(&sess, name, val) < 0) {
+        if (harmony_enum(hdesc, name, val) < 0) {
             fprintf(stderr, "Invalid value string for variable '%s'.\n", name);
             return -1;
         }
@@ -623,7 +577,7 @@ int handle_chapel(char *prog)
     bun = tuna_bundle_add(HVAL_INT, "dataParTsk");
     if (bun == NULL)
         return -1;
-    if (hsession_int(&sess, "dataParTsk", 1, 64, 1) < 0) {
+    if (harmony_int(hdesc, "dataParTsk", 1, 64, 1) < 0) {
         fprintf(stderr, "Error registering variable 'dataParTsk'.\n");
         return -1;
     }
@@ -638,7 +592,7 @@ int handle_chapel(char *prog)
     bun = tuna_bundle_add(HVAL_INT, "numThr");
     if (bun == NULL)
         return -1;
-    if (hsession_int(&sess, "numThr", 1, 32, 1) < 0) {
+    if (harmony_int(hdesc, "numThr", 1, 32, 1) < 0) {
         fprintf(stderr, "Error registering variable 'numThr'.\n");
         return -1;
     }
@@ -689,7 +643,7 @@ int handle_chapel(char *prog)
         if (bun == NULL)
             return -1;
 
-        if (hsession_int(&sess, name, min, max, step) < 0) {
+        if (harmony_int(hdesc, name, min, max, step) < 0) {
             fprintf(stderr, "Error registering variable '%s'.\n", name);
             return -1;
         }
@@ -825,46 +779,6 @@ FILE *tuna_popen(const char *prog, char **argv, pid_t *ret_pid)
     if (ret_pid)
         *ret_pid = pid;
     return fptr;
-}
-
-pid_t launch_silent(const char *prog, char **argv)
-{
-    int i, fd;
-    pid_t pid;
-
-    fd = open("/dev/null", O_WRONLY);
-    if (fd < 0) {
-        perror("Error opening /dev/null");
-        return -1;
-    }
-
-    if (verbose) {
-        printf("Launching %s", prog);
-        for (i = 1; argv[i] != NULL; ++i) {
-            printf(" %s", argv[i]);
-        }
-        printf(" > /dev/null\n");
-    }
-
-    pid = fork();
-    if (pid == 0) {
-        /* Child Case */
-        if (dup2(fd, STDOUT_FILENO) < 0 ||
-            dup2(fd, STDERR_FILENO) < 0)
-        {
-            perror("Could not redirect stdout or stderr via dup2()");
-            exit(-1);
-        }
-        close(fd);
-
-        execv(prog, argv);
-        exit(-2);
-    }
-    else if (pid < 0)
-        perror("Error on fork()");
-
-    close(fd);
-    return pid;
 }
 
 double tv_to_double(struct timeval *tv)

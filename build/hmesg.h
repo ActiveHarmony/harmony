@@ -43,6 +43,9 @@
 #define HMESG_MAGIC     0x5261797c /* Magic number for packet.              */
 #define HMESG_VERSION   0x04       /* Protocol version.                     */
 
+#define MAX_HOSTNAME_STRLEN 64
+#define MAX_ID_LEN (MAX_HOSTNAME_STRLEN + 32) /* Add room for two integers. */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -78,7 +81,7 @@ typedef struct {
     int dest;
     hmesg_type type;
     hmesg_status status;
-    const char *src_id;
+    char src_id[MAX_ID_LEN];
     union {
         hsession_t session;
         hsignature_t join;

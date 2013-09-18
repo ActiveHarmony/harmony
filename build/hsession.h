@@ -19,13 +19,7 @@
 
 /**
  * \file
- * \brief Harmony session creation routines.
- *
- * Provides functions to create new Harmony sessions by specifying
- * properties such as tuning variables and the session's unique
- * identifier.
- *
- * Once created (aka launched), Harmony sessions cannot be modified.
+ * \brief Harmony hsession structure manipulation functions.
  */
 
 #ifndef __HSESSION_H__
@@ -81,120 +75,6 @@ int hsession_copy(hsession_t *copy, const hsession_t *orig);
  *             [hsession_init()](\ref hsession_init).
  */
 void hsession_fini(hsession_t *sess);
-
-/**
- * \brief Add an integer-domain variable to the Harmony session.
- *
- * \param sess Harmony descriptor initialized by
- *             [hsession_init()](\ref hsession_init).
- * \param name Name to associate with this variable.
- * \param min  Minimum range value (inclusive).
- * \param max  Maximum range value (inclusive).
- * \param step Minimum search increment.
- *
- * \return Returns 0 on success, and -1 otherwise.
- */
-int hsession_int(hsession_t *sess, const char *name,
-                 long min, long max, long step);
-
-/**
- * \brief Add a real-domain variable to the Harmony session.
- *
- * \param sess Harmony descriptor initialized by
- *             [hsession_init()](\ref hsession_init).
- * \param name Name to associate with this variable.
- * \param min  Minimum range value (inclusive).
- * \param max  Maximum range value (inclusive).
- * \param step Minimum search increment.
- *
- * \return Returns 0 on success, and -1 otherwise.
- */
-int hsession_real(hsession_t *sess, const char *name,
-                  double min, double max, double step);
-
-/**
- * \brief Add an enumeration variable and append to the list of valid values
- *        in this set.
- *
- * \param sess  Harmony descriptor initialized by
- *              [hsession_init()](\ref hsession_init).
- * \param name  Name to associate with this variable.
- * \param value String that belongs in this enumeration.
- *
- * \return Returns 0 on success, and -1 otherwise.
- */
-int hsession_enum(hsession_t *sess, const char *name, const char *value);
-
-/**
- * \brief Specify a unique name for the Harmony session.
- *
- * \param sess Harmony descriptor initialized by
- *             [hsession_init()](\ref hsession_init).
- * \param name Name to associate with this session.
- *
- * \return Returns 0 on success, and -1 otherwise.
- */
-int hsession_name(hsession_t *sess, const char *name);
-
-/**
- * \brief Specify the search strategy to use in the new Harmony session.
- *
- * \param sess     Harmony descriptor initialized by
- *                 [hsession_init()](\ref hsession_init).
- * \param strategy Filename of the strategy plug-in to use in this session.
- *
- * \return Returns 0 on success, and -1 otherwise.
- */
-int hsession_strategy(hsession_t *sess, const char *strategy);
-
-/**
- * \brief Specify the list of plug-ins to use in the new Harmony session.
- *
- * Plug-in layers are specified via a single string of filenames,
- * separated by the colon character (`:`).  The layers are loaded in
- * list order, with each successive layer placed further from the
- * search strategy in the center.
- *
- * \param sess    Harmony descriptor initialized by
- *                [hsession_init()](\ref hsession_init).
- * \param plugins List of plug-ins to load with this session.
- *
- * \return Returns 0 on success, and -1 otherwise.
- */
-int hsession_plugins(hsession_t *sess, const char *plugins);
-
-/**
- * /brief Specify a key/value pair within the new Harmony session.
- *
- * \param sess Harmony descriptor initialized by
- *             [hsession_init()](\ref hsession_init).
- * \param key  Config key to introduce in the session.
- * \param val  Config value to associate with the key.
- *
- * \return Returns 0 on success, and -1 otherwise.
- */
-int hsession_setcfg(hsession_t *sess, const char *key, const char *val);
-
-/**
- * \brief Instantiate a new Harmony tuning session.
- *
- * The new session will be launched on the Harmony server located at
- * <var>host</var>:<var>port</var>.
- *
- * If <var>host</var> is `NULL` or <var>port</var> is `0`, values from
- * the environment variable `HARMONY_S_HOST` or `HARMONY_S_PORT` will
- * be used, respectively.  If either environment variable is not
- * defined, values from defaults.h will be used as a last resort.
- *
- * \param sess Harmony descriptor initialized by
- *             [hsession_init()](\ref hsession_init).
- * \param host Host of the Harmony server.
- * \param port Port of the Harmony server.
- *
- * \return Returns `NULL` on success.  Otherwise, a string describing
- *         the error condition will be returned to the user.
- */
-const char *hsession_launch(hsession_t *sess, const char *host, int port);
 
 #ifndef DOXYGEN_SKIP
 

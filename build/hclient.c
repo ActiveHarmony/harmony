@@ -42,15 +42,12 @@ typedef enum harmony_state_t {
     HARMONY_STATE_MAX
 } harmony_state_t;
 
-#define MAX_HOSTNAME_STRLEN 64
-#define MAX_ID_LEN (MAX_HOSTNAME_STRLEN + 32) /* Add room for two integers. */
-
 struct hdesc_t {
     harmony_state_t state;
     int socket;
     char id[MAX_ID_LEN];
 
-    hsignature_t sig;
+    hsession_t sess;
     hmesg_t mesg;
 
     void **ptr;
@@ -78,8 +75,13 @@ hdesc_t *harmony_init(void)
     hdesc_t *hdesc = (hdesc_t *) malloc(sizeof(hdesc_t));
     if (!hdesc)
         return NULL;
+
+    if (hsession_init(&hdesc->sess) != 0) {
+        free(hdesc);
+        return NULL;
+    }
+
     hdesc->mesg = HMESG_INITIALIZER;
-    hdesc->sig = HSIGNATURE_INITIALIZER;
     hdesc->state = HARMONY_STATE_INIT;
 
     hdesc->ptr = NULL;
@@ -89,19 +91,118 @@ hdesc_t *harmony_init(void)
     hdesc->best = HPOINT_INITIALIZER;
     hdesc->errstr = NULL;
 
+    gethostname(hdesc->id, MAX_HOSTNAME_STRLEN);
+    hdesc->id[MAX_HOSTNAME_STRLEN] = '\0';
+    sprintf(hdesc->id + strlen(hdesc->id), "_%d_%d", getpid(), hdesc->socket);
+
     return hdesc;
 }
 
 void harmony_fini(hdesc_t *hdesc)
 {
     hmesg_fini(&hdesc->mesg);
-    hsignature_fini(&hdesc->sig);
+    hsession_fini(&hdesc->sess);
     hpoint_fini(&hdesc->curr);
     hpoint_fini(&hdesc->best);
     free(hdesc->ptr);
     free(hdesc);
 }
 
+/* -------------------------------------------------------------------
+ * Session Establishment API Implementations
+ */
+int harmony_session_name(hdesc_t *hdesc, const char *name)
+{
+    return hsignature_name(&hdesc->sess.sig, name);
+}
+
+int harmony_int(hdesc_t *hdesc, const char *name,
+                long min, long max, long step)
+{
+    return hsignature_int(&hdesc->sess.sig, name, min, max, step);
+}
+
+int harmony_real(hdesc_t *hdesc, const char *name,
+                 double min, double max, double step)
+{
+    return hsignature_real(&hdesc->sess.sig, name, min, max, step);
+}
+
+int harmony_enum(hdesc_t *hdesc, const char *name, const char *value)
+{
+    return hsignature_enum(&hdesc->sess.sig, name, value);
+}
+
+int harmony_strategy(hdesc_t *hdesc, const char *strategy)
+{
+    return hcfg_set(hdesc->sess.cfg, CFGKEY_SESSION_STRATEGY, strategy);
+}
+
+int harmony_layer_list(hdesc_t *hdesc, const char *list)
+{
+    return hcfg_set(hdesc->sess.cfg, CFGKEY_SESSION_LAYERS, list);
+}
+
+int harmony_launch(hdesc_t *hdesc, const char *host, int port)
+{
+    /* Sanity check input */
+    if (hdesc->sess.sig.range_len < 1) {
+        hdesc->errstr = "No tuning variables defined";
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (!host && !getenv("HARMONY_S_HOST")) {
+        char *path;
+        const char *home;
+
+        /* Provide a default name, if one isn't defined. */
+        if (!hdesc->sess.sig.name) {
+            if (hsignature_name(&hdesc->sess.sig, "NONAME"))
+                return -1;
+        }
+
+        /* Find the Active Harmony installation. */
+        home = getenv("HARMONY_HOME");
+        if (!home) {
+            hdesc->errstr = "No host or HARMONY_HOME specified";
+            return -1;
+        }
+
+        if (hcfg_set(hdesc->sess.cfg, CFGKEY_HARMONY_HOME, home) != 0) {
+            hdesc->errstr = "Could not set " CFGKEY_HARMONY_HOME;
+            return -1;
+        }
+
+        /* Fork a local tuning session. */
+        path = sprintf_alloc("%s/libexec/session-core", home);
+        hdesc->socket = socket_launch(path, NULL, NULL);
+        free(path);
+    }
+    else {
+        hdesc->socket = tcp_connect(host, port);
+    }
+
+    if (hdesc->socket < 0) {
+        hdesc->errstr = strerror(errno);
+        return -1;
+    }
+    hdesc->state = HARMONY_STATE_CONNECTED;
+
+    /* Prepare a Harmony message. */
+    hmesg_scrub(&hdesc->mesg);
+    hdesc->mesg.type = HMESG_SESSION;
+    hdesc->mesg.status = HMESG_STATUS_REQ;
+    strncpy(hdesc->mesg.src_id, hdesc->id, MAX_ID_LEN);
+    hsession_init(&hdesc->mesg.data.session);
+    hsession_copy(&hdesc->mesg.data.session, &hdesc->sess);
+
+    return mesg_send_and_recv(hdesc);
+}
+
+/* -------------------------------------------------------------------
+ * Tuning Client Establishment API Implementations
+ */
 int harmony_bind_int(hdesc_t *hdesc, const char *name, long *ptr)
 {
     return ptr_bind(hdesc, name, HVAL_INT, ptr);
@@ -122,33 +223,37 @@ int ptr_bind(hdesc_t *hdesc, const char *name, hval_type type, void *ptr)
     int i;
     hsignature_t *sig;
 
-    sig = &hdesc->sig;
+    sig = &hdesc->sess.sig;
     for (i = 0; i < sig->range_len; ++i) {
-        if (strcmp(sig->range[i].name, name) == 0) {
-            hdesc->errstr = "Variable name already bound.";
-            return -1;
-        }
+        if (strcmp(sig->range[i].name, name) == 0)
+            break;
     }
-    if (sig->range_len == sig->range_cap) {
-        if (array_grow(&sig->range, &sig->range_cap, sizeof(hrange_t)) < 0)
-            return -1;
-    }
-    if (hdesc->ptr_len == hdesc->ptr_cap) {
-        if (array_grow(&hdesc->ptr, &hdesc->ptr_cap, sizeof(void *)) < 0)
+    if (i == sig->range_cap) {
+        if (array_grow(&sig->range, &sig->range_cap, sizeof(hrange_t)) != 0)
             return -1;
     }
 
-    sig->range[i].name = stralloc(name);
-    if (!sig->range[i].name)
-        return -1;
-    sig->range[i].type = type;
-    ++sig->range_len;
+    if (i == sig->range_len) {
+        sig->range[i].name = stralloc(name);
+        if (!sig->range[i].name)
+            return -1;
+
+        sig->range[i].type = type;
+        ++sig->range_len;
+    }
+
+    if (hdesc->ptr_cap < sig->range_cap) {
+        void **tmpbuf = (void **) realloc(hdesc->ptr,
+                                          sig->range_cap * sizeof(void *));
+        if (!tmpbuf)
+            return -1;
+
+        hdesc->ptr = tmpbuf;
+        hdesc->ptr_cap = sig->range_cap;
+    }
 
     hdesc->ptr[i] = ptr;
     ++hdesc->ptr_len;
-
-    if (sig->memlevel < 2)
-        sig->memlevel = 2;  /* Free string memory with this session. */
 
     return 0;
 }
@@ -165,76 +270,62 @@ int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *name)
         return -1;
     }
 
-    if (hdesc->state > HARMONY_STATE_INIT) {
+    if (hdesc->state >= HARMONY_STATE_READY) {
         hdesc->errstr = "Descriptor already joined with an existing session";
         errno = EINVAL;
         return -1;
     }
 
-    hdesc->socket = tcp_connect(host, port);
-    if (hdesc->socket < 0) {
-        hdesc->errstr = "Error establishing TCP connection with server";
-        goto cleanup;
-    }
-    hdesc->state = HARMONY_STATE_CONNECTED;
+    if (hdesc->state == HARMONY_STATE_INIT) {
+        hdesc->socket = tcp_connect(host, port);
+        if (hdesc->socket < 0) {
+            hdesc->errstr = "Error establishing TCP connection with server";
+            return -1;
+        }
+        hdesc->state = HARMONY_STATE_CONNECTED;
 
-    gethostname(hdesc->id, MAX_HOSTNAME_STRLEN);
-    hdesc->id[MAX_HOSTNAME_STRLEN] = '\0';
-    sprintf(hdesc->id + strlen(hdesc->id), "_%d_%d", getpid(), hdesc->socket);
+        hdesc->sess.sig.name = stralloc(name);
+        if (!hdesc->sess.sig.name) {
+            hdesc->errstr = "Error allocating memory for signature name";
+            return -1;
+        }
+    }
 
     /* Prepare a Harmony message. */
     hmesg_scrub(&hdesc->mesg);
     hdesc->mesg.type = HMESG_JOIN;
     hdesc->mesg.status = HMESG_STATUS_REQ;
-    hdesc->mesg.src_id = hdesc->id;
-
-    hdesc->sig.name = stralloc(name);
-    if (!hdesc->sig.name) {
-        hdesc->errstr = "Error allocating memory for signature name";
-        goto cleanup;
-    }
+    strncpy(hdesc->mesg.src_id, hdesc->id, MAX_ID_LEN);
 
     hdesc->mesg.data.join = HSIGNATURE_INITIALIZER;
-    if (hsignature_copy(&hdesc->mesg.data.join, &hdesc->sig) < 0) {
+    if (hsignature_copy(&hdesc->mesg.data.join, &hdesc->sess.sig) < 0) {
         hdesc->errstr = "Internal error copying signature data";
-        goto cleanup;
+        return -1;
     }
 
     /* send the client registration message */
     if (mesg_send_and_recv(hdesc) < 0)
-        goto cleanup;
+        return -1;
 
     if (hdesc->mesg.status != HMESG_STATUS_OK) {
-        hdesc->errstr = "Invalid message received from server";
+        hdesc->errstr = "Invalid message received";
         errno = EINVAL;
-        goto cleanup;
+        return -1;
     }
 
     hdesc->state = HARMONY_STATE_READY;
-    hsignature_fini(&hdesc->sig);
-    if (hsignature_copy(&hdesc->sig, &hdesc->mesg.data.join) < 0) {
-        hdesc->errstr = "Error copying signature structure from server";
-        goto cleanup;
+    hsignature_fini(&hdesc->sess.sig);
+    if (hsignature_copy(&hdesc->sess.sig, &hdesc->mesg.data.join) < 0) {
+        hdesc->errstr = "Error copying received signature structure";
+        return -1;
     }
 
-    if (hsignature_isolate(&hdesc->sig) < 0) {
-        hdesc->errstr = "Error allocating memory for signature structure";
-        goto cleanup;
-    }
     return 0;
-
-  cleanup:
-    if (hdesc->state >= HARMONY_STATE_CONNECTED) {
-        if (close(hdesc->socket) < 0 && debug_mode)
-            perror("Error closing socket during harmony_join() cleanup");
-        hdesc->state = HARMONY_STATE_INIT;
-    }
-    return -1;
 }
 
 int harmony_leave(hdesc_t *hdesc)
 {
-    if (hdesc->state < HARMONY_STATE_CONNECTED) {
+    if (hdesc->state <= HARMONY_STATE_INIT) {
         hdesc->errstr = "Descriptor not currently joined to any session.";
         errno = EINVAL;
         return -1;
@@ -243,6 +334,13 @@ int harmony_leave(hdesc_t *hdesc)
     hdesc->state = HARMONY_STATE_INIT;
     if (close(hdesc->socket) < 0 && debug_mode)
         perror("Error closing socket during harmony_leave()");
+
+    /* Reset the hsession_t to prepare for hdesc reuse. */
+    hsession_fini(&hdesc->sess);
+    if (hsession_init(&hdesc->sess) != 0) {
+        hdesc->errstr = "Internal memory allocation error.";
+        return -1;
+    }
 
     return 0;
 }
@@ -259,7 +357,7 @@ char *harmony_getcfg(hdesc_t *hdesc, const char *key)
     hmesg_scrub(&hdesc->mesg);
     hdesc->mesg.type = HMESG_GETCFG;
     hdesc->mesg.status = HMESG_STATUS_REQ;
-    hdesc->mesg.src_id = hdesc->id;
+    strncpy(hdesc->mesg.src_id, hdesc->id, MAX_ID_LEN);
     hdesc->mesg.data.string = key;
 
     if (mesg_send_and_recv(hdesc) < 0)
@@ -277,13 +375,16 @@ char *harmony_getcfg(hdesc_t *hdesc, const char *key)
 
 char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val)
 {
-    char *buf;
+    char *buf = NULL;
     int retval;
 
     if (hdesc->state < HARMONY_STATE_CONNECTED) {
-        hdesc->errstr = "Descriptor not currently joined to any session.";
-        errno = EINVAL;
-        return NULL;
+        /* User must be preparing for a new session since we're not
+         * connected yet.  Store the key/value pair in a local cache.
+         */
+        buf = stralloc( hcfg_get(hdesc->sess.cfg, key) );
+        hcfg_set(hdesc->sess.cfg, key, val);
+        return buf;
     }
 
     if (!key) {
@@ -292,7 +393,6 @@ char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val)
         return NULL;
     }
 
-    buf = NULL;
     if (val) {
         buf = sprintf_alloc("%s=%s", key, val);
         if (!buf) {
@@ -309,7 +409,7 @@ char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val)
     hmesg_scrub(&hdesc->mesg);
     hdesc->mesg.type = HMESG_SETCFG;
     hdesc->mesg.status = HMESG_STATUS_REQ;
-    hdesc->mesg.src_id = hdesc->id;
+    strncpy(hdesc->mesg.src_id, hdesc->id, MAX_ID_LEN);
     retval = mesg_send_and_recv(hdesc);
     free(buf);
 
@@ -340,7 +440,7 @@ int harmony_fetch(hdesc_t *hdesc)
     hmesg_scrub(&hdesc->mesg);
     hdesc->mesg.type = HMESG_FETCH;
     hdesc->mesg.status = HMESG_STATUS_REQ;
-    hdesc->mesg.src_id = hdesc->id;
+    strncpy(hdesc->mesg.src_id, hdesc->id, MAX_ID_LEN);
     hdesc->mesg.data.fetch.best.id = hdesc->best.id;
 
     if (mesg_send_and_recv(hdesc) < 0)
@@ -407,7 +507,7 @@ int harmony_report(hdesc_t *hdesc, double value)
     hmesg_scrub(&hdesc->mesg);
     hdesc->mesg.type = HMESG_REPORT;
     hdesc->mesg.status = HMESG_STATUS_REQ;
-    hdesc->mesg.src_id = hdesc->id;
+    strncpy(hdesc->mesg.src_id, hdesc->id, MAX_ID_LEN);
 
     hdesc->mesg.data.report.cand = HPOINT_INITIALIZER;
     hpoint_copy(&hdesc->mesg.data.report.cand, &hdesc->curr);

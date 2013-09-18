@@ -248,7 +248,7 @@ int url_connect(const char *url)
     if (strncmp("dir:", url, ptr - url) == 0 ||
         strncmp("ssh:", url, ptr - url) == 0)
     {
-        ptr = session_getcfg(CFGKEY_HARMONY_ROOT);
+        ptr = session_getcfg(CFGKEY_HARMONY_HOME);
         if (!ptr)
             return -1;
 

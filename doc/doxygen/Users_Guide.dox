@@ -290,50 +290,50 @@ Code similar to `launch_tuner()` should be added to any target application that 
 
     \code{.c}
     #include <stdio.h>
-    #include "hsession.h"
+    #include "hclient.h"
 
     int launch_tuner(int argc, char **argv)
     {
-        hsession_t sess;
+        hdesc_t *hdesc;
 
         /* Initialize a Harmony tuning session handle. */
-        hsession_init(&sess);
+        hdesc = harmony_init();
 
         /* Give the tuning session a unique name. */
-        hsession_name(&sess, "Example");
+        harmony_session_name(hdesc, "Example");
 
         /* Add an integer variable called "intVar1" to the session.
          * Its value may range between 1 and 100 (inclusive).
          */
-        hsession_int(&sess, "intVar1", 1, 100, 1);
+        harmony_int(hdesc, "intVar1", 1, 100, 1);
 
         /* Add another integer variable called "intVar2" to the session.
          * Its value may range between 2 and 200 (inclusive) by
          * strides of 2.
          */
-        hsession_int(&sess, "intVar2", 2, 200, 2);
+        harmony_int(hdesc, "intVar2", 2, 200, 2);
 
         /* Add a real-valued variable called "realVar" to the session.
          * Its value may range between 0.0 and 0.5 (inclusive), using the
          * full precision available by an IEEE double.
          */
-        hsession_real(&sess, "realVar", 0.0, 0.5, 0.0);
+        harmony_real(hdesc, "realVar", 0.0, 0.5, 0.0);
 
         /* Add a string-valued variable called "strVar" to the session.
          * Its value may be "apples", "oranges", "peaches", or "pears".
          */
-        hsession_enum(&sess, "strVar", "apples");
-        hsession_enum(&sess, "strVar", "oranges");
-        hsession_enum(&sess, "strVar", "peaches");
-        hsession_enum(&sess, "strVar", "pears");
+        harmony_enum(hdesc, "strVar", "apples");
+        harmony_enum(hdesc, "strVar", "oranges");
+        harmony_enum(hdesc, "strVar", "peaches");
+        harmony_enum(hdesc, "strVar", "pears");
 
         /* Connect to a Harmony Server at the default host ("localhost"),
          * on the default port (1979), and initiate the tuning session
          * we've described using the above API calls.
          */
-        retstr = hsession_launch(&sess, NULL, 0);
-        if (retstr) {
-            fprintf(stderr, "Could not launch tuning session: %s\n", retstr);
+        if (harmony_launch(hdesc, NULL, 0) != 0) {
+            fprintf(stderr, "Could not launch tuning session: %s\n",
+                    harmony_error_string(hdesc));
             return -1;
         }
 
@@ -348,7 +348,7 @@ This example demonstrates the ability to specify [session plug-ins](\ref intro_s
 - [Point Logger Processing Layer](\ref logger)
 - [Aggregator Processing Layer](\ref agg)
 
-The following code snippet extends the code example in the [session launch](\ref example_session_launch) example.  It may be inserted at any point before the call to `hsession_launch()`.
+The following code snippet extends the code example in the [session launch](\ref example_session_launch) example.  It may be inserted at any point before the call to `harmony_launch()`.
 
 \note To increase clarity, return values of API calls are not checked in this example.  This is not recommended for production code.
 
@@ -356,27 +356,27 @@ The following code snippet extends the code example in the [session launch](\ref
         /* Use the Nelder-Mead simplex-based as the strategy for this
          * session, instead of the default Parallel Rank Order.
          */
-        hsession_strategy(&sess, "nm.so");
+        harmony_strategy(hdesc, "nm.so");
 
         /* Instruct the strategy to use an initial simplex roughly half
          * the size of the search space.
          */
-        hsession_setcfg(&sess, "INIT_PERCENT", "0.50");
+        harmony_setcfg(hdesc, "INIT_PERCENT", "0.50");
 
         /* This tuning session should surround the search strategy with
          * a logger layer first, and an aggregator layer second.
          */
-        hsession_plugins(&sess, "log.so:agg.so");
+        harmony_layer_list(hdesc, "log.so:agg.so");
 
         /* Instruct the logger to use /tmp/tuning.run as the logfile. */
-        hsession_setcfg(&sess, "LOGFILE", "/tmp/tuning.run");
+        harmony_setcfg(hdesc, "LOGFILE", "/tmp/tuning.run");
 
         /* Instruct the aggregator to collect 10 performance values for
          * each point, and allow the median performance to continue through
          * the feedback loop.
          */
-        hsession_setcfg(&sess, "AGG_TIMES", "10");
-        hsession_setcfg(&sess, "AGG_FUNC", "median");
+        harmony_setcfg(hdesc, "AGG_TIMES", "10");
+        harmony_setcfg(hdesc, "AGG_FUNC", "median");
     \endcode
 
 \section example_client Using the Client API
@@ -390,9 +390,7 @@ If this client was required to establish its own tuning session, a call to [laun
     #include <stdio.h>
     #include <string.h>
     #include <strings.h>
-    #include "hsession.h"
     #include "hclient.h"
-    #include "defaults.h"
 
     int main(int argc, char **argv)
     {
@@ -402,10 +400,10 @@ If this client was required to establish its own tuning session, a call to [laun
          * Once bound to a Harmony tuning session, these variables will be
          * modified upon harmony_fetch() to a new testing configuration.
          */
-        long   var1;
-        long   var2;
-        double var3;
-        char  *var4;
+        long        var1;
+        long        var2;
+        double      var3;
+        const char *var4;
 
         /* Initialize the Harmony client descriptor. */
         hdesc = harmony_init();
@@ -431,7 +429,6 @@ If this client was required to establish its own tuning session, a call to [laun
             /* The local variables var1, var2, var3, and var4 have now
              * been updated and are ready for use.
              *
-
              * This is where a normal application would do some work
              * using these variables and measure the performance.
              * Since this is a simple example, we'll pretend the

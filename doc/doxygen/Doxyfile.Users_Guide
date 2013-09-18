@@ -13,5 +13,4 @@ INPUT = doxygen/Users_Guide.dox \
         ../build/plugins/agg.c \
         ../build/plugins/codegen.c \
         ../build/plugins/constraint.c \
-        ../build/hclient.h \
-        ../build/hsession.h
+        ../build/hclient.h

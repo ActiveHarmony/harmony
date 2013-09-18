@@ -31,13 +31,13 @@
 #include <stdarg.h>
 #include <string.h>
 #include <unistd.h>
+#include <errno.h>
 #include <time.h>
 
 #include <mpi.h>
 #include <dlfcn.h>
 #include <sys/time.h>
 
-#include "hsession.h"
 #include "hclient.h"
 #include "defaults.h"
 
@@ -69,7 +69,6 @@ double calculate_performance(double raw_perf);
 double timer(void);
 int    dprint(const char *fmt, ...);
 int    errprint(const char *fmt, ...);
-
 /*
  * Global variable declarations.
  */
@@ -98,7 +97,6 @@ const char *new_code_path;
 
 int main(int argc, char *argv[])
 {
-    hsession_t sess;
     const char *retval;
     char *ptr;
     char numbuf[12];
@@ -131,25 +129,30 @@ int main(int argc, char *argv[])
     harmony_connected = 0;
 
     /* Initialize Harmony API. */
+    hdesc = harmony_init();
+    if (hdesc == NULL) {
+        errprint("Failed to initialize a Harmony session.\n");
+        goto cleanup;
+    }
+
     if (rank == 0) {
         /* We are the master rank.  Establish a new Harmony tuning session. */
-        hsession_init(&sess);
         snprintf(numbuf, sizeof(numbuf), "%d", node_count);
 
-        if (hsession_name(&sess, SESSION_NAME)                          < 0 ||
-            hsession_setcfg(&sess, CFGKEY_CLIENT_COUNT, numbuf)         < 0 ||
-            hsession_setcfg(&sess, CFGKEY_SESSION_STRATEGY, "pro.so")   < 0 ||
-            hsession_setcfg(&sess, CFGKEY_SESSION_LAYERS, "codegen.so") < 0)
+        if (harmony_session_name(hdesc, SESSION_NAME)                  != 0 ||
+            harmony_setcfg(hdesc, CFGKEY_CLIENT_COUNT, numbuf)         != 0 ||
+            harmony_setcfg(hdesc, CFGKEY_SESSION_STRATEGY, "pro.so")   != 0 ||
+            harmony_setcfg(hdesc, CFGKEY_SESSION_LAYERS, "codegen.so") != 0)
         {
             errprint("Error during session configuration.\n");
             MPI_Abort(MPI_COMM_WORLD, -1);
         }
 
-        if (hsession_int(&sess, "TI", 2, 500, 2) < 0 ||
-            hsession_int(&sess, "TJ", 2, 500, 2) < 0 ||
-            hsession_int(&sess, "TK", 2, 500, 2) < 0 ||
-            hsession_int(&sess, "UI", 1,   8, 1) < 0 ||
-            hsession_int(&sess, "UJ", 1,   8, 1) < 0)
+        if (harmony_int(hdesc, "TI", 2, 500, 2) != 0 ||
+            harmony_int(hdesc, "TJ", 2, 500, 2) != 0 ||
+            harmony_int(hdesc, "TK", 2, 500, 2) != 0 ||
+            harmony_int(hdesc, "UI", 1,   8, 1) != 0 ||
+            harmony_int(hdesc, "UJ", 1,   8, 1) != 0)
         {
             errprint("Failed to define tuning session\n");
             MPI_Abort(MPI_COMM_WORLD, -1);
@@ -166,15 +169,17 @@ int main(int argc, char *argv[])
             }
 
             *(ptr++) = '\0';
-            if (hsession_setcfg(&sess, argv[i], ptr) < 0) {
+            errno = 0;
+            harmony_setcfg(hdesc, argv[i], ptr);
+            if (errno) {
                 fprintf(stderr, "Failed to set config var %s\n", argv[i]);
                 MPI_Abort(MPI_COMM_WORLD, -1);
             }
         }
 
-        retval = hsession_launch(&sess, NULL, 0);
-        if (retval) {
-            errprint("Could not launch tuning session: %s\n", retval);
+        if (harmony_launch(hdesc, NULL, 0) != 0) {
+            errprint("Could not launch tuning session: %s\n",
+                     harmony_error_string(hdesc));
             MPI_Abort(MPI_COMM_WORLD, -1);
         }
     }
@@ -182,29 +187,22 @@ int main(int argc, char *argv[])
     /* Everybody should wait until a tuning session is created. */
     MPI_Barrier(MPI_COMM_WORLD);
 
-    /* Tuning session has been established.  All nodes may now connect. */
-    hdesc = harmony_init();
-    if (hdesc == NULL) {
-        errprint("Failed to initialize a Harmony session.\n");
-        goto cleanup;
-    }
-
     /* Associate local memory to the session's runtime tunable
      * parameters.  For example, these represent loop tiling and
      * unrolling factors.
      */
-    if (harmony_bind_int(hdesc, "TI", &TI) < 0 ||
-        harmony_bind_int(hdesc, "TJ", &TJ) < 0 ||
-        harmony_bind_int(hdesc, "TK", &TK) < 0 ||
-        harmony_bind_int(hdesc, "UI", &UI) < 0 ||
-        harmony_bind_int(hdesc, "UJ", &UJ) < 0)
+    if (harmony_bind_int(hdesc, "TI", &TI) != 0 ||
+        harmony_bind_int(hdesc, "TJ", &TJ) != 0 ||
+        harmony_bind_int(hdesc, "TK", &TK) != 0 ||
+        harmony_bind_int(hdesc, "UI", &UI) != 0 ||
+        harmony_bind_int(hdesc, "UJ", &UJ) != 0)
     {
         errprint("Error binding local memory to Harmony variables.\n");
         goto cleanup;
     }
 
     /* Connect to Harmony server and register ourselves as a client. */
-    if (harmony_join(hdesc, NULL, 0, SESSION_NAME) < 0) {
+    if (harmony_join(hdesc, NULL, 0, SESSION_NAME) != 0) {
         errprint("Could not join Harmony tuning session.\n");
         goto cleanup;
     }
@@ -221,7 +219,7 @@ int main(int argc, char *argv[])
         dprint("Begin iteration #%d\n", i);
 
         /* Retrieve a new point to test from the tuning session. */
-        if (fetch_configuration() < 0)
+        if (fetch_configuration() != 0)
             goto cleanup;
 
         memset(C, 0, sizeof(C));
@@ -241,14 +239,14 @@ int main(int argc, char *argv[])
                TI, TJ, TK, UI, UJ, perf);
 
         /* update the performance result */
-        if (harmony_report(hdesc, perf) < 0) {
+        if (harmony_report(hdesc, perf) != 0) {
             errprint("Error reporting performance to server.\n");
             goto cleanup;
         }
 
         if (!harmonized) {
             harmonized = check_convergence(hdesc);
-            if (harmonized < 0) {
+            if (harmonized != 0) {
                 errprint("Error checking harmony convergence status.\n");
                 goto cleanup;
             }
@@ -259,10 +257,10 @@ int main(int argc, char *argv[])
                  * to load the harmonized values, and disconnect from
                  * server.
                  */
-                if (fetch_configuration() < 0)
+                if (fetch_configuration() != 0)
                     goto cleanup;
 
-                if (harmony_leave(hdesc) < 0) {
+                if (harmony_leave(hdesc) != 0) {
                     errprint("Error leaving tuning session.");
                     goto cleanup;
                 }
@@ -286,7 +284,7 @@ int main(int argc, char *argv[])
 
     /* Leave the Harmony session, if needed. */
     if (harmony_connected) {
-        if (harmony_leave(hdesc) < 0) {
+        if (harmony_leave(hdesc) != 0) {
             errprint("Error leaving Harmony session.\n");
             harmony_connected = 0;
             goto cleanup;
@@ -302,7 +300,7 @@ int main(int argc, char *argv[])
 
   cleanup:
     if (harmony_connected) {
-        if (harmony_leave(hdesc) < 0)
+        if (harmony_leave(hdesc) != 0)
             errprint("Error disconnecting from Harmony server.\n");
     }
     harmony_fini(hdesc);
@@ -313,7 +311,7 @@ double timer()
 {
     struct timeval tv;
 
-    if (gettimeofday(&tv, NULL) < 0)
+    if (gettimeofday(&tv, NULL) != 0)
         errprint("Error during gettimeofday()\n");
 
     return (tv.tv_sec + 1.0e-6 * tv.tv_usec);
@@ -332,7 +330,7 @@ int fetch_configuration(void)
 
         if (changed == 1) {
             /* Harmony updated variable values.  Load a new shared object. */
-            if (update_so(construct_so_filename()) < 0) {
+            if (update_so(construct_so_filename()) != 0) {
                 errprint("Could not load new code object.");
                 return -1;
             }

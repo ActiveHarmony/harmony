@@ -18,11 +18,11 @@
  */
 
 /**
- *  \file
- *  \brief Harmony client application routines.
+ * \file hclient.h
+ * \brief Harmony client application function header.
  *
- *  All clients must include this file to participate in a Harmony
- *  tuning session.
+ * All clients must include this file to participate in a Harmony
+ * tuning session.
  */
 
 #ifndef __HCLIENT_H__
@@ -40,7 +40,26 @@ typedef struct hdesc_t hdesc_t;
 #endif
 
 /**
- * \brief Allocate and initialize a new Harmony client descriptor.
+ * \defgroup api_desc Harmony Descriptor Management Functions
+ *
+ * A Harmony descriptor is an opaque structure that stores state
+ * associated with a particular tuning session.  The functions within
+ * this section allow the user to create and manage the resources
+ * controlled by the descriptor.
+ *
+ * @{
+ */
+
+/**
+ * \brief Allocate and initialize a new Harmony descriptor.
+ *
+ * All client API functions require a valid Harmony descriptor to
+ * function correctly.  The descriptor is designed to be used as an
+ * opaque type and no guarantees are made about the contents of its
+ * structure.
+ *
+ * Heap memory is allocated for the descriptor, so be sure to call
+ * [harmony_fini()](\ref harmony_fini) when it is no longer needed.
  *
  * \return Returns Harmony descriptor upon success, and NULL otherwise.
  */
@@ -53,6 +72,139 @@ hdesc_t *harmony_init(void);
  *              [harmony_init()](\ref harmony_init).
  */
 void harmony_fini(hdesc_t *hdesc);
+
+/**
+ * @}
+ *
+ * \defgroup api_sess Session Setup Functions
+ *
+ * These functions are used to describe and establish new tuning
+ * sessions.  Valid sessions must define at least one tuning variable
+ * before they are launched.
+ *
+ * @{
+ */
+
+/**
+ * \brief Specify a unique name for the Harmony session.
+ *
+ * \param hdesc Harmony descriptor returned from
+ *              [harmony_init()](\ref harmony_init).
+ * \param name  Name to associate with this session.
+ *
+ * \return Returns 0 on success, and -1 otherwise.
+ */
+int harmony_session_name(hdesc_t *hdesc, const char *name);
+
+/**
+ * \brief Add an integer-domain variable to the Harmony session.
+ *
+ * \param hdesc Harmony descriptor returned from
+ *              [harmony_init()](\ref harmony_init).
+ * \param name  Name to associate with this variable.
+ * \param min   Minimum range value (inclusive).
+ * \param max   Maximum range value (inclusive).
+ * \param step  Minimum search increment.
+ *
+ * \return Returns 0 on success, and -1 otherwise.
+ */
+int harmony_int(hdesc_t *hdesc, const char *name,
+                 long min, long max, long step);
+
+/**
+ * \brief Add a real-domain variable to the Harmony session.
+ *
+ * \param hdesc Harmony descriptor returned from
+ *              [harmony_init()](\ref harmony_init).
+ * \param name  Name to associate with this variable.
+ * \param min   Minimum range value (inclusive).
+ * \param max   Maximum range value (inclusive).
+ * \param step  Minimum search increment.
+ *
+ * \return Returns 0 on success, and -1 otherwise.
+ */
+int harmony_real(hdesc_t *hdesc, const char *name,
+                  double min, double max, double step);
+
+/**
+ * \brief Add an enumeration variable and append to the list of valid values
+ *        in this set.
+ *
+ * \param hdesc Harmony descriptor returned from
+ *              [harmony_init()](\ref harmony_init).
+ * \param name  Name to associate with this variable.
+ * \param value String that belongs in this enumeration.
+ *
+ * \return Returns 0 on success, and -1 otherwise.
+ */
+int harmony_enum(hdesc_t *hdesc, const char *name, const char *value);
+
+/**
+ * \brief Specify the search strategy to use in the new Harmony session.
+ *
+ * \param hdesc    Harmony descriptor returned from
+ *                 [harmony_init()](\ref harmony_init).
+ * \param strategy Filename of the strategy plug-in to use in this session.
+ *
+ * \return Returns 0 on success, and -1 otherwise.
+ */
+int harmony_strategy(hdesc_t *hdesc, const char *strategy);
+
+/**
+ * \brief Specify the list of plug-ins to use in the new Harmony session.
+ *
+ * Plug-in layers are specified via a single string of filenames,
+ * separated by the colon character (`:`).  The layers are loaded in
+ * list order, with each successive layer placed further from the
+ * search strategy in the center.
+ *
+ * \param hdesc   Harmony descriptor returned from
+ *                [harmony_init()](\ref harmony_init).
+ * \param plugins List of plug-ins to load with this session.
+ *
+ * \return Returns 0 on success, and -1 otherwise.
+ */
+int harmony_layer_list(hdesc_t *hdesc, const char *list);
+
+/**
+ * \brief Instantiate a new Harmony tuning session.
+ *
+ * After using the session establishment routines (harmony_int,
+ * harmony_name, etc.) to specify a tuning session, this function
+ * launches a new tuning session.  It may either be started locally or
+ * on the Harmony Server located at *host*:*port*.
+ *
+ * If *host* is `NULL`, its value will be taken from the environment
+ * variable `HARMONY_S_HOST`.  If `HARMONY_S_HOST` is not defined, the
+ * environment variable `HARMONY_HOME` will be used to initiate a
+ * private tuning session, which will be available only to the local
+ * process.
+ *
+ * If *port* is `0`, its value will be taken from the environment
+ * variable `HARMONY_S_PORT`, if defined.  Otherwise, its value will
+ * be taken from the build/defaults.h file, if needed.
+ *
+ * \param hdesc Harmony descriptor returned from
+ *              [harmony_init()](\ref harmony_init).
+ * \param host  Host of the Harmony server (or `NULL`).
+ * \param port  Port of the Harmony server.
+ *
+ * \return Returns 0 on success, and -1 otherwise.
+ */
+int harmony_launch(hdesc_t *hdesc, const char *host, int port);
+
+/**
+ * @}
+ *
+ * \defgroup api_client Tuning Client Setup Functions
+ *
+ * These functions prepare the client to join an established tuning
+ * session.  Specifically, variables within the client application
+ * must be bound to session variables.  This allows the client to
+ * change appropriately upon fetching new points from the session.
+ *
+ * @{
+ */
 
 /**
  * \brief Bind a local variable of type `long` to an integer-domain
@@ -160,6 +312,17 @@ int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *sess);
  * \return Returns 0 on success, and -1 otherwise.
  */
 int harmony_leave(hdesc_t *hdesc);
+
+/**
+ * @}
+ *
+ * \defgroup api_runtime Client/Session Interaction Functions
+ *
+ * These functions are used by the client after it has joined an
+ * established session.
+ *
+ * @{
+ */
 
 /**
  * \brief Get a key value from the session's configuration.
@@ -270,6 +433,10 @@ const char *harmony_error_string(hdesc_t *hdesc);
  *              [harmony_init()](\ref harmony_init).
  */
 void harmony_error_clear(hdesc_t *hdesc);
+
+/**
+ * @}
+ */
 
 #ifdef __cplusplus
 }

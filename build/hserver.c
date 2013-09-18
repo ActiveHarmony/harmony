@@ -194,9 +194,9 @@ int vars_init(int argc, char *argv[])
         return -1;
     }
 
-    if ( (tmppath = getenv(CFGKEY_HARMONY_ROOT))) {
+    if ( (tmppath = getenv(CFGKEY_HARMONY_HOME))) {
         harmony_dir = stralloc(tmppath);
-        printf(CFGKEY_HARMONY_ROOT " is %s\n", harmony_dir);
+        printf(CFGKEY_HARMONY_HOME " is %s\n", harmony_dir);
     }
     else {
         if (strchr(argv[0], '/'))
@@ -211,12 +211,12 @@ int vars_init(int argc, char *argv[])
             harmony_dir = stralloc(dirname(harmony_dir));
         free(tmppath);
 
-        printf("Detected %s/ as " CFGKEY_HARMONY_ROOT "\n", harmony_dir);
+        printf("Detected %s/ as " CFGKEY_HARMONY_HOME "\n", harmony_dir);
     }
     free(binfile);
 
-    if (hcfg_set(cfg, CFGKEY_HARMONY_ROOT, harmony_dir) < 0) {
-        perror("Could not set " CFGKEY_HARMONY_ROOT " in global config");
+    if (hcfg_set(cfg, CFGKEY_HARMONY_HOME, harmony_dir) < 0) {
+        perror("Could not set " CFGKEY_HARMONY_HOME " in global config");
         return -1;
     }
 
@@ -226,7 +226,7 @@ int vars_init(int argc, char *argv[])
     session_bin = sprintf_alloc("%s/libexec/" SESSION_CORE_EXECFILE,
                                 harmony_dir);
     if (!file_exists(session_bin)) {
-        fprintf(stderr, "Could not find support files in HARMONY_ROOT\n");
+        fprintf(stderr, "Could not find support files in HARMONY_HOME\n");
         return -1;
     }
 
@@ -561,7 +561,7 @@ int handle_client_socket(int fd)
     mesg_out.dest = fd;
     mesg_out.type = mesg_in.type;
     mesg_out.status = mesg_in.status;
-    mesg_out.src_id = mesg_in.src_id;
+    strncpy(mesg_out.src_id, mesg_in.src_id, MAX_ID_LEN);
     mesg_out.data = mesg_in.data;
     if (mesg_send(sess->fd, &mesg_out) < 1) {
         perror("Error forwarding message to session");
@@ -615,7 +615,7 @@ int handle_session_socket(int idx)
     mesg_out.dest = idx;
     mesg_out.type = mesg_in.type;
     mesg_out.status = mesg_in.status;
-    mesg_out.src_id = mesg_in.src_id;
+    strncpy(mesg_out.src_id, mesg_in.src_id, MAX_ID_LEN);
     mesg_out.data = mesg_in.data;
     if (mesg_send(mesg_in.dest, &mesg_out) < 1) {
         perror("Error forwarding message to client");
@@ -691,11 +691,9 @@ session_state_t *session_open(hmesg_t *mesg)
         goto error;
 
     /* Initialize HTTP server fields. */
-    if (hsignature_copy(&sess->sig, &mesg->data.session.sig) < 0 ||
-        hsignature_isolate(&sess->sig) < 0)
-    {
+    if (hsignature_copy(&sess->sig, &mesg->data.session.sig) != 0)
         goto error;
-    }
+
     sess->reported = 0;
 
     if (gettimeofday(&sess->start, NULL) < 0)

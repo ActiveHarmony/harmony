@@ -64,22 +64,23 @@ extern const hrange_t HRANGE_INITIALIZER;
  * compatibility with the session they wish to join.
  */
 typedef struct hsignature {
-    const char *name;
+    char *name;
     hrange_t *range;
     int range_len;
     int range_cap;
-    int memlevel;    /* 2 == Strings point to heap
-                      * 1 == Strings point to hmesg_t.buf, cfg allocated
-                      * 0 == Shallow copy of another hsession
-                      */
 } hsignature_t;
 extern const hsignature_t HSIGNATURE_INITIALIZER;
 
 /* Harmony signature functions */
 int  hsignature_copy(hsignature_t *dst, const hsignature_t *src);
-int  hsignature_isolate(hsignature_t *sig);
 void hsignature_fini(hsignature_t *sig);
 int  hsignature_equal(const hsignature_t *sig_a, const hsignature_t *sig_b);
+int  hsignature_name(hsignature_t *sig, const char *name);
+int  hsignature_int(hsignature_t *sig, const char *name,
+                    long min, long max, long step);
+int  hsignature_real(hsignature_t *sig, const char *name,
+                     double min, double max, double step);
+int  hsignature_enum(hsignature_t *sig, const char *name, const char *value);
 int  hsignature_serialize(char **buf, int *buflen, const hsignature_t *sig);
 int  hsignature_deserialize(hsignature_t *sig, char *buf);
 

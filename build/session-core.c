@@ -698,7 +698,7 @@ int load_strategy(const char *file)
     if (!file)
         file = DEFAULT_STRATEGY;
 
-    root = hcfg_get(sess->cfg, CFGKEY_HARMONY_ROOT);
+    root = hcfg_get(sess->cfg, CFGKEY_HARMONY_HOME);
     path = sprintf_alloc("%s/libexec/%s", root, file);
 
     lib = dlopen(path, RTLD_LAZY | RTLD_LOCAL);
@@ -766,7 +766,7 @@ int load_layers(const char *list)
         if (!end)
             end = list + strlen(list);
 
-        prefix = hcfg_get(sess->cfg, CFGKEY_HARMONY_ROOT);
+        prefix = hcfg_get(sess->cfg, CFGKEY_HARMONY_HOME);
         if (snprintf_grow(&path, &path_len, "%s/libexec/%.*s",
                           prefix, end - list, list) < 0)
         {

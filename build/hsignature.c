@@ -67,6 +67,58 @@ hrange_t *hrange_add(hsignature_t *sig, const char *name)
     return range;
 }
 
+void hrange_fini(hrange_t *range)
+{
+    int i;
+
+    if (range->name)
+        free(range->name);
+
+    if (range->type == HVAL_STR) {
+        for (i = 0; i < range->bounds.s.set_len; ++i)
+            free(range->bounds.s.set[i]);
+    }
+    *range = HRANGE_INITIALIZER;
+}
+
+int hrange_copy(hrange_t *dst, const hrange_t *src)
+{
+    int i;
+
+    hrange_fini(dst);
+
+    dst->name = stralloc(src->name);
+    if (!dst->name)
+        return -1;
+
+    dst->type = src->type;
+    switch (dst->type) {
+    case HVAL_INT:  memcpy(&dst->bounds.i, &src->bounds.i,
+                           sizeof(int_bounds_t)); break;
+    case HVAL_REAL: memcpy(&dst->bounds.r, &src->bounds.r,
+                           sizeof(real_bounds_t)); break;
+    case HVAL_STR:
+        dst->bounds.s.set = (char **) malloc(src->bounds.s.set_len *
+                                             sizeof(char *));
+        if (!dst->bounds.s.set)
+            return -1;
+
+        dst->bounds.s.set_len = src->bounds.s.set_len;
+        dst->bounds.s.set_cap = src->bounds.s.set_len;
+        for (i = 0; i < dst->bounds.s.set_len; ++i) {
+            dst->bounds.s.set[i] = stralloc(src->bounds.s.set[i]);
+            if (!dst->bounds.s.set[i])
+                return -1;
+        }
+        break;
+
+    default:
+        errno = EINVAL;
+        return -1;
+    }
+    return 0;
+}
+
 int hrange_serialize(char **buf, int *buflen, const hrange_t *range)
 {
     int i, count, total;
@@ -137,7 +189,7 @@ int hrange_deserialize(hrange_t *range, char *buf)
 {
     int i, count, total;
     char **newbuf;
-    const char *strptr;
+    char *strptr;
     char type_str[4];
 
     for (i = 0; isspace(buf[i]); ++i);
@@ -145,9 +197,12 @@ int hrange_deserialize(hrange_t *range, char *buf)
         goto invalid;
     total = i + 6;
 
-    count = scanstr_serial((const char **)&range->name, buf + total);
+    count = scanstr_serial((const char **)&strptr, buf + total);
     if (count < 0) goto invalid;
     total += count;
+
+    range->name = stralloc(strptr);
+    if (!range->name) goto error;
 
     if (sscanf(buf + total, " %3s%n", type_str, &count) < 1)
         goto invalid;
@@ -195,7 +250,7 @@ int hrange_deserialize(hrange_t *range, char *buf)
         }
 
         for (i = 0; i < range->bounds.s.set_len; ++i) {
-            count = scanstr_serial(&strptr, buf + total);
+            count = scanstr_serial((const char **)&strptr, buf + total);
             if (count < 0) goto invalid;
             total += count;
 
@@ -220,84 +275,44 @@ int hrange_deserialize(hrange_t *range, char *buf)
  */
 int hsignature_copy(hsignature_t *dst, const hsignature_t *src)
 {
-    hrange_t *newbuf;
+    int i;
 
-    if (dst->range_cap < src->range_len) {
-        newbuf = (hrange_t *) realloc(dst->range,
-                                      sizeof(hrange_t) * src->range_len);
-        if (!newbuf)
-            return -1;
-        dst->range = newbuf;
-        dst->range_cap = src->range_len;
-    }
-    dst->name = src->name;
-    dst->range_len = src->range_len;
-    memcpy(dst->range, src->range, sizeof(hrange_t) * src->range_len);
-    dst->memlevel = 1;
+    hsignature_fini(dst);
 
-    return 0;
-}
-
-int hsignature_isolate(hsignature_t *sig)
-{
-    int i, j;
-    char **newset;
-
-    sig->name = stralloc(sig->name);
-    if (!sig->name)
+    dst->range = (hrange_t *) malloc(sizeof(hrange_t) * src->range_len);
+    if (!dst->range)
         return -1;
 
-    for (i = 0; i < sig->range_len; ++i) {
-        sig->range[i].name = stralloc(sig->range[i].name);
-        if (!sig->range[i].name)
+    dst->range_len = src->range_len;
+    dst->range_cap = src->range_len;
+
+    dst->name = stralloc(src->name);
+    if (!dst->name)
+        return -1;
+
+    for (i = 0; i < dst->range_len; ++i) {
+        dst->range[i] = HRANGE_INITIALIZER;
+        if (hrange_copy(&dst->range[i], &src->range[i]) != 0)
             return -1;
-
-        if (sig->range[i].type != HVAL_STR)
-            continue;
-
-        newset = (char **) malloc(sizeof(char *) *
-                                  sig->range[i].bounds.s.set_len);
-        if (!newset)
-            return -1;
-
-        for (j = 0; j < sig->range[i].bounds.s.set_len; ++j) {
-            newset[j] = stralloc(sig->range[i].bounds.s.set[j]);
-            if (!sig->range[i].bounds.s.set[j])
-                return -1;
-        }
-        sig->range[i].bounds.s.set = newset;
-        sig->range[i].bounds.s.set_cap = sig->range[i].bounds.s.set_len;
     }
-    sig->memlevel = 2;
-
     return 0;
 }
 
 void hsignature_fini(hsignature_t *sig)
 {
-    int i, j;
+    int i;
 
-    if (sig->memlevel >= 2) {
-        for (i = 0; i < sig->range_len; ++i) {
-            free(sig->range[i].name);
-
-            if (sig->range[i].type != HVAL_STR)
-                continue;
-
-            for (j = 0; j < sig->range[i].bounds.s.set_len; ++j)
-                free(sig->range[i].bounds.s.set[j]);
-            free(sig->range[i].bounds.s.set);
+    for (i = 0; i < sig->range_len; ++i) {
+        free(sig->range[i].name);
+        if (sig->range[i].type == HVAL_STR) {
+            sig->range[i].name = NULL;
+            hrange_fini(&sig->range[i]);
         }
-        free((char *)sig->name);
     }
 
-    if (sig->memlevel >= 1) {
-        free(sig->range);
-        sig->range_cap = 0;
-    }
-
-    sig->range = NULL;
-    sig->memlevel = 0;
+    free(sig->range);
+    free(sig->name);
+    *sig = HSIGNATURE_INITIALIZER;
 }
 
 int hsignature_equal(const hsignature_t *sig_a, const hsignature_t *sig_b)
@@ -310,11 +325,109 @@ int hsignature_equal(const hsignature_t *sig_a, const hsignature_t *sig_b)
     if (sig_a->range_len != sig_b->range_len)
         return 0;
 
-    for (i = 0; i < sig_a->range_len; ++i)
+    for (i = 0; i < sig_a->range_len; ++i) {
         if (strcmp(sig_a->range[i].name, sig_b->range[i].name) != 0)
             return 0;
-
+        if (sig_a->range[i].type != sig_b->range[i].type)
+            return 0;
+    }
     return 1;
+}
+
+int hsignature_name(hsignature_t *sig, const char *name)
+{
+    if (sig->name)
+        free(sig->name);
+
+    sig->name = stralloc(name);
+    if (!sig->name)
+        return -1;
+
+    return 0;
+}
+
+int hsignature_int(hsignature_t *sig, const char *name,
+                   long min, long max, long step)
+{
+    hrange_t *range;
+
+    if (max < min) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    range = hrange_add(sig, name);
+    if (!range)
+        return -1;
+
+    range->type = HVAL_INT;
+    range->bounds.i.min = min;
+    range->bounds.i.max = max;
+    range->bounds.i.step = step;
+
+    return 0;
+}
+
+int hsignature_real(hsignature_t *sig, const char *name,
+                    double min, double max, double step)
+{
+    hrange_t *range;
+
+    if (max < min) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    range = hrange_add(sig, name);
+    if (!range)
+        return -1;
+
+    range->type = HVAL_REAL;
+    range->bounds.r.min = min;
+    range->bounds.r.max = max;
+    range->bounds.r.step = step;
+
+    return 0;
+}
+
+int hsignature_enum(hsignature_t *sig, const char *name, const char *value)
+{
+    int i;
+    hrange_t *range;
+
+    range = hrange_find(sig, name);
+    if (range && range->type != HVAL_STR) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (!range) {
+        range = hrange_add(sig, name);
+        if (!range)
+            return -1;
+
+        range->type = HVAL_STR;
+    }
+
+    for (i = 0; i < range->bounds.s.set_len; ++i) {
+        if (strcmp(value, range->bounds.s.set[i]) == 0) {
+            errno = EINVAL;
+            return -1;
+        }
+    }
+
+    if (range->bounds.s.set_len == range->bounds.s.set_cap) {
+        if (array_grow(&range->bounds.s.set,
+                       &range->bounds.s.set_cap, sizeof(char *)) < 0)
+            return -1;
+    }
+
+    range->bounds.s.set[i] = stralloc(value);
+    if (!range->bounds.s.set[i])
+        return -1;
+
+    ++range->bounds.s.set_len;
+    return 0;
 }
 
 int hsignature_serialize(char **buf, int *buflen, const hsignature_t *sig)
@@ -349,6 +462,7 @@ int hsignature_serialize(char **buf, int *buflen, const hsignature_t *sig)
 int hsignature_deserialize(hsignature_t *sig, char *buf)
 {
     int i, count, total;
+    char *strptr;
     hrange_t *newbuf;
 
     for (i = 0; isspace(buf[i]); ++i);
@@ -356,9 +470,12 @@ int hsignature_deserialize(hsignature_t *sig, char *buf)
         goto invalid;
     total = i + 4;
 
-    count = scanstr_serial(&sig->name, buf + total);
+    count = scanstr_serial((const char **)&strptr, buf + total);
     if (count < 0) goto invalid;
     total += count;
+
+    sig->name = stralloc(strptr);
+    if (!sig->name) goto error;
 
     if (sscanf(buf + total, " %d%n", &sig->range_len, &count) < 1)
         goto invalid;
@@ -377,9 +494,6 @@ int hsignature_deserialize(hsignature_t *sig, char *buf)
         if (count < 0) goto invalid;
         total += count;
     }
-
-    if (sig->memlevel < 1)
-        sig->memlevel = 1;
 
     return total;
 
