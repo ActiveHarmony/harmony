@@ -14,13 +14,13 @@ SRCS=agg.c \
      log.c \
      TAUdb.c \
      xmlWriter.c \
-#     constraint.c
+     constraint.c
 
 LIBEXEC_TARGETS=agg.so \
                 codegen.so \
                 codegen-helper \
                 log.so \
-#                constraint.so
+                constraint.so
 TARGETS=$(LIBEXEC_TARGETS)
 
 LIBXML2=
