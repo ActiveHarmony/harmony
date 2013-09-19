@@ -215,7 +215,6 @@ int hmesg_deserialize(hmesg_t *mesg)
     int count, total;
     unsigned int msgver;
     char *buf = mesg->buf;
-    const char *strptr;
 
     /* Verify HMESG_MAGIC and HMESG_VERSION */
     if (ntohl(*(unsigned int *)buf) != HMESG_MAGIC)
@@ -233,9 +232,8 @@ int hmesg_deserialize(hmesg_t *mesg)
         goto invalid;
     total += count;
 
-    count = scanstr_serial(&strptr, buf + total);
-    if (count < 0 || count >= MAX_ID_LEN) goto invalid;
-    strncpy(mesg->src_id, strptr, MAX_ID_LEN);
+    count = scanstr_serial(&mesg->src_id, buf + total);
+    if (count < 0) goto invalid;
     total += count;
 
     /* Before we overwrite this message's type, make sure memory allocated

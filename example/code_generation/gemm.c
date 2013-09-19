@@ -97,7 +97,6 @@ const char *new_code_path;
 
 int main(int argc, char *argv[])
 {
-    const char *retval;
     char *ptr;
     char numbuf[12];
     char hostname[64];
@@ -139,11 +138,12 @@ int main(int argc, char *argv[])
         /* We are the master rank.  Establish a new Harmony tuning session. */
         snprintf(numbuf, sizeof(numbuf), "%d", node_count);
 
-        if (harmony_session_name(hdesc, SESSION_NAME)                  != 0 ||
-            harmony_setcfg(hdesc, CFGKEY_CLIENT_COUNT, numbuf)         != 0 ||
-            harmony_setcfg(hdesc, CFGKEY_SESSION_STRATEGY, "pro.so")   != 0 ||
-            harmony_setcfg(hdesc, CFGKEY_SESSION_LAYERS, "codegen.so") != 0)
-        {
+        errno = 0;
+        harmony_session_name(hdesc, SESSION_NAME);
+        harmony_setcfg(hdesc, CFGKEY_CLIENT_COUNT, numbuf);
+        harmony_setcfg(hdesc, CFGKEY_SESSION_STRATEGY, "pro.so");
+        harmony_setcfg(hdesc, CFGKEY_SESSION_LAYERS, "codegen.so");
+        if (errno) {
             errprint("Error during session configuration.\n");
             MPI_Abort(MPI_COMM_WORLD, -1);
         }

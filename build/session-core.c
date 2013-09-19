@@ -261,6 +261,7 @@ int main(int argc, char **argv)
             if (mesg_recv(STDIN_FILENO, &mesg) < 1)
                 goto error;
 
+            hcfg_set(sess->cfg, CFGKEY_CURRENT_CLIENT, mesg.src_id);
             switch (mesg.type) {
             case HMESG_JOIN:   retval = handle_join(&mesg); break;
             case HMESG_GETCFG: retval = handle_getcfg(&mesg); break;
@@ -271,8 +272,12 @@ int main(int argc, char **argv)
                 errmsg = "Internal error: Unknown message type.";
                 goto error;
             }
+            if (retval != 0)
+                goto error;
 
-            if (retval != 0 || mesg_send(STDIN_FILENO, &mesg) < 1)
+            hcfg_set(sess->cfg, CFGKEY_CURRENT_CLIENT, NULL);
+            mesg.src_id = NULL;
+            if (mesg_send(STDIN_FILENO, &mesg) < 1)
                 goto error;
         }
 
@@ -592,17 +597,18 @@ int handle_setcfg(hmesg_t *mesg)
     const char *oldval;
 
     hcfg_parse((char *)mesg->data.string, &key, &val);
-
-    /* Launch all setcfg hooks defined in the plug-in stack. */
-    for (i = 0; i < lstack_len; ++i) {
-        if (lstack[i].setcfg && lstack[i].setcfg(key, val) != 0)
-            return -1;
-    }
-
-    /* Prepare setcfg response message for client. */
     if (!key) {
         errmsg = strerror(EINVAL);
         return -1;
+    }
+
+    /* Launch all setcfg hooks defined in the plug-in stack. */
+    if (strategy_setcfg && strategy_setcfg(key, val) != 0)
+        return -1;
+
+    for (i = 0; i < lstack_len; ++i) {
+        if (lstack[i].setcfg && lstack[i].setcfg(key, val) != 0)
+            return -1;
     }
 
     /* Store the original value, possibly allocating memory for it. */
@@ -613,11 +619,12 @@ int handle_setcfg(hmesg_t *mesg)
     }
 
     /* Finally, update the configuration system. */
-    if (hcfg_set(sess->cfg, key, val) < 0) {
+    if (hcfg_set(sess->cfg, key, val) != 0) {
         errmsg = "Internal error: Could not modify configuration.";
         return -1;
     }
 
+    /* Prepare setcfg response message for client. */
     mesg->data.string = oldval;
     mesg->status = HMESG_STATUS_OK;
     return 0;

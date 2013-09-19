@@ -74,9 +74,9 @@ int agg_init(hsignature_t *sig)
 {
     const char *val;
 
-    val = session_getcfg("AGG_FUNCTION");
+    val = session_getcfg("AGG_FUNC");
     if (!val) {
-        session_error("AGG_FUNCTION configuration key empty");
+        session_error("AGG_FUNC configuration key empty");
         return -1;
     }
     if      (strcasecmp(val, "MIN") == 0)    agg_type = AGG_MIN;
@@ -84,7 +84,7 @@ int agg_init(hsignature_t *sig)
     else if (strcasecmp(val, "MEAN") == 0)   agg_type = AGG_MEAN;
     else if (strcasecmp(val, "MEDIAN") == 0) agg_type = AGG_MEDIAN;
     else {
-        session_error("Invalide AGG_FUNCTION configuration value");
+        session_error("Invalide AGG_FUNC configuration value");
         return -1;
     }
 

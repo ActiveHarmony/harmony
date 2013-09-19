@@ -53,7 +53,7 @@ int main(int argc, char **argv)
     const char *name;
     char *ptr;
     hdesc_t *hdesc;
-    int i, retval, loop = 10;
+    int i, retval, loop = 200;
     long perf = -1000;
 
     /* Variables to hold the application's runtime tunable parameters.
@@ -85,7 +85,7 @@ int main(int argc, char **argv)
 
     /* Process the program arguments. */
     i = 1;
-    name = "Example";
+    name = "XML_example";
     if (argc > 1 && !strchr(argv[1], '=')) {
         name = argv[1];
         ++i;
@@ -93,10 +93,9 @@ int main(int argc, char **argv)
 
     errno = 0;
     harmony_session_name(hdesc, name);
-    harmony_setcfg(hdesc, CFGKEY_SESSION_STRATEGY, "nm.so");
-    harmony_setcfg(hdesc, CFGKEY_SESSION_LAYERS, "constraint.so");
+    harmony_setcfg(hdesc, CFGKEY_SESSION_LAYERS, "xmlWriter.so");
     if (errno) {
-        perror("Error during session setup");
+        fprintf(stderr, "Error during session configuration.\n");
         return -1;
     }
 
@@ -107,8 +106,8 @@ int main(int argc, char **argv)
             return -1;
         }
 
-        *(ptr++) = '\0';
         errno = 0;
+        *(ptr++) = '\0';
         harmony_setcfg(hdesc, argv[i], ptr);
         if (errno) {
             fprintf(stderr, "Failed to set config var %s\n", argv[i]);
@@ -128,7 +127,7 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    printf("Starting Harmony...\n");
+    printf("Launching tuning session.\n");
     if (harmony_launch(hdesc, NULL, 0) != 0) {
         fprintf(stderr, "Could not launch tuning session: %s\n",
                 harmony_error_string(hdesc));
@@ -155,6 +154,8 @@ int main(int argc, char **argv)
         retval = -1;
         goto cleanup;
     }
+
+    printf("Connected to harmony server.\n");
 
     /* main loop */
     for (i = 0; !harmony_converged(hdesc) && i < loop; i++) {

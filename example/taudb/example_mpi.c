@@ -21,6 +21,7 @@
 #include <string.h>
 #include <strings.h>
 #include <errno.h>
+#include <mpi.h>
 
 #include "hclient.h"
 #include "defaults.h"
@@ -36,6 +37,20 @@
  * And a reasonable search range for all parameters is [1-100].
  *
  */
+
+hdesc_t *hdesc = NULL;
+int rank = -1;
+/* Variables to hold the application's runtime tunable parameters.
+ * Once bound to a Harmony tuning session, these variables will be
+ * modified upon harmony_fetch() to a new testing configuration.
+ */
+long param_1;
+long param_2;
+long param_3;
+long param_4;
+long param_5;
+long param_6;
+
 long application(long p1, long p2, long p3, long p4, long p5, long p6)
 {
     long perf =
@@ -52,20 +67,13 @@ int main(int argc, char **argv)
 {
     const char *name;
     char *ptr;
-    hdesc_t *hdesc;
-    int i, retval, loop = 10;
-    long perf = -1000;
 
-    /* Variables to hold the application's runtime tunable parameters.
-     * Once bound to a Harmony tuning session, these variables will be
-     * modified upon harmony_fetch() to a new testing configuration.
-     */
-    long param_1;
-    long param_2;
-    long param_3;
-    long param_4;
-    long param_5;
-    long param_6;
+    int i, retval, loop = 200;
+    long perf = -1000;
+    int node_count;
+    char numbuf[12];
+    name = "TauDB_example";
+    MPI_Init(&argc, &argv);
 
     retval = 0;
     for (i = 1; i < argc; ++i) {
@@ -76,6 +84,10 @@ int main(int argc, char **argv)
         }
     }
 
+    /*Get rank and size of this MPI application*/
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &node_count);
+
     /* Initialize a Harmony client. */
     hdesc = harmony_init();
     if (hdesc == NULL) {
@@ -83,57 +95,67 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    /* Process the program arguments. */
-    i = 1;
-    name = "Example";
-    if (argc > 1 && !strchr(argv[1], '=')) {
-        name = argv[1];
-        ++i;
-    }
+    if (rank == 0) {
+        snprintf(numbuf, sizeof(numbuf), "%d", node_count);
 
-    errno = 0;
-    harmony_session_name(hdesc, name);
-    harmony_setcfg(hdesc, CFGKEY_SESSION_STRATEGY, "nm.so");
-    harmony_setcfg(hdesc, CFGKEY_SESSION_LAYERS, "constraint.so");
-    if (errno) {
-        perror("Error during session setup");
-        return -1;
-    }
+        /* Process the program arguments. */
+        i = 1;
 
-    while (i < argc) {
-        ptr = strchr(argv[i], '=');
-        if (!ptr) {
-            fprintf(stderr, "Invalid parameter '%s'\n", argv[i]);
-            return -1;
+        if (argc > 1 && !strchr(argv[1], '=')) {
+            name = argv[1];
+            ++i;
         }
 
-        *(ptr++) = '\0';
         errno = 0;
-        harmony_setcfg(hdesc, argv[i], ptr);
-        if (errno) {
-            fprintf(stderr, "Failed to set config var %s\n", argv[i]);
-            return -1;
+        harmony_session_name(hdesc, name);
+        harmony_setcfg(hdesc, CFGKEY_SESSION_LAYERS, "tauDB.so");
+        harmony_setcfg(hdesc, CFGKEY_SESSION_STRATEGY, "pro.so");
+        harmony_setcfg(hdesc, CFGKEY_CLIENT_COUNT, numbuf);
+        harmony_setcfg(hdesc, "TAUDB_STORE_METHOD", "one_time");
+        harmony_setcfg(hdesc, "TAUDB_STORE_NUM", "150");
+        if (errno)
+        {
+            perror("Error during session setup");
+            MPI_Abort(MPI_COMM_WORLD, -1);
         }
-        ++i;
+
+        while (i < argc) {
+            ptr = strchr(argv[i], '=');
+            if (!ptr) {
+                fprintf(stderr, "Invalid parameter '%s'\n", argv[i]);
+                MPI_Abort(MPI_COMM_WORLD, -1);
+            }
+
+            errno = 0;
+            *(ptr++) = '\0';
+            harmony_setcfg(hdesc, argv[i], ptr);
+            if (errno) {
+                fprintf(stderr, "Failed to set config var %s\n", argv[i]);
+                MPI_Abort(MPI_COMM_WORLD, -1);
+            }
+            ++i;
+        }
+
+        if (harmony_int(hdesc, "param_1", 1, 100, 1) != 0 ||
+            harmony_int(hdesc, "param_2", 1, 100, 1) != 0 ||
+            harmony_int(hdesc, "param_3", 1, 100, 1) != 0 ||
+            harmony_int(hdesc, "param_4", 1, 100, 1) != 0 ||
+            harmony_int(hdesc, "param_5", 1, 100, 1) != 0 ||
+            harmony_int(hdesc, "param_6", 1, 100, 1) != 0)
+        {
+            fprintf(stderr, "Failed to define tuning session\n");
+            MPI_Abort(MPI_COMM_WORLD, -1);
+        }
+
+        printf("Starting Harmony...\n");
+        if (harmony_launch(hdesc, NULL, 0) != 0) {
+            fprintf(stderr, "Could not launch tuning session: %s\n",
+                    harmony_error_string(hdesc));
+            MPI_Abort(MPI_COMM_WORLD, -1);
+        }
     }
 
-    if (harmony_int(hdesc, "param_1", 1, 100, 1) != 0 ||
-        harmony_int(hdesc, "param_2", 1, 100, 1) != 0 ||
-        harmony_int(hdesc, "param_3", 1, 100, 1) != 0 ||
-        harmony_int(hdesc, "param_4", 1, 100, 1) != 0 ||
-        harmony_int(hdesc, "param_5", 1, 100, 1) != 0 ||
-        harmony_int(hdesc, "param_6", 1, 100, 1) != 0)
-    {
-        fprintf(stderr, "Failed to define tuning session\n");
-        return -1;
-    }
-
-    printf("Starting Harmony...\n");
-    if (harmony_launch(hdesc, NULL, 0) != 0) {
-        fprintf(stderr, "Could not launch tuning session: %s\n",
-                harmony_error_string(hdesc));
-        return -1;
-    }
+    MPI_Barrier(MPI_COMM_WORLD);
 
     /* Bind the session variables to local variables. */
     if (harmony_bind_int(hdesc, "param_1", &param_1) != 0 ||
@@ -144,7 +166,6 @@ int main(int argc, char **argv)
         harmony_bind_int(hdesc, "param_6", &param_6) != 0)
     {
         fprintf(stderr, "Failed to register variable\n");
-        retval = -1;
         goto cleanup;
     }
 
@@ -152,9 +173,11 @@ int main(int argc, char **argv)
     if (harmony_join(hdesc, NULL, 0, name) != 0) {
         fprintf(stderr, "Could not connect to harmony server: %s\n",
                 harmony_error_string(hdesc));
-        retval = -1;
         goto cleanup;
     }
+
+    printf("Connected to harmony server.\n");
+    //MPI_Barrier(MPI_COMM_WORLD);
 
     /* main loop */
     for (i = 0; !harmony_converged(hdesc) && i < loop; i++) {
@@ -205,6 +228,8 @@ int main(int argc, char **argv)
             retval = -1;
             goto cleanup;
         }
+
+        MPI_Barrier(MPI_COMM_WORLD);
     }
 
     /* Leave the session */
@@ -212,6 +237,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "Failed to disconnect from harmony server.\n");
         retval = -1;
     }
+
+    MPI_Finalize();
 
   cleanup:
     harmony_fini(hdesc);

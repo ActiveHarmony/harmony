@@ -207,6 +207,26 @@ int harmony_launch(hdesc_t *hdesc, const char *host, int port);
  */
 
 /**
+ * \brief Assign an identifying string to this client.
+ *
+ * Set the client identification string.  All messages sent to the
+ * tuning session will be tagged with this string, allowing the
+ * framework to distinguish clients from one another.  As such, care
+ * should be taken to ensure this string is unique among all clients
+ * participating in a tuning session.
+ *
+ * By default, a string is generated from the hostname, process id,
+ * and socket descriptor.
+ *
+ * \param hdesc Harmony descriptor returned from
+ *              [harmony_init()](\ref harmony_init).
+ * \param id    Unique identification string.
+ *
+ * \return Returns 0 on success, and -1 otherwise.
+ */
+int harmony_id(hdesc_t *hdesc, const char *id);
+
+/**
  * \brief Bind a local variable of type `long` to an integer-domain
  *        session variable.
  *

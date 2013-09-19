@@ -33,14 +33,6 @@ install: $(TARGETS)
 		echo mkdir $(INST_DIR);         \
 		mkdir $(INST_DIR);              \
 	fi;                                     \
-	if [ ! -d $(INST_DIR)/tcl ]; then       \
-		echo mkdir $(INST_DIR)/tcl;     \
-		mkdir $(INST_DIR)/tcl;          \
-	fi;                                     \
-	if [ ! -d $(INST_DIR)/tcl/pro ]; then   \
-		echo mkdir $(INST_DIR)/tcl/pro; \
-		mkdir $(INST_DIR)/tcl/pro;      \
-	fi;                                     \
 	for i in $(LIBEXEC_TARGETS); do         \
 		echo cp $$i $(INST_DIR)/$$i;    \
 		cp $$i $(INST_DIR)/$$i;         \

@@ -91,6 +91,8 @@ tuna: libharmony.a
 libharmony.a: $(LIB_OBJS) $(SHR_OBJS)
 	$(AR) $(ARFLAGS) $@ $^
 
+$(LIB_OBJS) $(SHR_OBJS): override CFLAGS+=-fPIC
+
 $(SUBDIRS):
 	$(MAKE) -C $@ $(MAKECMDGOALS)
 

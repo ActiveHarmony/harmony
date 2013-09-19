@@ -20,10 +20,16 @@
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
+#include <stdlib.h>
 #include <errno.h>
+
+#include <sys/utsname.h>
+#include <stdbool.h>
 
 #include "hclient.h"
 #include "defaults.h"
+
+#define MAX_STR_LEN 1024
 
 /* For illustration purposes, the performance here is defined by following
  * simple definition:
@@ -48,13 +54,104 @@ long application(long p1, long p2, long p3, long p4, long p5, long p6)
     return perf;
 }
 
+int get_cpu_info(char *cpu_vendor, char *cpu_model,
+                 char *cpu_freq, char *cache_size)
+{
+    FILE *cpuinfo;
+    int core_num;
+    bool recorded_vendor;
+    bool recorded_model;
+    bool recorded_freq;
+    bool recorded_cache;
+
+    char line_str[512];
+    char ele_name[128];
+    char ele_val[128];
+
+    core_num = 0;
+    recorded_vendor = recorded_model = recorded_freq = recorded_cache = false;
+
+    /*Open cpuinfo in /proc/cpuinfo*/
+    cpuinfo = fopen("/proc/cpuinfo", "r");
+    if (cpuinfo == NULL) {
+        fprintf(stderr, "Error occurs when acquire cpu information.\n");
+        fprintf(stderr, "Log file will not include CPU info.\n");
+        return -1;
+    }
+    else {
+        printf("CPU info file opened!\n");
+    }
+
+    while (!feof(cpuinfo)) {
+        fgets(line_str, sizeof(line_str), cpuinfo);
+
+        if (strlen(line_str) <= 1)
+            continue;
+        sscanf(line_str, "%[^\t:] : %[^\t:\n]", ele_name, ele_val);
+
+        if (!strcmp(ele_name, "processor")) {
+            core_num++;
+        }
+        else if (!strcmp(ele_name, "vendor_id") && recorded_vendor == false) {
+            strcpy(cpu_vendor, ele_val);
+            recorded_vendor = true;
+        }
+        else if (!strcmp(ele_name, "model name") && recorded_model == false) {
+            strcpy(cpu_model, ele_val);
+            recorded_model = true;
+        }
+        else if (!strcmp(ele_name, "cpu MHz") && recorded_freq == false) {
+            strcpy(cpu_freq, ele_val);
+            recorded_freq = true;
+        }
+        else if (!strcmp(ele_name, "cache size") && recorded_cache == false) {
+            strcpy(cache_size, ele_val);
+            recorded_cache = true;
+        }
+    }
+
+    printf("Core num is %d\n", core_num);
+    return core_num;
+}
+
+char *get_metadata(void)
+{
+    struct utsname uts; //os info
+
+    int core_num; //number of cpu cores
+    char cpu_vendor[32];
+    char cpu_model[32];
+    char cpu_freq[32];
+    char cache_size[32];
+
+    char *retval;
+
+    retval = (char*)malloc(sizeof(char)*MAX_STR_LEN);
+    if (uname(&uts) < 0)
+        perror("uname() error\n");
+
+    if ( (core_num = get_cpu_info(cpu_vendor, cpu_model,
+                                  cpu_freq, cache_size)) < 0)
+    {
+        fprintf(stderr, "Error getting CPU information!");
+        return NULL;
+    }
+
+    snprintf(retval, MAX_STR_LEN, "%s$$%s$$%s$$%s$$%d$$%s$$%s$$%s$$%s",
+             uts.nodename, uts.sysname, uts.release, uts.machine, core_num,
+             cpu_vendor, cpu_model, cpu_freq, cache_size);
+
+    return retval;
+}
+
 int main(int argc, char **argv)
 {
     const char *name;
     char *ptr;
     hdesc_t *hdesc;
-    int i, retval, loop = 10;
+    int i, retval, loop = 200;
     long perf = -1000;
+    char *metadata;
 
     /* Variables to hold the application's runtime tunable parameters.
      * Once bound to a Harmony tuning session, these variables will be
@@ -83,18 +180,38 @@ int main(int argc, char **argv)
         return -1;
     }
 
+    /* Set a unique id for ourselves */
+    metadata = get_metadata();
+    printf("Metadata is %s\n", metadata);
+    if (harmony_id(hdesc, metadata) != 0) {
+        perror("Error setting client id");
+        return -1;
+    }
+
     /* Process the program arguments. */
     i = 1;
-    name = "Example";
+    name = "TAUdb_example";
     if (argc > 1 && !strchr(argv[1], '=')) {
         name = argv[1];
         ++i;
     }
 
+    /* TAUDB_STORE_METHOD can be "real_time" or any number
+     *
+     * "one_time": First "TAUDB_STORE_NUM" number of data will be
+     * loaded at the end
+     *
+     * "real_time": data will be loaded at real time, but can't use
+     * paraprof or perfexplorer to visualize the data, storing
+     * interval is "TAUDB_STORE_NUM" number of data per save (to
+     * reduce the overhead for taudb_save_trial())
+     */
     errno = 0;
     harmony_session_name(hdesc, name);
-    harmony_setcfg(hdesc, CFGKEY_SESSION_STRATEGY, "nm.so");
-    harmony_setcfg(hdesc, CFGKEY_SESSION_LAYERS, "constraint.so");
+    harmony_setcfg(hdesc, CFGKEY_SESSION_LAYERS, "TAUdb.so");
+    harmony_setcfg(hdesc, CFGKEY_CLIENT_COUNT, "1");
+    harmony_setcfg(hdesc, "TAUDB_STORE_METHOD", "one_time");
+    harmony_setcfg(hdesc, "TAUDB_STORE_NUM", "150");
     if (errno) {
         perror("Error during session setup");
         return -1;
@@ -107,8 +224,8 @@ int main(int argc, char **argv)
             return -1;
         }
 
-        *(ptr++) = '\0';
         errno = 0;
+        *(ptr++) = '\0';
         harmony_setcfg(hdesc, argv[i], ptr);
         if (errno) {
             fprintf(stderr, "Failed to set config var %s\n", argv[i]);
@@ -117,31 +234,33 @@ int main(int argc, char **argv)
         ++i;
     }
 
-    if (harmony_int(hdesc, "param_1", 1, 100, 1) != 0 ||
-        harmony_int(hdesc, "param_2", 1, 100, 1) != 0 ||
-        harmony_int(hdesc, "param_3", 1, 100, 1) != 0 ||
-        harmony_int(hdesc, "param_4", 1, 100, 1) != 0 ||
-        harmony_int(hdesc, "param_5", 1, 100, 1) != 0 ||
-        harmony_int(hdesc, "param_6", 1, 100, 1) != 0)
+    if (harmony_int(hdesc, "param_1", 1, 100, 1) < 0 ||
+        harmony_int(hdesc, "param_2", 1, 100, 1) < 0 ||
+        harmony_int(hdesc, "param_3", 1, 100, 1) < 0 ||
+        harmony_int(hdesc, "param_4", 1, 100, 1) < 0 ||
+        harmony_int(hdesc, "param_5", 1, 100, 1) < 0 ||
+        harmony_int(hdesc, "param_6", 1, 100, 1) < 0)
     {
         fprintf(stderr, "Failed to define tuning session\n");
         return -1;
     }
 
-    printf("Starting Harmony...\n");
+    printf("Launching tuning session.\n");
     if (harmony_launch(hdesc, NULL, 0) != 0) {
         fprintf(stderr, "Could not launch tuning session: %s\n",
                 harmony_error_string(hdesc));
         return -1;
     }
 
+    printf("Starting Harmony...\n");
+
     /* Bind the session variables to local variables. */
-    if (harmony_bind_int(hdesc, "param_1", &param_1) != 0 ||
-        harmony_bind_int(hdesc, "param_2", &param_2) != 0 ||
-        harmony_bind_int(hdesc, "param_3", &param_3) != 0 ||
-        harmony_bind_int(hdesc, "param_4", &param_4) != 0 ||
-        harmony_bind_int(hdesc, "param_5", &param_5) != 0 ||
-        harmony_bind_int(hdesc, "param_6", &param_6) != 0)
+    if (harmony_bind_int(hdesc, "param_1", &param_1) < 0 ||
+        harmony_bind_int(hdesc, "param_2", &param_2) < 0 ||
+        harmony_bind_int(hdesc, "param_3", &param_3) < 0 ||
+        harmony_bind_int(hdesc, "param_4", &param_4) < 0 ||
+        harmony_bind_int(hdesc, "param_5", &param_5) < 0 ||
+        harmony_bind_int(hdesc, "param_6", &param_6) < 0)
     {
         fprintf(stderr, "Failed to register variable\n");
         retval = -1;
@@ -149,12 +268,13 @@ int main(int argc, char **argv)
     }
 
     /* Join this client to the tuning session we established above. */
-    if (harmony_join(hdesc, NULL, 0, name) != 0) {
+    if (harmony_join(hdesc, NULL, 0, name) < 0) {
         fprintf(stderr, "Could not connect to harmony server: %s\n",
                 harmony_error_string(hdesc));
         retval = -1;
         goto cleanup;
     }
+    printf("Connected to harmony server.\n");
 
     /* main loop */
     for (i = 0; !harmony_converged(hdesc) && i < loop; i++) {
@@ -200,7 +320,7 @@ int main(int argc, char **argv)
         }
 
         /* Report the performance we've just measured. */
-        if (harmony_report(hdesc, perf) != 0) {
+        if (harmony_report(hdesc, perf) < 0) {
             fprintf(stderr, "Failed to report performance to server.\n");
             retval = -1;
             goto cleanup;
@@ -208,7 +328,7 @@ int main(int argc, char **argv)
     }
 
     /* Leave the session */
-    if (harmony_leave(hdesc) != 0) {
+    if (harmony_leave(hdesc) < 0) {
         fprintf(stderr, "Failed to disconnect from harmony server.\n");
         retval = -1;
     }

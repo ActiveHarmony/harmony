@@ -42,10 +42,13 @@ typedef enum harmony_state_t {
     HARMONY_STATE_MAX
 } harmony_state_t;
 
+#define MAX_HOSTNAME_STRLEN 64
+char default_id_buf[MAX_HOSTNAME_STRLEN + 32] = {0};
+
 struct hdesc_t {
     harmony_state_t state;
     int socket;
-    char id[MAX_ID_LEN];
+    char *id;
 
     hsession_t sess;
     hmesg_t mesg;
@@ -61,9 +64,10 @@ struct hdesc_t {
 /* -------------------------------------------------------------------
  * Forward declarations for internal helper functions
  */
-int ptr_bind(hdesc_t *hdesc, const char *name, hval_type type, void *ptr);
-int mesg_send_and_recv(hdesc_t *hdesc);
-int set_values(hdesc_t *hdesc, const hpoint_t *pt);
+char *default_id(int n);
+int   ptr_bind(hdesc_t *hdesc, const char *name, hval_type type, void *ptr);
+int   mesg_send_and_recv(hdesc_t *hdesc);
+int   set_values(hdesc_t *hdesc, const hpoint_t *pt);
 
 static int debug_mode = 0;
 
@@ -91,10 +95,7 @@ hdesc_t *harmony_init(void)
     hdesc->best = HPOINT_INITIALIZER;
     hdesc->errstr = NULL;
 
-    gethostname(hdesc->id, MAX_HOSTNAME_STRLEN);
-    hdesc->id[MAX_HOSTNAME_STRLEN] = '\0';
-    sprintf(hdesc->id + strlen(hdesc->id), "_%d_%d", getpid(), hdesc->socket);
-
+    hdesc->id = NULL;
     return hdesc;
 }
 
@@ -104,6 +105,9 @@ void harmony_fini(hdesc_t *hdesc)
     hsession_fini(&hdesc->sess);
     hpoint_fini(&hdesc->curr);
     hpoint_fini(&hdesc->best);
+
+    if (hdesc->id && hdesc->id != default_id_buf)
+        free(hdesc->id);
     free(hdesc->ptr);
     free(hdesc);
 }
@@ -187,13 +191,16 @@ int harmony_launch(hdesc_t *hdesc, const char *host, int port)
         hdesc->errstr = strerror(errno);
         return -1;
     }
+
+    if (hdesc->id == NULL)
+        hdesc->id = default_id(hdesc->socket);
     hdesc->state = HARMONY_STATE_CONNECTED;
 
     /* Prepare a Harmony message. */
     hmesg_scrub(&hdesc->mesg);
     hdesc->mesg.type = HMESG_SESSION;
     hdesc->mesg.status = HMESG_STATUS_REQ;
-    strncpy(hdesc->mesg.src_id, hdesc->id, MAX_ID_LEN);
+    hdesc->mesg.src_id = hdesc->id;
     hsession_init(&hdesc->mesg.data.session);
     hsession_copy(&hdesc->mesg.data.session, &hdesc->sess);
 
@@ -203,6 +210,19 @@ int harmony_launch(hdesc_t *hdesc, const char *host, int port)
 /* -------------------------------------------------------------------
  * Tuning Client Establishment API Implementations
  */
+int harmony_id(hdesc_t *hdesc, const char *id)
+{
+    if (hdesc->id && hdesc->id != default_id_buf)
+        free(hdesc->id);
+
+    hdesc->id = stralloc(id);
+    if (!hdesc->id) {
+        hdesc->errstr = strerror(errno);
+        return -1;
+    }
+    return 0;
+}
+
 int harmony_bind_int(hdesc_t *hdesc, const char *name, long *ptr)
 {
     return ptr_bind(hdesc, name, HVAL_INT, ptr);
@@ -282,6 +302,9 @@ int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *name)
             hdesc->errstr = "Error establishing TCP connection with server";
             return -1;
         }
+
+        if (hdesc->id == NULL)
+            hdesc->id = default_id(hdesc->socket);
         hdesc->state = HARMONY_STATE_CONNECTED;
 
         hdesc->sess.sig.name = stralloc(name);
@@ -295,7 +318,7 @@ int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *name)
     hmesg_scrub(&hdesc->mesg);
     hdesc->mesg.type = HMESG_JOIN;
     hdesc->mesg.status = HMESG_STATUS_REQ;
-    strncpy(hdesc->mesg.src_id, hdesc->id, MAX_ID_LEN);
+    hdesc->mesg.src_id = hdesc->id;
 
     hdesc->mesg.data.join = HSIGNATURE_INITIALIZER;
     if (hsignature_copy(&hdesc->mesg.data.join, &hdesc->sess.sig) < 0) {
@@ -357,7 +380,7 @@ char *harmony_getcfg(hdesc_t *hdesc, const char *key)
     hmesg_scrub(&hdesc->mesg);
     hdesc->mesg.type = HMESG_GETCFG;
     hdesc->mesg.status = HMESG_STATUS_REQ;
-    strncpy(hdesc->mesg.src_id, hdesc->id, MAX_ID_LEN);
+    hdesc->mesg.src_id = hdesc->id;
     hdesc->mesg.data.string = key;
 
     if (mesg_send_and_recv(hdesc) < 0)
@@ -409,7 +432,7 @@ char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val)
     hmesg_scrub(&hdesc->mesg);
     hdesc->mesg.type = HMESG_SETCFG;
     hdesc->mesg.status = HMESG_STATUS_REQ;
-    strncpy(hdesc->mesg.src_id, hdesc->id, MAX_ID_LEN);
+    hdesc->mesg.src_id = hdesc->id;
     retval = mesg_send_and_recv(hdesc);
     free(buf);
 
@@ -440,7 +463,7 @@ int harmony_fetch(hdesc_t *hdesc)
     hmesg_scrub(&hdesc->mesg);
     hdesc->mesg.type = HMESG_FETCH;
     hdesc->mesg.status = HMESG_STATUS_REQ;
-    strncpy(hdesc->mesg.src_id, hdesc->id, MAX_ID_LEN);
+    hdesc->mesg.src_id = hdesc->id;
     hdesc->mesg.data.fetch.best.id = hdesc->best.id;
 
     if (mesg_send_and_recv(hdesc) < 0)
@@ -507,7 +530,7 @@ int harmony_report(hdesc_t *hdesc, double value)
     hmesg_scrub(&hdesc->mesg);
     hdesc->mesg.type = HMESG_REPORT;
     hdesc->mesg.status = HMESG_STATUS_REQ;
-    strncpy(hdesc->mesg.src_id, hdesc->id, MAX_ID_LEN);
+    hdesc->mesg.src_id = hdesc->id;
 
     hdesc->mesg.data.report.cand = HPOINT_INITIALIZER;
     hpoint_copy(&hdesc->mesg.data.report.cand, &hdesc->curr);
@@ -556,6 +579,15 @@ const char *harmony_error_string(hdesc_t *hdesc)
 void harmony_error_clear(hdesc_t *hdesc)
 {
     hdesc->errstr = NULL;
+}
+
+char *default_id(int n)
+{
+    gethostname(default_id_buf, MAX_HOSTNAME_STRLEN);
+    default_id_buf[MAX_HOSTNAME_STRLEN] = '\0';
+    sprintf(default_id_buf + strlen(default_id_buf), "_%d_%d", getpid(), n);
+
+    return default_id_buf;
 }
 
 int mesg_send_and_recv(hdesc_t *hdesc)
