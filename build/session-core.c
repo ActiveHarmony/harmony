@@ -345,6 +345,7 @@ int plugin_workflow(int trial_idx)
         int stack_idx = abs(curr_layer) - 1;
         int retval;
 
+        flow.status = HFLOW_ACCEPT;
         if (curr_layer < 0) {
             /* Analyze workflow. */
             if (lstack[stack_idx].analyze) {
