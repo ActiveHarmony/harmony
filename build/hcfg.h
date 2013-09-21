@@ -40,6 +40,7 @@ int hcfg_merge(hcfg_t *dst, const hcfg_t *src);
 void hcfg_write(hcfg_t *cfg, FILE *fd);
 
 char *hcfg_parse(char *buf, char **key, char **val);
+int hcfg_is_cmd(const char *buf);
 
 int hcfg_serialize(char **buf, int *buflen, const hcfg_t *cfg);
 int hcfg_deserialize(hcfg_t *cfg, char *buf);

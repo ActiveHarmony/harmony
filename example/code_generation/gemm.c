@@ -97,7 +97,6 @@ const char *new_code_path;
 
 int main(int argc, char *argv[])
 {
-    char *ptr;
     char numbuf[12];
     char hostname[64];
     int harmony_connected;
@@ -128,7 +127,7 @@ int main(int argc, char *argv[])
     harmony_connected = 0;
 
     /* Initialize Harmony API. */
-    hdesc = harmony_init();
+    hdesc = harmony_init(&argc, &argv);
     if (hdesc == NULL) {
         errprint("Failed to initialize a Harmony session.\n");
         goto cleanup;
@@ -156,25 +155,6 @@ int main(int argc, char *argv[])
         {
             errprint("Failed to define tuning session\n");
             MPI_Abort(MPI_COMM_WORLD, -1);
-        }
-
-        /* Process arguments last to give command-line parameters the
-         * highest priority.
-         */
-        for (i = 2; i < argc; ++i) {
-            ptr = strchr(argv[i], '=');
-            if (!ptr) {
-                fprintf(stderr, "Invalid parameter '%s'\n", argv[i]);
-                MPI_Abort(MPI_COMM_WORLD, -1);
-            }
-
-            *(ptr++) = '\0';
-            errno = 0;
-            harmony_setcfg(hdesc, argv[i], ptr);
-            if (errno) {
-                fprintf(stderr, "Failed to set config var %s\n", argv[i]);
-                MPI_Abort(MPI_COMM_WORLD, -1);
-            }
         }
 
         if (harmony_launch(hdesc, NULL, 0) != 0) {

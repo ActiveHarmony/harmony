@@ -51,7 +51,6 @@ long application(long p1, long p2, long p3, long p4, long p5, long p6)
 int main(int argc, char **argv)
 {
     const char *name;
-    char *ptr;
     hdesc_t *hdesc;
     int i, retval, loop = 200;
     long perf = -1000;
@@ -77,19 +76,16 @@ int main(int argc, char **argv)
     }
 
     /* Initialize a Harmony client. */
-    hdesc = harmony_init();
+    hdesc = harmony_init(&argc, &argv);
     if (hdesc == NULL) {
         fprintf(stderr, "Failed to initialize a harmony session.\n");
         return -1;
     }
 
     /* Process the program arguments. */
-    i = 1;
     name = "XML_example";
-    if (argc > 1 && !strchr(argv[1], '=')) {
+    if (argc > 1)
         name = argv[1];
-        ++i;
-    }
 
     errno = 0;
     harmony_session_name(hdesc, name);
@@ -97,23 +93,6 @@ int main(int argc, char **argv)
     if (errno) {
         fprintf(stderr, "Error during session configuration.\n");
         return -1;
-    }
-
-    while (i < argc) {
-        ptr = strchr(argv[i], '=');
-        if (!ptr) {
-            fprintf(stderr, "Invalid parameter '%s'\n", argv[i]);
-            return -1;
-        }
-
-        errno = 0;
-        *(ptr++) = '\0';
-        harmony_setcfg(hdesc, argv[i], ptr);
-        if (errno) {
-            fprintf(stderr, "Failed to set config var %s\n", argv[i]);
-            return -1;
-        }
-        ++i;
     }
 
     if (harmony_int(hdesc, "param_1", 1, 100, 1) != 0 ||

@@ -222,15 +222,15 @@ int hcfg_merge(hcfg_t *dst, const hcfg_t *src)
     keyval_t *entry;
 
     for (i = 0; i < (1 << src->logsize); ++i) {
-        if (src->hash[i].key) {
-            /* Don't overwrite existing keys in destination. */
-            entry = hash_find(dst, src->hash[i].key);
-            if (entry && entry->key)
-                continue;
+        if (!src->hash[i].key)
+            continue;
 
-            if (hash_insert(dst, src->hash[i].key, src->hash[i].val) < 0)
-                return -1;
-        }
+        entry = hash_find(dst, src->hash[i].key);
+        if (entry && entry->key)
+            continue;
+
+        if (hash_insert(dst, src->hash[i].key, src->hash[i].val) < 0)
+            return -1;
     }
     return 0;
 }
@@ -249,51 +249,57 @@ void hcfg_write(hcfg_t *cfg, FILE *fd)
 /* Parse the key and value from a memory buffer. */
 char *hcfg_parse(char *buf, char **key, char **val)
 {
-    char *next, *end;
+    char *ptr;
 
-    /* Initialize return values */
-    *key = *val = NULL;
+    *key = NULL;
+    *val = NULL;
 
-    /* Store a ptr to the next string. */
-    next = buf + strcspn(buf, "\n");
-    if (*next == '\n') ++next;
-
-    /* Find the end of the line (Ignoring comments if they exist). */
-    end = buf + strcspn(buf, "#\n");
-
-    /* Skip leading and trailing whitespace. */
-    while (buf < end && isspace(*buf)) ++buf;
-    while (end > buf && isspace(*(end - 1)))
-        *(--end) = '\0';
-
-    /* Line is empty.  Skip it. */
-    if (buf == end)
-        return next;
-
-    /* Find key boundaries. */
-    if (*buf == '=')
-        return NULL;
-
+    /* Skip leading key whitespace. */
+    while (isspace(*buf)) ++buf;
     *key = buf;
-    while (*buf != '=' && !isspace(*buf)) {
-        *buf = tolower(*buf);  /* Force key strings to be lowercase */
+
+    /* Force key strings to be uppercase. */
+    while (isalnum(*buf) || *buf == '_') {
+        *buf = toupper(*buf);
         ++buf;
     }
 
-    /* Ensure an equal sign exists. */
+    /* Kill trailing key whitespace. */
     while (isspace(*buf))
         *(buf++) = '\0';
 
+    /* Check that an equal sign exists. */
     if (*buf != '=')
         return NULL;
     *(buf++) = '\0';
 
-    /* Find value boundaries. */
-    while (buf < end && isspace(*buf)) ++buf;
+    /* Skip leading value whitespace. */
+    while (isspace(*buf)) ++buf;
     *val = buf;
-    *end = '\0';
 
-    return next;
+    /* Unquote value string. */
+    ptr = buf;
+    while (*buf && *buf != '\n') {
+        if      (*buf == '\\') buf += 1;
+        else if (*buf == '#' ) buf += strcspn(buf, "\n");
+        *(ptr++) = *(buf++);
+    }
+
+    /* Kill trailing key whitespace. */
+    do *(ptr--) = '\0';
+    while (isspace(*ptr));
+
+    if (*buf == '\n') ++buf;
+    return buf;
+}
+
+int hcfg_is_cmd(const char *buf)
+{
+    while (isspace(*buf)) ++buf;
+    while (isalnum(*buf) || *buf == '_') ++buf;
+    while (isspace(*buf)) ++buf;
+
+    return (*buf == '=');
 }
 
 int hcfg_serialize(char **buf, int *buflen, const hcfg_t *cfg)

@@ -58,12 +58,23 @@ typedef struct hdesc_t hdesc_t;
  * opaque type and no guarantees are made about the contents of its
  * structure.
  *
+ * Similar to MPI's initialization function mpi_init(), harmony_init()
+ * optionally accepts the address of the two parameters to main
+ * (`argc` and `argv`).  If provided, any string that resembles a
+ * Harmony configuration directive will removed from argv and saved
+ * elsewhere.  Scanning ends early if a `--` parameter is found.
+ * These directives are then applied immediately prior to session
+ * launch or client join, whichever comes first.
+ *
  * Heap memory is allocated for the descriptor, so be sure to call
  * [harmony_fini()](\ref harmony_fini) when it is no longer needed.
  *
+ * \param argc Address of argc parameter from main().
+ * \param argv Address of argv parameter from main().
+ *
  * \return Returns Harmony descriptor upon success, and NULL otherwise.
  */
-hdesc_t *harmony_init(void);
+hdesc_t *harmony_init(int *argc, char ***argv);
 
 /**
  * \brief Release all resources associated with a Harmony client descriptor.

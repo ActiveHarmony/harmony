@@ -217,9 +217,11 @@ Tuna makes any command-line application that provides performance related parame
 
 
 \page cfg Configuring Active Harmony
-Each tuning session provides a centralized configuration environment.  Similar to shell environment variables, tuning session configuration directives take the form of simple key/value string pairs.  Key strings are case insensitive and may not contain whitespace.  Value strings are stored as-is, and interpretation depends on the key.
+Each tuning session provides a centralized configuration environment.  Similar to shell environment variables, tuning session configuration directives take the form of simple key/value string pairs.  Key strings are case insensitive, and may only consist of alphanumeric characters or the underscore.  Value strings are stored as-is, and interpretation depends on the key.
 
-Configuration directives may also be read from a file containing one key/value pair per line.  The first equals sign (`=`) separates the key from the value string, and the value string extends until a newline (`\n`).
+The backslash (\\) character may be used within the value string as a quoting mechanism.  A backslash preserves the literal value of the next character that follows.
+
+Configuration directives may also be read from a file containing one key/value pair per line.  The first equals sign (`=`) separates the key from the value string, and the value string extends until a newline (`\n`) or hash (`#`) which indicates comments.
 
 Each tuning session has a unique configuration environment.  All entities involved with a tuning session (clients, search strategies, processing layers, etc.) may query this system.  The configuration environment is initialized at session creation time through [hsession_setcfg()](\ref hsession_setcfg) function calls.  After a session has been launched, clients may query the configuration environment through [harmony_getcfg()](\ref harmony_getcfg) and [harmony_setcfg()](\ref harmony_setcfg) function calls.
 

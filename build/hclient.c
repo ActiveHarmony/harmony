@@ -21,6 +21,7 @@
 #include "hmesg.h"
 #include "hutil.h"
 #include "hsockutil.h"
+#include "hcfg.h"
 #include "defaults.h"
 
 #include <stdio.h>
@@ -53,6 +54,10 @@ struct hdesc_t {
     hsession_t sess;
     hmesg_t mesg;
 
+    char **cmd;
+    int cmd_len;
+    int cmd_cap;
+
     void **ptr;
     int ptr_len;
     int ptr_cap;
@@ -74,7 +79,7 @@ static int debug_mode = 0;
 /* -------------------------------------------------------------------
  * Public Client API Implementations
  */
-hdesc_t *harmony_init(void)
+hdesc_t *harmony_init(int *argc, char ***argv)
 {
     hdesc_t *hdesc = (hdesc_t *) malloc(sizeof(hdesc_t));
     if (!hdesc)
@@ -88,6 +93,9 @@ hdesc_t *harmony_init(void)
     hdesc->mesg = HMESG_INITIALIZER;
     hdesc->state = HARMONY_STATE_INIT;
 
+    hdesc->cmd = NULL;
+    hdesc->cmd_len = hdesc->cmd_cap = 0;
+
     hdesc->ptr = NULL;
     hdesc->ptr_len = hdesc->ptr_cap = 0;
 
@@ -96,6 +104,41 @@ hdesc_t *harmony_init(void)
     hdesc->errstr = NULL;
 
     hdesc->id = NULL;
+
+    if (argc && argv) {
+        int i, j = 1;
+        int stop = 0;
+
+        for (i = 1; i < *argc; ++i) {
+            /* Stop looking for configuration directives upon "--" token. */
+            if (strcmp((*argv)[i], "--") == 0) {
+                stop = 1;
+                ++i;
+            }
+
+            if (!stop && hcfg_is_cmd((*argv)[i])) {
+                if (hdesc->cmd_len == hdesc->cmd_cap) {
+                    if (array_grow(&hdesc->cmd, &hdesc->cmd_cap,
+                                   sizeof(char *)) != 0)
+                    {
+                        hsession_fini(&hdesc->sess);
+                        free(hdesc);
+                        return NULL;
+                    }
+                }
+                hdesc->cmd[hdesc->cmd_len++] = (*argv)[i];
+            }
+            else {
+                (*argv)[j++] = (*argv)[i];
+            }
+        }
+
+        if (j != *argc) {
+            *argc = j;
+            (*argv)[j] = NULL;
+        }
+    }
+
     return hdesc;
 }
 
@@ -149,6 +192,8 @@ int harmony_layer_list(hdesc_t *hdesc, const char *list)
 
 int harmony_launch(hdesc_t *hdesc, const char *host, int port)
 {
+    int i;
+
     /* Sanity check input */
     if (hdesc->sess.sig.range_len < 1) {
         hdesc->errstr = "No tuning variables defined";
@@ -192,9 +237,24 @@ int harmony_launch(hdesc_t *hdesc, const char *host, int port)
         return -1;
     }
 
+    /* Prepare a default client id, if necessary. */
     if (hdesc->id == NULL)
         hdesc->id = default_id(hdesc->socket);
     hdesc->state = HARMONY_STATE_CONNECTED;
+
+    /* Apply argv configuration directives now, if necessary. */
+    for (i = 0; i < hdesc->cmd_len; ++i) {
+        char *key, *val;
+        if (hcfg_parse(hdesc->cmd[i], &key, &val) == NULL) {
+            /* This should never fail, but just in case. */
+            hdesc->errstr = "Internal error parsing argv config directive.";
+            return -1;
+        }
+        if (hcfg_set(hdesc->sess.cfg, key, val) != 0) {
+            hdesc->errstr = "Internal error applying argv config directive.";
+            return -1;
+        }
+    }
 
     /* Prepare a Harmony message. */
     hmesg_scrub(&hdesc->mesg);
@@ -280,6 +340,9 @@ int ptr_bind(hdesc_t *hdesc, const char *name, hval_type type, void *ptr)
 
 int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *name)
 {
+    int i;
+    int apply_argv = (hdesc->state < HARMONY_STATE_CONNECTED);
+
     /* Verify that we have *at least* one variable bound, and that
      * this descriptor isn't already associated with a tuning
      * session.
@@ -343,6 +406,21 @@ int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *name)
         return -1;
     }
 
+    /* Apply argv configuration directives now, if necessary. */
+    if (apply_argv) {
+        for (i = 0; i < hdesc->cmd_len; ++i) {
+            char *key, *val;
+            if (hcfg_parse(hdesc->cmd[i], &key, &val)) {
+                /* This should never fail, but just in case. */
+                hdesc->errstr = "Error parsing argv config directive.";
+                return -1;
+            }
+            if (hcfg_set(hdesc->sess.cfg, key, val)) {
+                hdesc->errstr = "Error applying argv config directive.";
+                return -1;
+            }
+        }
+    }
     return 0;
 }
 

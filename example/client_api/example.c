@@ -50,7 +50,6 @@ long application(long p1, long p2, long p3, long p4, long p5, long p6)
 int main(int argc, char **argv)
 {
     const char *name;
-    char *ptr;
     hdesc_t *hdesc;
     int i, retval, loop = 200;
     long perf = -1000;
@@ -76,7 +75,7 @@ int main(int argc, char **argv)
     }
 
     /* Initialize a Harmony client. */
-    hdesc = harmony_init();
+    hdesc = harmony_init(&argc, &argv);
     if (hdesc == NULL) {
         fprintf(stderr, "Failed to initialize a harmony session.\n");
         return -1;
@@ -93,23 +92,6 @@ int main(int argc, char **argv)
     if (harmony_session_name(hdesc, name) != 0) {
         fprintf(stderr, "Could not set session name.\n");
         return -1;
-    }
-
-    while (i < argc) {
-        ptr = strchr(argv[i], '=');
-        if (!ptr) {
-            fprintf(stderr, "Invalid parameter '%s'\n", argv[i]);
-            return -1;
-        }
-
-        *(ptr++) = '\0';
-        errno = 0;
-        harmony_setcfg(hdesc, argv[i], ptr);
-        if (errno) {
-            fprintf(stderr, "Failed to set config var %s\n", argv[i]);
-            return -1;
-        }
-        ++i;
     }
 
     if (harmony_int(hdesc, "param_1", 1, 100, 1) != 0 ||
