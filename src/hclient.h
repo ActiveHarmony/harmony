@@ -193,7 +193,7 @@ int harmony_layer_list(hdesc_t *hdesc, const char *list);
  *
  * If *port* is `0`, its value will be taken from the environment
  * variable `HARMONY_S_PORT`, if defined.  Otherwise, its value will
- * be taken from the build/defaults.h file, if needed.
+ * be taken from the src/defaults.h file, if needed.
  *
  * \param hdesc Harmony descriptor returned from
  *              [harmony_init()](\ref harmony_init).

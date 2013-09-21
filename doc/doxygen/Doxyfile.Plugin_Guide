@@ -5,6 +5,6 @@ LATEX_OUTPUT = Plugin_Guide.latex
 HTML_OUTPUT  = Plugin_Guide.html
 
 INPUT = doxygen/Plugin_Guide.dox \
-        ../build/session-core.h \
-        ../build/strategies/strategy.h \
-        ../build/plugins/layer_skel.c
+        ../src/session-core.h \
+        ../src/strategies/strategy.h \
+        ../src/plugins/layer_skel.c

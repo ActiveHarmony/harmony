@@ -9,4 +9,4 @@ EXTRACT_ALL      = YES
 EXCLUDE_PATTERNS = *.d
 
 INPUT = doxygen/Internal_Guide.dox \
-        ../build
+        ../src

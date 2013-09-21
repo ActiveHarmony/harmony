@@ -7,7 +7,7 @@ each file.
 * Directory Structure
 * ===================
 
-build/       : source files
+src/         : source files
 code-server/ : CHiLL-based code generation server
 doc/         : documentation
 example/     : several demo examples

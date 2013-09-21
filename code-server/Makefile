@@ -4,7 +4,7 @@ PREFIX=$(TO_BASE)
 CXX=g++
 CXXFLAGS=-Wall -pedantic -Werror -g
 
-override CPPFLAGS+=-I$(TO_BASE)/build
+override CPPFLAGS+=-I$(TO_BASE)/src
 
 BIN_SRCS=code_generator.cxx
 SRCS=$(BIN_SRCS)
@@ -18,19 +18,19 @@ all: $(BIN_TARGETS)
 install: $(BIN_TARGETS)
 	@echo "Code server must be executed from source directory (for now)."
 
-code_generator: code_generator.o $(TO_BASE)/build/libharmony.a
-	$(CXX) -L$(TO_BASE)/build $(LDFLAGS) $< -lharmony $(LDLIBS) -o $@
+code_generator: code_generator.o $(TO_BASE)/src/libharmony.a
+	$(CXX) -L$(TO_BASE)/src $(LDFLAGS) $< -lharmony $(LDLIBS) -o $@
 
 %.o: %.cxx
 	$(CXX) -c $< $(CPPFLAGS) $(CXXFLAGS) -o $@
 
-$(TO_BASE)/build/libharmony.a:
-	$(MAKE) -C $(TO_BASE)/build libharmony.a
+$(TO_BASE)/src/libharmony.a:
+	$(MAKE) -C $(TO_BASE)/src libharmony.a
 
 clean:
 	rm -f core.* *.o $(BIN_TARGETS)
 
-distclean:
+distclean: clean
 	rm -f *~ *.d
 
 #

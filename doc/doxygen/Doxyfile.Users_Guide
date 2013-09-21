@@ -5,12 +5,12 @@ LATEX_OUTPUT = Users_Guide.latex
 HTML_OUTPUT  = Users_Guide.html
 
 INPUT = doxygen/Users_Guide.dox \
-        ../build/strategies/brute.c \
-        ../build/strategies/random.c \
-        ../build/strategies/nm.c \
-        ../build/strategies/pro.c \
-        ../build/plugins/log.c \
-        ../build/plugins/agg.c \
-        ../build/plugins/codegen.c \
-        ../build/plugins/constraint.c \
-        ../build/hclient.h
+        ../src/strategies/brute.c \
+        ../src/strategies/random.c \
+        ../src/strategies/nm.c \
+        ../src/strategies/pro.c \
+        ../src/plugins/log.c \
+        ../src/plugins/agg.c \
+        ../src/plugins/codegen.c \
+        ../src/plugins/constraint.c \
+        ../src/hclient.h

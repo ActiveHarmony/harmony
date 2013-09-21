@@ -1,4 +1,4 @@
-all_subsystems = build code-server example/client_api example/constraint example/code_generation example/synth example/taudb example/xml
+all_subsystems = src code-server example/client_api example/constraint example/code_generation example/synth example/taudb example/xml
 
 .PHONY: all install clean distclean doc
 

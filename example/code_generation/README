@@ -25,7 +25,7 @@ multiple packages and subsystems, which include:
 	- Harmony Server: From this directory, use the following
           command to build the Harmony Server:
 
-		$ make -C ../../build hserver
+		$ make -C ../../src hserver
 
 	- Code Server: From this directory, use the following command
 	  to build the Code Server:
