@@ -36,8 +36,9 @@
 #include <sys/stat.h>
 
 #include "hclient.h"
-#include "hmesg.h"
+#include "hutil.h"
 #include "hval.h"
+#include "defaults.h"
 
 typedef enum method_t {
     METHOD_WALL,
@@ -91,6 +92,7 @@ unsigned int bcount = 0;
 bundle_info_t binfo[MAX_BUNDLE];
 
 strlist_t *argv_template = NULL;
+char *client_bin;
 int client_argc = 0;
 char **client_argv;
 char *argv_buf = NULL;
@@ -136,7 +138,10 @@ int main(int argc, char **argv)
     parseArgs(argc, argv);
 
     /* Name the session after the target application. */
-    harmony_session_name(hdesc, argv_template[0].str);
+    harmony_session_name(hdesc, client_bin);
+
+    /* Use the Nelder-Mead search strategy by default. */
+    harmony_setcfg(hdesc, CFGKEY_SESSION_STRATEGY, "nm.so");
 
     /* Sanity check before we attempt to connect to the server. */
     if (bcount < 1) {
@@ -151,7 +156,7 @@ int main(int argc, char **argv)
     }
 
     /* Connect to Harmony server and register ourselves as a client. */
-    if (harmony_join(hdesc, NULL, 0, argv_template[0].str) != 0) {
+    if (harmony_join(hdesc, NULL, 0, client_bin) != 0) {
         fprintf(stderr, "Error joining Harmony session: %s\n",
                 harmony_error_string(hdesc));
         goto cleanup;
@@ -347,6 +352,12 @@ void parseArgs(int argc, char **argv)
                 ++arg;
             else break;
         }
+    }
+
+    client_bin = sprintf_alloc("%s.%d", argv[i], getpid());
+    if (!client_bin) {
+        perror("Could not allocate memory for client name");
+        exit(-1);
     }
 
     while (i < argc) {
