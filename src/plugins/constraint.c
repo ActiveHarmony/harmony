@@ -229,19 +229,12 @@ int constraint_init(hsignature_t *sig)
         char paramName[SHORT_TEXT_LEN];
         strcpy(paramName, sess_sig.range[i].name);
 
-        /* Concatenate the domain text with variable constraints */
-        strcpy(domain_text, "symbolic ");
-        strcat(domain_text, paramName);
-        strcat(domain_text, ";\n");
-        strcat(domain_text, domain_text_init);
-        strcat(domain_text, relation_text);
-        strcat(domain_text, dep_text);
-        strcat(domain_text, "};\nRange D;");
-
-        /* Write the text to the file */
         FILE *domain_file;
         domain_file = fopen("domain.in", "rwb+");
-        fprintf(domain_file, domain_text);
+
+        /* Write the domain text with variable constraints to the file */
+        fprintf(domain_file, "symbolic %s;\n%s%s%s};\nRange D;",
+                paramName, domain_text_init, relation_text, dep_text);
 
         fclose(domain_file);
 
@@ -285,13 +278,9 @@ int constraint_generate(hflow_t *flow, hpoint_t *pt)
     FILE *domain_file;
     domain_file = fopen("domain.in", "w");
 
-    strcpy(domain_text, domain_text_init);
-    strcat(domain_text, relation_text);
-    strcat(domain_text, dep_text);
-    strcat(domain_text, param_value_text);
-    strcat(domain_text, "};\nD;");
+    fprintf(domain_file, "%s%s%s%s};\nD;",
+            domain_text_init, relation_text, dep_text, param_value_text);
 
-    fprintf(domain_file, domain_text);
     fclose(domain_file);
 
     /* Call omega test */
