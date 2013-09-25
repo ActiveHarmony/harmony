@@ -5,7 +5,7 @@ LATEX_OUTPUT = Users_Guide.latex
 HTML_OUTPUT  = Users_Guide.html
 
 INPUT = doxygen/Users_Guide.dox \
-        ../src/strategies/brute.c \
+        ../src/strategies/exhaustive.c \
         ../src/strategies/random.c \
         ../src/strategies/nm.c \
         ../src/strategies/pro.c \

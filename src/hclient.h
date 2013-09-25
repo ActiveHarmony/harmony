@@ -169,9 +169,9 @@ int harmony_strategy(hdesc_t *hdesc, const char *strategy);
  * list order, with each successive layer placed further from the
  * search strategy in the center.
  *
- * \param hdesc   Harmony descriptor returned from
- *                [harmony_init()](\ref harmony_init).
- * \param plugins List of plug-ins to load with this session.
+ * \param hdesc Harmony descriptor returned from
+ *              [harmony_init()](\ref harmony_init).
+ * \param list  List of plug-ins to load with this session.
  *
  * \return Returns 0 on success, and -1 otherwise.
  */
@@ -242,7 +242,7 @@ int harmony_id(hdesc_t *hdesc, const char *id);
  *        session variable.
  *
  * This function associates a local variable with a session variable
- * declared using [hsession_int()](\ref hsession_int).  Upon
+ * declared using [harmony_int()](\ref harmony_int).  Upon
  * [harmony_fetch()](\ref harmony_fetch), the value chosen by the
  * session will be stored at the address <var>ptr</var>.
  *
@@ -253,7 +253,7 @@ int harmony_id(hdesc_t *hdesc, const char *id);
  * \param hdesc Harmony descriptor returned from
  *              [harmony_init()](\ref harmony_init).
  * \param name  Session variable defined using
- *              [hsession_int()](\ref hsession_int).
+ *              [harmony_int()](\ref harmony_int).
  * \param ptr   Pointer to a local `long` variable that will
  *                  hold the current testing value.
  *
@@ -266,7 +266,7 @@ int harmony_bind_int(hdesc_t *hdesc, const char *name, long *ptr);
  *        session variable.
  *
  * This function associates a local variable with a session variable
- * declared using [hsession_real()](\ref hsession_real).  Upon
+ * declared using [harmony_real()](\ref harmony_real).  Upon
  * [harmony_fetch()](\ref harmony_fetch), the value chosen by the
  * session will be stored at the address <var>ptr</var>.
  *
@@ -277,7 +277,7 @@ int harmony_bind_int(hdesc_t *hdesc, const char *name, long *ptr);
  * \param hdesc Harmony descriptor returned from
  *              [harmony_init()](\ref harmony_init).
  * \param name  Session variable defined using
- *              [hsession_real()](\ref hsession_real).
+ *              [harmony_real()](\ref harmony_real).
  * \param ptr   Pointer to a local `double` variable that will
  *                  hold the current testing value.
  *
@@ -290,7 +290,7 @@ int harmony_bind_real(hdesc_t *hdesc, const char *name, double *ptr);
  *        string-based session variable.
  *
  * This function associates a local variable with a session variable
- * declared using [hsession_enum()](\ref hsession_enum).  Upon
+ * declared using [harmony_enum()](\ref harmony_enum).  Upon
  * [harmony_fetch()](\ref harmony_fetch), the value chosen by the
  * session will be stored at the address <var>ptr</var>.
  *
@@ -301,7 +301,7 @@ int harmony_bind_real(hdesc_t *hdesc, const char *name, double *ptr);
  * \param hdesc Harmony descriptor returned from
  *              [harmony_init()](\ref harmony_init).
  * \param name  Session variable defined using
- *              [hsession_enum()](\ref hsession_enum).
+ *              [harmony_enum()](\ref harmony_enum).
  * \param ptr   Pointer to a local `char *` variable that will
  *                  hold the current testing value.
  *

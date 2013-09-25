@@ -12,13 +12,13 @@ TCL_INCDIR?=/usr/include
 TCL_LIBDIR?=/usr/lib64
 
 LIBEXEC_SRCS=libvertex.c \
-             brute.c \
+             exhaustive.c \
              random.c \
              nm.c \
              pro.c
 SRCS=$(LIBEXEC_SRCS)
 
-LIBEXEC_TARGETS=brute.so \
+LIBEXEC_TARGETS=exhaustive.so \
                 random.so \
                 nm.so \
                 pro.so
@@ -38,8 +38,8 @@ install: $(TARGETS)
 		cp $$i $(INST_DIR)/$$i;         \
 	done
 
-brute.so: override LDLIBS+=-lm
-brute.so: libvertex.o
+exhaustive.so: override LDLIBS+=-lm
+exhaustive.so: libvertex.o
 
 random.so: override LDLIBS+=-lm
 random.so: libvertex.o

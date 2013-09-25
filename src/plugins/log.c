@@ -26,7 +26,7 @@
  * **Configuration Variables**
  * Key          | Type   | Default | Description
  * ------------ | ------ | ------- | -----------
- * LOGFILE      | String | <none>  | Name of point/performance log file.
+ * LOGFILE      | String | (none)  | Name of point/performance log file.
  * LOGFILE_MODE | String | a       | Mode to use with `fopen()`.  Valid values are "a" and "w" (without quotes).
  */
 

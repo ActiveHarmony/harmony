@@ -29,8 +29,8 @@
  * **Configuration Variables**
  * Key       | Type    | Default | Description
  * --------- | ------- | ------- | -----------
- * AGG_FUNC  | String  | <none>  | Aggregation function to use.  Valid values are "min", "max", "mean", and "median" (without quotes).
- * AGG_TIMES | Integer | <none>  | Number of performance values to collect before performing the aggregation function.
+ * AGG_FUNC  | String  | [none]  | Aggregation function to use.  Valid values are "min", "max", "mean", and "median" (without quotes).
+ * AGG_TIMES | Integer | [none]  | Number of performance values to collect before performing the aggregation function.
  */
 
 #include "session-core.h"

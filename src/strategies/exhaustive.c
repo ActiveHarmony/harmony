@@ -18,7 +18,7 @@
  */
 
 /**
- * \page brute Brute Force (brute.so)
+ * \page exhaustive Exhaustive (exhaustive.so)
  *
  * This search strategy starts with the minimum-value point (i.e.,
  * using the minimum value for each tuning variable), and incrementing
@@ -31,9 +31,9 @@
  *
  *
  * **Configuration Variables**
- * Key          | Type       | Default | Description
- * ------------ | ---------- | ------- | -----------
- * BRUTE_PASSES | Integer    | 1       | Number of passes through the search space before the search is considered converged.
+ * Key    | Type       | Default | Description
+ * ------ | ---------- | ------- | -----------
+ * PASSES | Integer    | 1       | Number of passes through the search space before the search is considered converged.
  */
 
 #include "strategy.h"
@@ -95,7 +95,7 @@ int strategy_cfg(void)
 {
     const char *cfgstr;
 
-    cfgstr = session_getcfg(CFGKEY_BRUTE_PASSES);
+    cfgstr = session_getcfg(CFGKEY_PASSES);
     if (cfgstr)
         remaining_passes = atoi(cfgstr);
 

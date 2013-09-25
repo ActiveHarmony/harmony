@@ -223,7 +223,7 @@ The backslash (\\) character may be used within the value string as a quoting me
 
 Configuration directives may also be read from a file containing one key/value pair per line.  The first equals sign (`=`) separates the key from the value string, and the value string extends until a newline (`\n`) or hash (`#`) which indicates comments.
 
-Each tuning session has a unique configuration environment.  All entities involved with a tuning session (clients, search strategies, processing layers, etc.) may query this system.  The configuration environment is initialized at session creation time through [hsession_setcfg()](\ref hsession_setcfg) function calls.  After a session has been launched, clients may query the configuration environment through [harmony_getcfg()](\ref harmony_getcfg) and [harmony_setcfg()](\ref harmony_setcfg) function calls.
+Each tuning session has a unique configuration environment.  All entities involved with a tuning session (clients, search strategies, processing layers, etc.) may query this system.  The configuration environment is initialized at session creation time through [harmony_setcfg()](\ref harmony_setcfg) function calls.  After a session has been launched, clients may query the configuration environment through [harmony_getcfg()](\ref harmony_getcfg) and [harmony_setcfg()](\ref harmony_setcfg) function calls.
 
 \note The Harmony Server is a special case.  It contains its own private configuration environment that is merged with any sessions that it manages.  If there is a key conflict between the server and session configuration environment, the session's key takes precedence.
 
@@ -239,7 +239,7 @@ Description | Textual description of the directive's function.
 
 
 \page plugin Plug-ins
-As described in the [Tuning Session](\ref intro_session) section, Active Harmony provides a modular interface for flexible functionality.  The session API functions [hsession_strategy()](\ref hsession_strategy) and [hsession_plugins()](\ref hsession_plugins) specify which plug-in's will be loaded by the tuning session.  See their individual documentation page for details on their use.
+As described in the [Tuning Session](\ref intro_session) section, Active Harmony provides a modular interface for flexible functionality.  The session API functions [harmony_strategy()](\ref harmony_strategy) and [harmony_layer_list()](\ref harmony_layer_list) specify which plug-in's will be loaded by the tuning session.  See their individual documentation page for details on their use.
 
 The Active Harmony framework currently allows for two types of plug-ins, [search strategies](\ref strategies) and [processing layers](\ref layers).
 
@@ -256,7 +256,7 @@ Search strategies encapsulate the core search logic of an Active Harmony tuning 
 See the [Tuning Session](\ref intro_session) section for an overview of the search strategy's role within the larger tuning session context.
 
 \latexonly \begin{comment} \endlatexonly
-- \subpage brute
+- \subpage exhaustive
 - \subpage random
 - \subpage nm
 - \subpage pro
