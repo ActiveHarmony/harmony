@@ -41,6 +41,7 @@ struct hcfg {
 };
 
 /* Internal function prototypes */
+int line_count(const char *buf);
 unsigned int hash_function(const char *input, unsigned int logsize);
 keyval_t *hash_init(unsigned int logsize);
 keyval_t *hash_find(hcfg_t *cfg, const char *key);
@@ -142,36 +143,43 @@ int hcfg_unset(hcfg_t *cfg, const char *key)
 }
 
 /* Open the configuration file, and parse it line by line. */
-int hcfg_load(hcfg_t *cfg, FILE *fd)
+int hcfg_load(hcfg_t *cfg, const char *filename)
 {
+    FILE *fd;
     char buf[4096];
-    char *head, *curr, *tail, *key, *val;
-    unsigned int retval, linenum = 0;
-    keyval_t *entry;
+    char *head, *next, *tail, *key, *val;
+    int linenum = 1;
 
-    head = curr = buf;
-    while (!feof(fd) || tail != head) {
-        retval = fread(curr, sizeof(char), sizeof(buf) - (curr - buf), fd);
-        tail = curr + retval;
-        if (feof(fd) && tail < buf + sizeof(buf))
-            *(tail++) = '\n';
+    if (strcmp(filename, "-") == 0)
+        fd = stdin;
+    else {
+        fd = fopen(filename, "r");
+        if (!fd) {
+            perror("Error parsing configuration data");
+            return -1;
+        }
+    }
 
-        curr = memchr(head, '\n', tail - head);
-        while (curr != NULL) {
-            ++linenum;
-            if (hcfg_parse(head, &key, &val) == NULL) {
-                fprintf(stderr, "Config parse error: Line %d: ", linenum);
-                if (key == NULL)
-                    fprintf(stderr, "Empty key string.\n");
-                else if (val == NULL)
-                    fprintf(stderr, "No key/value separator character (=).\n");
+    head = buf;
+    tail = buf;
+    while (!feof(fd)) {
+        int count;
 
-                fclose(fd);
-                return -1;
-            }
+        tail += fread(tail, sizeof(char), sizeof(buf) - (tail - buf + 1), fd);
+        *tail = '\0';
 
-            if (key != NULL) {
-                entry = hash_find(cfg, key);
+        while (head < tail) {
+            count = line_count(head);
+            if (count == 0 && !feof(fd))
+                break;
+
+            next = hcfg_parse(head, &key, &val);
+            if (!next)
+                break;
+
+            if (key && val) {
+                keyval_t *entry = hash_find(cfg, key);
+
                 if (entry != NULL && entry->key != NULL) {
                     fprintf(stderr, "Warning: Line %d: Redefinition of"
                             " configuration key %s.\n", linenum, key);
@@ -183,36 +191,43 @@ int hcfg_load(hcfg_t *cfg, FILE *fd)
                     return -1;
                 }
             }
-            head = curr + 1;
-            curr = memchr(head, '\n', tail - head);
+            linenum += count;
+            head = next;
         }
 
-        /* Full buffer with no newline.  Read until one is found. */
-        if (head == buf && tail == buf + sizeof(buf)) {
-            ++linenum;
-            fprintf(stderr, "Ignoring configuration file line %d:"
-                    "  Line buffer overflow.\n", linenum);
-            while (curr == NULL && !feof(fd)) {
-                retval = fread(buf, sizeof(char), sizeof(buf), fd);
-                tail = buf + retval;
-                curr = memchr(head, '\n', tail - head);
-            }
+        /* Parse error detected. */
+        if (!next)
+            break;
 
-            if (curr != NULL)
-                head = curr + 1;
-            else
-                head = tail = buf;
-        }
+        /* Full buffer with no newline. */
+        if (tail - head == sizeof(buf) - 1)
+            break;
 
         /* Move remaining data to front of buffer. */
         if (head != buf) {
-            curr = buf;
+            next = buf;
             while (head < tail)
-                *(curr++) = *(head++);
-            tail = curr;
+                *(next++) = *(head++);
+            tail = next;
             head = buf;
         }
     }
+    if (fclose(fd) != 0) {
+        perror("Error parsing configuration data");
+        return -1;
+    }
+
+    if (head != tail) {
+        fprintf(stderr, "Parse error in file %s line %d: ", filename, linenum);
+        if (tail - head == sizeof(buf) - 1)
+            fprintf(stderr, "Line buffer overflow.\n");
+        else if (key == NULL)
+            fprintf(stderr, "Invalid key string.\n");
+        else if (val == NULL)
+            fprintf(stderr, "No key/value separator character (=).\n");
+        return -1;
+    }
+
     return 0;
 }
 
@@ -235,61 +250,94 @@ int hcfg_merge(hcfg_t *dst, const hcfg_t *src)
     return 0;
 }
 
-void hcfg_write(hcfg_t *cfg, FILE *fd)
+int hcfg_write(hcfg_t *cfg, const char *filename)
 {
+    FILE *fd;
     int i;
+
+    if (strcmp(filename, "-") == 0)
+        fd = stdout;
+    else {
+        fd = fopen(filename, "w");
+        if (!fd) {
+            perror("Error opening file for write");
+            return -1;
+        }
+    }
 
     for (i = 0; i < (1 << cfg->logsize); ++i) {
         if (cfg->hash[i].key != NULL) {
             fprintf(fd, "%s=%s\n", cfg->hash[i].key, cfg->hash[i].val);
         }
     }
+
+    if (fclose(fd) != 0) {
+        perror("Error parsing configuration data");
+        return -1;
+    }
+    return 0;
 }
 
 /* Parse the key and value from a memory buffer. */
 char *hcfg_parse(char *buf, char **key, char **val)
 {
-    char *ptr;
+    char *ptr = NULL;
 
     *key = NULL;
     *val = NULL;
 
     /* Skip leading key whitespace. */
-    while (isspace(*buf)) ++buf;
-    *key = buf;
+    while (isspace(*buf) && *buf != '\n')
+        ++buf;
+
+    /* Skip empty lines and comments. */
+    if (*buf == '\n' || *buf == '#')
+        goto endline;
+
+    if (!isalnum(*buf) && *buf != '_')
+        return NULL;
 
     /* Force key strings to be uppercase. */
+    *key = buf;
     while (isalnum(*buf) || *buf == '_') {
         *buf = toupper(*buf);
         ++buf;
     }
 
-    /* Kill trailing key whitespace. */
-    while (isspace(*buf))
-        *(buf++) = '\0';
+    /* Check that key string was valid. */
+    ptr = buf;
+    while (isspace(*buf) && *buf != '\n')
+        ++buf;
 
-    /* Check that an equal sign exists. */
-    if (*buf != '=')
+    if (*(buf++) != '=')
         return NULL;
-    *(buf++) = '\0';
 
-    /* Skip leading value whitespace. */
-    while (isspace(*buf)) ++buf;
+    while (isspace(*buf) && *buf != '\n')
+        ++buf;
+
+    /* Kill whitespace and separator between key and value. */
+    while (ptr < buf)
+        *(ptr++) = '\0';
+
+    /* Unquote the value string. */
     *val = buf;
-
-    /* Unquote value string. */
     ptr = buf;
     while (*buf && *buf != '\n') {
-        if      (*buf == '\\') buf += 1;
-        else if (*buf == '#' ) buf += strcspn(buf, "\n");
+        if (*buf ==  '#') goto endline;
+        if (*buf == '\\') ++buf;
         *(ptr++) = *(buf++);
     }
 
-    /* Kill trailing key whitespace. */
-    do *(ptr--) = '\0';
-    while (isspace(*ptr));
+  endline:
+    buf += strcspn(buf, "\n");
+    if (*buf == '\n')
+        ++buf;
 
-    if (*buf == '\n') ++buf;
+    /* Kill trailing value whitespace. */
+    if (ptr) {
+        do *(ptr--) = '\0';
+        while (isspace(*ptr));
+    }
     return buf;
 }
 
@@ -360,6 +408,34 @@ int hcfg_deserialize(hcfg_t *cfg, char *buf)
     errno = EINVAL;
   error:
     return -1;
+}
+
+/* Find the end of the string, returning a count of the newlines. */
+int line_count(const char *buf)
+{
+    const char *stop = "=#\\";
+    const char *ptr = buf;
+    int linecount = 0;
+
+    while (*ptr && *ptr != '\n') {
+        ptr += strcspn(ptr, stop);
+
+        if (*ptr == '\\') {
+            ++ptr;
+            if (*stop == '#') {
+                if      (*ptr == '\n') ++linecount;
+                else if (*ptr == '\0') break;
+                ++ptr;
+            }
+        }
+        else if (*ptr == '=') stop = "#\n";
+        else if (*ptr == '#') stop = "\n";
+    }
+
+    if (*ptr == '\n')
+        ++linecount;
+
+    return linecount;
 }
 
 /*

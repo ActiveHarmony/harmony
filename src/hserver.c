@@ -173,7 +173,6 @@ int main(int argc, char *argv[])
 
 int vars_init(int argc, char *argv[])
 {
-    FILE *fd;
     char *tmppath, *binfile, *cfgpath;
 
     /*
@@ -257,24 +256,14 @@ int vars_init(int argc, char *argv[])
      * Load config file, if found.
      */
     if (cfgpath) {
-        if (strcmp(cfgpath, "-") == 0) {
+        if (strcmp(cfgpath, "-") == 0)
             printf("Reading config values from <stdin>\n");
-            fd = stdin;
-        }
-        else {
+        else
             printf("Reading config values from %s\n", cfgpath);
-            fd = fopen(cfgpath, "r");
-            if (fd == NULL) {
-                perror("Could not open configuration file");
-                return -1;
-            }
-        }
 
-        if (hcfg_load(cfg, fd) < 0) {
-            perror("Error parsing configuration data");
+        if (hcfg_load(cfg, cfgpath) != 0)
             return -1;
-        }
-        fclose(fd);
+
         free(cfgpath);
     }
     else {

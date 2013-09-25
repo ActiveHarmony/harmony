@@ -35,9 +35,9 @@ void hcfg_free(hcfg_t *cfg);
 const char *hcfg_get(hcfg_t *cfg, const char *key);
 int hcfg_set(hcfg_t *cfg, const char *key, const char *val);
 int hcfg_unset(hcfg_t *cfg, const char *key);
-int hcfg_load(hcfg_t *cfg, FILE *fd);
+int hcfg_load(hcfg_t *cfg, const char *filename);
 int hcfg_merge(hcfg_t *dst, const hcfg_t *src);
-void hcfg_write(hcfg_t *cfg, FILE *fd);
+int hcfg_write(hcfg_t *cfg, const char *filename);
 
 char *hcfg_parse(char *buf, char **key, char **val);
 int hcfg_is_cmd(const char *buf);
