@@ -67,8 +67,9 @@ static memfile_t html_file[] = {
     { "session-view.js",              CONTENT_JAVASCRIPT, NULL, 0 },
     { "common.js",                    CONTENT_JAVASCRIPT, NULL, 0 },
     { "activeharmony.css",            CONTENT_CSS,        NULL, 0 },
-    { "jquery-1.6.2.min.js",          CONTENT_JAVASCRIPT, NULL, 0 },
+    { "jquery.min.js",                CONTENT_JAVASCRIPT, NULL, 0 },
     { "jquery.flot.min.js",           CONTENT_JAVASCRIPT, NULL, 0 },
+    { "jquery.flot.time.min.js",      CONTENT_JAVASCRIPT, NULL, 0 },
     { "jquery.flot.resize.min.js",    CONTENT_JAVASCRIPT, NULL, 0 },
     { "jquery.flot.selection.min.js", CONTENT_JAVASCRIPT, NULL, 0 },
     { "excanvas.min.js",              CONTENT_JAVASCRIPT, NULL, 0 },
@@ -117,7 +118,7 @@ int http_init(const char *basedir)
         if (html_file[i].buf != NULL)
             munmap(html_file[i].buf, html_file[i].buflen);
 
-        filename = sprintf_alloc("%s/libexec/%s", basedir,
+        filename = sprintf_alloc("%s/libexec/html/%s", basedir,
                                  html_file[i].filename);
         if (!filename) {
             perror("Could not allocate temp memory for filename");

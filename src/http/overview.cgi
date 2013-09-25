@@ -22,7 +22,7 @@ along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
 <html>
   <head>
     <title>Active Harmony Web Interface</title>
-    <script type="text/javascript" src="jquery-1.6.2.min.js"></script>
+    <script type="text/javascript" src="jquery.min.js"></script>
     <!--[if lte IE 8]>
     <script type="text/javascript" src="excanvas.min.js"></script>
     <![endif]-->

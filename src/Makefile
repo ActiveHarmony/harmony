@@ -25,17 +25,18 @@ LIB_OBJS=$(LIB_SRCS:.c=.o)
 
 BIN_FILES=harmony.cfg
 INCLUDE_FILES=hclient.h
-LIBEXEC_FILES=overview.cgi \
-              overview.js \
-              session-view.cgi \
-              session-view.js \
-              common.js \
-              activeharmony.css \
-              jquery-1.6.2.min.js \
-              jquery.flot.min.js \
-              jquery.flot.resize.min.js \
-              jquery.flot.selection.min.js \
-              excanvas.min.js
+HTTP_FILES=http/overview.cgi \
+           http/overview.js \
+           http/session-view.cgi \
+           http/session-view.js \
+           http/common.js \
+           http/activeharmony.css \
+           http/jquery.min.js \
+           http/jquery.flot.min.js \
+           http/jquery.flot.time.min.js \
+           http/jquery.flot.resize.min.js \
+           http/jquery.flot.selection.min.js \
+           http/excanvas.min.js
 
 BIN_TARGETS=hserver \
             tuna
@@ -54,30 +55,37 @@ install: $(TARGETS) $(SUBDIRS)
 	@if [ ! -d $(PREFIX)/bin ]; then                               \
 		echo mkdir $(PREFIX)/bin;                              \
 		mkdir $(PREFIX)/bin;                                   \
-	fi;                                                            \
-	echo cp $(BIN_TARGETS) $(BIN_FILES) $(PREFIX)/bin;             \
-	cp $(BIN_TARGETS) $(BIN_FILES) $(PREFIX)/bin;                  \
+	fi &&                                                          \
+	echo cp $(BIN_TARGETS) $(BIN_FILES) $(PREFIX)/bin &&           \
+	cp $(BIN_TARGETS) $(BIN_FILES) $(PREFIX)/bin &&                \
                                                                        \
 	if [ ! -d $(PREFIX)/lib ]; then                                \
 		echo mkdir $(PREFIX)/lib;                              \
 		mkdir $(PREFIX)/lib;                                   \
-	fi;                                                            \
-	echo cp $(LIB_TARGETS) $(PREFIX)/lib;                          \
-	cp $(LIB_TARGETS) $(PREFIX)/lib;                               \
+	fi &&                                                          \
+	echo cp $(LIB_TARGETS) $(PREFIX)/lib &&                        \
+	cp $(LIB_TARGETS) $(PREFIX)/lib &&                             \
                                                                        \
 	if [ ! -d $(PREFIX)/include ]; then                            \
 		echo mkdir $(PREFIX)/include;                          \
 		mkdir $(PREFIX)/include;                               \
-	fi;                                                            \
-	echo cp $(INCLUDE_FILES) $(PREFIX)/include;                    \
-	cp $(INCLUDE_FILES) $(PREFIX)/include;                         \
+	fi &&                                                          \
+	echo cp $(INCLUDE_FILES) $(PREFIX)/include &&                  \
+	cp $(INCLUDE_FILES) $(PREFIX)/include &&                       \
                                                                        \
 	if [ ! -d $(PREFIX)/libexec ]; then                            \
 		echo mkdir $(PREFIX)/libexec;                          \
 		mkdir $(PREFIX)/libexec;                               \
-	fi;                                                            \
-	echo cp $(LIBEXEC_TARGETS) $(LIBEXEC_FILES) $(PREFIX)/libexec; \
-	cp $(LIBEXEC_TARGETS) $(LIBEXEC_FILES) $(PREFIX)/libexec
+	fi &&                                                          \
+	echo cp $(LIBEXEC_TARGETS) $(PREFIX)/libexec &&                \
+	cp $(LIBEXEC_TARGETS) $(PREFIX)/libexec &&                     \
+                                                                       \
+	if [ ! -d $(PREFIX)/libexec/html ]; then                       \
+		echo mkdir $(PREFIX)/libexec/html;                     \
+		mkdir $(PREFIX)/libexec/html;                          \
+	fi &&                                                          \
+	echo cp $(HTTP_FILES) $(PREFIX)/libexec/html &&                \
+	cp $(HTTP_FILES) $(PREFIX)/libexec/html
 
 hserver: httpsvr.o $(SHR_OBJS)
 
