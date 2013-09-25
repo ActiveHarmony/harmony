@@ -58,6 +58,7 @@ int increment(void);
 /* Variables to track current search state. */
 vertex_t *curr;
 int remaining_passes;
+int final_id = 0;
 
 /*
  * Invoked once on strategy load.
@@ -107,7 +108,7 @@ int strategy_cfg(void)
  */
 int strategy_generate(hflow_t *flow, hpoint_t *point)
 {
-    if (curr->id > 0) {
+    if (remaining_passes > 0) {
         if (vertex_to_hpoint(curr, point) != 0) {
             session_error("Internal error: Could not make point from vertex.");
             return -1;
@@ -134,15 +135,13 @@ int strategy_generate(hflow_t *flow, hpoint_t *point)
 int strategy_rejected(hflow_t *flow, hpoint_t *point)
 {
     hpoint_t *hint = &flow->point;
+    int orig_id = point->id;
 
     if (hint && hint->id != -1) {
-        int orig_id = point->id;
-
         if (hpoint_copy(point, hint) != 0) {
             session_error("Internal error: Could not copy point.");
             return -1;
         }
-        point->id = orig_id;
     }
     else {
         if (vertex_to_hpoint(curr, point) != 0) {
@@ -153,6 +152,7 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
         if (increment() != 0)
             return -1;
     }
+    point->id = orig_id;
 
     flow->status = HFLOW_ACCEPT;
     return 0;
@@ -160,18 +160,15 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
 
 int increment(void)
 {
-    if (curr->id == 0)
+    if (remaining_passes <= 0)
         return 0;
 
-    if (vertex_incr(curr)) {
-        if (--remaining_passes < 0) {
-            if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "1") != 0) {
-                session_error("Internal error: Could not increment vertex.");
-                return -1;
-            }
-            curr->id = 0;
-        }
-    }
+    if (vertex_incr(curr))
+        --remaining_passes;
+
+    if (remaining_passes <= 0)
+        final_id = curr->id - 1;
+
     return 0;
 }
 
@@ -187,6 +184,14 @@ int strategy_analyze(htrial_t *trial)
             return -1;
         }
     }
+
+    if (trial->point.id == final_id) {
+        if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "1") != 0) {
+            session_error("Internal error: Could not set convergence status.");
+            return -1;
+        }
+    }
+
     return 0;
 }
 
