@@ -217,6 +217,9 @@ Tuna makes any command-line application that provides performance related parame
 
 
 \page cfg Configuring Active Harmony
+The Active Harmony Framework may be configured through two distinct, but similar systems.  The session-wide Harmony Configuration System, and general environment variables.
+
+\section cfg_sess Active Harmony Session Configuration System
 Each tuning session provides a centralized configuration environment.  Similar to shell environment variables, tuning session configuration directives take the form of simple key/value string pairs.  Key strings are case insensitive, and may only consist of alphanumeric characters or the underscore.  Value strings are stored as-is, and interpretation depends on the key.
 
 The backslash (\\) character may be used within the value string as a quoting mechanism.  A backslash preserves the literal value of the next character that follows.
@@ -236,7 +239,16 @@ Type        | How the value string will be interpreted (Integer, Real, String, e
 Default     | If unspecified, this value will be used instead.
 Description | Textual description of the directive's function.
 
+\section cfg_env Environment Variables
+Certainly subsystems of the Active Harmony Framework may require additional information before it can connect to a session, and by extension, the session-wide configuration system.  When necessary, this information may be retrieved through the subsystem's environment.
 
+Here are a list of environment variables commonly used:
+
+Environment Variable | Description
+-------------------- | -----------
+`HARMONY_HOME`       | File path of the directory containing an Active Harmony installation.  This is effectively the value of PREFIX when Harmony was built from source.
+`HARMONY_S_HOST`     | If defined, tuning clients (using [harmony_join()](\ref harmony_join)) will attempt to connect to a [Harmony Server](\ref apps_svr) on this host.
+`HARMONY_S_PORT`     | If defined (along with `HARMONY_S_HOST`), tuning clients will used this variable as the port when connecting to a running Harmony Server.
 
 \page plugin Plug-ins
 As described in the [Tuning Session](\ref intro_session) section, Active Harmony provides a modular interface for flexible functionality.  The session API functions [harmony_strategy()](\ref harmony_strategy) and [harmony_layer_list()](\ref harmony_layer_list) specify which plug-in's will be loaded by the tuning session.  See their individual documentation page for details on their use.
