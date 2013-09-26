@@ -229,7 +229,7 @@ function updateVarList(vars) {
     var tableHead = document.getElementById("data_table").tHead;
     v_select.length = 1;
 
-    var v_arr = vars.split(",").sort();
+    var v_arr = vars.split(",");
     tableColMap = new Object();
     chartDataIdx = new Array(v_arr.length + 1);
 
