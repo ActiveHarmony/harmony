@@ -114,7 +114,7 @@ int  nm_next_vertex(void);
 void check_convergence(void);
 
 /* Variables to control search properties. */
-simplex_init_t  init_method  = SIMPLEX_INIT_MAXVAL;
+simplex_init_t  init_method  = SIMPLEX_INIT_POINT;
 vertex_t *      init_point;
 double          init_percent = 0.35;
 reject_method_t reject_type  = REJECT_METHOD_PENALTY;
@@ -123,7 +123,7 @@ double reflect  = 1.0;
 double expand   = 2.0;
 double contract = 0.5;
 double shrink   = 0.5;
-double fval_tol   = 1e-4;
+double fval_tol = 1e-4;
 double size_tol;
 int simplex_size;
 
