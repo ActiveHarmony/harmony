@@ -207,7 +207,7 @@ int strategy_cfg(hsignature_t *sig)
         simplex_size = atoi(cfgval);
 
     if (simplex_size < sig->range_len + 1)
-        simplex_size = sig->range_len * 2;
+        simplex_size = sig->range_len + 1;
 
     cfgval = session_getcfg(CFGKEY_RANDOM_SEED);
     if (cfgval && *cfgval) {
