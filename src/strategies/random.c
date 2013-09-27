@@ -45,6 +45,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <time.h>
 #include <math.h>
 
 hpoint_t best;
@@ -92,8 +93,12 @@ int strategy_cfg(void)
     const char *cfgstr;
 
     cfgstr = session_getcfg(CFGKEY_RANDOM_SEED);
-    if (cfgstr)
+    if (cfgstr && *cfgstr) {
         srand(atoi(cfgstr));
+    }
+    else {
+        srand(time(NULL));
+    }
 
     return 0;
 }

@@ -31,6 +31,7 @@
  * Key           | Type    | Default      | Description
  * --------------| ------- | ------------ | -----------
  * SIMPLEX_SIZE  | Integer | N+1          | Number of vertices in the simplex.  Defaults to the number of tuning variables + 1.
+ * RANDOM_SEED   | Integer | time(NULL)   | Value to seed the pseudo-random number generator.  Default is to seed the random generator by time.
  * INIT_METHOD   | String  | point        | Initial simplex generation method.  Valid values are "point", "point_fast", and "random" (without quotes).
  * INIT_PERCENT  | Real    | 0.35         | Initial simplex size as a percentage of the total search space.  Only for "point" and "point_fast" initial simplex methods.
  * REJECT_METHOD | String  | penalty      | How to choose a replacement when dealing with rejected points:<br> **Penalty** - Use this method if the chance of point rejection is relatively low.  It applies an infinite penalty factor for invalid points, allowing the PRO algorithm to select a sensible next point.  However, if the entire simplex is comprised of invalid points, an infinite loop of invalid points may occur.<br> **Random** - Use this method if the chance of point rejection is high.  It reduces the risk of infinitely selecting invalid points at the cost of increasing the risk of deforming the simplex.
@@ -209,7 +210,7 @@ int strategy_cfg(hsignature_t *sig)
         simplex_size = sig->range_len * 2;
 
     cfgval = session_getcfg(CFGKEY_RANDOM_SEED);
-    if (cfgval) {
+    if (cfgval && *cfgval) {
         srand(atoi(cfgval));
     }
     else {
