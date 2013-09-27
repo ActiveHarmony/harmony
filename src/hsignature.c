@@ -317,6 +317,54 @@ void hsignature_fini(hsignature_t *sig)
 
 int hsignature_equal(const hsignature_t *sig_a, const hsignature_t *sig_b)
 {
+    int i, j;
+
+    if (strcmp(sig_a->name, sig_b->name) != 0)
+        return 0;
+
+    if (sig_a->range_len != sig_b->range_len)
+        return 0;
+
+    for (i = 0; i < sig_a->range_len; ++i) {
+        hrange_t *range_a = &sig_a->range[i];
+        hrange_t *range_b = &sig_b->range[i];
+
+        if (strcmp(range_a->name, range_b->name) != 0)
+            return 0;
+        if (range_a->type != range_b->type)
+            return 0;
+
+        switch (range_a->type) {
+        case HVAL_INT:
+            if (range_a->bounds.i.min  != range_b->bounds.i.min ||
+                range_a->bounds.i.max  != range_b->bounds.i.max ||
+                range_a->bounds.i.step != range_b->bounds.i.step)
+                return 0;
+            break;
+        case HVAL_REAL:
+            if (range_a->bounds.r.min  != range_b->bounds.r.min ||
+                range_a->bounds.r.max  != range_b->bounds.r.max ||
+                range_a->bounds.r.step != range_b->bounds.r.step)
+                return 0;
+            break;
+        case HVAL_STR:
+            if (range_a->bounds.s.set_len != range_b->bounds.s.set_len)
+                return 0;
+            for (j = 0; j < range_a->bounds.s.set_len; ++j) {
+                if (strcmp(range_a->bounds.s.set[j],
+                           range_b->bounds.s.set[j]) != 0)
+                    return 0;
+            }
+            break;
+        default:
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int hsignature_match(const hsignature_t *sig_a, const hsignature_t *sig_b)
+{
     int i;
 
     if (strcmp(sig_a->name, sig_b->name) != 0)

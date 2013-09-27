@@ -1,35 +1,41 @@
 Introduction
 ============
-This directory contains sample applications that use Active Harmony's
-Client API to enable run-time auto-tuning support.  The same sample
-application is written in multiple languages to provide a specific
-example in each language we support.
+This example demonstrates the constraint processing layer.  This
+plug-in takes constraints from the user in the form of tuning variable
+interdependencies.  For example, if "x" and "y" are tuning variables
+for a given session, the following would be valid constraints:
+
+    x <= y
+    x + y < 5
+
+Prerequisites
+=============
+This processing layer requires The Omega Calculator.  It is part of
+the Omega Project, which can be downloaded at the following URL:
+
+    https://github.com/davewathaverford/the-omega-project/
 
 Building
 ========
-The build process will perform a check to ensure compilers exist
-before attempting to build an example for any given language.  So, the
-following command can be used to build all examples a system supports:
+
+This directory doesn't directly supply a testing binary.  Instead, it
+relies on the client_api example to be successfully built.  Then, the
+client_api binary is directed to load the constraint layer along with
+the provided constraint file (constraint.in).
+
+The supporting binary from the example/client_api directory can be
+built from the current directory (example/constraint) using the
+following command:
 
 	$ make all
 
-Specific examples can also be built by name.  Here is a list of valid
-target binaries:
-
-	example_c - C
-	example_f - Fortran
-	example_chpl - Chapel Parallel Programming Language
-
 Running
 =======
-These binaries will attempt to connect to a Harmony server at launch
-time.  The HARMONY_S_HOST and HARMONY_S_PORT environment variables can
-be used to control where the client should find the server.
+The constraint specification file provided for this example
+(constraint.in) references three of the six total tuning variables,
+(param_1, param_2, and param_3).  The example can be launched with the
+following command:
 
-For example, to use the defaults (localhost:1977):
+        $ make test
 
-	$ example_c
-
-To specify a different location:
-
-	$ HARMONY_S_HOST=h.server.org HARMONY_S_PORT=2012 example_c
+Modify the constraint file to see how it affects the tuning session!

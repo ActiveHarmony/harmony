@@ -75,6 +75,7 @@ extern const hsignature_t HSIGNATURE_INITIALIZER;
 int  hsignature_copy(hsignature_t *dst, const hsignature_t *src);
 void hsignature_fini(hsignature_t *sig);
 int  hsignature_equal(const hsignature_t *sig_a, const hsignature_t *sig_b);
+int  hsignature_match(const hsignature_t *sig_a, const hsignature_t *sig_b);
 int  hsignature_name(hsignature_t *sig, const char *name);
 int  hsignature_int(hsignature_t *sig, const char *name,
                     long min, long max, long step);

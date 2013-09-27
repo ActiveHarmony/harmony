@@ -28,16 +28,17 @@
  * MPI programs.
  *
  * **Configuration Variables**
- * Key          | Type    | Default      | Description
- * -------------| ------- | ------------ | -----------
- * SIMPLEX_SIZE | Integer | <N+1>        | Number of vertices in the simplex.  Defaults to the number of tuning variables + 1.
- * INIT_METHOD  | String  | point        | Initial simplex generation method.  Valid values are "point", "point_fast", and "random" (without quotes).
- * INIT_PERCENT | Real    | 0.35         | Initial simplex size as a percentage of the total search space.  Only for "point" and "point_fast" initial simplex methods.
- * REFLECT      | Real    | 1.0          | Multiplicative coefficient for simplex reflection step.
- * EXPAND       | Real    | 2.0          | Multiplicative coefficient for simplex expansion step.
- * SHRINK       | Real    | 0.5          | Multiplicative coefficient for simplex shrink step.
- * FVAL_TOL     | Real    | 0.0001       | Convergence test succeeds if difference between all vertex performance values fall below this value.
- * SIZE_TOL     | Real    | <.05*r> | Convergence test succeeds if simplex size falls below this value.  Default is 5% of the initial simplex radius.
+ * Key           | Type    | Default      | Description
+ * --------------| ------- | ------------ | -----------
+ * SIMPLEX_SIZE  | Integer | N+1          | Number of vertices in the simplex.  Defaults to the number of tuning variables + 1.
+ * INIT_METHOD   | String  | point        | Initial simplex generation method.  Valid values are "point", "point_fast", and "random" (without quotes).
+ * INIT_PERCENT  | Real    | 0.35         | Initial simplex size as a percentage of the total search space.  Only for "point" and "point_fast" initial simplex methods.
+ * REJECT_METHOD | String  | penalty      | How to choose a replacement when dealing with rejected points:<br> **Penalty** - Use this method if the chance of point rejection is relatively low.  It applies an infinite penalty factor for invalid points, allowing the PRO algorithm to select a sensible next point.  However, if the entire simplex is comprised of invalid points, an infinite loop of invalid points may occur.<br> **Random** - Use this method if the chance of point rejection is high.  It reduces the risk of infinitely selecting invalid points at the cost of increasing the risk of deforming the simplex.
+ * REFLECT       | Real    | 1.0          | Multiplicative coefficient for simplex reflection step.
+ * EXPAND        | Real    | 2.0          | Multiplicative coefficient for simplex expansion step.
+ * SHRINK        | Real    | 0.5          | Multiplicative coefficient for simplex shrink step.
+ * FVAL_TOL      | Real    | 0.0001       | Convergence test succeeds if difference between all vertex performance values fall below this value.
+ * SIZE_TOL      | Real    | 0.05*r       | Convergence test succeeds if simplex size falls below this value.  Default is 5% of the initial simplex radius.
  */
 
 #include "strategy.h"
@@ -69,6 +70,14 @@ typedef enum simplex_init {
     SIMPLEX_INIT_MAX
 } simplex_init_t;
 
+typedef enum reject_method {
+    REJECT_METHOD_UNKNOWN = 0,
+    REJECT_METHOD_PENALTY,
+    REJECT_METHOD_RANDOM,
+
+    REJECT_METHOD_MAX
+} reject_method_t;
+
 typedef enum simplex_state {
     SIMPLEX_STATE_UNKNONW = 0,
     SIMPLEX_STATE_INIT,
@@ -91,9 +100,10 @@ int  pro_next_simplex(simplex_t *output);
 void check_convergence(void);
 
 /* Variables to control search properties. */
-simplex_init_t init_method  = SIMPLEX_INIT_POINT;
-vertex_t *     init_point;
-double         init_percent = 0.35;
+simplex_init_t  init_method  = SIMPLEX_INIT_POINT;
+vertex_t *      init_point;
+double          init_percent = 0.35;
+reject_method_t reject_type  = REJECT_METHOD_PENALTY;
 
 double reflect  = 1.0;
 double expand   = 2.0;
@@ -219,7 +229,7 @@ int strategy_cfg(hsignature_t *sig)
         }
         else {
             session_error("Invalid value for "
-                CFGKEY_INIT_METHOD " configuration key.");
+                          CFGKEY_INIT_METHOD " configuration key.");
             return -1;
         }
     }
@@ -229,12 +239,27 @@ int strategy_cfg(hsignature_t *sig)
         init_percent = strtod(cfgval, &endp);
         if (*endp != '\0') {
             session_error("Invalid value for " CFGKEY_INIT_PERCENT
-                " configuration key.");
+                          " configuration key.");
             return -1;
         }
         if (init_percent <= 0 || init_percent > 1) {
             session_error("Configuration key " CFGKEY_INIT_PERCENT
-                " must be between 0.0 and 1.0 (exclusive).");
+                          " must be between 0.0 and 1.0 (exclusive).");
+            return -1;
+        }
+    }
+
+    cfgval = session_getcfg(CFGKEY_REJECT_METHOD);
+    if (cfgval) {
+        if (strcasecmp(cfgval, "penalty") == 0) {
+            reject_type = REJECT_METHOD_PENALTY;
+        }
+        else if (strcasecmp(cfgval, "random") == 0) {
+            reject_type = REJECT_METHOD_RANDOM;
+        }
+        else {
+            session_error("Invalid value for "
+                          CFGKEY_REJECT_METHOD " configuration key.");
             return -1;
         }
     }
@@ -244,12 +269,12 @@ int strategy_cfg(hsignature_t *sig)
         reflect = strtod(cfgval, &endp);
         if (*endp != '\0') {
             session_error("Invalid value for " CFGKEY_REFLECT
-                " configuration key.");
+                          " configuration key.");
             return -1;
         }
         if (reflect <= 0) {
             session_error("Configuration key " CFGKEY_REFLECT
-                " must be positive.");
+                          " must be positive.");
             return -1;
         }
     }
@@ -259,12 +284,12 @@ int strategy_cfg(hsignature_t *sig)
         expand = strtod(cfgval, &endp);
         if (*endp != '\0') {
             session_error("Invalid value for " CFGKEY_EXPAND
-                " configuration key.");
+                          " configuration key.");
             return -1;
         }
         if (reflect <= 1) {
             session_error("Configuration key " CFGKEY_EXPAND
-                " must be greater than 1.0.");
+                          " must be greater than 1.0.");
             return -1;
         }
     }
@@ -274,12 +299,12 @@ int strategy_cfg(hsignature_t *sig)
         contract = strtod(cfgval, &endp);
         if (*endp != '\0') {
             session_error("Invalid value for " CFGKEY_CONTRACT
-                " configuration key.");
+                          " configuration key.");
             return -1;
         }
         if (reflect <= 0 || reflect >= 1) {
             session_error("Configuration key " CFGKEY_CONTRACT
-                " must be between 0.0 and 1.0 (exclusive).");
+                          " must be between 0.0 and 1.0 (exclusive).");
             return -1;
         }
     }
@@ -289,12 +314,12 @@ int strategy_cfg(hsignature_t *sig)
         shrink = strtod(cfgval, &endp);
         if (*endp != '\0') {
             session_error("Invalid value for " CFGKEY_SHRINK
-                " configuration key.");
+                          " configuration key.");
             return -1;
         }
         if (reflect <= 0 || reflect >= 1) {
             session_error("Configuration key " CFGKEY_SHRINK
-                " must be between 0.0 and 1.0 (exclusive).");
+                          " must be between 0.0 and 1.0 (exclusive).");
             return -1;
         }
     }
@@ -304,7 +329,7 @@ int strategy_cfg(hsignature_t *sig)
         fval_tol = strtod(cfgval, &endp);
         if (*endp != '\0') {
             session_error("Invalid value for " CFGKEY_FVAL_TOL
-                " configuration key.");
+                          " configuration key.");
             return -1;
         }
     }
@@ -314,7 +339,7 @@ int strategy_cfg(hsignature_t *sig)
         size_tol = strtod(cfgval, &endp);
         if (*endp != '\0') {
             session_error("Invalid value for " CFGKEY_SIZE_TOL
-                " configuration key.");
+                          " configuration key.");
             return -1;
         }
     }
@@ -398,37 +423,47 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
         point->id = orig_id;
     }
     else {
-        /* If the rejecting layer does not provide a hint, apply an
-         * infinite penalty to the invalid point and allow the
-         * algorithm to determine the next point to try.
-         */
-        test->vertex[i]->perf = INFINITY;
-        ++reported;
+        if (reject_type == REJECT_METHOD_PENALTY) {
+            /* Apply an infinite penalty to the invalid point and
+             * allow the algorithm to determine the next point to try.
+             */
+            test->vertex[i]->perf = INFINITY;
+            ++reported;
 
-        if (reported == simplex_size) {
-            if (pro_algorithm() != 0) {
-                session_error("Internal error: PRO algorithm failure.");
+            if (reported == simplex_size) {
+                if (pro_algorithm() != 0) {
+                    session_error("Internal error: PRO algorithm failure.");
+                    return -1;
+                }
+                reported = 0;
+                send_idx = 0;
+                i = 0;
+            }
+
+            if (send_idx == simplex_size) {
+                flow->status = HFLOW_WAIT;
+                return 0;
+            }
+
+            test->vertex[send_idx]->id = next_id;
+            if (vertex_to_hpoint(test->vertex[send_idx], point) != 0) {
+                session_error("Internal error: Could not make point"
+                              " from vertex.");
                 return -1;
             }
-            reported = 0;
-            send_idx = 0;
-            i = 0;
+            ++next_id;
+            ++send_idx;
         }
-
-        if (send_idx == simplex_size) {
-            flow->status = HFLOW_WAIT;
-            return 0;
+        else if (reject_type == REJECT_METHOD_RANDOM) {
+            /* Replace the rejected point with a random point. */
+            vertex_rand(test->vertex[i]);
+            if (vertex_to_hpoint(test->vertex[i], point) != 0) {
+                session_error("Internal error: Could not make point"
+                              " from vertex.");
+                return -1;
+            }
         }
-
-        test->vertex[send_idx]->id = next_id;
-        if (vertex_to_hpoint(test->vertex[send_idx], point) != 0) {
-            session_error("Internal error: Could not make point from vertex.");
-            return -1;
-        }
-        ++next_id;
-        ++send_idx;
     }
-
     flow->status = HFLOW_ACCEPT;
     return 0;
 }

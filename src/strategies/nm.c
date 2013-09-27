@@ -37,16 +37,17 @@
  * > Computer Journal 7: 308–313. doi:10.1093/comjnl/7.4.308
  *
  * **Configuration Variables**
- * Key          | Type    | Default      | Description
- * -------------| ------- | ------------ | -----------
- * SIMPLEX_SIZE | Integer | <N+1>        | Number of vertices in the simplex.  Defaults to the number of tuning variables + 1.
- * INIT_METHOD  | String  | point        | Initial simplex generation method.  Valid values are "point", "point_fast", and "random" (without quotes).
- * INIT_PERCENT | Real    | 0.35         | Initial simplex size as a percentage of the total search space.  Only for "point" and "point_fast" initial simplex methods.
- * REFLECT      | Real    | 1.0          | Multiplicative coefficient for simplex reflection step.
- * EXPAND       | Real    | 2.0          | Multiplicative coefficient for simplex expansion step.
- * SHRINK       | Real    | 0.5          | Multiplicative coefficient for simplex shrink step.
- * FVAL_TOL     | Real    | 0.0001       | Convergence test succeeds if difference between all vertex performance values fall below this value.
- * SIZE_TOL     | Real    | <.05*r> | Convergence test succeeds if simplex size falls below this value.  Default is 5% of the initial simplex radius.
+ * Key           | Type    | Default      | Description
+ * --------------| ------- | ------------ | -----------
+ * SIMPLEX_SIZE  | Integer | N+1          | Number of vertices in the simplex.  Defaults to the number of tuning variables + 1.
+ * INIT_METHOD   | String  | point        | Initial simplex generation method.  Valid values are "point", "point_fast", and "random" (without quotes).
+ * INIT_PERCENT  | Real    | 0.35         | Initial simplex size as a percentage of the total search space.  Only for "point" and "point_fast" initial simplex methods.
+ * REJECT_METHOD | String  | penalty      | How to choose a replacement when dealing with rejected points:<br> **Penalty** - Use this method if the chance of point rejection is relatively low.  It applies an infinite penalty factor for invalid points, allowing the Nelder-Mead algorithm to select a sensible next point.  However, if the entire simplex is comprised of invalid points, an infinite loop of invalid points may occur.<br> **Random** - Use this method if the chance of point rejection is high.  It reduces the risk of infinitely selecting invalid points at the cost of increasing the risk of deforming the simplex.
+ * REFLECT       | Real    | 1.0          | Multiplicative coefficient for simplex reflection step.
+ * EXPAND        | Real    | 2.0          | Multiplicative coefficient for simplex expansion step.
+ * SHRINK        | Real    | 0.5          | Multiplicative coefficient for simplex shrink step.
+ * FVAL_TOL      | Real    | 0.0001       | Convergence test succeeds if difference between all vertex performance values fall below this value.
+ * SIZE_TOL      | Real    | 0.05*r       | Convergence test succeeds if simplex size falls below this value.  Default is 5% of the initial simplex radius.
  */
 
 #include "strategy.h"
@@ -78,6 +79,14 @@ typedef enum simplex_init {
     SIMPLEX_INIT_MAX
 } simplex_init_t;
 
+typedef enum reject_method {
+    REJECT_METHOD_UNKNOWN = 0,
+    REJECT_METHOD_PENALTY,
+    REJECT_METHOD_RANDOM,
+
+    REJECT_METHOD_MAX
+} reject_method_t;
+
 typedef enum simplex_state {
     SIMPLEX_STATE_UNKNONW = 0,
     SIMPLEX_STATE_INIT,
@@ -103,9 +112,10 @@ int  nm_next_vertex(void);
 void check_convergence(void);
 
 /* Variables to control search properties. */
-simplex_init_t init_method  = SIMPLEX_INIT_MAXVAL;
-vertex_t *     init_point;
-double         init_percent = 0.35;
+simplex_init_t  init_method  = SIMPLEX_INIT_MAXVAL;
+vertex_t *      init_point;
+double          init_percent = 0.35;
+reject_method_t reject_type  = REJECT_METHOD_PENALTY;
 
 double reflect  = 1.0;
 double expand   = 2.0;
@@ -251,6 +261,21 @@ int strategy_cfg(hsignature_t *sig)
         if (init_percent <= 0 || init_percent > 1) {
             session_error("Configuration key " CFGKEY_INIT_PERCENT
                 " must be between 0.0 and 1.0 (exclusive).");
+            return -1;
+        }
+    }
+
+    cfgval = session_getcfg(CFGKEY_REJECT_METHOD);
+    if (cfgval) {
+        if (strcasecmp(cfgval, "penalty") == 0) {
+            reject_type = REJECT_METHOD_PENALTY;
+        }
+        else if (strcasecmp(cfgval, "random") == 0) {
+            reject_type = REJECT_METHOD_RANDOM;
+        }
+        else {
+            session_error("Invalid value for "
+                          CFGKEY_REJECT_METHOD " configuration key.");
             return -1;
         }
     }
@@ -425,23 +450,34 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
         point->id = orig_id;
     }
     else {
-        /* If the rejecting layer does not provide a hint, apply an
-         * infinite penalty to the invalid point and allow the
-         * algorithm to determine the next point to try.
-         */
-        next->perf = INFINITY;
-        if (nm_algorithm() != 0) {
-            session_error("Internal error: Nelder-Mead algorithm failure.");
-            return -1;
-        }
+        if (reject_type == REJECT_METHOD_PENALTY) {
+            /* Apply an infinite penalty to the invalid point and
+             * allow the algorithm to determine the next point to try.
+             */
+            next->perf = INFINITY;
+            if (nm_algorithm() != 0) {
+                session_error("Internal error: Nelder-Mead"
+                              " algorithm failure.");
+                return -1;
+            }
 
-        next->id = next_id;
-        if (vertex_to_hpoint(next, point) != 0) {
-            session_error("Internal error: Could not make point from vertex.");
-            return -1;
+            next->id = next_id;
+            if (vertex_to_hpoint(next, point) != 0) {
+                session_error("Internal error: Could not make"
+                              " point from vertex.");
+                return -1;
+            }
+        }
+        else if (reject_type == REJECT_METHOD_RANDOM) {
+            /* Replace the rejected point with a random point. */
+            vertex_rand(next);
+            if (vertex_to_hpoint(next, point) != 0) {
+                session_error("Internal error: Could not make point"
+                              " from vertex.");
+                return -1;
+            }
         }
     }
-
     flow->status = HFLOW_ACCEPT;
     return 0;
 }

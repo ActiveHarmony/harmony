@@ -61,7 +61,7 @@ char *search_path(const char *filename)
             if (!newbuf) return NULL;
 
             fullpath = newbuf;
-            pathlen = count;
+            pathlen = count + 1;
             goto retry;
         }
 

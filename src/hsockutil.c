@@ -147,6 +147,9 @@ int socket_launch(const char *path, char *const argv[], pid_t *return_pid)
         if (dup2(sockfd[1], STDIN_FILENO) != STDIN_FILENO)
             return -1;
 
+        if (dup2(sockfd[1], STDOUT_FILENO) != STDOUT_FILENO)
+            return -1;
+
         if (execv(path, argv) < 0) {
             perror("Could not launch child executable");
             exit(-1);  /* Be sure to exit here. */

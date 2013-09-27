@@ -1,33 +1,22 @@
 TO_BASE=../..
 
-CC=gcc
-CFLAGS=-std=c99 -pedantic -Wall -Werror -g
-CPPFLAGS=-D_ISOC99_SOURCE -D_XOPEN_SOURCE=500
+TEST_DIR=$(TO_BASE)/example/client_api
+TEST_BIN=example_c
 
-override CPPFLAGS+=-I$(TO_BASE)/src
-override LDFLAGS+=-L$(TO_BASE)/src -lharmony
+.PHONY: all install test clean distclean
 
-TARGETS=example
+all:
+	$(MAKE) -C $(TEST_DIR) $(TEST_BIN)
 
-.PHONY: all install clean distclean
-
-all: $(TARGETS)
-
-install: $(TARGETS)
+install: all
 	@echo "Examples must be executed from source directory (for now)."
 
-example: example.c $(TO_BASE)/src/libharmony.a
-	@if [ -x "`which $(CC) 2>&1`" ]; then                           \
-		echo "$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LDFLAGS) -o $@"; \
-		$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LDFLAGS) -o $@;        \
-	else                                                            \
-		echo "Skipping build of $@: $(CC) not found.";          \
-	fi
-
-$(TO_BASE)/src/libharmony.a:
-	$(MAKE) -C $(TO_BASE)/src libharmony.a
+test: all
+	$(TEST_DIR)/$(TEST_BIN) \
+		SESSION_LAYER_LIST=constraint.so \
+		CONSTRAINT_FILE=constraint.in
 
 clean:
-	rm -f core $(TARGETS)
 
 distclean: clean
+	rm -f *~

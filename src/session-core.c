@@ -538,7 +538,7 @@ int handle_join(hmesg_t *mesg)
     int i;
 
     /* Verify that client signature matches current session. */
-    if (!hsignature_equal(&mesg->data.join, &sess->sig)) {
+    if (!hsignature_match(&mesg->data.join, &sess->sig)) {
         errmsg = "Incompatible join signature.";
         return -1;
     }
