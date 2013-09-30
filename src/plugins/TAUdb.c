@@ -20,13 +20,28 @@
 /**
  * \page TAUdb TAUdb Interface (TAUdb.so)
  *
+ * \warning This processing layer is still considered pre-beta.
+ *
+ * This processing layer uses the TAU Performance System's C API to
+ * keep a log of point/performance pairs to disk as they flow through
+ * the auto-tuning [feedback loop](\ref intro_feedback).
+ *
+ * The `LIBTAUDB` [build variable](\ref start_install) must be defined
+ * at build time for this plug-in to be available, since it is
+ * dependent on a library distributed with TAU.  The distribution of
+ * TAU is available here:
+ * - http://www.cs.uoregon.edu/research/tau/downloads.php
+ *
+ * And `LIBTAUDB` should point to the `tools/src/taudb_c_api`
+ * directory within that distribution.
+ *
  * **Configuration Variables**
- * Key                | Type    | Default | Description
- * ------------------ | ------- | ------- | -----------
- * TAUDB_NAME         | String  | <none>  |
- * TAUDB_STORE_METHOD |         |         |
- * TAUDB_STORE_NUM    |         |         |
- * CLIENT_COUNT       |         |         |
+ * Key                | Type    | Default  | Description
+ * ------------------ | ------- | -------- | -----------
+ * TAUDB_NAME         | String  | [none]   | Name of the PostgreSQL database.
+ * TAUDB_STORE_METHOD | String  | one_time | Determines when statistics are computed:<br> **one_time** - With each database write.<br> **real_time** - At session cleanup time.
+ * TAUDB_STORE_NUM    | Integer | 0        | Number of reports to cache before writing to database.
+ * CLIENT_COUNT       | Integer | 1        | Number of participating tuning clients.
  */
 
 #include "session-core.h"

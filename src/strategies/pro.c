@@ -28,18 +28,18 @@
  * MPI programs.
  *
  * **Configuration Variables**
- * Key           | Type    | Default      | Description
- * --------------| ------- | ------------ | -----------
- * SIMPLEX_SIZE  | Integer | N+1          | Number of vertices in the simplex.  Defaults to the number of tuning variables + 1.
- * RANDOM_SEED   | Integer | time(NULL)   | Value to seed the pseudo-random number generator.  Default is to seed the random generator by time.
- * INIT_METHOD   | String  | point        | Initial simplex generation method.  Valid values are "point", "point_fast", and "random" (without quotes).
- * INIT_PERCENT  | Real    | 0.35         | Initial simplex size as a percentage of the total search space.  Only for "point" and "point_fast" initial simplex methods.
- * REJECT_METHOD | String  | penalty      | How to choose a replacement when dealing with rejected points:<br> **Penalty** - Use this method if the chance of point rejection is relatively low.  It applies an infinite penalty factor for invalid points, allowing the PRO algorithm to select a sensible next point.  However, if the entire simplex is comprised of invalid points, an infinite loop of invalid points may occur.<br> **Random** - Use this method if the chance of point rejection is high.  It reduces the risk of infinitely selecting invalid points at the cost of increasing the risk of deforming the simplex.
- * REFLECT       | Real    | 1.0          | Multiplicative coefficient for simplex reflection step.
- * EXPAND        | Real    | 2.0          | Multiplicative coefficient for simplex expansion step.
- * SHRINK        | Real    | 0.5          | Multiplicative coefficient for simplex shrink step.
- * FVAL_TOL      | Real    | 0.0001       | Convergence test succeeds if difference between all vertex performance values fall below this value.
- * SIZE_TOL      | Real    | 0.05*r       | Convergence test succeeds if simplex size falls below this value.  Default is 5% of the initial simplex radius.
+ * Key           | Type    | Default | Description
+ * --------------| ------- | ------- | -----------
+ * SIMPLEX_SIZE  | Integer | N+1     | Number of vertices in the simplex.  Defaults to the number of tuning variables + 1.
+ * RANDOM_SEED   | Integer | time()  | Value to seed the pseudo-random number generator.  Default is to seed the random generator by time.
+ * INIT_METHOD   | String  | point   | Initial simplex generation method.  Valid values are "point", "point_fast", and "random" (without quotes).
+ * INIT_PERCENT  | Real    | 0.35    | Initial simplex size as a percentage of the total search space.  Only for "point" and "point_fast" initial simplex methods.
+ * REJECT_METHOD | String  | penalty | How to choose a replacement when dealing with rejected points:<br> **Penalty** - Use this method if the chance of point rejection is relatively low.  It applies an infinite penalty factor for invalid points, allowing the PRO algorithm to select a sensible next point.  However, if the entire simplex is comprised of invalid points, an infinite loop of invalid points may occur.<br> **Random** - Use this method if the chance of point rejection is high.  It reduces the risk of infinitely selecting invalid points at the cost of increasing the risk of deforming the simplex.
+ * REFLECT       | Real    | 1.0     | Multiplicative coefficient for simplex reflection step.
+ * EXPAND        | Real    | 2.0     | Multiplicative coefficient for simplex expansion step.
+ * SHRINK        | Real    | 0.5     | Multiplicative coefficient for simplex shrink step.
+ * FVAL_TOL      | Real    | 0.0001  | Convergence test succeeds if difference between all vertex performance values fall below this value.
+ * SIZE_TOL      | Real    | 0.05*r  | Convergence test succeeds if simplex size falls below this value.  Default is 5% of the initial simplex radius.
  */
 
 #include "strategy.h"

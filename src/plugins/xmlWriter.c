@@ -20,10 +20,25 @@
 /**
  * \page xml XML Writer (xmlWriter.so)
  *
+ * \warning This processing layer is still considered pre-beta.
+ *
+ * This processing layer writes an XML formatted log of
+ * point/performance pairs to disk as they flow through the
+ * auto-tuning [feedback loop](\ref intro_feedback).
+ *
+ * The `LIBXML2` [build variable](\ref start_install) must be defined
+ * at build time for this plug-in to be available.  The libxml2
+ * library is available in multiple forms here:
+ * - http://www.xmlsoft.org/downloads.html
+ *
+ * And `LIBXML2` should point wherever libxml2 has been installed.
+ * For Linux distributions that include libxml2 as a package, using
+ * `/usr` may be sufficient.
+ *
  * **Configuration Variables**
  * Key                | Type    | Default | Description
  * ------------------ | ------- | ------- | -----------
- * XML_FILENAME       | String  | <none>  |
+ * XML_FILENAME       | String  | [none]  | XML output file.
  */
 
 #include <stdlib.h>

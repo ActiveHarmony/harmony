@@ -31,7 +31,7 @@
  * **Configuration Variables**
  * Key          | Type       | Default | Description
  * ------------ | ---------- | ------- | -----------
- * RANDOM_SEED  | Integer    | 0       | Value to seed the pseudo-random number generator.
+ * RANDOM_SEED  | Integer    | time()  | Value to seed the pseudo-random number generator.  Default is to seed the random generator by time.
  */
 
 #include "strategy.h"

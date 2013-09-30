@@ -67,20 +67,19 @@ typedef struct hdesc_t hdesc_t;
  * launch or client join, whichever comes first.
  *
  * Heap memory is allocated for the descriptor, so be sure to call
- * [harmony_fini()](\ref harmony_fini) when it is no longer needed.
+ * harmony_fini() when it is no longer needed.
  *
  * \param argc Address of argc parameter from main().
  * \param argv Address of argv parameter from main().
  *
- * \return Returns Harmony descriptor upon success, and NULL otherwise.
+ * \return Returns Harmony descriptor upon success, and `NULL` otherwise.
  */
 hdesc_t *harmony_init(int *argc, char ***argv);
 
 /**
  * \brief Release all resources associated with a Harmony client descriptor.
  *
- * \param hdesc Harmony descriptor returned from
- *              [harmony_init()](\ref harmony_init).
+ * \param hdesc Harmony descriptor returned from harmony_init().
  */
 void harmony_fini(hdesc_t *hdesc);
 
@@ -99,8 +98,7 @@ void harmony_fini(hdesc_t *hdesc);
 /**
  * \brief Specify a unique name for the Harmony session.
  *
- * \param hdesc Harmony descriptor returned from
- *              [harmony_init()](\ref harmony_init).
+ * \param hdesc Harmony descriptor returned from harmony_init().
  * \param name  Name to associate with this session.
  *
  * \return Returns 0 on success, and -1 otherwise.
@@ -110,8 +108,7 @@ int harmony_session_name(hdesc_t *hdesc, const char *name);
 /**
  * \brief Add an integer-domain variable to the Harmony session.
  *
- * \param hdesc Harmony descriptor returned from
- *              [harmony_init()](\ref harmony_init).
+ * \param hdesc Harmony descriptor returned from harmony_init().
  * \param name  Name to associate with this variable.
  * \param min   Minimum range value (inclusive).
  * \param max   Maximum range value (inclusive).
@@ -125,8 +122,7 @@ int harmony_int(hdesc_t *hdesc, const char *name,
 /**
  * \brief Add a real-domain variable to the Harmony session.
  *
- * \param hdesc Harmony descriptor returned from
- *              [harmony_init()](\ref harmony_init).
+ * \param hdesc Harmony descriptor returned from harmony_init().
  * \param name  Name to associate with this variable.
  * \param min   Minimum range value (inclusive).
  * \param max   Maximum range value (inclusive).
@@ -141,8 +137,7 @@ int harmony_real(hdesc_t *hdesc, const char *name,
  * \brief Add an enumeration variable and append to the list of valid values
  *        in this set.
  *
- * \param hdesc Harmony descriptor returned from
- *              [harmony_init()](\ref harmony_init).
+ * \param hdesc Harmony descriptor returned from harmony_init().
  * \param name  Name to associate with this variable.
  * \param value String that belongs in this enumeration.
  *
@@ -153,8 +148,7 @@ int harmony_enum(hdesc_t *hdesc, const char *name, const char *value);
 /**
  * \brief Specify the search strategy to use in the new Harmony session.
  *
- * \param hdesc    Harmony descriptor returned from
- *                 [harmony_init()](\ref harmony_init).
+ * \param hdesc    Harmony descriptor returned from harmony_init().
  * \param strategy Filename of the strategy plug-in to use in this session.
  *
  * \return Returns 0 on success, and -1 otherwise.
@@ -169,8 +163,7 @@ int harmony_strategy(hdesc_t *hdesc, const char *strategy);
  * list order, with each successive layer placed further from the
  * search strategy in the center.
  *
- * \param hdesc Harmony descriptor returned from
- *              [harmony_init()](\ref harmony_init).
+ * \param hdesc Harmony descriptor returned from harmony_init().
  * \param list  List of plug-ins to load with this session.
  *
  * \return Returns 0 on success, and -1 otherwise.
@@ -191,12 +184,11 @@ int harmony_layer_list(hdesc_t *hdesc, const char *list);
  * private tuning session, which will be available only to the local
  * process.
  *
- * If *port* is `0`, its value will be taken from the environment
+ * If *port* is 0, its value will be taken from the environment
  * variable `HARMONY_S_PORT`, if defined.  Otherwise, its value will
  * be taken from the src/defaults.h file, if needed.
  *
- * \param hdesc Harmony descriptor returned from
- *              [harmony_init()](\ref harmony_init).
+ * \param hdesc Harmony descriptor returned from harmony_init().
  * \param host  Host of the Harmony server (or `NULL`).
  * \param port  Port of the Harmony server.
  *
@@ -229,8 +221,7 @@ int harmony_launch(hdesc_t *hdesc, const char *host, int port);
  * By default, a string is generated from the hostname, process id,
  * and socket descriptor.
  *
- * \param hdesc Harmony descriptor returned from
- *              [harmony_init()](\ref harmony_init).
+ * \param hdesc Harmony descriptor returned from harmony_init().
  * \param id    Unique identification string.
  *
  * \return Returns 0 on success, and -1 otherwise.
@@ -242,20 +233,17 @@ int harmony_id(hdesc_t *hdesc, const char *id);
  *        session variable.
  *
  * This function associates a local variable with a session variable
- * declared using [harmony_int()](\ref harmony_int).  Upon
- * [harmony_fetch()](\ref harmony_fetch), the value chosen by the
- * session will be stored at the address <var>ptr</var>.
+ * declared using harmony_int().  Upon harmony_fetch(), the value
+ * chosen by the session will be stored at the address `ptr`.
  *
  * This function must be called for each integer-domain variable
- * defined in the joining session.  Otherwise
- * [harmony_join()](\ref harmony_join) will fail when called.
+ * defined in the joining session.  Otherwise harmony_join() will fail
+ * when called.
  *
- * \param hdesc Harmony descriptor returned from
- *              [harmony_init()](\ref harmony_init).
- * \param name  Session variable defined using
- *              [harmony_int()](\ref harmony_int).
+ * \param hdesc Harmony descriptor returned from harmony_init().
+ * \param name  Session variable defined using harmony_int().
  * \param ptr   Pointer to a local `long` variable that will
- *                  hold the current testing value.
+ *              hold the current testing value.
  *
  * \return Returns a harmony descriptor on success, and -1 otherwise.
  */
@@ -266,20 +254,17 @@ int harmony_bind_int(hdesc_t *hdesc, const char *name, long *ptr);
  *        session variable.
  *
  * This function associates a local variable with a session variable
- * declared using [harmony_real()](\ref harmony_real).  Upon
- * [harmony_fetch()](\ref harmony_fetch), the value chosen by the
- * session will be stored at the address <var>ptr</var>.
+ * declared using harmony_real().  Upon harmony_fetch(), the value
+ * chosen by the session will be stored at the address `ptr`.
  *
- * This function must be called for each real-domain variable
- * defined in the joining session.  Otherwise
- * [harmony_join()](\ref harmony_join) will fail when called.
+ * This function must be called for each real-domain variable defined
+ * in the joining session.  Otherwise harmony_join() will fail when
+ * called.
  *
- * \param hdesc Harmony descriptor returned from
- *              [harmony_init()](\ref harmony_init).
- * \param name  Session variable defined using
- *              [harmony_real()](\ref harmony_real).
+ * \param hdesc Harmony descriptor returned from harmony_init().
+ * \param name  Session variable defined using harmony_real().
  * \param ptr   Pointer to a local `double` variable that will
- *                  hold the current testing value.
+ *              hold the current testing value.
  *
  * \return Returns a harmony descriptor on success, and -1 otherwise.
  */
@@ -290,20 +275,17 @@ int harmony_bind_real(hdesc_t *hdesc, const char *name, double *ptr);
  *        string-based session variable.
  *
  * This function associates a local variable with a session variable
- * declared using [harmony_enum()](\ref harmony_enum).  Upon
- * [harmony_fetch()](\ref harmony_fetch), the value chosen by the
- * session will be stored at the address <var>ptr</var>.
+ * declared using harmony_enum().  Upon harmony_fetch(), the value
+ * chosen by the session will be stored at the address `ptr`.
  *
- * This function must be called for each string-based variable
- * defined in the joining session.  Otherwise
- * [harmony_join()](\ref harmony_join) will fail when called.
+ * This function must be called for each string-based variable defined
+ * in the joining session.  Otherwise harmony_join() will fail when
+ * called.
  *
- * \param hdesc Harmony descriptor returned from
- *              [harmony_init()](\ref harmony_init).
- * \param name  Session variable defined using
- *              [harmony_enum()](\ref harmony_enum).
+ * \param hdesc Harmony descriptor returned from harmony_init().
+ * \param name  Session variable defined using harmony_enum().
  * \param ptr   Pointer to a local `char *` variable that will
- *                  hold the current testing value.
+ *              hold the current testing value.
  *
  * \return Returns a harmony descriptor on success, and -1 otherwise.
  */
@@ -316,13 +298,12 @@ int harmony_bind_enum(hdesc_t *hdesc, const char *name, const char **ptr);
  * host and port, and joins the named session.  All variables must be
  * bound to local memory via harmony_bind() for this call to succeed.
  *
- * If <var>host</var> is `NULL` or <var>port</var> is 0, values from
- * the environment variable `HARMONY_S_HOST` or `HARMONY_S_PORT` will
- * be used, respectively.  If either environment variable is not
- * defined, values from defaults.h will be used as a last resort.
+ * If `host` is `NULL` or `port` is 0, values from the environment
+ * variable `HARMONY_S_HOST` or `HARMONY_S_PORT` will be used,
+ * respectively.  If either environment variable is not defined,
+ * values from defaults.h will be used as a last resort.
  *
- * \param hdesc Harmony descriptor returned from
- *              [harmony_init()](\ref harmony_init).
+ * \param hdesc Harmony descriptor returned from harmony_init().
  * \param host  Host of the Harmony server.
  * \param port  Port of the Harmony server.
  * \param sess  Name of an existing tuning session on the server.
@@ -337,8 +318,7 @@ int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *sess);
  * End participation in a Harmony tuning session by closing the
  * connection to the Harmony server.
  *
- * \param hdesc Harmony descriptor returned from
- *              [harmony_init()](\ref harmony_init).
+ * \param hdesc Harmony descriptor returned from harmony_init().
  *
  * \return Returns 0 on success, and -1 otherwise.
  */
@@ -365,11 +345,10 @@ int harmony_leave(hdesc_t *hdesc);
  * \warning This function allocates memory for the return value.  It
  *          is the user's responsibility to free this memory.
  *
- * \param hdesc Harmony descriptor returned from
- *              [harmony_init()](\ref harmony_init).
+ * \param hdesc Harmony descriptor returned from harmony_init().
  * \param key   Config key to search for on the server.
  *
- * \return Returns a c-style string on success, and NULL otherwise.
+ * \return Returns a c-style string on success, and `NULL` otherwise.
  */
 char *harmony_getcfg(hdesc_t *hdesc, const char *key);
 
@@ -378,21 +357,20 @@ char *harmony_getcfg(hdesc_t *hdesc, const char *key);
  *
  * Writes the new key/value pair into the server's run-time
  * configuration database.  If the key exists in the database, its
- * value is overwritten.  If val is NULL, the key will be erased from
- * the database.  These key/value pairs exist only in memory, and
+ * value is overwritten.  If val is `NULL`, the key will be erased
+ * from the database.  These key/value pairs exist only in memory, and
  * will not be written back to the server's configuration file.
  *
  * \warning This function allocates memory for the return value.  It
  *          is the user's responsibility to free this memory.
  *
- * \param hdesc Harmony descriptor returned from
- *              [harmony_init()](\ref harmony_init).
+ * \param hdesc Harmony descriptor returned from harmony_init().
  * \param key   Config key to modify on the server.
  * \param val   Config value to associate with the key.
  *
- * \return Returns the original key value string on success and NULL
+ * \return Returns the original key value string on success and `NULL`
  *         otherwise, setting errno if appropriate.  Since this
- *         function may legitimately return NULL, errno must be
+ *         function may legitimately return `NULL`, errno must be
  *         cleared pre-call, and checked post-call.
  */
 char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val);
@@ -404,8 +382,7 @@ char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val);
  * values of all registered variables.  Otherwise, it will configure
  * the system to run with the best known configuration thus far.
  *
- * \param hdesc Harmony descriptor returned from
- *              [harmony_init()](\ref harmony_init).
+ * \param hdesc Harmony descriptor returned from harmony_init().
  *
  * \return Returns 0 if no registered variables were modified, 1 if
  *         any registered variables were modified, and -1 otherwise.
@@ -415,8 +392,7 @@ int harmony_fetch(hdesc_t *hdesc);
 /**
  * \brief Report the performance of a configuration to the Harmony server.
  *
- * \param hdesc Harmony descriptor returned from
- *              [harmony_init()](\ref harmony_init).
+ * \param hdesc Harmony descriptor returned from harmony_init().
  * \param value Performance measured for the current configuration.
  *
  * \return Returns 0 on success, and -1 otherwise.
@@ -427,8 +403,7 @@ int harmony_report(hdesc_t *hdesc, double value);
  * \brief Sets variables under Harmony's control to the best known
  *        configuration.
  *
- * \param hdesc Harmony descriptor returned from
- *              [harmony_init()](\ref harmony_init).
+ * \param hdesc Harmony descriptor returned from harmony_init().
  *
  * \return Returns 0 on success, and -1 otherwise.
  */
@@ -437,8 +412,7 @@ int harmony_best(hdesc_t *hdesc);
 /**
  * \brief Retrieve the convergence state of the current search.
  *
- * \param hdesc Harmony descriptor returned from
- *              [harmony_init()](\ref harmony_init).
+ * \param hdesc Harmony descriptor returned from harmony_init().
  *
  * \return Returns 1 if the search has converged, 0 if it has not,
  *         and -1 on error.
@@ -448,20 +422,18 @@ int harmony_converged(hdesc_t *hdesc);
 /**
  * \brief Access the current Harmony error string.
  *
- * \param hdesc Harmony descriptor returned from
- *              [harmony_init()](\ref harmony_init).
+ * \param hdesc Harmony descriptor returned from harmony_init().
  *
  * \return Returns a pointer to a string that describes the latest
- *         Harmony error, or NULL if no error has occurred since the
- *         last call to harmony_error_clear().
+ *         Harmony error, or `NULL` if no error has occurred since
+ *         the last call to harmony_error_clear().
  */
 const char *harmony_error_string(hdesc_t *hdesc);
 
 /**
  * \brief Clears the error status of the given Harmony descriptor.
  *
- * \param hdesc Harmony descriptor returned from
- *              [harmony_init()](\ref harmony_init).
+ * \param hdesc Harmony descriptor returned from harmony_init().
  */
 void harmony_error_clear(hdesc_t *hdesc);
 

@@ -49,7 +49,7 @@
  * **Configuration Variables**
  * Key             | Type      | Default | Description
  * --------------- | --------- | ------- | -----------
- * OC_BIN          | Filename  | oc      | Location of the Omega Calculator binary.  The `PATH` environment variable is will be searched if not found initially.
+ * OC_BIN          | Filename  | oc      | Location of the Omega Calculator binary.  The `PATH` environment variable will be searched if not found initially.
  * CONSTRAINTS     | String    | [none]  | Constraint statements to be used during this session.  This variable has precedence over `CONSTRAINT_FILE`.
  * CONSTRAINT_FILE | Filename  | [none]  | If the `CONSTRAINTS` variable is not specified, they will be loaded from this file.
  * QUIET           | Boolean   | 0       | Bounds suggestion and rejection messages can be suppressed by setting this variable to 1.

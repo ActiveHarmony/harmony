@@ -71,8 +71,7 @@ int hsession_copy(hsession_t *copy, const hsession_t *orig);
 /**
  * \brief Release all resources associated with a Harmony session descriptor.
  *
- * \param sess Harmony descriptor initialized by
- *             [hsession_init()](\ref hsession_init).
+ * \param sess Harmony descriptor initialized by hsession_init().
  */
 void hsession_fini(hsession_t *sess);
 

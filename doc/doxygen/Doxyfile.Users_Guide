@@ -5,12 +5,15 @@ LATEX_OUTPUT = Users_Guide.latex
 HTML_OUTPUT  = Users_Guide.html
 
 INPUT = doxygen/Users_Guide.dox \
+        ../README \
         ../src/strategies/exhaustive.c \
         ../src/strategies/random.c \
         ../src/strategies/nm.c \
         ../src/strategies/pro.c \
-        ../src/plugins/log.c \
         ../src/plugins/agg.c \
         ../src/plugins/codegen.c \
         ../src/plugins/constraint.c \
+        ../src/plugins/log.c \
+        ../src/plugins/TAUdb.c \
+        ../src/plugins/xmlWriter.c \
         ../src/hclient.h

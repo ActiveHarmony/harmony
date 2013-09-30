@@ -71,73 +71,7 @@ Finally, Active Harmony provides flexibility by implementing search strategies a
 Active Harmony is distributed with a set of search strategies and processing layers.  Detailed information about these plug-ins can be found in the [Plug-Ins](\ref plugin) section.
 
 
-
-\page install Installation
-
-\section install_get Getting the Source
-The latest release of Active Harmony can always be found at:<br>
-<http://www.dyninst.org/harmony>.
-
-Release tarballs represent snapshots of our development repository in a tested and stable state.  If you'd like to try new features or bug fixes, you can download a version directly from our Git repository:
-
-Directly via git:
-
-    git clone http://git.dyninst.org/activeharmony.git
-
-Or, through our repository's web interface at:<br>
-<http://git.dyninst.org/?p=activeharmony.git;a=summary>.
-
-\section in_build Compiling and Building
-Once you obtain a copy of our source tree (via tarball or Git), the following utilities are necessary to successfully build our software:
-
-- GNU Make
-- C99-compliant compiler
-
-To build and install Active Harmony, issue the following command:
-
-    make install
-
-By default, this will install relevant files within the source tree.  If you'd like to install the software elsewhere, use the `PREFIX` variable:
-
-    make install PREFIX=$HOME/local/harmony-4.5
-
-\section install_doc Building the Documentation
-
-The following software packages will also be necessary to build the documentation:
-
-- Doxygen
-- TeX Live (pdflatex)
-- Inkscape
-
-To generate documentation in PDF and HTML formats, issue the following command:
-
-    make doc
-
-This should leave `.pdf` files and `.html` directories in the `doc/` directory.
-
-\section install_test Testing the Installation
-To verify a successful build, navigate to the example/client_api directory and see if the file `example_c` exists.  This example simulates a tuning client by synthetically generating performance values based on a simple mathematical function.  Given a successful build, issuing the following command:
-
-    > ./example_c 
-
-This should produce output similar to the following:
-
-    Starting Harmony...
-    68, 51, 51, 51, 51, 51 = 5464
-    48, 68, 51, 51, 51, 51 = 4747
-    48, 47, 67, 51, 51, 51 = 4040
-    48, 47, 46, 67, 51, 51 = 3525
-    48, 47, 46, 45, 66, 51 = 3206
-
-    <... snip ...>
-
-    9, 35, 49, 53, 79, 75 = 367
-    9, 36, 47, 53, 77, 74 = 385
-    9, 34, 48, 53, 76, 74 = 367
-    8, 32, 45, 56, 77, 74 = 329
-    9, 32, 48, 53, 77, 75 = 327
-
-
+\page start Getting Started
 
 \page apps Harmony Applications
 
@@ -153,13 +87,20 @@ For some advanced uses of auto-tuning, multiple clients need to communicate to a
 
 The server has no mandatory parameters, and can be started with a plain invocation.  A configuration file may optionally be provided as a parameter, otherwise `harmony.cfg` will be used (if it exists).  The configuration system provides a unified key/value store that may be queried by all members of the Active Harmony framework.  See the [Configuration](\ref cfg) section for more details.
 
+**Harmony Server Configuration Variables**
+Key                | Type    | Default | Description
+-------------------| ------- | ------- | -----------
+SERVER_PORT        | Integer | 1979    | The port that the Harmony Server will bind and listen to.  Read only once when the Harmony Server is loaded.
+
+Any configuration directives loaded by the server will be automatically merged with the sessions that it manages.  If there is a key conflict between the server and session configuration environment, the session's key takes precedence.
+
 ## Client Modification ##
 Using the Active Harmony server is functionally equivalent to the stand-alone case.  Users need only change two environment variables on the client machines.
 
 Environment Variable | Description
 -------------------- | -----------
-`HARMONY_S_HOST`     | Hostname of the machine running the Harmony Server.
-`HARMONY_S_PORT`     | TCP/IP port allocated by Harmony Server.
+HARMONY_S_HOST       | Hostname of the machine running the Harmony Server.
+HARMONY_S_PORT       | TCP/IP port allocated by Harmony Server.
 
 When defined, these environment variables instruct clients to connect to the specified hostname:port pair instead of spawning a local tuning session.  Multiple clients may then work together on a single search problem.
 
@@ -226,11 +167,11 @@ The backslash (\\) character may be used within the value string as a quoting me
 
 Configuration directives may also be read from a file containing one key/value pair per line.  The first equals sign (`=`) separates the key from the value string, and the value string extends until a newline (`\n`) or hash (`#`) which indicates comments.
 
-Each tuning session has a unique configuration environment.  All entities involved with a tuning session (clients, search strategies, processing layers, etc.) may query this system.  The configuration environment is initialized at session creation time through [harmony_setcfg()](\ref harmony_setcfg) function calls.  After a session has been launched, clients may query the configuration environment through [harmony_getcfg()](\ref harmony_getcfg) and [harmony_setcfg()](\ref harmony_setcfg) function calls.
+Each tuning session has a unique configuration environment.  All entities involved with a tuning session (clients, search strategies, processing layers, etc.) may query this system.  The configuration environment is initialized at session creation time through harmony_setcfg() function calls.  After a session has been launched, clients may query the configuration environment through harmony_getcfg() and harmony_setcfg() function calls.
 
 \note The Harmony Server is a special case.  It contains its own private configuration environment that is merged with any sessions that it manages.  If there is a key conflict between the server and session configuration environment, the session's key takes precedence.
 
-The documentation for plug-ins will list information about the configuration keys that affect them.   The list will be organized in a table with the following columns:
+This manual documents configuration variables in tables with four columns.  The documentation for subsystems such as [Search Strategies](\ref strategies) and [Processing Layers](\ref layers) will contain an individual table that describes the specific configuration variables relevant to themselves.  The list will be organized in a table with the following columns:
 
 Column      | Description
 ----------- | -----------
@@ -239,19 +180,29 @@ Type        | How the value string will be interpreted (Integer, Real, String, e
 Default     | If unspecified, this value will be used instead.
 Description | Textual description of the directive's function.
 
+Additionally, there are several session-related configuration variables that are used to control sessions and how they are initialized.
+
+**Session-related Configuration Variables**
+Key                | Type    | Default | Description
+-------------------| ------- | ------- | -----------
+SESSION_STRATEGY   | String  | pro.so  | The search strategy to use for a particular session.
+SESSION_LAYER_LIST | String  | [none]  | The processing layers to use for a particular session.
+CLIENT_COUNT       | Integer | 1       | The number of expected clients.
+PER_CLIENT_STORAGE | Integer | 1       | The number of testing points to prepare for each expected client.
+
 \section cfg_env Environment Variables
-Certainly subsystems of the Active Harmony Framework may require additional information before it can connect to a session, and by extension, the session-wide configuration system.  When necessary, this information may be retrieved through the subsystem's environment.
+Certain subsystems of the Active Harmony Framework may require additional information before it can connect to a session and, by extension, the session-wide configuration system.  When necessary, this information may be retrieved through the subsystem's environment.
 
 Here are a list of environment variables commonly used:
 
 Environment Variable | Description
 -------------------- | -----------
-`HARMONY_HOME`       | File path of the directory containing an Active Harmony installation.  This is effectively the value of PREFIX when Harmony was built from source.
-`HARMONY_S_HOST`     | If defined, tuning clients (using [harmony_join()](\ref harmony_join)) will attempt to connect to a [Harmony Server](\ref apps_svr) on this host.
-`HARMONY_S_PORT`     | If defined (along with `HARMONY_S_HOST`), tuning clients will used this variable as the port when connecting to a running Harmony Server.
+HARMONY_HOME         | File path of the directory containing an Active Harmony installation.  This is effectively the value of PREFIX when Harmony was built from source.
+HARMONY_S_HOST       | If defined, tuning clients (using harmony_join()) will attempt to connect to a [Harmony Server](\ref apps_svr) on this host.
+HARMONY_S_PORT       | If defined (along with HARMONY_S_HOST), tuning clients will used this variable as the port when connecting to a running Harmony Server.
 
 \page plugin Plug-ins
-As described in the [Tuning Session](\ref intro_session) section, Active Harmony provides a modular interface for flexible functionality.  The session API functions [harmony_strategy()](\ref harmony_strategy) and [harmony_layer_list()](\ref harmony_layer_list) specify which plug-in's will be loaded by the tuning session.  See their individual documentation page for details on their use.
+As described in the [Tuning Session](\ref intro_session) section, Active Harmony provides a modular interface for flexible functionality.  The session API functions harmony_strategy() and harmony_layer_list() specify which plug-in's will be loaded by the tuning session.  See their individual documentation page for details on their use.
 
 The Active Harmony framework currently allows for two types of plug-ins, [search strategies](\ref strategies) and [processing layers](\ref layers).
 
@@ -282,10 +233,12 @@ Processing layers functionally surround the tuning session.  They allow for addi
 See the [Tuning Session](\ref intro_session) section for an overview of the processing layer's role within the larger tuning session context.
 
 \latexonly \begin{comment} \endlatexonly
-- \subpage logger
 - \subpage agg
 - \subpage codesvr
+- \subpage logger
 - \subpage omega
+- \subpage TAUdb
+- \subpage xml
 
 \latexonly \end{comment}
 \endlatexonly
@@ -396,7 +349,7 @@ The following code snippet extends the code example in the [session launch](\ref
 \section example_client Using the Client API
 The example demonstrates how to use the client API to join, fetch, and report to the tuning session established in the [session launch](\ref example_session_launch) example.
 
-If this client was required to establish its own tuning session, a call to [launch_tuner()](\ref example_session_launch) from the example above could be added prior to the call to [harmony_init()](\ref harmony_init) on line 15.
+If this client was required to establish its own tuning session, a call to [launch_tuner()](\ref example_session_launch) from the example above could be added prior to the call to harmony_init() on line 15.
 
 \note To increase clarity, return values of API calls are not checked in this example.  This is not recommended for production code.
 

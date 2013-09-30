@@ -17,8 +17,9 @@ for i in $DIR/*.tex; do
     perl \
         -e '@a = <>;' \
         -e '$a = join("", @a);' \
-        -e '$pre = "Configuration Variables\\} \\\\begin\{\\K";' \
-        -e '$a =~ s/${pre}TabularC\}\{4\}(.*?)\\end\{TabularC\}/TabularEnv}\1\\end{TabularEnv}/isg;' \
+        -e '$pre = " Variables\\} \\\\begin\{\\K";' \
+        -e '$a =~ s/${pre}TabularC\}\{4\}(.*?)\\end\{TabularC\}/TabularEnv4}\1\\end{TabularEnv4}/isg;' \
+        -e '$a =~ s/${pre}TabularC\}\{3\}(.*?)\\end\{TabularC\}/TabularEnv3}\1\\end{TabularEnv3}/isg;' \
         -e 'print $a;' $i > $i.tmp
     mv -f $i.tmp $i
 done
