@@ -72,7 +72,7 @@ int logger_init(hsignature_t *sig)
     tm = time(NULL);
     fprintf(fd, "*\n");
     fprintf(fd, "* Begin tuning session log.\n");
-    fprintf(fd, "* Timestamp: %s\n", asctime( localtime(&tm) ));
+    fprintf(fd, "* Timestamp: %s", asctime( localtime(&tm) ));
     fprintf(fd, "*\n");
 
     return 0;
@@ -84,9 +84,10 @@ int logger_join(const char *id)
     return 0;
 }
 
-int logger_analyze(hflow_t *flow, hpoint_t *pt, double perf)
+int logger_analyze(hflow_t *flow, htrial_t *trial)
 {
     int i;
+    const hpoint_t *pt = &trial->point;
 
     fprintf(fd, "Point #%d: (", pt->id);
     for (i = 0; i < pt->n; ++i) {
@@ -101,7 +102,7 @@ int logger_analyze(hflow_t *flow, hpoint_t *pt, double perf)
             return -1;
         }
     }
-    fprintf(fd, ") = %lf\n", perf);
+    fprintf(fd, ") = %lf\n", trial->perf);
 
     flow->status = HFLOW_ACCEPT;
     return 0;
