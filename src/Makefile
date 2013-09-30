@@ -44,47 +44,47 @@ LIB_TARGETS=libharmony.a
 LIBEXEC_TARGETS=session-core
 TARGETS=$(BIN_TARGETS) $(LIB_TARGETS) $(LIBEXEC_TARGETS)
 
-SUBDIRS=strategies \
-        plugins
+SUBDIRS=plugins/strategies \
+        plugins/layers
 
 .PHONY: all install clean distclean $(SUBDIRS)
 
 all: $(TARGETS) $(SUBDIRS)
 
 install: $(TARGETS) $(SUBDIRS)
-	@if [ ! -d $(PREFIX)/bin ]; then                               \
-		echo mkdir $(PREFIX)/bin;                              \
-		mkdir $(PREFIX)/bin;                                   \
-	fi &&                                                          \
-	echo cp $(BIN_TARGETS) $(BIN_FILES) $(PREFIX)/bin &&           \
-	cp $(BIN_TARGETS) $(BIN_FILES) $(PREFIX)/bin &&                \
-                                                                       \
-	if [ ! -d $(PREFIX)/lib ]; then                                \
-		echo mkdir $(PREFIX)/lib;                              \
-		mkdir $(PREFIX)/lib;                                   \
-	fi &&                                                          \
-	echo cp $(LIB_TARGETS) $(PREFIX)/lib &&                        \
-	cp $(LIB_TARGETS) $(PREFIX)/lib &&                             \
-                                                                       \
-	if [ ! -d $(PREFIX)/include ]; then                            \
-		echo mkdir $(PREFIX)/include;                          \
-		mkdir $(PREFIX)/include;                               \
-	fi &&                                                          \
-	echo cp $(INCLUDE_FILES) $(PREFIX)/include &&                  \
-	cp $(INCLUDE_FILES) $(PREFIX)/include &&                       \
-                                                                       \
-	if [ ! -d $(PREFIX)/libexec ]; then                            \
-		echo mkdir $(PREFIX)/libexec;                          \
-		mkdir $(PREFIX)/libexec;                               \
-	fi &&                                                          \
-	echo cp $(LIBEXEC_TARGETS) $(PREFIX)/libexec &&                \
-	cp $(LIBEXEC_TARGETS) $(PREFIX)/libexec &&                     \
-                                                                       \
-	if [ ! -d $(PREFIX)/libexec/html ]; then                       \
-		echo mkdir $(PREFIX)/libexec/html;                     \
-		mkdir $(PREFIX)/libexec/html;                          \
-	fi &&                                                          \
-	echo cp $(HTTP_FILES) $(PREFIX)/libexec/html &&                \
+	@if [ ! -d $(PREFIX)/bin ]; then                     \
+		echo mkdir -p $(PREFIX)/bin;                 \
+		mkdir -p $(PREFIX)/bin;                      \
+	fi &&                                                \
+	echo cp $(BIN_TARGETS) $(BIN_FILES) $(PREFIX)/bin && \
+	cp $(BIN_TARGETS) $(BIN_FILES) $(PREFIX)/bin &&      \
+                                                             \
+	if [ ! -d $(PREFIX)/lib ]; then                      \
+		echo mkdir -p $(PREFIX)/lib;                 \
+		mkdir -p $(PREFIX)/lib;                      \
+	fi &&                                                \
+	echo cp $(LIB_TARGETS) $(PREFIX)/lib &&              \
+	cp $(LIB_TARGETS) $(PREFIX)/lib &&                   \
+                                                             \
+	if [ ! -d $(PREFIX)/include ]; then                  \
+		echo mkdir -p $(PREFIX)/include;             \
+		mkdir -p $(PREFIX)/include;                  \
+	fi &&                                                \
+	echo cp $(INCLUDE_FILES) $(PREFIX)/include &&        \
+	cp $(INCLUDE_FILES) $(PREFIX)/include &&             \
+                                                             \
+	if [ ! -d $(PREFIX)/libexec ]; then                  \
+		echo mkdir -p $(PREFIX)/libexec;             \
+		mkdir -p $(PREFIX)/libexec;                  \
+	fi &&                                                \
+	echo cp $(LIBEXEC_TARGETS) $(PREFIX)/libexec &&      \
+	cp $(LIBEXEC_TARGETS) $(PREFIX)/libexec &&           \
+                                                             \
+	if [ ! -d $(PREFIX)/libexec/html ]; then             \
+		echo mkdir -p $(PREFIX)/libexec/html;        \
+		mkdir -p $(PREFIX)/libexec/html;             \
+	fi &&                                                \
+	echo cp $(HTTP_FILES) $(PREFIX)/libexec/html &&      \
 	cp $(HTTP_FILES) $(PREFIX)/libexec/html
 
 hserver: httpsvr.o $(SHR_OBJS)

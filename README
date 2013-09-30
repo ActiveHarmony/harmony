@@ -19,7 +19,7 @@ Or, through our repository's web interface at:
 
 
 
-Installation                                      {#start_build}
+Installation                                      {#start_install}
 ============
 Once you obtain a copy of the source tree (via tarball or Git), the
 following utilities are necessary for a successful build:
@@ -92,8 +92,8 @@ Correct operation relies on the `HARMONY_HOME` environment variable.
 It should be set to wherever your version of Active Harmony has been
 installed.  Namely, it should match the `PREFIX` variable used during
 `make install`.  For example, the following command would match the
-installation described in the [Installation](\ref start_build) section
-above (assuming Bourne shell semantics):
+installation described in the [Installation](\ref start_install)
+section above (assuming Bourne shell semantics):
 
     $ export HARMONY_HOME=$HOME/local/harmony-4.5
 

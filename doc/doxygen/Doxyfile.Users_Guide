@@ -6,14 +6,14 @@ HTML_OUTPUT  = Users_Guide.html
 
 INPUT = doxygen/Users_Guide.dox \
         ../README \
-        ../src/strategies/exhaustive.c \
-        ../src/strategies/random.c \
-        ../src/strategies/nm.c \
-        ../src/strategies/pro.c \
-        ../src/plugins/agg.c \
-        ../src/plugins/codegen.c \
-        ../src/plugins/constraint.c \
-        ../src/plugins/log.c \
-        ../src/plugins/TAUdb.c \
-        ../src/plugins/xmlWriter.c \
+        ../src/plugins/strategies/exhaustive.c \
+        ../src/plugins/strategies/random.c \
+        ../src/plugins/strategies/nm.c \
+        ../src/plugins/strategies/pro.c \
+        ../src/plugins/layers/agg.c \
+        ../src/plugins/layers/codegen.c \
+        ../src/plugins/layers/constraint.c \
+        ../src/plugins/layers/log.c \
+        ../src/plugins/layers/TAUdb.c \
+        ../src/plugins/layers/xmlWriter.c \
         ../src/hclient.h

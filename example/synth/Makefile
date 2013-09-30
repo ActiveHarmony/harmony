@@ -10,9 +10,10 @@ install: synth
 	@echo "Examples must be executed from source directory (for now)."
 
 synth: synth.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) $^ -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) $^ $(LDFLAGS) $(LDLIBS) -o $@
 
 clean:
 	rm -f *.o synth gmon.out tuna*.log *.tuna.dat
 
 distclean: clean
+	rm -f *~

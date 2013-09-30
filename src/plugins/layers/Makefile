@@ -1,12 +1,13 @@
-TO_BASE=../..
+TO_BASE=../../..
 PREFIX=$(TO_BASE)
 
 CC=gcc
-
 CFLAGS=-std=c99 -pedantic -Wall -Werror -g
 
 override CFLAGS+=-fPIC
-override CPPFLAGS+=-I.. -D_ISOC99_SOURCE -D_XOPEN_SOURCE=500
+override CPPFLAGS+=-I$(TO_BASE)/src -D_ISOC99_SOURCE -D_XOPEN_SOURCE=500
+override LDFLAGS+=-L$(TO_BASE)/src
+override LDLIBS+=-lharmony
 
 SRCS=agg.c \
      codegen.c \
@@ -39,29 +40,29 @@ ifneq (, $(wildcard $(LIBTAUDB_LIBDIR)/libtaudb.a))
 	LIBEXEC_TARGETS += TAUdb.so
 endif
 
-.PHONY: all install clean distclean
+.PHONY: all install libharmony clean distclean
 
 all: $(TARGETS)
 
 install: $(TARGETS)
-	@if [ ! -d $(PREFIX)/libexec ]; then                           \
-		echo mkdir $(PREFIX)/libexec;                          \
-		mkdir $(PREFIX)/libexec;                               \
-	fi;                                                            \
-	echo cp $(LIBEXEC_TARGETS) $(LIBEXEC_FILES) $(PREFIX)/libexec; \
+	@if [ ! -d $(PREFIX)/libexec ]; then                             \
+		echo mkdir -p $(PREFIX)/libexec;                         \
+		mkdir -p $(PREFIX)/libexec;                              \
+	fi &&                                                            \
+	echo cp $(LIBEXEC_TARGETS) $(LIBEXEC_FILES) $(PREFIX)/libexec && \
 	cp $(LIBEXEC_TARGETS) $(LIBEXEC_FILES) $(PREFIX)/libexec
 
-codegen-helper: override LDLIBS+=-L.. -lharmony
-codegen-helper: codegen-helper.o
-
-TAUdb.so: override LDLIBS+=$(LIBTAUDB_LIBDIR)/libtaudb.a -L.. -lharmony
-TAUdb.so: override CFLAGS+=-I$(LIBTAUDB_INCDIR)
+TAUdb.so: override LDLIBS+=$(LIBTAUDB_LIBDIR)/libtaudb.a
+TAUdb.so: override CPPFLAGS+=-I$(LIBTAUDB_INCDIR)
 
 xmlWriter.so: override LDLIBS+=-L${LIBXML2_LIBDIR} -lxml2
-xmlWriter.so: override CFLAGS+=-I${LIBXML2_INCDIR}
+xmlWriter.so: override CPPFLAGS+=-I${LIBXML2_INCDIR}
 
-%.so: %.o ../libharmony.a
-	$(CC) -shared $(LDFLAGS) $(CFLAGS) $^ $(LDLIBS) -o $@
+%.so: %.o libharmony
+	$(CC) -shared $(LDFLAGS) $(CFLAGS) $< $(LOADLIBES) $(LDLIBS) -o $@
+
+libharmony:
+	$(MAKE) -C $(TO_BASE)/src libharmony.a
 
 clean:
 	rm -f core a.out *.o $(TARGETS)

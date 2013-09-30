@@ -1,4 +1,4 @@
-TO_BASE=../..
+TO_BASE=../../..
 PREFIX=$(TO_BASE)
 INST_DIR=$(PREFIX)/libexec
 
@@ -6,7 +6,7 @@ CC=gcc
 CFLAGS=-std=c99 -pedantic -Wall -Werror -g
 
 override CFLAGS+=-fPIC
-override CPPFLAGS+=-I.. -D_ISOC99_SOURCE -D_XOPEN_SOURCE=500
+override CPPFLAGS+=-I$(TO_BASE)/src -D_ISOC99_SOURCE -D_XOPEN_SOURCE=500
 
 TCL_INCDIR?=/usr/include
 TCL_LIBDIR?=/usr/lib64
@@ -29,13 +29,13 @@ TARGETS=$(LIBEXEC_TARGETS)
 all: $(TARGETS)
 
 install: $(TARGETS)
-	@if [ ! -d $(INST_DIR) ]; then          \
-		echo mkdir $(INST_DIR);         \
-		mkdir $(INST_DIR);              \
-	fi;                                     \
-	for i in $(LIBEXEC_TARGETS); do         \
-		echo cp $$i $(INST_DIR)/$$i;    \
-		cp $$i $(INST_DIR)/$$i;         \
+	@if [ ! -d $(INST_DIR) ]; then       \
+		echo mkdir -p $(INST_DIR);   \
+		mkdir -p $(INST_DIR);        \
+	fi &&                                \
+	for i in $(LIBEXEC_TARGETS); do      \
+		echo cp $$i $(INST_DIR)/$$i; \
+		cp $$i $(INST_DIR)/$$i;      \
 	done
 
 exhaustive.so: override LDLIBS+=-lm

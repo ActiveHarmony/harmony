@@ -1,4 +1,4 @@
 hserver
 session-core
 tuna
-plugins/codegen-helper
+plugins/layers/codegen-helper
