@@ -10,7 +10,7 @@ CHPLC=chpl
 override CPPFLAGS+=-I$(TO_BASE)/src
 override FFLAGS+=-fno-underscoring
 override CHPLFLAGS+=-M$(TO_BASE)/src -I$(TO_BASE)/src
-override LDFLAGS+=-L$(TO_BASE)/src -lharmony
+override LDFLAGS+=-L$(TO_BASE)/src -lharmony -lm
 
 TARGETS=example_c #example_f example_chpl
 
@@ -52,3 +52,4 @@ clean:
 	rm -f core $(TARGETS)
 
 distclean: clean
+	rm -f *~

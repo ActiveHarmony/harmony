@@ -19,10 +19,15 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <strings.h>
 #include <errno.h>
+#include <math.h>
+#include <unistd.h>
+#include <sys/types.h>
+
 #include "hclient.h"
 #include "defaults.h"
+
+#define MAX_LOOP 5000
 
 /* For illustration purposes, the performance here is defined by following
  * simple definition:
@@ -49,14 +54,14 @@ long application(long p1, long p2, long p3, long p4, long p5, long p6)
 
 int main(int argc, char **argv)
 {
-    const char *name;
+    char name[1024];
     hdesc_t *hdesc;
-    int i, retval, loop = 200;
-    long perf = -1000;
+    int i, retval;
+    double perf;
 
     /* Variables to hold the application's runtime tunable parameters.
      * Once bound to a Harmony tuning session, these variables will be
-     * modified upon harmony_fetch() to a new testing configuration.
+     * modified upon harmony_fetch() to a new testing point.
      */
     long param_1;
     long param_2;
@@ -82,11 +87,11 @@ int main(int argc, char **argv)
     }
 
     /* Process the program arguments. */
-    i = 1;
-    name = "Example";
     if (argc > 1 && !strchr(argv[1], '=')) {
-        name = argv[1];
-        ++i;
+        strncpy(name, argv[1], sizeof(name));
+    }
+    else {
+        snprintf(name, sizeof(name), "c_example.%d", getpid());
     }
 
     if (harmony_session_name(hdesc, name) != 0) {
@@ -134,7 +139,7 @@ int main(int argc, char **argv)
     }
 
     /* main loop */
-    for (i = 0; !harmony_converged(hdesc) && i < loop; i++) {
+    for (i = 0; !harmony_converged(hdesc) && i < MAX_LOOP; ++i) {
         int hresult = harmony_fetch(hdesc);
         if (hresult < 0) {
             fprintf(stderr, "Failed to fetch values from server: %s\n",
@@ -171,9 +176,8 @@ int main(int argc, char **argv)
 
         if (hresult > 0) {
             /* Only print performance if new values were fetched. */
-            printf("%ld, %ld, %ld, %ld, %ld, %ld = %ld\n",
-                   param_1, param_2, param_3,
-                   param_4, param_5, param_6, perf);
+            printf("%3ld, %3ld, %3ld, %3ld, %3ld, %3ld = %lf\n",
+                   param_1, param_2, param_3, param_4, param_5, param_6, perf);
         }
 
         /* Report the performance we've just measured. */
@@ -184,11 +188,37 @@ int main(int argc, char **argv)
         }
     }
 
+    if (!harmony_converged(hdesc)) {
+        printf("*\n");
+        printf("* Leaving tuning session after %d iterations.\n", MAX_LOOP);
+        printf("*\n");
+    }
+
     /* Leave the session */
     if (harmony_leave(hdesc) != 0) {
         fprintf(stderr, "Failed to disconnect from harmony server.\n");
         retval = -1;
     }
+
+    if (harmony_best(hdesc) == 0) {
+        printf("\n");
+        printf("Optimal point:      ( 15,  30,  45,  60,  75,  90)\n");
+        printf("Best point found:   "
+               "(%3ld, %3ld, %3ld, %3ld, %3ld, %3ld)\n",
+               param_1, param_2, param_3, param_4, param_5, param_6);
+
+        perf = ((15 - param_1) * (15 - param_1) +
+                (30 - param_2) * (30 - param_2) +
+                (45 - param_3) * (45 - param_3) +
+                (60 - param_4) * (60 - param_4) +
+                (75 - param_5) * (75 - param_5) +
+                (90 - param_6) * (90 - param_6));
+        printf("Euclidean distance: %lf\n", sqrt(perf));
+    }
+    else {
+        printf("\nBest point could not be retrieved.\n");
+    }
+
 
   cleanup:
     harmony_fini(hdesc);
