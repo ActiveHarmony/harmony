@@ -57,7 +57,7 @@ int increment(void);
 
 /* Variables to track current search state. */
 vertex_t *curr;
-int remaining_passes;
+int remaining_passes = 1;
 int final_id = 0;
 
 /*
