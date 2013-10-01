@@ -189,7 +189,7 @@ int mesg_send(int sock, hmesg_t *mesg)
  */
 int mesg_recv(int sock, hmesg_t *mesg)
 {
-    char hdr[HMESG_HDRLEN];
+    char hdr[HMESG_HDRLEN + 1];
     char *newbuf;
     int msglen, retval;
     unsigned int msgver;
@@ -201,6 +201,7 @@ int mesg_recv(int sock, hmesg_t *mesg)
     if (ntohl(*(unsigned int *)hdr) != HMESG_MAGIC)
         goto invalid;
 
+    hdr[HMESG_HDRLEN] = '\0';
     if (sscanf(hdr + sizeof(int), "%4d%2x", &msglen, &msgver) < 2)
         goto invalid;
 

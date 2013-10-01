@@ -213,8 +213,11 @@ int main(int argc, char **argv)
     if (ptr && load_layers(ptr) < 0)
         goto error;
 
-    session_mesg.status = HMESG_STATUS_OK;
-    if (mesg_send(STDIN_FILENO, &session_mesg) < 1) {
+    mesg.dest   = session_mesg.dest;
+    mesg.type   = session_mesg.type;
+    mesg.status = HMESG_STATUS_OK;
+    mesg.src_id = session_mesg.src_id;
+    if (mesg_send(STDIN_FILENO, &mesg) < 1) {
         errmsg = session_mesg.data.string;
         goto error;
     }
@@ -298,6 +301,9 @@ int main(int argc, char **argv)
         if (lstack[i].fini)
             lstack[i].fini();
     }
+
+    hmesg_fini(&session_mesg);
+    hmesg_fini(&mesg);
     return retval;
 }
 
@@ -686,6 +692,7 @@ int handle_report(hmesg_t *mesg)
     if (plugin_workflow(idx) != 0)
         return -1;
 
+    hmesg_scrub(mesg);
     mesg->status = HMESG_STATUS_OK;
     return 0;
 }

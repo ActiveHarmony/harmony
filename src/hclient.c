@@ -151,6 +151,8 @@ void harmony_fini(hdesc_t *hdesc)
 
     if (hdesc->id && hdesc->id != default_id_buf)
         free(hdesc->id);
+
+    free(hdesc->cmd);
     free(hdesc->ptr);
     free(hdesc);
 }
