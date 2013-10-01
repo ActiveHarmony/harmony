@@ -309,48 +309,61 @@ void usage(const char *me)
 
 void parseArgs(int argc, char **argv)
 {
-    int i, chapel = 0;
+    int i, stop = 0, chapel = 0;
     char *arg;
     bundle_info_t *bun;
 
-    for (i = 1; i < argc && *argv[i] == '-'; ++i) {
+    for (i = 1; i < argc && *argv[i] == '-' && !stop; ++i) {
         arg = argv[i] + 1;
         while (*arg != '\0') {
             switch (*arg) {
             case 'h': usage(argv[0]); exit(-1);
-            case 'i': if (handle_int(arg)  != 0) exit(-1); break;
-            case 'r': if (handle_real(arg) != 0) exit(-1); break;
-            case 'e': if (handle_enum(arg) != 0) exit(-1); break;
-            case 'm': if (handle_method(arg)  != 0) exit(-1); break;
-            case 'q': quiet = 1; break;
-            case 'v': verbose = 1; break;
-            case 'n':
-                ++arg;
-                if (*arg == '=')
-                    ++arg;
-
+            case 'i': if (handle_int(arg)    != 0) exit(-1); break;
+            case 'r': if (handle_real(arg)   != 0) exit(-1); break;
+            case 'e': if (handle_enum(arg)   != 0) exit(-1); break;
+            case 'm': if (handle_method(arg) != 0) exit(-1); break;
+            case 'q': ++arg; quiet = 1; break;
+            case 'v': ++arg; verbose = 1; break;
+            case 'n': ++arg;
                 errno = 0;
-                max_loop = strtoul(arg, &arg, 0);
+                if (*arg == '=' || isdigit(*arg)) {
+                    if (*arg == '=') ++arg;
+                    max_loop = strtoul(arg, &arg, 0);
+                    if (*arg != '\0') {
+                        fprintf(stderr, "Trailing characters after n value\n");
+                        exit(-1);
+                    }
+                }
+                else {
+                    char *ptr = argv[++i];
+                    max_loop = strtoul(ptr, &ptr, 0);
+                    if (*ptr != '\0') {
+                        fprintf(stderr, "Trailing characters after n value\n");
+                        exit(-1);
+                    }
+                }
+
                 if (errno != 0) {
                     fprintf(stderr, "Invalid -n value.\n");
-                    exit(-1);
-                }
-                if (*arg != '\0') {
-                    fprintf(stderr, "Trailing characters after n flag\n");
                     exit(-1);
                 }
                 break;
             case '-':
                 if      (strcmp(arg, "-help") == 0) {usage(argv[0]); exit(-1);}
                 else if (strcmp(arg, "-chapel") == 0) {chapel = 1;}
+                else if (strcmp(arg, "-") == 0) {stop = 1;}
+                else {
+                    fprintf(stderr, "Unknown flag: -%s\n", arg);
+                    exit(-1);
+                }
                 break;
             default:
                 fprintf(stderr, "Unknown flag: -%c\n", *arg);
                 exit(-1);
             }
-            if (*arg == 'q' || *arg == 'v')
-                ++arg;
-            else break;
+            if (*arg == 'i' || *arg == 'r' ||
+                *arg == 'e' || *arg == 'm' || stop)
+                break;
         }
     }
 
