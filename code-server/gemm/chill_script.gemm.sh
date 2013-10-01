@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/sh -l
 #
 # Copyright 2003-2013 Jeffrey K. Hollingsworth
 #
@@ -57,8 +57,9 @@ echo "appname is $appname"
 rm -rf ${file_prefix}.so *.so *.exe ${file_prefix}_modified.${file_suffix} temp.script ${file_prefix}.lxf
 
 # generate a new CHiLL script using the transformation parameters
-. ./generate_temp_script.sh $code_parameters
 echo "generate_temp_script.sh $code_parameters"
+set -- $code_parameters
+. ./generate_temp_script.sh $code_parameters
 
 # Run chill and the post-processor
 #  The modified file is saved as ${file_prefix}_modified.${file_suffix}

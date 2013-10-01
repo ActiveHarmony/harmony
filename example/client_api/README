@@ -5,31 +5,32 @@ Client API to enable run-time auto-tuning support.  The same sample
 application is written in multiple languages to provide a specific
 example in each language we support.
 
+For now, only a C example is available.  We expect to add support for
+Fortran in the near future.
+
 Building
 ========
 The build process will perform a check to ensure compilers exist
 before attempting to build an example for any given language.  So, the
 following command can be used to build all examples a system supports:
 
-	$ make all
-
-Specific examples can also be built by name.  Here is a list of valid
-target binaries:
-
-	example_c - C
-	example_f - Fortran
-	example_chpl - Chapel Parallel Programming Language
+    $ make all
 
 Running
 =======
-These binaries will attempt to connect to a Harmony server at launch
-time.  The HARMONY_S_HOST and HARMONY_S_PORT environment variables can
-be used to control where the client should find the server.
+By default, these example programs will attempt to spawn a dedicated
+tuning process at launch time.  This requires the HARMONY_HOME
+environment variable to be set correctly.  It should contain the full
+path to where Active Harmony has been installed.
 
-For example, to use the defaults (localhost:1977):
+If HARMONY_HOME is set correctly, simply invoking the program name
+will begin a simple tuning example.
 
-	$ example_c
+    $ example_c
 
-To specify a different location:
+To run in server mode, you can use the HARMONY_S_HOST and
+HARMONY_S_PORT environment variables:
 
-	$ HARMONY_S_HOST=h.server.org HARMONY_S_PORT=2012 example_c
+    $ HARMONY_S_HOST=h.server.org HARMONY_S_PORT=2012 example_c
+
+See the top-level README file for details.

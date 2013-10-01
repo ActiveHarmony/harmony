@@ -1,89 +1,222 @@
-This file contains a description of the files that are comprised in this
-directory. It has a short description of each file, but it does not
-get into details of implementation, as this is (or should be!) done in
-each file.
+/** @page start
 
-* ===================
-* Directory Structure
-* ===================
+Downloading the Source                            {#start_get}
+======================
+The latest release of Active Harmony can always be found at:
 
-build/       : source files
-code-server/ : CHiLL-based code generation server
-doc/         : documentation
-example/     : several demo examples
-WIP/         : Works in progress
+   - http://www.dyninst.org/harmony
 
-* ================
-* Building Harmony
-* ================
+Release tarballs represent snapshots of our development repository in
+a tested and stable state.  If you'd like to try new features or bug
+fixes, you can download a version directly from our Git repository:
 
-In general, the following command should suffice to build the entire
-framework, including examples:
+Directly via git:
+   - `git clone http://git.dyninst.org/activeharmony.git`
 
-	$ make
+Or, through our repository's web interface at:
 
-This make system is sensitive to additional build flags supplied by
+   - http://git.dyninst.org/?p=activeharmony.git;a=summary
+
+
+
+Installation                                      {#start_install}
+============
+Once you obtain a copy of the source tree (via tarball or Git), the
+following utilities are necessary for a successful build:
+
+- GNU Make
+- C99-compliant compiler
+
+To build and install Active Harmony, issue the following command:
+
+    $ make install
+
+By default, this will create relevant files within the source tree.
+If you'd like to install the software elsewhere, use the `PREFIX`
+variable:
+
+    $ make install PREFIX=$HOME/local/harmony-4.5
+
+This make system is also sensitive to standard build flags supplied by
 the environment:
 
-	$ make CFLAGS=-O3 LDFLAGS=-L/usr/local/lib64
+    $ make CFLAGS=-O3 LDFLAGS=-L/usr/local/lib64
 
-Use the "install" target to copy all binaries and supporting files
-outside of their respective source directories:
+Furthermore, some processing layers bundled with Active Harmony depend
+on external packages.  Build targets with such a dependency are
+protected behind specific environment variables.  The make system will
+only attempt to build the processing layer if the associated package
+variable is defined.  Otherwise, that target is skipped.
 
-	$ make install
+**Dependent Package Variables**
+Layer      | Variable   | Package Download URL
+---------- | ---------- | --------------------
+TAUdb      | `LIBTAUDB` | http://www.cs.uoregon.edu/research/tau/downloads.php
+XML Writer | `LIBXML2`  | http://www.xmlsoft.org/downloads.html
 
-By default, the Active Harmony framework is installed in the base
-directory of the source tree.  Use the PREFIX environment variable to
-override this:
+Additional details on any of these build variables can be found in
+their respective Processing Layer documentation page of the User's
+Guide.
 
-	$ make install PREFIX=/usr/local
+Building the Documentation                        {#start_doc}
+--------------------------
 
-* =======================
-* Notable Installed Files
-* =======================
+The following software packages will also be necessary to build the documentation:
 
-<PREFIX>/bin/hserver       - Harmony server
-<PREFIX>/bin/tuna          - Harmony command-line tuning shell.
-<PREFIX>/bin/harmony.cfg   - This is the global configuration file.  All
-                             run-time customization such as code server
-                             type, or search algorithm selection, should
-                             be made in this file.
-<PREFIX>/include/hclient.h - Prototypes of the Harmony Client API functions.
-<PREFIX>/lib/libharmony.a  - Clients that use the Harmony API must link
-                             against this archive.
+- Doxygen
+- TeX Live (pdflatex)
+- Inkscape
 
-* ==================
-* Running An Example
-* ==================
+To generate documentation in PDF and HTML formats, issue the following command:
 
-To run the server:
-	$ ./hserver [configuration_file]
+    $ make doc
 
-The HARMONY_CONFIG environment variable can also be used to specify which
-configuration file to use.  For example:
+This should leave `.pdf` files and `.html` directories in the `doc/` directory.
 
-	$ HARMONY_CONFIG=<some_other_dir>/harmony.cfg ./hserver
 
-To build and run the example client:
 
-	$ cd <SRCDIR>/example/client_api
-	$ make
+Testing the Installation                          {#start_test}
+========================
 
-If the server is running and the environment is set up correctly,
-running an example should be immediately executable.  For instance,
-the C example may be run as follows:
+There are two separate modes of operation for using Active Harmony,
+standalone mode and server mode.  Both modes are described below and
+can be used to verify a successful build.
 
-	$ ./example_c
+Standalone Mode                                   {#start_test_standalone}
+---------------
+This is the default model for Active Harmony clients.  When initiating
+a new tuning session, the target application spawns its own dedicated
+tuning process automatically.
 
-By default, the example will attempt to communicate with a Harmony
-Server listening on localhost:1979, as this is the default host/port
-pair for the Harmony Server.  If you wish to connect to a server
-running on a different host or port, use the HARMONY_S_HOST or
-HARMONY_S_PORT environment variables, respectively:
+Correct operation relies on the `HARMONY_HOME` environment variable.
+It should be set to wherever your version of Active Harmony has been
+installed.  Namely, it should match the `PREFIX` variable used during
+`make install`.  For example, the following command would match the
+installation described in the [Installation](\ref start_install)
+section above (assuming Bourne shell semantics):
 
-	$ export HARMONY_S_HOST=other.host.net
-	$ export HARMONY_S_PORT=2013
+    $ export HARMONY_HOME=$HOME/local/harmony-4.5
 
-A complex example is provided in <SRCDIR>/example/code_generation.
-That example relies on our code-server, MPI, and CHiLL.  Additional
-details can be found in <SRCDIR>/example/code_generation/README.
+If no `PREFIX` variable was used during `make install`, `HARMONY_HOME`
+should be set to the base directory of the source tree.
+
+Navigate to the `example/client_api` source directory.  The file
+`example_c` should exist if the build was successful.  If
+`HARMONY_HOME` environment variable is set up correctly, the example
+should be immediately executable.  The example may be run as follows:
+
+    $ ./example_c
+
+This should produce the output similar to the following:
+
+    Starting Harmony...
+    68, 51, 51, 51, 51, 51 = 5464
+    48, 68, 51, 51, 51, 51 = 4747
+    48, 47, 67, 51, 51, 51 = 4040
+    48, 47, 46, 67, 51, 51 = 3525
+    48, 47, 46, 45, 66, 51 = 3206
+
+    <... snip ...>
+
+    9, 35, 49, 53, 79, 75 = 367
+    9, 36, 47, 53, 77, 74 = 385
+    9, 34, 48, 53, 76, 74 = 367
+    8, 32, 45, 56, 77, 74 = 329
+    9, 32, 48, 53, 77, 75 = 327
+
+This example uses a simple arithmetic function with six variables to
+produce a synthetic performance value.
+
+Server Mode                                       {#start_test_server}
+-----------
+This running model requires tuning clients to communicate to a server
+via a TCP connection.  To run the server:
+
+    $ ./hserver [configuration_file]
+
+The `HARMONY_CONFIG` environment variable can also be used to specify
+which configuration file to use.  For example (assuming Bourne shell
+semantics):
+
+    $ HARMONY_CONFIG=/some/other/dir/harmony.cfg ./hserver
+
+Once the server is running, we must inform the client to use it.  This
+is accomplished through two environment variables, `HARMONY_S_HOST`
+and `HARMONY_S_PORT`.  As a quick example, to run the previous example
+in server mode, one could use the following command (assuming Bourne
+shell semantics):
+
+    $ HARMONY_S_HOST=localhost ./example_c
+
+If `HARMONY_S_HOST` is defined, the example will attempt to contact a
+Harmony Server listening on the specified host (in this case,
+`localhost`) on port 1979.  If you wish to connect to a server running
+on a different port, set the `HARMONY_S_PORT` environment variable.
+For example:
+
+    $ export HARMONY_S_HOST=other.host.net
+    $ export HARMONY_S_PORT=2013
+
+An additional perk of running in Server Mode is the web interface.
+Simply point a javascript-enabled browser to the *host:port* of a
+running Harmony Server, and it will provide a visual interface for any
+tuning sessions under its control.
+
+Exploring Further                                 {#start_explore}
+=================
+Now that you have a sample Harmony client working, you can begin to
+explore the flexibility of the Active Harmony framework.  All the
+examples below make use of the [Configuration System](\ref cfg), which
+is documented in the User's Manual.
+
+By default, the PRO search strategy is used.  It can easily be changed
+by setting the SESSION_STRATEGY configuration variable.  This way,
+search strategies are easily comparable.  For instance, the following
+example instructs the session to use a random search strategy instead:
+
+    $ ./example_c SESSION_STRATEGY=random.so
+
+In addition to changing the core search strategy, additional
+[processing layers](\ref layers) can be easily added to the feedback
+loop.  For instance, if you'd like to write a log of the search
+session to disk, use the [Point Logger](\ref logger) processing layer:
+
+    $ ./example_c SESSION_LAYER_LIST=log.so LOGFILE=search.log
+
+Wall-time is a non-deterministic performance metric.  Multiple factors
+such as competing processes, or even CPU temperature can perturb
+measurement.  This phenomenon can be mitigated by performing multiple
+tests of each point and aggregating the results with the
+[Aggregator](\ref agg) processing layer:
+
+    $ ./example_c SESSION_LAYER_LIST=agg.so AGG_TIMES=5 AGG_FUNC=median
+
+As described in the [Tuning Session](\ref intro_session), processing
+layers may be stacked.  However, it is important to remember that
+processing layers are not commutative; their order is important.
+Consider the following two tuning sessions:
+
+    $ ./example_c SESSION_LAYER_LIST=agg.so:log.so \
+                  LOGFILE=search.log AGG_TIMES=5 AGG_FUNC=median
+and
+
+    $ ./example_c SESSION_LAYER_LIST=log.so:agg.so \
+                  LOGFILE=search.log AGG_TIMES=5 AGG_FUNC=median
+
+Only the order of the processing layers have changed, but the second
+invocation will produce a much smaller log file.  This is because the
+Aggregator is the outermost layer and receives performance reports
+before the Point Logger.  The Point Logger is then unaware of the
+repeated experiments and only records the resulting aggregated
+performance value.
+
+In the first invocation, the Point Logger records each performance
+report before the Aggregator has a chance to unify them.  This results
+in a log file with many repeated experiments.
+
+A real-world example is provided in `example/code_generation` source
+directory.  That example relies on the code-server, MPI, and CHiLL.
+Additional details can be found in `example/code_generation/README` of
+the source distribution.
+
+*/

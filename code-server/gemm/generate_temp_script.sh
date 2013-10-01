@@ -41,6 +41,7 @@ echo "Currently generating code for configuration: TI: $TI, TJ: $TJ, TK: $TK, UI
 
 echo "
     source: ${file_prefix}.sp2
+    format: suif
     procedure: 0
     loop: 0
 

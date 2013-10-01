@@ -40,6 +40,7 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <arpa/inet.h>
+#include <sys/select.h>
 
 #include "hcfg.h"
 #include "hmesg.h"
@@ -203,8 +204,8 @@ int main(int argc, char **argv)
 
     if (argc != 2) {
         cerr << "Usage: ./code_generator <codegen_path>\n";
-        cerr << " Where <codegen_path> should match the path specified"
-                " in the harmony server's configuration file.\n";
+        cerr << " Where <codegen_path> matches the " CFGKEY_SERVER_URL
+                " Harmony configuration key.\n";
         return -1;
     }
 
@@ -313,7 +314,6 @@ int main(int argc, char **argv)
 
 int codeserver_init(string &filename)
 {
-    int msglen;
     const char *cfgval;
     stringstream ss;
 
@@ -330,7 +330,7 @@ int codeserver_init(string &filename)
 
     appname = sess->sig.name;
 
-    cfgval = hcfg_get(sess->cfg, CFGKEY_CG_SERVER_URL);
+    cfgval = hcfg_get(sess->cfg, CFGKEY_SERVER_URL);
     if (!cfgval) {
         cerr << "Session does not define local URL.\n";
         return -1;
@@ -340,7 +340,7 @@ int codeserver_init(string &filename)
         return -1;
     }
 
-    cfgval = hcfg_get(sess->cfg, CFGKEY_CG_TARGET_URL);
+    cfgval = hcfg_get(sess->cfg, CFGKEY_TARGET_URL);
     if (!cfgval) {
         cerr << "Session does not define target URL.\n";
         return -1;
@@ -350,7 +350,7 @@ int codeserver_init(string &filename)
         return -1;
     }
 
-    cfgval = hcfg_get(sess->cfg, CFGKEY_CG_REPLY_URL);
+    cfgval = hcfg_get(sess->cfg, CFGKEY_REPLY_URL);
     if (!cfgval) {
         cerr << "Session does not define reply URL.\n";
         return -1;
@@ -360,7 +360,7 @@ int codeserver_init(string &filename)
         return -1;
     }
 
-    cfgval = hcfg_get(sess->cfg, CFGKEY_CG_SLAVE_LIST);
+    cfgval = hcfg_get(sess->cfg, CFGKEY_SLAVE_LIST);
     if (!cfgval) {
         cerr << "Session does not define slave list.\n";
         return -1;
@@ -371,7 +371,7 @@ int codeserver_init(string &filename)
         return -1;
     }
 
-    cfgval = hcfg_get(sess->cfg, CFGKEY_CG_SLAVE_PATH);
+    cfgval = hcfg_get(sess->cfg, CFGKEY_SLAVE_PATH);
     if (!cfgval) {
         cerr << "Session does not define slave directory.\n";
         return -1;
@@ -413,9 +413,6 @@ int codeserver_init(string &filename)
 
     /* Respond to the harmony server. */
     session_mesg.status = HMESG_STATUS_OK;
-    msglen = hmesg_serialize(&session_mesg);
-    *(unsigned short *)(session_mesg.buf + sizeof(int)) = ntohs(msglen);
-
     if (mesg_write(session_mesg, -1) < 0) {
         cerr << "Could not write/send initial reply message.\n";
         return -1;
@@ -628,28 +625,30 @@ int slave_complete(pid_t pid)
 {
     for (unsigned i = 0; i < gen_list.size(); ++i) {
         if (gen_list[i].pid == pid) {
-            mesg_write(gen_list[i].mesg, gen_list[i].step);
+            if (mesg_write(gen_list[i].mesg, gen_list[i].step) != 0) {
+                return -1;
+            }
             hmesg_scrub(&gen_list[i].mesg);
             gen_list[i].pid = 0;
             return 0;
         }
     }
+
+    cerr << "Could not find information for slave pid " << pid << "\n";
     return -1;
 }
 
 vector<long> values_of(hpoint_t *pt)
 {
-    hval_t val;
     vector<long> retval;
 
-    for (int i = 0; i < pt->idx_cap; ++i) {
-        index_value(&sess->sig, i, pt->idx[i], &val);
-        if (val.type != HVAL_INT) {
+    for (int i = 0; i < pt->n; ++i) {
+        if (pt->val[i].type != HVAL_INT) {
             cerr << "Codeserver only implemented for int ranges for now.\n";
             retval.clear();
             break;
         }
-        retval.push_back(val.value.i);
+        retval.push_back(pt->val[i].value.i);
     }
     return retval;
 }
@@ -708,55 +707,91 @@ int file_type(const char *fileName)
     return 0;
 }
 
+#define POLL_TIME 250000
+
 int mesg_read(const char *filename, hmesg_t *msg)
 {
-    int fd;
-    unsigned short msglen;
-    char hdr[HARMONY_HDRLEN], *newbuf;
+    int msglen, fd, retries, retval;
+    char *newbuf;
+    struct stat sb;
+    struct timeval polltime;
 
+    retval = 0;
+    retries = 3;
+
+  top:
     fd = open(filename, O_RDONLY);
-    if (fd < 0) {
-        cerr << "Could not open mesg file " << filename
-             << ": " << strerror(errno) << "\n";
-        return -1;
+    if (fd == -1) {
+        cerr << "Could not open file: " << strerror(errno) << ".\n";
+        retval = -1;
+        goto cleanup;
     }
 
-    if (read_loop(fd, hdr, sizeof(hdr)) < 0)
-        return -1;
+    /* Obtain file size */
+    if (fstat(fd, &sb) != 0) {
+        cerr << "Could not fstat file: " << strerror(errno) << ". Retrying.\n";
+        goto retry;
+    }
 
-    if (ntohl(*(unsigned int *)hdr) != HARMONY_MAGIC)
-        return -1;
-
-    msglen = ntohs(*(unsigned short *)(hdr + sizeof(int)));
-    if (msg->buflen <= msglen) {
-        newbuf = (char *) realloc(msg->buf, msglen + 1);
-        if (!newbuf)
-            return -1;
+    msglen = sb.st_size + 1;
+    if (msg->buflen < msglen) {
+        newbuf = (char *) realloc(msg->buf, msglen);
+        if (!newbuf) {
+            cerr << "Could not allocate memory for message data.\n";
+            retval = -1;
+            goto cleanup;
+        }
         msg->buf = newbuf;
-        msg->buflen = msglen + 1;
+        msg->buflen = msglen;
     }
+    msg->buf[sb.st_size] = '\0';
 
-    memcpy(msg->buf, hdr, sizeof(hdr));
-    if (read_loop(fd, msg->buf + sizeof(hdr), msglen - sizeof(hdr)) < 0)
-        return -1;
-    msg->buf[msglen] = '\0';
+    if (read_loop(fd, msg->buf, sb.st_size) != 0) {
+        cerr << "Error reading message file. Retrying.\n";
+        goto retry;
+    }
 
     if (close(fd) < 0) {
-        cerr << "Error closing mesg file " << filename
-             << ": " << strerror(errno) << "\n";
-        return -1;
+        cerr << "Error closing code completion message file.\n";
+        retval = -1;
+        goto cleanup;
     }
+    fd = -1;
 
-    hmesg_scrub(msg);
-    return hmesg_deserialize(msg);
+    if (hmesg_deserialize(msg) < 0) {
+        cerr << "Error decoding message file. Retrying.\n";
+        goto retry;
+    }
+    retval = 1;
+
+  cleanup:
+    if (fd >= 0)
+        close(fd);
+    return retval;
+
+  retry:
+    /* Avoid the race condition where we attempt to read a message
+     * before the remote code server scp process has completely
+     * written the file.
+     *
+     * At some point, this retry method should probably be replaced
+     * with file locks as a more complete solution.
+     */
+    close(fd);
+    if (--retries) {
+        polltime.tv_sec = 0;
+        polltime.tv_usec = POLL_TIME;
+        select(0, NULL, NULL, NULL, &polltime);
+        goto top;
+    }
+    return -1;
 }
 
 int mesg_write(hmesg_t &mesg, int step)
 {
     stringstream ss;
     string filename;
-    unsigned short msglen;
-    int fd;
+    int msglen, fd;
 
     ss << local_url.path << "/" << outfile_name << "." << step;
     filename = ss.str();
@@ -764,7 +799,12 @@ int mesg_write(hmesg_t &mesg, int step)
     if (!fd)
         return -1;
 
-    msglen = ntohs(*(unsigned short *)(mesg.buf + sizeof(int)));
+    mesg.status = HMESG_STATUS_OK;
+    msglen = hmesg_serialize(&mesg);
+    if (msglen < 0) {
+        cerr << "Error encoding message file.\n";
+        return -1;
+    }
 
     if (write_loop(fd, mesg.buf, msglen) < 0)
         return -1;

@@ -25,7 +25,7 @@ multiple packages and subsystems, which include:
 	- Harmony Server: From this directory, use the following
           command to build the Harmony Server:
 
-		$ make -C ../../build hserver
+		$ make -C ../../src hserver
 
 	- Code Server: From this directory, use the following command
 	  to build the Code Server:
@@ -46,15 +46,15 @@ SSH must be enabled between any hosts involved.
 
 The Harmony Server and Code Server must be instructed how to
 communicate with each other and the client application.  At a minimum,
-this can be accomplished by defining CODEGEN_SERVER_URL and
-CODEGEN_TARGET_URL Harmony configuration variables.  See the README
-file in ../../code-server for more details.
+this can be accomplished by defining SERVER_URL and TARGET_URL Harmony
+configuration variables.  See the README file in ../../code-server for
+more details.
 
 Since the search sapce of this application has 5 dimensions, the
-Harmony configuration key PRO_SIMPLEX_SIZE should be at least 6
-(eg. N+1).  The PRO search strategy will correct the value if
-undefined or undervalued.  Of course, the search will be more
-efficient as PRO_SIMPLEX_SIZE increases.
+Harmony configuration key SIMPLEX_SIZE should be at least 6 (eg. N+1).
+The PRO search strategy will correct the value if undefined or
+undervalued.  Of course, the search will be more efficient as
+SIMPLEX_SIZE increases.
 
 Running
 =======

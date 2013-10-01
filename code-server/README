@@ -20,8 +20,8 @@ To use the code_generator:
   1) Make sure the Harmony session properly defines the following
      configuration keys:
 
-        CODEGEN_SERVER_URL
-        CODEGEN_TARGET_URL
+        SERVER_URL
+        TARGET_URL
 
      Explanations and examples for these keys can be found in the sample
      harmony.cfg provided with this distribution.
@@ -29,7 +29,8 @@ To use the code_generator:
   2) Compile the code_generator binary via: `make all`
 
 Let's assume the code_generator is installed in the <code_generator>
-directory, and we want to generate code for a naive matrix multiplication application called "gemm".
+directory, and we want to generate code for a naive matrix
+multiplication application called "gemm".
 
 First create a directory called "gemm" within the <code_generator> directory.
 Copy all files from <code_generator>/generic to gemm directory. Rename the 
@@ -72,10 +73,9 @@ Things to remember:
      master and slave code-generators (and vice-versa).  This can be
      done via public key authentication (eg. ssh-keygen).
 
-  2) We assume that CHiLL and its components are installed in $HOME.
-     More specifically, we assume CHiLL is installed in $HOME/CHiLL,
-     Omega plus is installed in $HOME/omega, and SUIF is installed in
-     $HOME/suifhome.
+  2) We assume CHiLL and its components are locatable via PATH and
+     LD_LIBRARY_PATH.  If not, please modify the CHILLHOME, OMEGA_P,
+     and/or SUIFHOME environment variables in the code.properties file.
 
 To launch the code_generator:
 	$ ./code_generator <codegen_path>
@@ -99,7 +99,6 @@ Steps to run the code generator with example gemm application:
      iv) gemm.f or gemm.c
       v) gemm_default.f
      vi) gemm.sp2
-    vii) generator_hosts_gemm
 
   2) Launching the code generator:
 	$ ./code_generator <codegen_path>
@@ -116,10 +115,10 @@ Additional Details
   Follow these steps for running the code_generator:
 
     1) The harmony configuration should have the following directives:
-        CODEGEN_SERVER_URL=ssh://maxfli//home/username/scratch/confs
-        CODEGEN_TARGET_URL=ssh://brood00//scratch0/username/code
-        CODEGEN_SLAVE_LIST=armour 6, maxfli 3
-        CODEGEN_SLAVE_PATH=/tmp/codegen
+        SERVER_URL=ssh://maxfli//home/username/scratch/confs
+        TARGET_URL=ssh://brood00//scratch0/username/code
+        SLAVE_LIST=armour 6, maxfli 3
+        SLAVE_PATH=/tmp/codegen
 
     2) In this matrix multiplication code generation example, the
        directory "gemm" has to be created within "code-server"
@@ -129,15 +128,7 @@ Additional Details
     3) Rename "chill_script.generic.sh" to "chill_script.gemm.sh"
 
     4) In the "code.properties" file which is available under "gemm"
-       directory, do the following to change the PATH variables.  Since
-       the host machine is "brood00" change the following paths.
-
-         export OMEGA_P=$HOME/omega
-         export SUIFHOME=$HOME/suifhome
-         export PATH=$HOME/chill/bin:${SUIFHOME}/i386-linux/bin/:${PATH}
-         export LD_LIBRARY_PATH=${SUIFHOME}/i386-linux/solib:${LD_LIBRARY_PATH}
-
-       Also, change the following "appname = gemm"
+       directory, change the following "appname = gemm".
 
        Based on what file we are going to use (either a c or fortran) the
        following field is set accordingly. In this example, fortran is used.
