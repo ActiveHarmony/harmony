@@ -111,10 +111,8 @@ hdesc_t *harmony_init(int *argc, char ***argv)
 
         for (i = 1; i < *argc; ++i) {
             /* Stop looking for configuration directives upon "--" token. */
-            if (strcmp((*argv)[i], "--") == 0) {
+            if (strcmp((*argv)[i], "--") == 0)
                 stop = 1;
-                ++i;
-            }
 
             if (!stop && hcfg_is_cmd((*argv)[i])) {
                 if (hdesc->cmd_len == hdesc->cmd_cap) {
