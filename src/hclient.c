@@ -588,10 +588,9 @@ int harmony_fetch(hdesc_t *hdesc)
     }
 
     /* Updating the variables from the content of the message */
-    if (set_values(hdesc, &hdesc->curr) < 0) {
-        hdesc->errstr = "Internal error writing values to local memory.";
+    if (set_values(hdesc, &hdesc->curr) < 0)
         return -1;
-    }
+
     return 1;
 }
 
@@ -719,7 +718,7 @@ int set_values(hdesc_t *hdesc, const hpoint_t *pt)
         case HVAL_STR:
             (*((const char **)hdesc->ptr[i])) = pt->val[i].value.s; break;
         default:
-            hdesc->errstr = "Invalid internal point structure.";
+            hdesc->errstr = "Internal error: Invalid signature value type.";
             errno = EINVAL;
             return -1;
         }
