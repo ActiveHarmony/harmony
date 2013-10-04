@@ -73,9 +73,17 @@ Active Harmony is distributed with a set of search strategies and processing lay
 
 \page start Getting Started
 
-\page apps Harmony Applications
+\page app Harmony Applications
 
-\section apps_svr Harmony Server
+\latexonly \begin{comment} \endlatexonly
+- \subpage app_hserver
+- \subpage app_tuna
+- \subpage app_example
+
+\latexonly \end{comment}
+\endlatexonly
+
+\page app_hserver Harmony Server
 For some advanced uses of auto-tuning, multiple clients need to communicate to a single tuning session.  For instance, if an MPI program is being tuned, all the constituent ranks may participate in parallel to expedite the search.  In this case, the Active Harmony Server must be used as a central multiplexing unit.
 
 \image html multi-client.svg "Supporting multiple clients within the feedback loop."
@@ -121,7 +129,7 @@ Since the Harmony Server can manage more than one session at a time, there may b
 
 The detailed session view includes several ways to help you visualize the current session.  On the left, a table of the ten most recently reported point/performance pairs, as well as the best performing point found thus far.  The list can be extended to display as many as 50 entries.  On the right, a plot of the entire search is drawn with respect to performance value along the y-axis, and time along the x-axis.  Hovering the mouse pointer over any individual marker will produce details of the point/performance pair.
 
-\section apps_tuna Tuna: The Command-line Tuning Shell
+\page app_tuna Tuna: The Command-line Tuning Shell
 Tuna is a tool for tuning the parameters of command-line applications.  Given a target application and a tuning specification, Tuna is able to perform a search for optimal parameter values automatically.
 
 ## Usage Syntax ##
@@ -155,7 +163,14 @@ The above usage example defines a parameter space with two integer variables via
 
 Tuna makes any command-line application that provides performance related parameters a viable target for auto-tuning.  As an example, the GCC compiler suite provides hundreds of command-line arguments to control various details of its compilation process.  Finding optimal values for these arguments is a natural task for Tuna.  A user need only specify which arguments are relevant for their optimization task and a method to measure the resulting performance.
 
+\page app_example Example Applications
+Active Harmony comes bundles with a number of example applications to demonstrate different aspects of the framework.
 
+\latexonly \begin{comment} \endlatexonly
+- \subpage app_example_synth
+
+\latexonly \end{comment}
+\endlatexonly
 
 \page cfg Configuring Active Harmony
 The Active Harmony Framework may be configured through two distinct, but similar systems.  The session-wide Harmony Configuration System, and general environment variables.
@@ -198,7 +213,7 @@ Here are a list of environment variables commonly used:
 Environment Variable | Description
 -------------------- | -----------
 HARMONY_HOME         | File path of the directory containing an Active Harmony installation.  This is effectively the value of PREFIX when Harmony was built from source.
-HARMONY_S_HOST       | If defined, tuning clients (using harmony_join()) will attempt to connect to a [Harmony Server](\ref apps_svr) on this host.
+HARMONY_S_HOST       | If defined, tuning clients (using harmony_join()) will attempt to connect to a [Harmony Server](\ref app_hserver) on this host.
 HARMONY_S_PORT       | If defined (along with HARMONY_S_HOST), tuning clients will used this variable as the port when connecting to a running Harmony Server.
 
 \page plugin Plug-ins
@@ -246,25 +261,25 @@ See the [Tuning Session](\ref intro_session) section for an overview of the proc
 
 
 \page example Coding Examples
-Active Harmony provides two separate interfaces for the general user.  One for establishing tuning sessions and the other for interacting with existing tuning sessions.
+Active Harmony Client API enables the user to complete two distinct tasks: establishing tuning sessions and interacting with existing tuning sessions.  In the following sections, we provide examples for both of these tasks.
 
 \section example_session_launch Launching a New Session
-This example demonstrates how to use the session API to establish a session with four variables.  It defines a function called `launch_tuner()` which, similar to the MPI's `mpi_init()` routine, is designed to accept the `argc` and argv` parameters from `main()`.
+This example demonstrates how to use the session API to establish a session with four variables.  It defines a function called `launch_tuner()` which, similar to the MPI's `mpi_init()` routine, is designed to accept the *argc* and *argv* parameters from `main()`.
 
-Code similar to `launch_tuner()` should be added to any target application that must establish a new tuning session for itself (as opposed to connecting to an existing tuning session, through the [Harmony Server](\ref apps_svr).
+Code similar to `launch_tuner()` should be added to any target application that must establish a new tuning session for itself (as opposed to connecting to an existing tuning session, through the [Harmony Server](\ref app_hserver).
 
 \note To increase clarity, return values of API calls are not checked in this example.  This is not recommended for production code.
 
     \code{.c}
-    #include <stdio.h>
-    #include "hclient.h"
+    &#35;include <stdio.h>
+    &#35;include "hclient.h"
 
-    int launch_tuner(int argc, char **argv)
+    hdesc_t *launch_tuner(int argc, char **argv)
     {
         hdesc_t *hdesc;
 
         /* Initialize a Harmony tuning session handle. */
-        hdesc = harmony_init();
+        hdesc = harmony_init(&argc, &argv);
 
         /* Give the tuning session a unique name. */
         harmony_session_name(hdesc, "Example");
@@ -301,10 +316,10 @@ Code similar to `launch_tuner()` should be added to any target application that 
         if (harmony_launch(hdesc, NULL, 0) != 0) {
             fprintf(stderr, "Could not launch tuning session: %s\n",
                     harmony_error_string(hdesc));
-            return -1;
+            return NULL;
         }
 
-        return 0;
+        return hdesc;
     }
     \endcode
 
@@ -315,7 +330,7 @@ This example demonstrates the ability to specify [session plug-ins](\ref intro_s
 - [Point Logger Processing Layer](\ref logger)
 - [Aggregator Processing Layer](\ref agg)
 
-The following code snippet extends the code example in the [session launch](\ref example_session_launch) example.  It may be inserted at any point before the call to `harmony_launch()`.
+The following code snippet extends the code example in the [session launch](\ref example_session_launch) example.  It may be inserted at any point before the call to harmony_launch().
 
 \note To increase clarity, return values of API calls are not checked in this example.  This is not recommended for production code.
 
@@ -349,15 +364,13 @@ The following code snippet extends the code example in the [session launch](\ref
 \section example_client Using the Client API
 The example demonstrates how to use the client API to join, fetch, and report to the tuning session established in the [session launch](\ref example_session_launch) example.
 
-If this client was required to establish its own tuning session, a call to [launch_tuner()](\ref example_session_launch) from the example above could be added prior to the call to harmony_init() on line 15.
+If this client was required to establish its own tuning session, a call to [launch_tuner()](\ref example_session_launch) from the example above should be used in place of the call to harmony_init() on line 18.
 
 \note To increase clarity, return values of API calls are not checked in this example.  This is not recommended for production code.
 
-    \code{.c}
-    #include <stdio.h>
-    #include <string.h>
-    #include <strings.h>
-    #include "hclient.h"
+    \code{.cpp}
+    &#35;include <stdio.h>
+    &#35;include "hclient.h"
 
     int main(int argc, char **argv)
     {
@@ -373,7 +386,7 @@ If this client was required to establish its own tuning session, a call to [laun
         const char *var4;
 
         /* Initialize the Harmony client descriptor. */
-        hdesc = harmony_init();
+        hdesc = harmony_init(NULL, NULL);
 
         /* Bind the session variables to local variables. */
         harmony_bind_int(hdesc,  "intVar1", &var1);

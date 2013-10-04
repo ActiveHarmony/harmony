@@ -6,6 +6,7 @@ HTML_OUTPUT  = Users_Guide.html
 
 INPUT = doxygen/Users_Guide.dox \
         ../README \
+        ../example/synth/README \
         ../src/plugins/strategies/exhaustive.c \
         ../src/plugins/strategies/random.c \
         ../src/plugins/strategies/nm.c \
