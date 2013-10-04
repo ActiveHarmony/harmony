@@ -39,12 +39,12 @@
 #include <sys/socket.h>
 #include <sys/select.h>
 
-/* Session structure exported to 3rd party plug-ins. */
-hsession_t *sess;
-
-/* Be sure all remaining global definitions are declared static to
- * reduce the number of symbols exported by --export-dynamic.
+/* --------------------------------
+ * Session configuration variables.
  */
+hsession_t *sess;
+int per_client = DEFAULT_PER_CLIENT;
+int num_clients = 0;
 
 /* --------------------------------
  * Callback registration variables.
@@ -55,23 +55,23 @@ typedef struct callback {
     cb_func_t func;
 } callback_t;
 
-static callback_t *cb = NULL;
-static int cb_len = 0;
-static int cb_cap = 0;
+callback_t *cb = NULL;
+int cb_len = 0;
+int cb_cap = 0;
 
 /* -------------------------
  * Plug-in system variables.
  */
-static strategy_generate_t strategy_generate;
-static strategy_rejected_t strategy_rejected;
-static strategy_analyze_t  strategy_analyze;
-static strategy_best_t     strategy_best;
+strategy_generate_t strategy_generate;
+strategy_rejected_t strategy_rejected;
+strategy_analyze_t  strategy_analyze;
+strategy_best_t     strategy_best;
 
-static hook_init_t         strategy_init;
-static hook_join_t         strategy_join;
-static hook_getcfg_t       strategy_getcfg;
-static hook_setcfg_t       strategy_setcfg;
-static hook_fini_t         strategy_fini;
+hook_init_t         strategy_init;
+hook_join_t         strategy_join;
+hook_getcfg_t       strategy_getcfg;
+hook_setcfg_t       strategy_setcfg;
+hook_fini_t         strategy_fini;
 
 typedef struct layer {
     const char *name;
@@ -95,56 +95,53 @@ typedef struct layer {
 } layer_t;
 
 /* Stack of layer objects. */
-static layer_t *lstack = NULL;
-static int lstack_len = 0;
-static int lstack_cap = 0;
+layer_t *lstack = NULL;
+int lstack_len = 0;
+int lstack_cap = 0;
 
 /* ------------------------------
  * Forward function declarations.
  */
-static int generate_trial(void);
-static int plugin_workflow(int trial_idx);
-static int workflow_transition(int trial_idx);
-static int handle_callback(callback_t *cb);
-static int handle_join(hmesg_t *mesg);
-static int handle_getcfg(hmesg_t *mesg);
-static int handle_setcfg(hmesg_t *mesg);
-static int handle_fetch(hmesg_t *mesg);
-static int handle_report(hmesg_t *mesg);
-static int handle_reject(int trial_idx);
-static int handle_wait(int trial_idx);
-static int load_strategy(const char *file);
-static int load_layers(const char *list);
-static int extend_lists(int target_cap);
-static void reverse_array(void *ptr, int head, int tail);
+int generate_trial(void);
+int plugin_workflow(int trial_idx);
+int workflow_transition(int trial_idx);
+int handle_callback(callback_t *cb);
+int handle_join(hmesg_t *mesg);
+int handle_getcfg(hmesg_t *mesg);
+int handle_setcfg(hmesg_t *mesg);
+int handle_fetch(hmesg_t *mesg);
+int handle_report(hmesg_t *mesg);
+int handle_reject(int trial_idx);
+int handle_wait(int trial_idx);
+int load_strategy(const char *file);
+int load_layers(const char *list);
+int extend_lists(int target_cap);
+void reverse_array(void *ptr, int head, int tail);
 
 /* -------------------
  * Workflow variables.
  */
-static const char *errmsg;
-static int curr_layer = 0;
-static hflow_t flow;
+const char *errmsg;
+int curr_layer = 0;
+hflow_t flow;
 
 /* List of all points generated, but not yet returned to the strategy. */
-static htrial_t *pending = NULL;
-static int pending_cap = 0;
-static int pending_len = 0;
+htrial_t *pending = NULL;
+int pending_cap = 0;
+int pending_len = 0;
 
 /* List of all trials (point/performance pairs) waiting for client fetch. */
-static int *ready = NULL;
-static int ready_head = 0;
-static int ready_tail = 0;
-static int ready_cap = 0;
-
-static int per_client = DEFAULT_PER_CLIENT;
-static int num_clients = 0;
+int *ready = NULL;
+int ready_head = 0;
+int ready_tail = 0;
+int ready_cap = 0;
 
 /* ----------------------------
  * Variables used for select().
  */
-static struct timeval polltime, *pollstate;
-static fd_set fds;
-static int maxfd;
+struct timeval polltime, *pollstate;
+fd_set fds;
+int maxfd;
 
 /* =================================
  * Core session routines begin here.
