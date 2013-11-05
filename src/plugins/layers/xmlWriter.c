@@ -148,7 +148,7 @@ int xmlWriter_init(hsignature_t *sig)
     rc = xmlTextWriterStartElement(writer, BAD_CAST "ParamList");
     rc = xmlTextWriterEndElement(writer);
 
-    /* Start and clost starttime */
+    /* Start and close starttime */
     rc = xmlTextWriterWriteFormatElement(writer, BAD_CAST "StartTime",
                                          "%s", create_time);
                                          /* Close the element Metadata */

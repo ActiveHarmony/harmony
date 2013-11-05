@@ -77,7 +77,11 @@ function refresh()
         body.rows[i].cells[2].innerHTML = field[2];
         body.rows[i].cells[3].innerHTML = field[3];
         body.rows[i].cells[4].innerHTML = field[4];
-        body.rows[i].cells[5].innerHTML = "Pause Restart <a href='#' onclick='sessionKill(\"" + field[0] + "\"); return false;'>Kill</a>";
+
+        var link_str = "Pause";
+        link_str += " Resume";
+        link_str += "<a href='' onclick='sessionKill(\"" + field[0] + "\");return false'>Kill</a>";
+        body.rows[i].cells[5].innerHTML = link_str;
     }
 }
 

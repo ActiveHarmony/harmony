@@ -20,6 +20,7 @@
 #include "hserver.h"
 #include "hutil.h"
 #include "hsockutil.h"
+#include "defaults.h" /* needed for looking cfg params up */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -315,7 +316,77 @@ int http_request_handle(int fd, char *req)
         return 0;
 
     }
+    else if(strncmp(req, "/strategy", 9) == 0) {
+        /* if these lines aren't there the browser
+           keeps waiting until hserver is closed */
+        opt_sock_write(fd, status_200);
+        opt_sock_write(fd, http_type_text);
+        opt_sock_write(fd, http_headers);
+        opt_sock_write(fd, HTTP_ENDL); 
+        
+        /* look up specified session */
+        if(arg) {
+          for (i = 0; i < slist_cap; ++i) {
+            if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
+              /* strategy name is set in session_open, off the 
+                 initial session message */
+              if(slist[i].strategy_name != NULL) {
+                opt_http_write(fd, slist[i].strategy_name); 
+                opt_http_write(fd, "");
+                return 0;
+              } else break;  /* break out to fail message if sess name not recorded */
+            }
+          }
+        } 
+        /* either specified session isn't valid, or doesn't
+           have a strategy name associated */
+        opt_http_write(fd, "FAIL");
+        opt_http_write(fd, "");
+        return 0;
+    } else if(strncmp(req, "/converged", 10) == 0) {
+        opt_sock_write(fd, status_200);
+        opt_sock_write(fd, http_type_text);
+        opt_sock_write(fd, http_headers);
+        opt_sock_write(fd, HTTP_ENDL);  
+        if(arg) {
+          for (i = 0; i < slist_cap; ++i) {
+            if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
+              /* convereged var is set in handle_session_socket
+                 when the session indicates that it has 
+                 converved */
+              /*opt_http_write(fd, slist[i].converged?"1":"0"); 
+              opt_http_write(fd, "");
+              return 0;*/
 
+              /* Create an empty message */
+              hmesg_t converged_mesg;
+              converged_mesg = HMESG_INITIALIZER;
+
+              /* ask session whether strategy has converged */
+              converged_mesg.type = HMESG_GETCFG;
+              converged_mesg.data.string = CFGKEY_STRATEGY_CONVERGED;
+              converged_mesg.status = HMESG_STATUS_REQ;
+
+              mesg_send(slist[i].fd, &converged_mesg);
+              mesg_recv(slist[i].fd, &converged_mesg);
+
+              /* tell interface that session has converged if reply says so */
+              if(converged_mesg.data.string[0] == '1') {
+                opt_http_write(fd, "1");
+              } else opt_http_write(fd, "0");
+              opt_http_write(fd, "");
+              return 0;
+            }
+          }
+        } else {
+          opt_http_write(fd, "FAIL");
+          opt_http_write(fd, "");
+          return 0;
+        }
+    }
+
+    /* If request is not handled by any special cases above,
+       look for a known html file corresponding to the request. */
     for (i = 0; html_file[i].filename != NULL; ++i) {
         if (strcmp(req + 1, html_file[i].filename) == 0) {
             opt_sock_write(fd, status_200);

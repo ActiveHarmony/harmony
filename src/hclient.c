@@ -67,6 +67,10 @@ struct hdesc_t {
 };
 
 /* -------------------------------------------------------------------
+ * Some local variables
+ */
+
+/* -------------------------------------------------------------------
  * Forward declarations for internal helper functions
  */
 char *default_id(int n);
@@ -616,6 +620,7 @@ int harmony_report(hdesc_t *hdesc, double value)
     hdesc->mesg.data.report.perf = value;
 
     hdesc->state = HARMONY_STATE_READY;
+
     if (mesg_send_and_recv(hdesc) < 0)
         return -1;
 

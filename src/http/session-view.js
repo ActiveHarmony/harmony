@@ -77,6 +77,8 @@ function refresh() {
     var pairs = xmlhttp.responseText.split("|");
     var newCoords = 0;
 
+    /* mechanism only updates parts of the page that need to be updated
+      (what was sent from the session with the session data request) */
     for (var i = 0; i < pairs.length; ++i) {
         var sep = pairs[i].search(":");
         if (sep == -1) {
@@ -126,6 +128,19 @@ function refresh() {
         updateDataTable();
         drawChart();
     }
+     
+    xmlhttp.open("GET", "strategy?" + appName, false);
+    xmlhttp.send();
+    var strategy_name = xmlhttp.responseText; 
+
+    xmlhttp.open("GET", "converged?" + appName, false);
+    xmlhttp.send();
+    var is_converged = parseInt(xmlhttp.responseText);
+
+    var appName_div = document.getElementById("appName");
+
+    appName_div.innerHTML += " (" + strategy_name;
+    appName_div.innerHTML += " - " + (is_converged?"converged":"not converged") + ")";
 
     var i_select = document.getElementById("interval");
     setTimeout("refresh()", i_select[ i_select.selectedIndex ].value);

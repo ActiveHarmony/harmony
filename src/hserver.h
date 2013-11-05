@@ -33,6 +33,7 @@ typedef struct session_state {
     int fd;
     int *client;
     int client_len, client_cap;
+
     hpoint_t best;
     double best_perf;
 
@@ -42,6 +43,7 @@ typedef struct session_state {
     http_log_t *log;
     int log_len, log_cap;
     int reported;
+    char *strategy_name;
 } session_state_t;
 
 extern session_state_t *slist;

@@ -181,7 +181,6 @@ int hmesg_serialize(hmesg_t *mesg)
                 total += count;
             }
             break;
-
         default:
             goto invalid;
         }

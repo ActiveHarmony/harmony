@@ -455,6 +455,8 @@ int handle_client_socket(int fd)
 
     sess = NULL;
     retval = mesg_recv(fd, &mesg_in);
+
+
     if (retval == 0)
         goto shutdown;
     if (retval < 0)
@@ -499,6 +501,7 @@ int handle_client_socket(int fd)
         }
         sess->client[idx] = fd;
         ++sess->client_len;
+
         break;
 
     case HMESG_FETCH:
@@ -552,6 +555,7 @@ int handle_client_socket(int fd)
     mesg_out.status = mesg_in.status;
     mesg_out.src_id = mesg_in.src_id;
     mesg_out.data = mesg_in.data;
+
     if (mesg_send(sess->fd, &mesg_out) < 1) {
         perror("Error forwarding message to session");
         FD_CLR(sess->fd, &listen_fds);
@@ -626,8 +630,10 @@ session_state_t *session_open(hmesg_t *mesg)
     session_state_t *sess;
     char *child_argv[2];
     const char *cfgstr;
+    const char *strategy_name;
 
     idx = -1;
+    /* check if session already exists, and return if it does */
     for (i = 0; i < slist_cap; ++i) {
         if (!slist[i].name) {
             if (idx < 0)
@@ -639,6 +645,8 @@ session_state_t *session_open(hmesg_t *mesg)
             return NULL;
         }
     }
+    /* expand session list arr if necessary, and add
+       the new session to the session list arr */
     if (idx == -1) {
         idx = slist_cap;
         if (array_grow(&slist, &slist_cap, sizeof(session_state_t)) < 0)
@@ -694,6 +702,16 @@ session_state_t *session_open(hmesg_t *mesg)
     if (highest_socket < sess->fd)
         highest_socket = sess->fd;
 
+    /* save session strategy */
+    strategy_name = hcfg_get(mesg->data.session.cfg, CFGKEY_SESSION_STRATEGY);
+    if(strategy_name == NULL) {
+      sess->strategy_name = malloc(strlen(DEFAULT_STRATEGY) + 1);
+      strcpy(sess->strategy_name, DEFAULT_STRATEGY);
+    } else {
+      sess->strategy_name = malloc(strlen(strategy_name) + 1);
+      strcpy(sess->strategy_name, strategy_name);
+    }
+
     return sess;
 
   error:
@@ -708,6 +726,10 @@ void session_close(session_state_t *sess)
 
     free(sess->name);
     sess->name = NULL;
+
+    free(sess->strategy_name);
+    sess->strategy_name = NULL;
+
     hpoint_fini(&sess->best);
 
     for (i = 0; i < sess->client_cap; ++i) {

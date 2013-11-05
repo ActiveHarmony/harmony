@@ -704,6 +704,9 @@ int handle_report(hmesg_t *mesg)
  */
 #define dlfptr(x, y) ((void (*)(void))(long)(dlsym((x), (y))))
 
+/* Loads strategy given name of library file.
+   Checks that strategy defines required functions,
+   and then calls the strategy's init function (if defined) */
 int load_strategy(const char *file)
 {
     const char *root;
