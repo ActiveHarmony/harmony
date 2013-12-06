@@ -15,7 +15,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
- */
+*/
 
 #include "hserver.h"
 #include "httpsvr.h"
@@ -450,7 +450,7 @@ int handle_unknown_connection(int fd)
 
 int handle_client_socket(int fd)
 {
-    int idx, retval;
+    int idx, retval, client_idx;
     session_state_t *sess;
 
     sess = NULL;
@@ -516,6 +516,8 @@ int handle_client_socket(int fd)
         if (mesg_in.data.report.cand.id == -1)
             break;
 
+        sess->restart_id = mesg_in.data.report.cand.id;
+
         if (sess->log_len == sess->log_cap) {
             if (array_grow(&sess->log, &sess->log_cap,
                            sizeof(http_log_t)) < 0)
@@ -537,7 +539,11 @@ int handle_client_socket(int fd)
         ++sess->log_len;
 
         /* Also update our best point data, if necessary. */
-        if (sess->best_perf > mesg_in.data.report.perf) {
+        /* If busy is set indicating that the session is paused, don't bother
+        to update the best point. Data received while paused isn't really relevant
+        to the session anyways, and sometimes causes a realloc failure for some reason
+        if we do try to update best point data */
+        if (sess->best_perf > mesg_in.data.report.perf && mesg_in.status != HMESG_STATUS_BUSY) {
             if (hpoint_copy(&sess->best, &mesg_in.data.report.cand) < 0) {
                 perror("Internal error copying best point information");
                 goto error;
@@ -556,7 +562,65 @@ int handle_client_socket(int fd)
     mesg_out.src_id = mesg_in.src_id;
     mesg_out.data = mesg_in.data;
 
-    if (mesg_send(sess->fd, &mesg_out) < 1) {
+    // For restart, we need to clear client state. 
+    // Saving the last message type received makes that easier
+
+    /* look up the client in session_state's client list by fd */
+    for(client_idx = 0;client_idx < sess->client_len;client_idx++) {
+      if(sess->client[client_idx] == fd) break;
+    }
+
+    // Case for fetch msg for paused session. deflect fetch messages
+    // and tell the client the session is busy so it keeps
+    // testing the current point
+    if (sess->paused && mesg_in.type == HMESG_FETCH) {
+      // client sees BUSY and replies with the busy status
+      // so the session knows that the subsequent report (with busy status)
+      // is for a paused session and therefore should be deflected 
+      // as well.
+      mesg_out.status = HMESG_STATUS_BUSY;
+      // this message is going back to the client so the destination
+      // should indicate which session it belongs to.
+      mesg_out.dest = idx;
+      // send message back to client
+      if (mesg_send(fd, &mesg_out) < 1) {
+        perror("Error deflecting fetch message back to client (session paused)");
+        FD_CLR(sess->fd, &listen_fds);
+        session_close(sess);
+        goto shutdown; 
+      }
+    } 
+    // Case for client reporting to a paused session 
+    // the session shouldn't be getting these reports.
+    // no checking of paused variable, because right when session is resumed it'll
+    // still get a message back from the client that corresponds to data gathered
+    // while it was paused. We still need to respond to that message with the "paused" response
+    else if (mesg_in.type == HMESG_REPORT && mesg_in.status == HMESG_STATUS_BUSY) {
+      // Tell the client it's all good
+      mesg_out.status = HMESG_STATUS_OK;
+      // Going back to client, so indicate the session it belongs to
+      mesg_out.dest = idx;
+      // send message back to client. Keep the session out of the loop while things are paused
+      if (mesg_send(fd, &mesg_out) < 1) {
+        perror("Error deflecting report message back to client (session paused)");
+        FD_CLR(sess->fd, &listen_fds);
+        session_close(sess);
+        goto shutdown;  
+      }
+    }
+    /* case for message to a defunct session */
+    else if (sess->restart_id >= mesg_in.data.report.cand.id) {
+       /* return to sender */
+       mesg_out.status = HMESG_STATUS_OK;
+       mesg_out.dest = idx;
+       if(mesg_send(fd, &mesg_out) < 1) {
+         perror("Error deflecting message for defunct session (after restart)");
+         FD_CLR(sess->fd, &listen_fds);
+         session_close(sess);
+         goto shutdown;   
+       }
+    }
+    else if (mesg_send(sess->fd, &mesg_out) < 1) {
         perror("Error forwarding message to session");
         FD_CLR(sess->fd, &listen_fds);
         session_close(sess);
@@ -611,6 +675,7 @@ int handle_session_socket(int idx)
     mesg_out.src_id = mesg_in.src_id;
     mesg_out.data = mesg_in.data;
     if (mesg_send(mesg_in.dest, &mesg_out) < 1) {
+        printf("Sending to client on fd %d\n", mesg_in.dest);
         perror("Error forwarding message to client");
         client_close(mesg_in.dest);
     }
@@ -702,15 +767,18 @@ session_state_t *session_open(hmesg_t *mesg)
     if (highest_socket < sess->fd)
         highest_socket = sess->fd;
 
+    sess->paused = 0; /* session should not start paused */
+
     /* save session strategy */
     strategy_name = hcfg_get(mesg->data.session.cfg, CFGKEY_SESSION_STRATEGY);
-    if(strategy_name == NULL) {
-      sess->strategy_name = malloc(strlen(DEFAULT_STRATEGY) + 1);
-      strcpy(sess->strategy_name, DEFAULT_STRATEGY);
-    } else {
+    if(strategy_name == NULL)
+      sess->strategy_name = DEFAULT_STRATEGY;
+    else {
       sess->strategy_name = malloc(strlen(strategy_name) + 1);
       strcpy(sess->strategy_name, strategy_name);
     }
+
+    sess->converged = 0; /* why would it start converged */
 
     return sess;
 
@@ -720,16 +788,58 @@ session_state_t *session_open(hmesg_t *mesg)
     return NULL;
 }
 
+/* sends a restart message to the session with
+   the specified name */
+void session_restart(char *name) {
+  int idx;
+  char *child_argv[2];
+  session_state_t *sess = NULL;
+  //hmesg_t ini_mesg;
+
+  /* Look up session to restart by name */
+  for (idx = 0; idx < slist_cap; ++idx) {
+    if (slist[idx].name && strcmp(slist[idx].name, name) == 0) {
+      sess = &slist[idx]; 
+      break;
+    }
+  }
+  if (idx == slist_cap) {
+    /* oh no! */
+    return;
+  }
+
+  /* Close old session (close socket so it dies) */
+  printf("Restart: old fd is %d\n", sess->fd);
+  close(sess->fd);
+
+  /* Start new session.
+      Fork and exec a session handler. 
+      Set session's fd to that of the new session
+  */
+  child_argv[0] = sess->name;
+  child_argv[1] = NULL;
+  sess->fd = socket_launch(session_bin, child_argv, NULL);
+  printf("Restart: new fd is %d\n", sess->fd);
+
+  /* so that messages with id <= id of last message from client
+     before restart are not passed on to session
+  */
+  sess->restart_id = sess->last_id;
+  printf("Restart: restarted at id %d\n", sess->restart_id);
+  
+  /* send initial session message 
+  ini_mesg.type = HMESG_SESSION;
+  ini_mesg.data.session.sig = sess->sig;
+  ini_mesg.data.session.cfg = cfg;
+  mesg_send(sess->fd, &ini_mesg); */
+}
+
 void session_close(session_state_t *sess)
 {
     int i;
 
     free(sess->name);
     sess->name = NULL;
-
-    free(sess->strategy_name);
-    sess->strategy_name = NULL;
-
     hpoint_fini(&sess->best);
 
     for (i = 0; i < sess->client_cap; ++i) {

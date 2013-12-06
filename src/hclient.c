@@ -69,6 +69,7 @@ struct hdesc_t {
 /* -------------------------------------------------------------------
  * Some local variables
  */
+int paused = 0;   // Is the associated session paused?
 
 /* -------------------------------------------------------------------
  * Forward declarations for internal helper functions
@@ -554,6 +555,8 @@ int harmony_fetch(hdesc_t *hdesc)
         return -1;
 
     if (hdesc->mesg.status == HMESG_STATUS_BUSY) {
+        // currently HMESG_STATUS_BUSY is being used to indicate that the session is paused
+        paused = 1;    
         if (hdesc->best.id >= 0) {
             if (hpoint_copy(&hdesc->curr, &hdesc->best) < 0) {
                 hdesc->errstr = "Internal error copying point data.";
@@ -568,6 +571,7 @@ int harmony_fetch(hdesc_t *hdesc)
         }
     }
     else if (hdesc->mesg.status == HMESG_STATUS_OK) {
+        paused = 0; // If the status is not HMESG_STATUS_BUSY, session isn't paused.
         hdesc->state = HARMONY_STATE_TESTING;
         retval = hpoint_copy(&hdesc->curr, &hdesc->mesg.data.fetch.cand);
         if (retval < 0) {
@@ -606,7 +610,12 @@ int harmony_report(hdesc_t *hdesc, double value)
         return -1;
     }
 
-    if (hdesc->state < HARMONY_STATE_TESTING)
+    /* when the client gets a busy message, hdesc->state becomes HARMONY_STATE_READY.
+       That happens when the session is paused, but we still want performance
+       to be logged and sent using the http server (so fluctuations and things
+       like that can be spotted through the web interface). 
+       So, report anyways if hdesc->state == HARMONY_STATE_READY */
+    if (hdesc->state < HARMONY_STATE_TESTING && hdesc->state != HARMONY_STATE_READY)
         return 0;
 
     /* Prepare a Harmony message. */
@@ -621,6 +630,12 @@ int harmony_report(hdesc_t *hdesc, double value)
 
     hdesc->state = HARMONY_STATE_READY;
 
+    if (paused) {
+      // if paused, let the hserver know that this is a report
+      // while paused, not associated with fetch requests sent
+      // before being paused
+      hdesc->mesg.status = HMESG_STATUS_BUSY;
+    }
     if (mesg_send_and_recv(hdesc) < 0)
         return -1;
 

@@ -30,7 +30,7 @@ extern "C" {
 
 typedef struct session_state {
     char *name;
-    int fd;
+    int fd, old_fd;
     int *client;
     int client_len, client_cap;
 
@@ -43,14 +43,19 @@ typedef struct session_state {
     http_log_t *log;
     int log_len, log_cap;
     int reported;
+    int paused, converged;
     char *strategy_name;
+    unsigned int restart_id, last_id;
 } session_state_t;
 
 extern session_state_t *slist;
 extern int slist_cap;
 
+extern hmesg_t mesg_in;
+
 session_state_t *session_open(hmesg_t *mesg);
 void session_close(session_state_t *sess);
+void session_restart(char *name);
 
 #ifdef __cplusplus
 }

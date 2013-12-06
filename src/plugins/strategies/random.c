@@ -105,6 +105,7 @@ int strategy_cfg(void)
 
 /*
  * Generate a new candidate configuration.
+ * FETCH
  */
 int strategy_generate(hflow_t *flow, hpoint_t *point)
 {
@@ -149,6 +150,7 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
 
 /*
  * Analyze the observed performance for this configuration point.
+  REPORT
  */
 int strategy_analyze(htrial_t *trial)
 {

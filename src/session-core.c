@@ -271,6 +271,7 @@ int main(int argc, char **argv)
             case HMESG_SETCFG: retval = handle_setcfg(&mesg); break;
             case HMESG_FETCH:  retval = handle_fetch(&mesg); break;
             case HMESG_REPORT: retval = handle_report(&mesg); break;
+            case HMESG_RESTART: retval = strategy_init(&sess->sig); break;
             default:
                 errmsg = "Internal error: Unknown message type.";
                 goto error;

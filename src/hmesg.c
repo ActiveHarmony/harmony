@@ -97,6 +97,7 @@ int hmesg_serialize(hmesg_t *mesg)
     case HMESG_SETCFG:  type_str = "INF"; break;
     case HMESG_FETCH:   type_str = "FET"; break;
     case HMESG_REPORT:  type_str = "REP"; break;
+    case HMESG_RESTART: type_str = "RES"; break;
     default: goto invalid;
     }
 
@@ -180,6 +181,8 @@ int hmesg_serialize(hmesg_t *mesg)
                 if (count < 0) goto error;
                 total += count;
             }
+            break;
+        case HMESG_RESTART:
             break;
         default:
             goto invalid;

@@ -58,6 +58,7 @@ typedef enum {
     HMESG_SETCFG,  /* Set new session cfg key/value pair    */
     HMESG_FETCH,   /* Retrieve search space point to test   */
     HMESG_REPORT,  /* Report search space point performance */
+    HMESG_RESTART, /* Restart the search                    */
 
     HMESG_TYPE_MAX
 } hmesg_type;

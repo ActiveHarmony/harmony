@@ -316,6 +316,52 @@ int http_request_handle(int fd, char *req)
         return 0;
 
     }
+    else if (strncmp(req, "/pause", 6) == 0) {
+       // An argument must be supplied to indicate which session to pause
+       printf("pause received\n");
+       if (arg) {
+            for (i = 0; i < slist_cap; ++i) {
+                if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
+                    slist[i].paused = 1;
+                    opt_http_write(fd, "OK");
+                    opt_http_write(fd, "");
+                    return 0;
+                }
+            }
+        }
+        opt_http_write(fd, "FAIL");
+        opt_http_write(fd, "");
+        return 0;
+    } 
+    else if (strncmp(req, "/resume", 7) == 0) {
+       // argument indicates which session to resume
+       if (arg) {
+            for (i = 0; i < slist_cap; ++i) {
+                if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
+                    slist[i].paused = 0;
+                    opt_http_write(fd, "OK");
+                    opt_http_write(fd, "");
+                    return 0;
+                }
+            }
+        }
+        opt_http_write(fd, "FAIL");
+        opt_http_write(fd, ""); 
+        return 0;
+    }
+    else if (strncmp(req, "/restart", 8) == 0) {    
+        opt_sock_write(fd, status_200);
+        opt_sock_write(fd, http_type_text);
+        opt_sock_write(fd, http_headers);
+        opt_sock_write(fd, HTTP_ENDL);  
+        // argument indicates which session to restart
+        if(arg) {
+          session_restart(arg);
+        }
+        opt_http_write(fd, "FAIL");
+        opt_http_write(fd, ""); 
+        return 0; 
+    }
     else if(strncmp(req, "/strategy", 9) == 0) {
         /* if these lines aren't there the browser
            keeps waiting until hserver is closed */
@@ -330,19 +376,16 @@ int http_request_handle(int fd, char *req)
             if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
               /* strategy name is set in session_open, off the 
                  initial session message */
-              if(slist[i].strategy_name != NULL) {
-                opt_http_write(fd, slist[i].strategy_name); 
-                opt_http_write(fd, "");
-                return 0;
-              } else break;  /* break out to fail message if sess name not recorded */
+              opt_http_write(fd, slist[i].strategy_name); 
+              opt_http_write(fd, "");
+              return 0;
             }
           }
-        } 
-        /* either specified session isn't valid, or doesn't
-           have a strategy name associated */
-        opt_http_write(fd, "FAIL");
-        opt_http_write(fd, "");
-        return 0;
+        } else {
+          opt_http_write(fd, "FAIL");
+          opt_http_write(fd, "");
+          return 0;
+        }
     } else if(strncmp(req, "/converged", 10) == 0) {
         opt_sock_write(fd, status_200);
         opt_sock_write(fd, http_type_text);
@@ -371,7 +414,7 @@ int http_request_handle(int fd, char *req)
               mesg_recv(slist[i].fd, &converged_mesg);
 
               /* tell interface that session has converged if reply says so */
-              if(converged_mesg.data.string[0] == '1') {
+              if(converged_mesg.data.string && converged_mesg.data.string[0] == '1') {
                 opt_http_write(fd, "1");
               } else opt_http_write(fd, "0");
               opt_http_write(fd, "");
@@ -688,6 +731,8 @@ int http_session_send(int fd, const char *req)
             --i;
         }
     }
+
+    printf("HTTP session send: %s\n", sendbuf);
 
     opt_http_write(fd, sendbuf);
     return 0;
