@@ -71,7 +71,6 @@ char *session_bin;
 hmesg_t mesg_in, mesg_out; /* Maintain two message structures
                             * to avoid overwriting buffers.
                             */
-
 session_state_t *slist;
 int slist_cap;
 
@@ -516,7 +515,9 @@ int handle_client_socket(int fd)
         if (mesg_in.data.report.cand.id == -1)
             break;
 
-        sess->restart_id = mesg_in.data.report.cand.id;
+        /* keep track of last point id in case there's a restart,
+           in which case sess->restart_id is set to sess->last_id */
+        sess->last_id = mesg_in.data.report.cand.id;
 
         if (sess->log_len == sess->log_cap) {
             if (array_grow(&sess->log, &sess->log_cap,
@@ -608,23 +609,15 @@ int handle_client_socket(int fd)
         goto shutdown;  
       }
     }
-    /* case for message to a defunct session */
-    else if (sess->restart_id >= mesg_in.data.report.cand.id) {
-       /* return to sender */
-       mesg_out.status = HMESG_STATUS_OK;
-       mesg_out.dest = idx;
-       if(mesg_send(fd, &mesg_out) < 1) {
-         perror("Error deflecting message for defunct session (after restart)");
-         FD_CLR(sess->fd, &listen_fds);
-         session_close(sess);
-         goto shutdown;   
-       }
-    }
+    /* case for message to a defunct session not needed - 
+       the new session's ids start from 1, but that doesn't seem
+        to knock anything out of place */
+    /* base case - forward message to session as normal */
     else if (mesg_send(sess->fd, &mesg_out) < 1) {
-        perror("Error forwarding message to session");
-        FD_CLR(sess->fd, &listen_fds);
-        session_close(sess);
-        goto shutdown;
+      perror("Error forwarding message to session");
+      FD_CLR(sess->fd, &listen_fds);
+      session_close(sess);
+      goto shutdown;
     }
     /* mesg_in data was free()'ed along with mesg_out. */
     mesg_in.type = HMESG_UNKNOWN;
@@ -653,6 +646,12 @@ int handle_session_socket(int idx)
 
     switch (mesg_in.type) {
     case HMESG_SESSION:
+        /* after a restart, the hserver-generated session message's response
+           should not be forwarded to the client */
+        if (sess->restart_id > 0) {
+          mesg_in.type = HMESG_UNKNOWN;
+          return 0;
+        }
     case HMESG_JOIN:
     case HMESG_SETCFG:
     case HMESG_GETCFG:
@@ -669,13 +668,12 @@ int handle_session_socket(int idx)
         goto error;
     }
 
-    mesg_out.dest = idx;
+    mesg_out.dest = idx;          
     mesg_out.type = mesg_in.type;
     mesg_out.status = mesg_in.status;
     mesg_out.src_id = mesg_in.src_id;
     mesg_out.data = mesg_in.data;
     if (mesg_send(mesg_in.dest, &mesg_out) < 1) {
-        printf("Sending to client on fd %d\n", mesg_in.dest);
         perror("Error forwarding message to client");
         client_close(mesg_in.dest);
     }
@@ -767,7 +765,8 @@ session_state_t *session_open(hmesg_t *mesg)
     if (highest_socket < sess->fd)
         highest_socket = sess->fd;
 
-    sess->paused = 0; /* session should not start paused */
+    sess->paused = 0; /* session should not start paused or converged */
+    sess->converged = 0; 
 
     /* save session strategy */
     strategy_name = hcfg_get(mesg->data.session.cfg, CFGKEY_SESSION_STRATEGY);
@@ -778,7 +777,16 @@ session_state_t *session_open(hmesg_t *mesg)
       strcpy(sess->strategy_name, strategy_name);
     }
 
-    sess->converged = 0; /* why would it start converged */
+    /* save src_id string for restart */
+    sess->src_id = malloc(strlen(mesg->src_id) + 1);
+    strcpy(sess->src_id, mesg->src_id);
+
+    /* also save initial hcfg for restart */
+    sess->ini_hcfg = hcfg_copy(mesg->data.session.cfg);
+
+    /* set restart id */
+    sess->restart_id = 0;
+    sess->last_id = 0;
 
     return sess;
 
@@ -788,13 +796,16 @@ session_state_t *session_open(hmesg_t *mesg)
     return NULL;
 }
 
-/* sends a restart message to the session with
-   the specified name */
+/* Restarts the session with the specified name:
+    - Closes the old session
+    - Opens a new session, and configures it in the same way 
+      as the previous one.
+   On failure, simply returns without restarting. */
 void session_restart(char *name) {
   int idx;
   char *child_argv[2];
   session_state_t *sess = NULL;
-  //hmesg_t ini_mesg;
+  hmesg_t ini_mesg = HMESG_INITIALIZER;
 
   /* Look up session to restart by name */
   for (idx = 0; idx < slist_cap; ++idx) {
@@ -803,8 +814,7 @@ void session_restart(char *name) {
       break;
     }
   }
-  if (idx == slist_cap) {
-    /* oh no! */
+  if (idx == slist_cap) { /* session with specified name not found */
     return;
   }
 
@@ -812,26 +822,29 @@ void session_restart(char *name) {
   printf("Restart: old fd is %d\n", sess->fd);
   close(sess->fd);
 
-  /* Start new session.
+  /* Start new session:
       Fork and exec a session handler. 
-      Set session's fd to that of the new session
-  */
+      Set sess->fd to that of the new session */
   child_argv[0] = sess->name;
   child_argv[1] = NULL;
   sess->fd = socket_launch(session_bin, child_argv, NULL);
-  printf("Restart: new fd is %d\n", sess->fd);
 
   /* so that messages with id <= id of last message from client
-     before restart are not passed on to session
-  */
+     before restart are not passed on to session */
   sess->restart_id = sess->last_id;
-  printf("Restart: restarted at id %d\n", sess->restart_id);
   
-  /* send initial session message 
+  /* send initial session message */
+  hmesg_scrub(&ini_mesg);
+  ini_mesg.dest = sess->fd;
   ini_mesg.type = HMESG_SESSION;
-  ini_mesg.data.session.sig = sess->sig;
-  ini_mesg.data.session.cfg = cfg;
-  mesg_send(sess->fd, &ini_mesg); */
+  ini_mesg.status = HMESG_STATUS_REQ;
+  ini_mesg.src_id = sess->src_id;
+  hsession_init(&ini_mesg.data.session);
+  /* hsignature does not change */
+  hsignature_copy(&ini_mesg.data.session.sig, &sess->sig);
+  ini_mesg.data.session.cfg = hcfg_copy(sess->ini_hcfg);
+  
+  mesg_send(sess->fd, &ini_mesg);
 }
 
 void session_close(session_state_t *sess)
@@ -840,6 +853,8 @@ void session_close(session_state_t *sess)
 
     free(sess->name);
     sess->name = NULL;
+    free(sess->src_id);
+    sess->src_id = NULL;
     hpoint_fini(&sess->best);
 
     for (i = 0; i < sess->client_cap; ++i) {

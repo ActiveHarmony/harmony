@@ -732,8 +732,6 @@ int http_session_send(int fd, const char *req)
         }
     }
 
-    printf("HTTP session send: %s\n", sendbuf);
-
     opt_http_write(fd, sendbuf);
     return 0;
 
