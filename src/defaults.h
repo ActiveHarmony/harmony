@@ -49,6 +49,9 @@
 #define CFGKEY_FVAL_TOL           "FVAL_TOL"
 #define CFGKEY_SIZE_TOL           "SIZE_TOL"
 
+/* For specifying a different initial simplex */
+#define CFGKEY_POINT_DATA         "POINT_DATA"
+
 #define CFGKEY_SERVER_URL         "SERVER_URL"
 #define CFGKEY_TARGET_URL         "TARGET_URL"
 #define CFGKEY_REPLY_URL          "REPLY_URL"

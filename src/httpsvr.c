@@ -357,6 +357,8 @@ int http_request_handle(int fd, char *req)
         // argument indicates which session to restart
         if(arg) {
           session_restart(arg);
+          opt_http_write(fd, "OK");
+          opt_http_write(fd, "");
         }
         opt_http_write(fd, "FAIL");
         opt_http_write(fd, ""); 

@@ -41,7 +41,7 @@
  * --------------| ------- | ------- | -----------
  * SIMPLEX_SIZE  | Integer | N+1     | Number of vertices in the simplex.  Defaults to the number of tuning variables + 1.
  * RANDOM_SEED   | Integer | time()  | Value to seed the pseudo-random number generator.  Default is to seed the random generator by time.
- * INIT_METHOD   | String  | point   | Initial simplex generation method.  Valid values are "point", "point_fast", and "random" (without quotes).
+ * INIT_METHOD   | String  | point   | Initial simplex generation method.  Valid values are "point", "point_fast", "point_set", and "random" (without quotes).
  * INIT_PERCENT  | Real    | 0.35    | Initial simplex size as a percentage of the total search space.  Only for "point" and "point_fast" initial simplex methods.
  * REJECT_METHOD | String  | penalty | How to choose a replacement when dealing with rejected points:<br> **Penalty** - Use this method if the chance of point rejection is relatively low.  It applies an infinite penalty factor for invalid points, allowing the Nelder-Mead algorithm to select a sensible next point.  However, if the entire simplex is comprised of invalid points, an infinite loop of invalid points may occur.<br> **Random** - Use this method if the chance of point rejection is high.  It reduces the risk of infinitely selecting invalid points at the cost of increasing the risk of deforming the simplex.
  * REFLECT       | Real    | 1.0     | Multiplicative coefficient for simplex reflection step.
@@ -77,6 +77,7 @@ typedef enum simplex_init {
     SIMPLEX_INIT_MAXVAL,
     SIMPLEX_INIT_POINT,
     SIMPLEX_INIT_POINT_FAST,
+    SIMPLEX_INIT_POINT_S,    /* init with specified point, in CFGKEY_POINT_DATA */
 
     SIMPLEX_INIT_MAX
 } simplex_init_t;
@@ -106,6 +107,7 @@ int  strategy_cfg(hsignature_t *sig);
 int  init_by_random(void);
 int  init_by_maxval(void);
 int  init_by_point(int fast);
+int  init_by_specified_point(const char *str);
 void simplex_update_index(void);
 void simplex_update_centroid(void);
 int  nm_algorithm(void);
@@ -138,6 +140,7 @@ int index_best;
 int index_worst;
 int index_curr; /* for INIT or SHRINK */
 int next_id;
+int coords; /* number of coordinates for each vertex, from sig->range */
 
 /*
  * Invoked once on strategy load.
@@ -148,6 +151,8 @@ int strategy_init(hsignature_t *sig)
         session_error("Could not initialize vertex library.");
         return -1;
     }
+
+    coords = sig->range_len;
 
     init_point = vertex_alloc();
     if (!init_point) {
@@ -196,6 +201,7 @@ int strategy_init(hsignature_t *sig)
     case SIMPLEX_INIT_MAXVAL:     init_by_maxval(); break;
     case SIMPLEX_INIT_POINT:      init_by_point(0); break;
     case SIMPLEX_INIT_POINT_FAST: init_by_point(1); break;
+    case SIMPLEX_INIT_POINT_S:    init_by_specified_point(session_getcfg(CFGKEY_POINT_DATA)); break;
     default:
         session_error("Invalid initial search method.");
         return -1;
@@ -252,6 +258,9 @@ int strategy_cfg(hsignature_t *sig)
         }
         else if (strcasecmp(cfgval, "point_fast") == 0) {
             init_method = SIMPLEX_INIT_POINT_FAST;
+        }
+        else if (strcasecmp(cfgval, "point_set") == 0) {
+            init_method = SIMPLEX_INIT_POINT_S;
         }
         else {
             session_error("Invalid value for "
@@ -414,6 +423,85 @@ int init_by_point(int fast)
         return simplex_from_vertex_fast(init_point, init_percent, base);
 
     return simplex_from_vertex(init_point, init_percent, base);
+}
+
+/* Counts semicolons in string. String MUST be null terminated */
+int count_semicolons(const char *str) {
+  unsigned int i, c;
+  for(i = 0, c = 0;str[i] != '\0';i++) {
+    if(str[i] == ';') c++;
+  }
+  return c;
+}
+
+/* Replaces all semicolons in string with null terminators,
+   Populates arr with indices of substring starts */   
+void replace_semicolons(char *str, int *arr) {
+  unsigned int i, c;
+  arr[0] = 0;
+  c = 1;
+  for(i = 0;str[i] != '\0';i++) {
+    if(str[i] == ';') {
+      arr[c] = i + 1;  /* right past new null terminator */
+      c++;
+      str[i] = '\0';
+    }
+  }
+}
+
+/* takes a string containing dash-separated values,
+   and sets the initial simplex to the specified points.
+   Ignores extra coordinates. If there aren't enough
+   to set up a simplex, it uses the first n numbers to initialize
+   a simplex from a vertex (n = number of coordinates per point)
+   for multiple points, points go one after another, like
+     x1;x2;x3;y1;y2;y3,....etc.
+   If there aren't even ehough points to do that, it returns -1.
+   Use semicolons b/c they aren't reserved for URLs */
+int init_by_specified_point(const char *str) {
+  /* parse string */
+  char *mod_str;
+  int n_coords, *str_indices, i, rc = 0;
+  int vertex_idx;
+  double *coord_arr;
+  
+  n_coords = count_semicolons(str) + 1;
+  mod_str = malloc(strlen(str) + 1); /* make copy we can modify */
+  strcpy(mod_str, str);
+  str_indices = malloc(sizeof(int) * n_coords);
+  coord_arr = malloc(sizeof(int) * n_coords);
+  replace_semicolons(mod_str, str_indices);
+   
+  if(n_coords < coords * simplex_size) {
+    /* not enough data to setup simplex. try with one point */
+    init_point->id = 0;
+    init_point->perf = 0;
+    if(n_coords >= coords) {
+      for(i = 0;i < n_coords;i++) {
+        init_point->term[i] = atof(mod_str + str_indices[i]);
+      }
+      rc = simplex_from_vertex(init_point, init_percent, base);
+    } else {
+      rc = -1;
+    }
+  } else {
+    //vertex.term = malloc(sizeof(double) * coords); // guess we don't actually need to do this?
+    for(vertex_idx = 0, i = 0;vertex_idx < simplex_size;vertex_idx++) {
+      base->vertex[vertex_idx]->id = 0;
+      base->vertex[vertex_idx]->perf = 0;
+      for(;i < n_coords;i++) { /* fill in vertex */
+        base->vertex[vertex_idx]->term[i] = atof(mod_str + str_indices[i]);
+      }
+      /* call simplex_set_vertex */
+      if(rc == -1) break;
+    }
+  }
+  //rc = simplex_from_vertex();
+
+  free(mod_str);
+  free(coord_arr);
+  free(str_indices);
+  return rc;
 }
 
 /*

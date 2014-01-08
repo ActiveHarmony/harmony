@@ -800,13 +800,26 @@ session_state_t *session_open(hmesg_t *mesg)
     - Closes the old session
     - Opens a new session, and configures it in the same way 
       as the previous one.
-   On failure, simply returns without restarting. */
+   On failure, simply returns without restarting.
+   args:
+     -name = session name
+     -stuff after name; = point (or simplex) to start from. semicolon-delimited list of coords */
 void session_restart(char *name) {
-  int idx;
+  int idx, i;
   char *child_argv[2];
+  char *coord_ptr = NULL;
   session_state_t *sess = NULL;
   hmesg_t ini_mesg = HMESG_INITIALIZER;
-
+  
+  /* check for extra params (is semicolon present?) */
+  for(i = 0;i < strlen(name);i++) {
+    if(name[i] == ';') {
+      name[i] = '\0';   // new str now starts after this. prevents mishaps with name comp later on
+      coord_ptr = &name[i] + 1;
+      break;
+    }
+  }
+  
   /* Look up session to restart by name */
   for (idx = 0; idx < slist_cap; ++idx) {
     if (slist[idx].name && strcmp(slist[idx].name, name) == 0) {
@@ -814,6 +827,7 @@ void session_restart(char *name) {
       break;
     }
   }
+  
   if (idx == slist_cap) { /* session with specified name not found */
     return;
   }
@@ -842,7 +856,14 @@ void session_restart(char *name) {
   hsession_init(&ini_mesg.data.session);
   /* hsignature does not change */
   hsignature_copy(&ini_mesg.data.session.sig, &sess->sig);
+
+  /* replay initial configuration */
+  /* coords provided -> set that in cfg. otherwise just replay initial config */
   ini_mesg.data.session.cfg = hcfg_copy(sess->ini_hcfg);
+  if(coord_ptr != NULL) {
+    hcfg_set(ini_mesg.data.session.cfg, CFGKEY_POINT_DATA, coord_ptr);
+    hcfg_set(ini_mesg.data.session.cfg, CFGKEY_INIT_METHOD, "point_set");
+  } 
   
   mesg_send(sess->fd, &ini_mesg);
 }

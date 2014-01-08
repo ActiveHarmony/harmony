@@ -69,6 +69,7 @@ int        simplex_from_vertex(const vertex_t *v, double percent,
 int        simplex_from_vertex_fast(const vertex_t *v, double percent,
                                     simplex_t *s);
 int        simplex_collapsed(const simplex_t *s);
+int simplex_set_vertex(simplex_t *s, const vertex_t *v, int n);
 
 #ifdef __cplusplus
 }

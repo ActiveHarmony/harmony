@@ -69,6 +69,7 @@ var coords = new Array();
 var chartDataIdx;
 var varList;
 var tableColMap;
+var appName;
 
 var refreshInterval = 5000;
 function refresh() {
@@ -93,6 +94,7 @@ function refresh() {
             break;
         case "app":
             document.getElementById("appName").innerHTML = val;
+            appName = val;
             break;
         case "var":
             updateVarList(val);
@@ -141,6 +143,10 @@ function refresh() {
 
     appName_div.innerHTML += " (" + strategy_name;
     appName_div.innerHTML += " - " + (is_converged?"converged":"not converged") + ")";
+
+    if(is_converged) {
+      document.getElementById('restart_controls').style.display = 'none';
+    }
 
     var i_select = document.getElementById("interval");
     setTimeout("refresh()", i_select[ i_select.selectedIndex ].value);
@@ -333,4 +339,15 @@ function labelString(idx) {
     retval += "Performance:" + coord.slice(-1);
 
     return retval;
+}
+
+/* restarts session */
+function sessionRestart() {
+  var asdf = new XMLHttpRequest();
+  var str = "restart?" + appName;
+  if(document.getElementById("restart_point").value.length > 0) {
+    str += ";" + document.getElementById("restart_point").value;
+  }
+  asdf.open("GET", str, true);
+  asdf.send();
 }
