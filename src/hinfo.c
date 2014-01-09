@@ -93,16 +93,14 @@ char *find_libexec(char *argv_str) {
   }
   /* see if argv has path in it */
   else if(strncmp(argv_str, "hinfo", 5) != 0) {
-    if(verbose_flag || home_flag)  
-      printf("HARMONY_HOME not set. Using path hinfo was called with to locate libexec\n");
+    printf("HARMONY_HOME not set. Using path hinfo was called with to locate libexec\n");
     str = malloc(strlen(argv_str) + 7 + 1);  /* ...hinfo, replace hinfo with "/../libexec" */
     strcpy(str, argv_str);
     strcpy(str + strlen(argv_str) - strlen(my_name), "/../libexec");
     return str;
   } else { /* need to check path */
     char *path = getenv("PATH");
-    if(verbose_flag || home_flag) 
-      printf("HARMONY_HOME not set. Searching path and inferring libexec's location from hinfo's location\n");
+    printf("HARMONY_HOME not set. Searching path and inferring libexec's location from hinfo's location\n");
     str = malloc(strlen(path) + 1); 
     strcpy(str, path);
     cur_path = malloc(strlen(path) + 11 + 1); /* max single path + "/../libexec" */
@@ -136,7 +134,7 @@ char *find_libexec(char *argv_str) {
             return cur_path;
           }
         }
-      } /* else printf("your path sucks\n"); */
+      } 
     }
   }
   if(path_indices != NULL) free(path_indices);
@@ -147,7 +145,6 @@ char *find_libexec(char *argv_str) {
 
 /* The internet seems to suggest that strnlen exists,
    but apparently it doesn't.
-   fine, I'll write one myself.
    Given a possibly null terminated string and a number,
    returns the length of the string up to the null terminator
    or the number if a null terminator isn't reached by then. */
@@ -177,22 +174,36 @@ int main(int argc, char *argv[]) {
     {0, 0, 0, 0}
   };
 
-  if(argc < 2) {
+  
+
+  while(1) { 
+    c = option_index = getopt_long(argc, argv, "lhv", long_options, &option_index);
+    if(c == -1) break;
+    switch(c) { 
+      case 'v':
+        verbose_flag = 1;
+        break;
+      case 'l':
+        list_flag = 1;
+        break;
+      case 'h':
+        home_flag = 1;
+        break;
+      default: 
+        continue;
+    }
+  }
+  if(argc < 2 || (! list_flag && ! home_flag)) {
     printf("Usage: hinfo [options]\n");
     printf("Options\n\t--list\tList .so files (potential strategies and layers)\n");
     printf("\t--home\tJust verify presence of and print out libexec directory\n");
     printf("\t--verbose\tPrint info about which hooks are present\n");
     return 0;
   }
-
-  while(1) { 
-    c = option_index = getopt_long(argc, argv, "lhv", long_options, &option_index);
-    if(c == -1) break;
-  }
   libexec_path = find_libexec(argv[0]);
   if(libexec_path == NULL) {
     printf("Unable to locate libexec path\n");
-    goto end;  /* no incoming velociraptor */
+    goto end;  
   } else 
     if(verbose_flag || home_flag) 
       printf("libexec path: %s\n", libexec_path);
@@ -229,7 +240,7 @@ int main(int argc, char *argv[]) {
         layer_prefix_len = clam_strnlen(layer_prefix, 1000);
 
         if(layer_prefix_len == 1000) {
-          printf("Do you like chickens? Because I do. And their sanity levels exceed yours.\n");
+          printf("Layer name too long\n");
           continue;
         }
 
