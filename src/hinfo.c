@@ -5,6 +5,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <dlfcn.h>
+#include <limits.h>
 
 #include "session-core.h"
 #include "hsession.h"
@@ -71,8 +72,9 @@ static int layer_required[] = {
 
 /* attempts to figure out where libexec dir is 
    possibly returns incorrect path
+   assumes that the calling program is 'hinfo'
 */
-char *find_libexec(char *argv_str) {
+char *find_harmony_home(char *argv_str) {
   char *str = NULL;   /* used for temporary strings. I modify strings to parse them so yeah */
   char *cur_path = NULL; /* for current path being looked at in third case */
   DIR *cur_dir = NULL;/* look up one line ^ */
@@ -85,22 +87,21 @@ char *find_libexec(char *argv_str) {
   char *home = getenv("HARMONY_HOME");
   if(home != NULL) {
     if(verbose_flag || home_flag) 
-      printf("Locating libexec dir using HARMONY_HOME env var\n");
+      printf("HARMONY_HOME is set.\n");
     str = malloc(strlen(home) + 8 + 1); /* home + "/libexec" + \0 */
     strcpy(str, home);
-    strcpy(str + strlen(home), "/libexec");
     return str;
   }
   /* see if argv has path in it */
   else if(strncmp(argv_str, "hinfo", 5) != 0) {
-    printf("HARMONY_HOME not set. Using path hinfo was called with to locate libexec\n");
+    printf("HARMONY_HOME not set. Using path hinfo was called with to locate HARMONY_HOME\n");
     str = malloc(strlen(argv_str) + 7 + 1);  /* ...hinfo, replace hinfo with "/../libexec" */
     strcpy(str, argv_str);
-    strcpy(str + strlen(argv_str) - strlen(my_name), "/../libexec");
+    strcpy(str + strlen(argv_str) - strlen(my_name), "/../");
     return str;
   } else { /* need to check path */
     char *path = getenv("PATH");
-    printf("HARMONY_HOME not set. Searching path and inferring libexec's location from hinfo's location\n");
+    printf("HARMONY_HOME not set. Searching path and inferring HARMONY_HOME from hinfo's location\n");
     str = malloc(strlen(path) + 1); 
     strcpy(str, path);
     cur_path = malloc(strlen(path) + 11 + 1); /* max single path + "/../libexec" */
@@ -128,7 +129,7 @@ char *find_libexec(char *argv_str) {
           entry = readdir(cur_dir);
           if(entry == NULL) break;
           if(strncmp(entry->d_name, my_name, 256) == 0) {
-            strcpy(cur_path + strlen(cur_path), "/../libexec");
+            strcpy(cur_path + strlen(cur_path), "/../");
             free(str);
             free(path_indices);
             return cur_path;
@@ -143,9 +144,7 @@ char *find_libexec(char *argv_str) {
   return NULL; /* no hinfo found in PATH??? */
 }
 
-/* The internet seems to suggest that strnlen exists,
-   but apparently it doesn't.
-   Given a possibly null terminated string and a number,
+/* Given a possibly null terminated string and a number,
    returns the length of the string up to the null terminator
    or the number if a null terminator isn't reached by then. */
 int clam_strnlen(char *cupcake, int max_sprinkles) {
@@ -158,11 +157,11 @@ int clam_strnlen(char *cupcake, int max_sprinkles) {
 
 int main(int argc, char *argv[]) {
   int option_index = 0, c = 0;
-  char *libexec_path = NULL, *so_filename = NULL;
+  char *harmony_home_path = NULL, *so_filename = NULL;
   DIR *libexec_dir = NULL;
   struct dirent *entry = NULL;
   void *dl_handle = NULL;
-  char layer_symbol[1000];  /* assume layer coder has at least minimal sanity */
+  char layer_symbol[1000], real_path[PATH_MAX];  
   char *layer_prefix = NULL;
   int layer_prefix_len = 0;
   int valid_strategy = 0, valid_layer = 0;
@@ -173,8 +172,6 @@ int main(int argc, char *argv[]) {
     {"verbose", 0, &verbose_flag, 'v'},
     {0, 0, 0, 0}
   };
-
-  
 
   while(1) { 
     c = option_index = getopt_long(argc, argv, "lhv", long_options, &option_index);
@@ -193,6 +190,7 @@ int main(int argc, char *argv[]) {
         continue;
     }
   }
+  
   if(argc < 2 || (! list_flag && ! home_flag)) {
     printf("Usage: hinfo [options]\n");
     printf("Options\n\t--list\tList .so files (potential strategies and layers)\n");
@@ -200,15 +198,24 @@ int main(int argc, char *argv[]) {
     printf("\t--verbose\tPrint info about which hooks are present\n");
     return 0;
   }
-  libexec_path = find_libexec(argv[0]);
-  if(libexec_path == NULL) {
+
+  harmony_home_path = find_harmony_home(argv[0]);
+  
+  if(harmony_home_path == NULL) {
     printf("Unable to locate libexec path\n");
     goto end;  
-  } else 
-    if(verbose_flag || home_flag) 
-      printf("libexec path: %s\n", libexec_path);
+  } 
+  
+  realpath(harmony_home_path, real_path);
 
-  libexec_dir = opendir(libexec_path);
+  //if(verbose_flag || home_flag)                      
+    printf("Harmony home: %s\n", real_path); 
+
+  /* append libexec to end of real path */
+  strcpy(real_path + strlen(real_path), "/libexec");
+  
+  libexec_dir = opendir(real_path);
+  
   if(libexec_dir == NULL) {
     printf("Error opening libexec dir\n");
     goto end;
@@ -217,15 +224,15 @@ int main(int argc, char *argv[]) {
   if(! list_flag) goto end;
                         
   /* filename max length = 255. + 2 for \0, slash*/
-  so_filename = malloc(strlen(libexec_path) + 257); 
+  so_filename = malloc(strlen(real_path) + 257); 
   while(1) {
     entry = readdir(libexec_dir);
     if(entry == NULL) break;
     if(strstr(entry->d_name, ".so") != NULL) {
       /* attempt to load shared library */
-      strcpy(so_filename, libexec_path);
-      so_filename[strlen(libexec_path)] = '/';
-      strcpy(so_filename + strlen(libexec_path) + 1, entry->d_name);
+      strcpy(so_filename, real_path);
+      so_filename[strlen(real_path)] = '/';
+      strcpy(so_filename + strlen(real_path) + 1, entry->d_name);
       printf("%s:", entry->d_name);
       if(verbose_flag) printf("\n");
       dl_handle = dlopen(so_filename, RTLD_LAZY | RTLD_LOCAL);
@@ -284,7 +291,7 @@ int main(int argc, char *argv[]) {
   }
 
   end:
-  if(libexec_path != NULL) free(libexec_path);
+  if(harmony_home_path != NULL) free(harmony_home_path);
   if(so_filename != NULL) free(so_filename);
   return 0;
 }
