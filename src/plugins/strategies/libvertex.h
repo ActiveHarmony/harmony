@@ -39,15 +39,15 @@ typedef struct simplex {
 } simplex_t;
 
 int        libvertex_init(hsignature_t *sig);
+const vertex_t *vertex_min(void);
+const vertex_t *vertex_max(void);
 
-vertex_t  *vertex_alloc();
+vertex_t * vertex_alloc();
 int        vertex_copy(vertex_t *dst, const vertex_t *src);
 void       vertex_free(vertex_t *v);
-int        vertex_min(vertex_t *v);
 int        vertex_center(vertex_t *v);
-int        vertex_max(vertex_t *v);
-int        vertex_incr(vertex_t *v);
 int        vertex_rand(vertex_t *v);
+int        vertex_rand_trim(vertex_t *v, double trim);
 double     vertex_dist(const vertex_t *v1, const vertex_t *v2);
 void       vertex_transform(const vertex_t *src, const vertex_t *wrt,
                             double coefficient, vertex_t *result);

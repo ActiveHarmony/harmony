@@ -41,7 +41,6 @@
 #include "hutil.h"
 #include "hcfg.h"
 #include "defaults.h"
-#include "libvertex.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -56,7 +55,10 @@ int strategy_cfg(void);
 int increment(void);
 
 /* Variables to track current search state. */
-vertex_t *curr;
+int N;
+hrange_t *range;
+hpoint_t curr;
+unsigned long *idx;
 int remaining_passes = 1;
 int final_id = 0;
 
@@ -65,10 +67,7 @@ int final_id = 0;
  */
 int strategy_init(hsignature_t *sig)
 {
-    if (libvertex_init(sig) != 0) {
-        session_error("Could not initialize vertex library.");
-        return -1;
-    }
+    int i;
 
     if (strategy_cfg() != 0)
         return -1;
@@ -76,13 +75,30 @@ int strategy_init(hsignature_t *sig)
     best = HPOINT_INITIALIZER;
     best_perf = INFINITY;
 
-    curr = vertex_alloc();
-    if (!curr) {
-        session_error("Could not allocate memory for testing vertex.");
+    N = sig->range_len;
+    range = sig->range;
+    if (hpoint_init(&curr, N) != 0) {
+        session_error("Could not allocate memory candidate point.");
         return -1;
     }
-    vertex_min(curr);
-    curr->id = 1;
+    for (i = 0; i < N; ++i) {
+        curr.val[i].type = range[i].type;
+        switch (range[i].type) {
+        case HVAL_INT:  curr.val[i].value.i = range[i].bounds.i.min; break;
+        case HVAL_REAL: curr.val[i].value.r = range[i].bounds.r.min; break;
+        case HVAL_STR:  curr.val[i].value.s = range[i].bounds.s.set[0]; break;
+        default:
+            session_error("Invalid range detected during strategy init.");
+            return -1;
+        }
+    }
+    curr.id = 1;
+
+    idx = (unsigned long *) calloc(N, sizeof(unsigned long));
+    if (!idx) {
+        session_error("Could not allocate memory for index array.");
+        return -1;
+    }
 
     if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
         session_error("Could not set "
@@ -109,18 +125,18 @@ int strategy_cfg(void)
 int strategy_generate(hflow_t *flow, hpoint_t *point)
 {
     if (remaining_passes > 0) {
-        if (vertex_to_hpoint(curr, point) != 0) {
-            session_error("Internal error: Could not make point from vertex.");
+        if (hpoint_copy(point, &curr) != 0) {
+            session_error("Could not copy current point during generation.");
             return -1;
         }
 
-        ++curr->id;
         if (increment() != 0)
             return -1;
+        ++curr.id;
     }
     else {
         if (hpoint_copy(point, &best) != 0) {
-            session_error("Internal error: Could not copy point.");
+            session_error("Could not copy best point during generation.");
             return -1;
         }
     }
@@ -139,13 +155,13 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
 
     if (hint && hint->id != -1) {
         if (hpoint_copy(point, hint) != 0) {
-            session_error("Internal error: Could not copy point.");
+            session_error("Could not copy hint during reject.");
             return -1;
         }
     }
     else {
-        if (vertex_to_hpoint(curr, point) != 0) {
-            session_error("Internal error: Could not make point from vertex.");
+        if (hpoint_copy(point, &curr) != 0) {
+            session_error("Could not copy current point during reject.");
             return -1;
         }
 
@@ -155,20 +171,6 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
     point->id = orig_id;
 
     flow->status = HFLOW_ACCEPT;
-    return 0;
-}
-
-int increment(void)
-{
-    if (remaining_passes <= 0)
-        return 0;
-
-    if (vertex_incr(curr))
-        --remaining_passes;
-
-    if (remaining_passes <= 0)
-        final_id = curr->id - 1;
-
     return 0;
 }
 
@@ -201,8 +203,65 @@ int strategy_analyze(htrial_t *trial)
 int strategy_best(hpoint_t *point)
 {
     if (hpoint_copy(point, &best) != 0) {
-        session_error("Internal error: Could not copy point.");
+        session_error("Could not copy best point during request for best.");
         return -1;
     }
+    return 0;
+}
+
+int increment(void)
+{
+    int i;
+
+    if (remaining_passes <= 0)
+        return 0;
+
+    for (i = 0; i < N; ++i) {
+        ++idx[i];
+        switch (range[i].type) {
+        case HVAL_INT:
+            curr.val[i].value.i += range[i].bounds.i.step;
+            if (curr.val[i].value.i > range[i].bounds.i.max) {
+                curr.val[i].value.i = range[i].bounds.i.min;
+                idx[i] = 0;
+                continue;  // Overflow detected.
+            }
+            break;
+
+        case HVAL_REAL:
+            curr.val[i].value.r =
+                (range[i].bounds.r.step > 0.0)
+                ? range[i].bounds.r.min + (idx[i] * range[i].bounds.r.step)
+                : nextafter(curr.val[i].value.r, INFINITY);
+
+            if (curr.val[i].value.r > range[i].bounds.r.max) {
+                curr.val[i].value.r = range[i].bounds.r.min;
+                idx[i] = 0;
+                continue;  // Overflow detected.
+            }
+            break;
+
+        case HVAL_STR:
+            if (idx[i] >= range[i].bounds.s.set_len) {
+                curr.val[i].value.s = range[i].bounds.s.set[0];
+                idx[i] = 0;
+                continue;  // Overflow detected.
+            }
+            curr.val[i].value.s = range[i].bounds.s.set[ idx[i] ];
+            break;
+
+        default:
+            session_error("Invalid range detected.");
+            return -1;
+        }
+
+        // No overflow detected.  Leave the function.
+        return 0;
+    }
+
+    // We only reach this point if all values overflowed.
+    if (--remaining_passes <= 0)
+        final_id = curr.id - 1;
+
     return 0;
 }

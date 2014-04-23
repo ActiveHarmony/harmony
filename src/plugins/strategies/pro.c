@@ -55,6 +55,7 @@
 #include <errno.h>
 #include <time.h>
 #include <math.h>
+#include <assert.h>
 
 hpoint_t best;
 double   best_perf;
@@ -63,9 +64,9 @@ hpoint_t curr;
 
 typedef enum simplex_init {
     SIMPLEX_INIT_UNKNOWN = 0,
+    SIMPLEX_INIT_CENTER,
     SIMPLEX_INIT_RANDOM,
     SIMPLEX_INIT_POINT,
-    SIMPLEX_INIT_POINT_FAST,
 
     SIMPLEX_INIT_MAX
 } simplex_init_t;
@@ -100,7 +101,7 @@ int  pro_next_simplex(simplex_t *output);
 void check_convergence(void);
 
 /* Variables to control search properties. */
-simplex_init_t  init_method  = SIMPLEX_INIT_POINT;
+simplex_init_t  init_method  = SIMPLEX_INIT_CENTER;
 vertex_t *      init_point;
 double          init_percent = 0.35;
 reject_method_t reject_type  = REJECT_METHOD_PENALTY;
@@ -163,20 +164,19 @@ int strategy_init(hsignature_t *sig)
     }
 
     /* Default stopping criteria: 0.5% of dist(vertex_min, vertex_max). */
-    if (size_tol == 0.0) {
-        vertex_min(base->vertex[0]);
-        vertex_max(base->vertex[1]);
-        size_tol = vertex_dist(base->vertex[0], base->vertex[1]) * 0.005;
-    }
+    if (size_tol == 0.0)
+        size_tol = vertex_dist(vertex_min(), vertex_max()) * 0.005;
 
     switch (init_method) {
-    case SIMPLEX_INIT_RANDOM:     init_by_random(); break;
-    case SIMPLEX_INIT_POINT:      init_by_point(0); break;
-    case SIMPLEX_INIT_POINT_FAST: init_by_point(1); break;
+    case SIMPLEX_INIT_CENTER: vertex_center(init_point); break;
+    case SIMPLEX_INIT_RANDOM: vertex_rand_trim(init_point,
+                                               init_percent); break;
+    case SIMPLEX_INIT_POINT:  assert(0 && "Not yet implemented."); break;
     default:
         session_error("Invalid initial search method.");
         return -1;
     }
+    simplex_from_vertex(init_point, init_percent, base);
 
     next_id = 1;
     state = SIMPLEX_STATE_INIT;
@@ -210,14 +210,14 @@ int strategy_cfg(hsignature_t *sig)
 
     cfgval = session_getcfg(CFGKEY_INIT_METHOD);
     if (cfgval) {
-        if (strcasecmp(cfgval, "random") == 0) {
+        if (strcasecmp(cfgval, "center") == 0) {
+            init_method = SIMPLEX_INIT_CENTER;
+        }
+        else if (strcasecmp(cfgval, "random") == 0) {
             init_method = SIMPLEX_INIT_RANDOM;
         }
         else if (strcasecmp(cfgval, "point") == 0) {
             init_method = SIMPLEX_INIT_POINT;
-        }
-        else if (strcasecmp(cfgval, "point_fast") == 0) {
-            init_method = SIMPLEX_INIT_POINT_FAST;
         }
         else {
             session_error("Invalid value for "
@@ -336,27 +336,6 @@ int strategy_cfg(hsignature_t *sig)
         }
     }
     return 0;
-}
-
-int init_by_random(void)
-{
-    int i;
-
-    for (i = 0; i < simplex_size; ++i)
-        vertex_rand(base->vertex[i]);
-
-    return 0;
-}
-
-int init_by_point(int fast)
-{
-    if (init_point->id == 0)
-        vertex_center(init_point);
-
-    if (fast)
-        return simplex_from_vertex_fast(init_point, init_percent, base);
-
-    return simplex_from_vertex(init_point, init_percent, base);
 }
 
 /*
