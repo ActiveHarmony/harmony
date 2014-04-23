@@ -261,8 +261,9 @@ int main(int argc, char **argv)
 
         /* Handle hmesg_t, if needed. */
         if (FD_ISSET(STDIN_FILENO, &ready_fds)) {
-            if (mesg_recv(STDIN_FILENO, &mesg) < 1)
-                goto error;
+            retval = mesg_recv(STDIN_FILENO, &mesg);
+            if (retval == 0) goto cleanup;
+            if (retval <  0) goto error;
 
             hcfg_set(sess->cfg, CFGKEY_CURRENT_CLIENT, mesg.src_id);
             switch (mesg.type) {
