@@ -298,7 +298,7 @@ int strategy_cfg(hsignature_t *sig)
                           " configuration key.");
             return -1;
         }
-        if (reflect <= 0) {
+        if (reflect <= 0.0) {
             session_error("Configuration key " CFGKEY_REFLECT
                           " must be positive.");
             return -1;
@@ -313,9 +313,9 @@ int strategy_cfg(hsignature_t *sig)
                           " configuration key.");
             return -1;
         }
-        if (reflect <= 1) {
+        if (expand <= reflect) {
             session_error("Configuration key " CFGKEY_EXPAND
-                          " must be greater than 1.0.");
+                          " must be greater than the reflect coefficient.");
             return -1;
         }
     }
@@ -328,7 +328,7 @@ int strategy_cfg(hsignature_t *sig)
                           " configuration key.");
             return -1;
         }
-        if (reflect <= 0 || reflect >= 1) {
+        if (contract <= 0.0 || contract >= 1.0) {
             session_error("Configuration key " CFGKEY_CONTRACT
                           " must be between 0.0 and 1.0 (exclusive).");
             return -1;
@@ -343,7 +343,7 @@ int strategy_cfg(hsignature_t *sig)
                           " configuration key.");
             return -1;
         }
-        if (reflect <= 0 || reflect >= 1) {
+        if (shrink <= 0.0 || shrink >= 1.0) {
             session_error("Configuration key " CFGKEY_SHRINK
                           " must be between 0.0 and 1.0 (exclusive).");
             return -1;

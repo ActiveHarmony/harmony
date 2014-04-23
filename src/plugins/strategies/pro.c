@@ -108,7 +108,6 @@ reject_method_t reject_type  = REJECT_METHOD_PENALTY;
 
 double reflect  = 1.0;
 double expand   = 2.0;
-double contract = 0.5;
 double shrink   = 0.5;
 double fval_tol = 1e-4;
 double size_tol;
@@ -273,7 +272,7 @@ int strategy_cfg(hsignature_t *sig)
                           " configuration key.");
             return -1;
         }
-        if (reflect <= 0) {
+        if (reflect <= 0.0) {
             session_error("Configuration key " CFGKEY_REFLECT
                           " must be positive.");
             return -1;
@@ -288,24 +287,9 @@ int strategy_cfg(hsignature_t *sig)
                           " configuration key.");
             return -1;
         }
-        if (reflect <= 1) {
+        if (expand <= reflect) {
             session_error("Configuration key " CFGKEY_EXPAND
-                          " must be greater than 1.0.");
-            return -1;
-        }
-    }
-
-    cfgval = session_getcfg(CFGKEY_CONTRACT);
-    if (cfgval) {
-        contract = strtod(cfgval, &endp);
-        if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_CONTRACT
-                          " configuration key.");
-            return -1;
-        }
-        if (reflect <= 0 || reflect >= 1) {
-            session_error("Configuration key " CFGKEY_CONTRACT
-                          " must be between 0.0 and 1.0 (exclusive).");
+                          " must be greater than the reflect coefficient.");
             return -1;
         }
     }
@@ -318,7 +302,7 @@ int strategy_cfg(hsignature_t *sig)
                           " configuration key.");
             return -1;
         }
-        if (reflect <= 0 || reflect >= 1) {
+        if (shrink <= 0.0 || shrink >= 1.0) {
             session_error("Configuration key " CFGKEY_SHRINK
                           " must be between 0.0 and 1.0 (exclusive).");
             return -1;
