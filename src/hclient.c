@@ -448,6 +448,8 @@ int harmony_leave(hdesc_t *hdesc)
         hdesc->errstr = "Internal memory allocation error.";
         return -1;
     }
+    hdesc->ptr_len = 0;
+    hdesc->best.id = -1;
 
     return 0;
 }
