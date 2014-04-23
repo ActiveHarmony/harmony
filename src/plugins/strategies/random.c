@@ -52,7 +52,6 @@ hpoint_t best;
 double   best_perf;
 
 /* Forward function definitions. */
-int strategy_cfg(void);
 
 /* Variables to track current search state. */
 vertex_t *curr;
@@ -66,9 +65,6 @@ int strategy_init(hsignature_t *sig)
         session_error("Could not initialize vertex library.");
         return -1;
     }
-
-    if (strategy_cfg() != 0)
-        return -1;
 
     best = HPOINT_INITIALIZER;
     best_perf = INFINITY;
@@ -85,21 +81,6 @@ int strategy_init(hsignature_t *sig)
                       CFGKEY_STRATEGY_CONVERGED " config variable.");
         return -1;
     }
-    return 0;
-}
-
-int strategy_cfg(void)
-{
-    const char *cfgstr;
-
-    cfgstr = session_getcfg(CFGKEY_RANDOM_SEED);
-    if (cfgstr && *cfgstr) {
-        srand(atoi(cfgstr));
-    }
-    else {
-        srand(time(NULL));
-    }
-
     return 0;
 }
 

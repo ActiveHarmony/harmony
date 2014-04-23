@@ -33,6 +33,7 @@
 #include <strings.h>
 #include <errno.h>
 #include <dlfcn.h>
+#include <time.h>
 #include <math.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -102,6 +103,7 @@ int lstack_cap = 0;
 /* ------------------------------
  * Forward function declarations.
  */
+int init_session();
 int generate_trial(void);
 int plugin_workflow(int trial_idx);
 int workflow_transition(int trial_idx);
@@ -151,7 +153,6 @@ int main(int argc, char **argv)
     struct stat sb;
     int i, retval;
     fd_set ready_fds;
-    const char *ptr;
     hmesg_t mesg = HMESG_INITIALIZER;
     hmesg_t session_mesg = HMESG_INITIALIZER;
 
@@ -172,19 +173,7 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    /* Initialize data structures. */
-    pollstate = &polltime;
-    FD_ZERO(&fds);
-    FD_SET(STDIN_FILENO, &fds);
-    maxfd = STDIN_FILENO;
-
-    if (array_grow(&cb, &cb_cap, sizeof(callback_t)) < 0)
-        goto error;
-
-    if (array_grow(&lstack, &lstack_cap, sizeof(layer_t)) < 0)
-        goto error;
-
-    /* Receive initial session message. */
+    /* Receive the initial session message. */
     mesg.type = HMESG_SESSION;
     if (mesg_recv(STDIN_FILENO, &session_mesg) < 1) {
         mesg.data.string = "Socket or deserialization error";
@@ -198,18 +187,12 @@ int main(int argc, char **argv)
         goto error;
     }
 
-    /* Load and initialize the strategy code object. */
+    /* Initialize the session. */
     sess = &session_mesg.data.session;
-
-    ptr = hcfg_get(sess->cfg, CFGKEY_SESSION_STRATEGY);
-    if (load_strategy(ptr) < 0)
+    if (init_session() != 0)
         goto error;
 
-    /* Load and initialize requested layer's. */
-    ptr = hcfg_get(sess->cfg, CFGKEY_SESSION_LAYERS);
-    if (ptr && load_layers(ptr) < 0)
-        goto error;
-
+    /* Send the initial session message acknowledgment. */
     mesg.dest   = session_mesg.dest;
     mesg.type   = session_mesg.type;
     mesg.status = HMESG_STATUS_OK;
@@ -218,28 +201,6 @@ int main(int argc, char **argv)
         errmsg = session_mesg.data.string;
         goto error;
     }
-
-    ptr = hcfg_get(sess->cfg, CFGKEY_PER_CLIENT_STORAGE);
-    if (ptr) {
-        per_client = atoi(ptr);
-        if (per_client < 1) {
-            errmsg = "Invalid config value for " CFGKEY_PER_CLIENT_STORAGE ".";
-            goto error;
-        }
-    }
-
-    retval = 0;
-    ptr = hcfg_get(sess->cfg, CFGKEY_CLIENT_COUNT);
-    if (ptr) {
-        retval = atoi(ptr);
-        if (retval < 1) {
-            errmsg = "Invalid config value for " CFGKEY_CLIENT_COUNT ".";
-            goto error;
-        }
-        retval *= per_client;
-    }
-    if (extend_lists(retval) != 0)
-        goto error;
 
     while (1) {
         flow.status = HFLOW_ACCEPT;
@@ -291,7 +252,10 @@ int main(int argc, char **argv)
   error:
     mesg.status = HMESG_STATUS_FAIL;
     mesg.data.string = errmsg;
-    mesg_send(STDIN_FILENO, &mesg);
+    if (mesg_send(STDIN_FILENO, &mesg) < 1) {
+        fprintf(stderr, "%s: Error sending error message: %s\n",
+                argv[0], mesg.data.string);
+    }
 
   cleanup:
     for (i = lstack_len - 1; i >= 0; --i) {
@@ -302,6 +266,80 @@ int main(int argc, char **argv)
     hmesg_fini(&session_mesg);
     hmesg_fini(&mesg);
     return retval;
+}
+
+int init_session(void)
+{
+    const char *ptr;
+    int count;
+    long seed;
+
+    /* Before anything else, control the random seeds. */
+    ptr = hcfg_get(sess->cfg, CFGKEY_RANDOM_SEED);
+    seed = (ptr && *ptr) ? atol(ptr) : time(NULL);
+    srand((int) seed);
+    srand48(seed);
+
+    /* Initialize global data structures. */
+    pollstate = &polltime;
+    FD_ZERO(&fds);
+    FD_SET(STDIN_FILENO, &fds);
+    maxfd = STDIN_FILENO;
+
+    if (array_grow(&cb, &cb_cap, sizeof(callback_t)) != 0) {
+        errmsg = "Error allocating callback vector.";
+        return -1;
+    }
+
+    if (array_grow(&lstack, &lstack_cap, sizeof(layer_t)) != 0) {
+        errmsg = "Error allocating processing layer stack.";
+        return -1;
+    }
+
+    /* Determine the number of trials to prepare per-client. */
+    ptr = hcfg_get(sess->cfg, CFGKEY_PER_CLIENT_STORAGE);
+    if (ptr) {
+        per_client = atoi(ptr);
+        if (per_client < 1) {
+            errmsg = "Invalid config value for " CFGKEY_PER_CLIENT_STORAGE ".";
+            return -1;
+        }
+    }
+
+    /* Determine the number of clients to expect. */
+    ptr = hcfg_get(sess->cfg, CFGKEY_CLIENT_COUNT);
+    if (ptr) {
+        count = atoi(ptr);
+        if (count < 1) {
+            errmsg = "Invalid config value for " CFGKEY_CLIENT_COUNT ".";
+            return -1;
+        }
+        count *= per_client;
+    }
+    else {
+        /* Otherwise, make sure this key exists. */
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d", DEFAULT_CLIENT_COUNT);
+        if (hcfg_set(sess->cfg, CFGKEY_CLIENT_COUNT, buf) != 0) {
+            errmsg = "Error setting default client count.";
+            return -1;
+        }
+    }
+
+    /* Load and initialize the strategy code object. */
+    ptr = hcfg_get(sess->cfg, CFGKEY_SESSION_STRATEGY);
+    if (load_strategy(ptr) < 0)
+        return -1;
+
+    /* Load and initialize requested layer's. */
+    ptr = hcfg_get(sess->cfg, CFGKEY_SESSION_LAYERS);
+    if (ptr && load_layers(ptr) < 0)
+        return -1;
+
+    if (extend_lists(count) != 0)
+        return -1;
+
+    return 0;
 }
 
 int generate_trial(void)
