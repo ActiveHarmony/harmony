@@ -33,6 +33,8 @@
 #include "session-core.h"
 #include "hsignature.h"
 #include "hpoint.h"
+#include "hperf.h"
+#include "defaults.h"
 
 #include <stdio.h>
 #include <time.h>
@@ -91,7 +93,7 @@ int logger_analyze(hflow_t *flow, htrial_t *trial)
 
     fprintf(fd, "Point #%d: (", pt->id);
     for (i = 0; i < pt->n; ++i) {
-        if (i > 0) fprintf(fd, ", ");
+        if (i > 0) fprintf(fd, ",");
 
         switch (pt->val[i].type) {
         case HVAL_INT:  fprintf(fd, "%ld", pt->val[i].value.i); break;
@@ -102,7 +104,17 @@ int logger_analyze(hflow_t *flow, htrial_t *trial)
             return -1;
         }
     }
-    fprintf(fd, ") = %lf\n", trial->perf);
+    fprintf(fd, ") ");
+
+    if (trial->perf->n > 1) {
+        fprintf(fd, "= (");
+        for (i = 0; i < trial->perf->n; ++i) {
+            if (i > 0) fprintf(fd, ",");
+            fprintf(fd, "%lf", trial->perf->p[i]);
+        }
+        fprintf(fd, ") ");
+    }
+    fprintf(fd, "=> %lf\n", hperf_unify(trial->perf));
 
     flow->status = HFLOW_ACCEPT;
     return 0;

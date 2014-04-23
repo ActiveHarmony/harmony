@@ -56,7 +56,7 @@ void hmesg_scrub(hmesg_t *mesg)
 
     case HMESG_REPORT:
         if (mesg->status == HMESG_STATUS_REQ)
-            hpoint_fini(&mesg->data.fetch.cand);
+            hperf_fini(mesg->data.report.perf);
         break;
 
     default:
@@ -170,13 +170,12 @@ int hmesg_serialize(hmesg_t *mesg)
 
         case HMESG_REPORT:
             if (mesg->status == HMESG_STATUS_REQ) {
-                count = hpoint_serialize(&buf, &buflen,
-                                         &mesg->data.report.cand);
+                count = snprintf_serial(&buf, &buflen, "%d ",
+                                        mesg->data.report.cand_id);
                 if (count < 0) goto error;
                 total += count;
 
-                count = snprintf_serial(&buf, &buflen, "%la ",
-                                        mesg->data.report.perf);
+                count = hperf_serialize(&buf, &buflen, mesg->data.report.perf);
                 if (count < 0) goto error;
                 total += count;
             }
@@ -311,15 +310,14 @@ int hmesg_deserialize(hmesg_t *mesg)
 
         case HMESG_REPORT:
             if (mesg->status == HMESG_STATUS_REQ) {
-                mesg->data.fetch.cand = HPOINT_INITIALIZER;
-                count = hpoint_deserialize(&mesg->data.report.cand,
-                                           buf + total);
-                if (count < 0) goto error;
+                if (sscanf(buf + total, " %d%n",
+                           &mesg->data.report.cand_id, &count) < 1)
+                    goto invalid;
                 total += count;
 
-                if (sscanf(buf + total, " %la%n",
-                           &mesg->data.report.perf, &count) < 1)
-                    goto invalid;
+                count = hperf_deserialize(&mesg->data.report.perf,
+                                          buf + total);
+                if (count < 0) goto error;
                 total += count;
             }
             break;

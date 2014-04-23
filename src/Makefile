@@ -8,6 +8,7 @@ CPPFLAGS=-D_ISOC99_SOURCE -D_XOPEN_SOURCE=500
 SHR_SRCS=hcfg.c \
          hmesg.c \
          hpoint.c \
+         hperf.c \
          hsession.c \
          hsignature.c \
          hsockutil.c \

@@ -38,6 +38,7 @@
 
 #include "strategy.h"
 #include "session-core.h"
+#include "hperf.h"
 #include "hutil.h"
 #include "hcfg.h"
 #include "defaults.h"
@@ -179,8 +180,10 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
  */
 int strategy_analyze(htrial_t *trial)
 {
-    if (best_perf > trial->perf) {
-        best_perf = trial->perf;
+    double perf = hperf_unify(trial->perf);
+
+    if (best_perf > perf) {
+        best_perf = perf;
         if (hpoint_copy(&best, &trial->point) != 0) {
             session_error("Internal error: Could not copy point.");
             return -1;

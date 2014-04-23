@@ -19,6 +19,7 @@
 
 #include "libvertex.h"
 #include "hpoint.h"
+#include "hperf.h"
 #include "hsession.h"
 #include "session-core.h"
 #include "defaults.h"
@@ -41,7 +42,7 @@ int    rotate(simplex_t *s);
 int    rparam_sort(const void *_a, const void *_b);
 
 /* Global variables which must be set via libvertex_init(). */
-int N;
+int N, P;
 hrange_t *range;
 vertex_t *vmin;
 vertex_t *vmax;
@@ -51,6 +52,7 @@ int libvertex_init(hsignature_t *sig)
 {
     int i;
 
+    P = atoi( session_getcfg(CFGKEY_PERF_COUNT) );
     N = sig->range_len;
     range = sig->range;
     sizeof_vertex = sizeof(vertex_t) + N * sizeof(double);
@@ -68,7 +70,7 @@ int libvertex_init(hsignature_t *sig)
         default: return -1;
         }
     }
-    vmin->perf = INFINITY;
+    hperf_reset(vmin->perf);
 
     free(vmax);
     vmax = vertex_alloc();
@@ -83,7 +85,7 @@ int libvertex_init(hsignature_t *sig)
         default: return -1;
         }
     }
-    vmax->perf = INFINITY;
+    hperf_reset(vmax->perf);
 
     return 0;
 }
@@ -96,15 +98,21 @@ vertex_t *vertex_alloc()
     if (!v)
         return NULL;
     v->id = 0;
-    v->perf = INFINITY;
-
+    v->perf = hperf_alloc(P);
+    if (!v->perf) {
+        free(v);
+        return NULL;
+    }
     return v;
 }
 
 int vertex_copy(vertex_t *dst, const vertex_t *src)
 {
-    if (dst != src)
-        memcpy(dst, src, sizeof_vertex);
+    if (dst != src) {
+        dst->id = src->id;
+        memcpy(dst->term, src->term, N * sizeof(double));
+        hperf_copy(dst->perf, src->perf);
+    }
     return 0;
 }
 
@@ -131,7 +139,7 @@ int vertex_center(vertex_t *v)
     for (i = 0; i < N; ++i)
         v->term[i] += (vmax->term[i] - vmin->term[i]) / 2;
 
-    v->perf = INFINITY;
+    hperf_reset(v->perf);
     return 0;
 }
 
@@ -141,7 +149,7 @@ int vertex_percent(vertex_t *v, double percent)
     for (i = 0; i < N; ++i)
         v->term[i] = (vmax->term[i] - vmin->term[i]) * percent;
 
-    v->perf = INFINITY;
+    hperf_reset(v->perf);
     return 0;
 }
 
@@ -214,7 +222,7 @@ int vertex_rand_trim(vertex_t *v, double trim_percentage)
             return -1;
         }
     }
-    v->perf = INFINITY;
+    hperf_reset(v->perf);
     return 0;
 }
 
@@ -238,7 +246,7 @@ void vertex_transform(const vertex_t *src, const vertex_t *wrt,
     for (i = 0; i < N; ++i)
         result->term[i] =
             coefficient * src->term[i] + (1.0 - coefficient) * wrt->term[i];
-    result->perf = INFINITY;
+    hperf_reset(result->perf);
 }
 
 int vertex_outofbounds(const vertex_t *v)
@@ -287,7 +295,7 @@ int vertex_regrid(vertex_t *v)
     }
 
     v->id = 0;
-    v->perf = INFINITY;
+    hperf_reset(v->perf);
     return 0;
 }
 
@@ -409,21 +417,29 @@ simplex_t *simplex_alloc(int m)
     s->len = m;
 
     buf = (unsigned char *) malloc(m * sizeof_vertex);
-    for (i = 0; i < m; ++i)
+    for (i = 0; i < m; ++i) {
         s->vertex[i] = (vertex_t *)(buf + i * sizeof_vertex);
+        s->vertex[i]->perf = hperf_alloc(P);
+        if (!s->vertex[i]->perf)
+            return NULL;
+    }
 
     return s;
 }
 
 int simplex_copy(simplex_t *dst, const simplex_t *src)
 {
+    int i;
+
     if (dst == src)
         return 0;
 
     if (dst->len != src->len)
         return -1;
 
-    memcpy(dst->vertex[0], src->vertex[0], src->len * sizeof_vertex);
+    for (i = 0; i < src->len; ++i)
+        vertex_copy(dst->vertex[i], src->vertex[i]);
+
     return 0;
 }
 
@@ -447,22 +463,27 @@ void simplex_centroid(const simplex_t *s, vertex_t *v)
     int i, j, count;
 
     count = 0;
-    memset(v, 0, sizeof_vertex);
+    memset(v->term, 0, N * sizeof(double));
+    memset(v->perf->p, 0, P * sizeof(double));
 
     for (i = 0; i < s->len; ++i) {
-        v->perf += s->vertex[i]->perf;
         if (s->vertex[i]->id < 0)
             continue;
 
         for (j = 0; j < N; ++j)
             v->term[j] += s->vertex[i]->term[j];
 
+        for (j = 0; j < P; ++j)
+            v->perf->p[j] += s->vertex[i]->perf->p[j];
+
         ++count;
     }
 
-    v->perf /= s->len;
     for (j = 0; j < N; ++j)
         v->term[j] /= count;
+
+    for (j = 0; j < P; ++j)
+        v->perf->p[j] /= count;
 }
 
 void simplex_transform(const simplex_t *src, const vertex_t *wrt,
@@ -617,8 +638,9 @@ void unit_simplex(simplex_t *s)
 
     // Clear the simplex.
     for (i = 0; i < s->len; ++i) {
-        memset(s->vertex[i], 0, sizeof_vertex);
-        s->vertex[i]->perf = INFINITY;
+        s->vertex[i]->id = 0;
+        memset(s->vertex[i]->term, 0, N * sizeof(double));
+        hperf_reset(s->vertex[i]->perf);
     }
 
     // Calculate values for the first N+1 vertices.

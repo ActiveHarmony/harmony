@@ -44,6 +44,7 @@
  * Session configuration variables.
  */
 hsession_t *sess;
+int perf_count = DEFAULT_PERF_COUNT;
 int per_client = DEFAULT_PER_CLIENT;
 int num_clients = 0;
 
@@ -103,7 +104,7 @@ int lstack_cap = 0;
 /* ------------------------------
  * Forward function declarations.
  */
-int init_session();
+int init_session(void);
 int generate_trial(void);
 int plugin_workflow(int trial_idx);
 int workflow_transition(int trial_idx);
@@ -296,6 +297,14 @@ int init_session(void)
         return -1;
     }
 
+    /* Insure the output dimensionality exists in the config system. */
+    ptr = hcfg_get(sess->cfg, CFGKEY_PERF_COUNT);
+    if (!ptr) {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d", DEFAULT_PERF_COUNT);
+        hcfg_set(sess->cfg, CFGKEY_PERF_COUNT, buf);
+    }
+
     /* Determine the number of trials to prepare per-client. */
     ptr = hcfg_get(sess->cfg, CFGKEY_PER_CLIENT_STORAGE);
     if (ptr) {
@@ -345,22 +354,24 @@ int init_session(void)
 int generate_trial(void)
 {
     int idx;
-    hpoint_t *point;
+    htrial_t *trial;
 
     /* Find a free point. */
     for (idx = 0; idx < pending_cap; ++idx) {
-        if (pending[idx].point.id == -1) {
-            point = (hpoint_t *) &pending[idx].point;
+        trial = &pending[idx];
+        if (trial->point.id == -1)
             break;
-        }
     }
     if (idx == pending_cap) {
         errmsg = "Internal error: Point generation overflow.";
         return -1;
     }
 
+    /* Reset the performance for this trial. */
+    hperf_reset(trial->perf);
+
     /* Call strategy generation routine. */
-    if (strategy_generate(&flow, point) != 0)
+    if (strategy_generate(&flow, (hpoint_t *)&trial->point) != 0)
         return -1;
 
     if (flow.status == HFLOW_WAIT) {
@@ -368,12 +379,10 @@ int generate_trial(void)
         pollstate = NULL;
         return 0;
     }
+    ++pending_len;
 
     /* Begin generation workflow for new point. */
-    ++pending_len;
-    pending[idx].perf = INFINITY;
     curr_layer = 1;
-
     return plugin_workflow(idx);
 }
 
@@ -408,15 +417,13 @@ int plugin_workflow(int trial_idx)
     }
 
     if (curr_layer == 0) {
-        hpoint_t *point = (hpoint_t *) &trial->point;
-
         /* Completed analysis layers.  Send trial to strategy. */
         if (strategy_analyze(trial) != 0)
             return -1;
 
         /* Remove point data from pending list. */
-        hpoint_fini(point);
-        *point = HPOINT_INITIALIZER;
+        hpoint_fini( (hpoint_t *)&trial->point );
+        *(hpoint_t *)&trial->point = HPOINT_INITIALIZER;
         --pending_len;
 
         /* Point generation attempts may begin again. */
@@ -708,10 +715,12 @@ int handle_fetch(hmesg_t *mesg)
 int handle_report(hmesg_t *mesg)
 {
     int idx;
+    htrial_t *trial;
 
     /* Find the associated trial in the pending list. */
     for (idx = 0; idx < pending_cap; ++idx) {
-        if (pending[idx].point.id == mesg->data.report.cand.id)
+        trial = &pending[idx];
+        if (trial->point.id == mesg->data.report.cand_id)
             break;
     }
     if (idx == pending_cap) {
@@ -720,7 +729,7 @@ int handle_report(hmesg_t *mesg)
     }
 
     /* Update performance in our local records. */
-    pending[idx].perf = mesg->data.report.perf;
+    hperf_copy(trial->perf, mesg->data.report.perf);
 
     /* Begin the workflow at the outermost analysis layer. */
     curr_layer = -lstack_len;
@@ -936,6 +945,12 @@ int extend_lists(int target_cap)
     for (i = orig_cap; i < pending_cap; ++i) {
         hpoint_t *point = (hpoint_t *) &pending[i].point;
         *point = HPOINT_INITIALIZER;
+        pending[i].perf = hperf_alloc(perf_count);
+        if (!pending[i].perf) {
+            pending_cap = orig_cap;
+            errmsg = "Internal error: Could not allocate perf structure.";
+            return -1;
+        }
         ready[i] = -1;
     }
     return 0;

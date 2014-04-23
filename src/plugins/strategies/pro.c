@@ -398,7 +398,7 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
             /* Apply an infinite penalty to the invalid point and
              * allow the algorithm to determine the next point to try.
              */
-            test->vertex[i]->perf = INFINITY;
+            hperf_reset(test->vertex[i]->perf);
             ++reported;
 
             if (reported == simplex_size) {
@@ -445,6 +445,7 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
 int strategy_analyze(htrial_t *trial)
 {
     int i;
+    double perf = hperf_unify(trial->perf);
 
     for (i = 0; i < simplex_size; ++i) {
         if (test->vertex[i]->id == trial->point.id)
@@ -456,8 +457,8 @@ int strategy_analyze(htrial_t *trial)
     }
 
     ++reported;
-    test->vertex[i]->perf = trial->perf;
-    if (test->vertex[i]->perf < test->vertex[best_test]->perf)
+    hperf_copy(test->vertex[i]->perf, trial->perf);
+    if (hperf_cmp(test->vertex[i]->perf, test->vertex[best_test]->perf) < 0)
         best_test = i;
 
     if (reported == simplex_size) {
@@ -470,8 +471,8 @@ int strategy_analyze(htrial_t *trial)
     }
 
     /* Update the best performing point, if necessary. */
-    if (best_perf > trial->perf) {
-        best_perf = trial->perf;
+    if (best_perf > perf) {
+        best_perf = perf;
         if (hpoint_copy(&best, &trial->point) != 0) {
             session_error( strerror(errno) );
             return -1;
@@ -524,7 +525,9 @@ int pro_next_state(const simplex_t *input, int best_in)
         break;
 
     case SIMPLEX_STATE_REFLECT:
-        if (input->vertex[best_in]->perf < base->vertex[best_base]->perf) {
+        if (hperf_cmp(input->vertex[best_in]->perf,
+                      base->vertex[best_base]->perf) < 0)
+        {
             /* Reflected simplex has best known performance.
              * Accept the reflected simplex, and prepare a trial expansion.
              */
@@ -541,7 +544,9 @@ int pro_next_state(const simplex_t *input, int best_in)
         break;
 
     case SIMPLEX_STATE_EXPAND_ONE:
-        if (input->vertex[0]->perf < base->vertex[best_base]->perf) {
+        if (hperf_cmp(input->vertex[0]->perf,
+                      base->vertex[best_base]->perf) < 0)
+        {
             /* Trial expansion has found the best known vertex thus far.
              * We are now free to expand the entire reflected simplex.
              */
@@ -557,7 +562,9 @@ int pro_next_state(const simplex_t *input, int best_in)
         break;
 
     case SIMPLEX_STATE_EXPAND_ALL:
-        if (input->vertex[best_in]->perf < base->vertex[best_base]->perf) {
+        if (hperf_cmp(input->vertex[best_in]->perf,
+                      base->vertex[best_base]->perf) < 0)
+        {
             /* Expanded simplex has found the best known vertex thus far.
              * Accept the expanded simplex as the reference simplex. */
             simplex_copy(base, input);
@@ -631,7 +638,7 @@ int pro_next_simplex(simplex_t *output)
 void check_convergence(void)
 {
     int i;
-    double fval_err, size_max, dist;
+    double fval_err, size_max, avg_perf;
     static vertex_t *centroid;
 
     if (!centroid)
@@ -641,17 +648,18 @@ void check_convergence(void)
         goto converged;
 
     simplex_centroid(base, centroid);
+    avg_perf = hperf_unify(centroid->perf);
 
-    fval_err = 0;
+    fval_err = 0.0;
     for (i = 0; i < simplex_size; ++i) {
-        fval_err += ((base->vertex[i]->perf - centroid->perf) *
-                     (base->vertex[i]->perf - centroid->perf));
+        double vert_perf = hperf_unify(base->vertex[i]->perf);
+        fval_err += ((vert_perf - avg_perf) * (vert_perf - avg_perf));
     }
     fval_err /= simplex_size;
 
-    size_max = 0;
+    size_max = 0.0;
     for (i = 0; i < simplex_size; ++i) {
-        dist = vertex_dist(base->vertex[i], centroid);
+        double dist = vertex_dist(base->vertex[i], centroid);
         if (size_max < dist)
             size_max = dist;
     }

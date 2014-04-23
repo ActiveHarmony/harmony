@@ -22,6 +22,7 @@
 
 #include "hsignature.h"
 #include "hpoint.h"
+#include "hperf.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,7 +30,7 @@ extern "C" {
 
 typedef struct vertex {
     int id;
-    double perf;
+    hperf_t *perf;
     double term[];
 } vertex_t;
 

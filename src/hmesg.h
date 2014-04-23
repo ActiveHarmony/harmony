@@ -21,6 +21,7 @@
 #define __HMESG_H__
 
 #include "hpoint.h"
+#include "hperf.h"
 #include "hsession.h"
 
 /* Message header layout:
@@ -41,7 +42,7 @@
 #define HMESG_HDRLEN    10         /* int32 + char[4] + char[2]             */
 #define HMESG_OLD_MAGIC 0x5261793a /* Magic number for packets (pre v4.5).  */
 #define HMESG_MAGIC     0x5261797c /* Magic number for packet.              */
-#define HMESG_VERSION   0x04       /* Protocol version.                     */
+#define HMESG_VERSION   0x05       /* Protocol version.                     */
 
 #ifdef __cplusplus
 extern "C" {
@@ -88,8 +89,8 @@ typedef struct {
             hpoint_t best;
         } fetch;
         struct mesg_report {
-            hpoint_t cand;
-            double perf;
+            int cand_id;
+            hperf_t *perf;
         } report;
         const char *string;
     } data;

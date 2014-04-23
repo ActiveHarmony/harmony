@@ -33,7 +33,7 @@ typedef struct session_state {
     int fd;
     int *client;
     int client_len, client_cap;
-    hpoint_t best;
+    hpoint_t *best;
     double best_perf;
 
     /* Fields used by the HTTP server. */
@@ -41,6 +41,8 @@ typedef struct session_state {
     hsignature_t sig;
     http_log_t *log;
     int log_len, log_cap;
+    hpoint_t *fetched;
+    int fetched_len, fetched_cap;
     int reported;
 } session_state_t;
 

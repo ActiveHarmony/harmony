@@ -21,6 +21,7 @@
 #include "httpsvr.h"
 #include "hcfg.h"
 #include "hmesg.h"
+#include "hperf.h"
 #include "hsockutil.h"
 #include "hutil.h"
 #include "defaults.h"
@@ -450,7 +451,8 @@ int handle_unknown_connection(int fd)
 
 int handle_client_socket(int fd)
 {
-    int idx, retval;
+    int idx, i, retval;
+    double perf;
     session_state_t *sess;
 
     sess = NULL;
@@ -510,7 +512,14 @@ int handle_client_socket(int fd)
         /* Before we forward this report to the session-core process,
          * add it to our HTTP log.
          */
-        if (mesg_in.data.report.cand.id == -1)
+        if (mesg_in.data.report.cand_id == -1)
+            break;
+
+        for (i = 0; i < sess->fetched_len; ++i) {
+            if (sess->fetched[i].id == mesg_in.data.report.cand_id)
+                break;
+        }
+        if (i == sess->fetched_len)
             break;
 
         if (sess->log_len == sess->log_cap) {
@@ -525,22 +534,31 @@ int handle_client_socket(int fd)
             goto error;
 
         if (hpoint_copy(&sess->log[sess->log_len].pt,
-                        &mesg_in.data.report.cand) < 0)
+                        &sess->fetched[i]) != 0)
         {
             perror("Internal error copying hpoint to HTTP log");
             goto error;
         }
-        sess->log[sess->log_len].perf = mesg_in.data.report.perf;
-        ++sess->log_len;
+
+        perf = hperf_unify(mesg_in.data.report.perf);
+        sess->log[sess->log_len].perf = perf;
 
         /* Also update our best point data, if necessary. */
-        if (sess->best_perf > mesg_in.data.report.perf) {
-            if (hpoint_copy(&sess->best, &mesg_in.data.report.cand) < 0) {
-                perror("Internal error copying best point information");
-                goto error;
-            }
-            sess->best_perf = mesg_in.data.report.perf;
+        if (sess->best_perf > perf) {
+            sess->best_perf = perf;
+            sess->best = &sess->log[sess->log_len].pt;
         }
+        ++sess->log_len;
+
+        /* Remove point from fetched list. */
+        if (hpoint_copy(&sess->fetched[i],
+                        &sess->fetched[sess->fetched_len]) != 0)
+        {
+            perror("Internal error copying hpoint within fetch log");
+            goto error;
+        }
+        --sess->fetched_len;
+
         break;
 
     default:
@@ -588,7 +606,28 @@ int handle_session_socket(int idx)
     case HMESG_JOIN:
     case HMESG_SETCFG:
     case HMESG_GETCFG:
+        break;
+
     case HMESG_FETCH:
+        if (mesg_in.status == HMESG_STATUS_OK) {
+            /* Log this point before we forward it to the client. */
+            if (sess->fetched_len == sess->fetched_cap) {
+                if (array_grow(&sess->fetched, &sess->fetched_cap,
+                               sizeof(hpoint_t *)) < 0)
+                {
+                    perror("Could not grow fetch log");
+                    goto error;
+                }
+            }
+
+            if (hpoint_copy(&sess->fetched[sess->fetched_len],
+                            &mesg_in.data.fetch.cand) < 0)
+            {
+                perror("Internal error copying hpoint to HTTP log");
+                goto error;
+            }
+            ++sess->fetched_len;
+        }
         break;
 
     case HMESG_REPORT:
@@ -651,7 +690,7 @@ session_state_t *session_open(hmesg_t *mesg)
         return NULL;
 
     sess->client_len = 0;
-    sess->best = HPOINT_INITIALIZER;
+    sess->best = NULL;
     sess->best_perf = INFINITY;
 
     if (hcfg_merge(mesg->data.session.cfg, cfg) < 0) {
@@ -708,7 +747,6 @@ void session_close(session_state_t *sess)
 
     free(sess->name);
     sess->name = NULL;
-    hpoint_fini(&sess->best);
 
     for (i = 0; i < sess->client_cap; ++i) {
         if (sess->client[i] != -1)

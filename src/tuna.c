@@ -221,7 +221,7 @@ int main(int argc, char **argv)
         }
 
         /* Update the performance result */
-        if (harmony_report(hdesc, perf) < 0) {
+        if (harmony_report(hdesc, &perf) < 0) {
             fprintf(stderr, "Failed to report performance to server.\n");
             goto cleanup;
         }
