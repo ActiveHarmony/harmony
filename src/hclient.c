@@ -246,8 +246,9 @@ int harmony_launch(hdesc_t *hdesc, const char *host, int port)
 
     /* Apply argv configuration directives now, if necessary. */
     for (i = 0; i < hdesc->cmd_len; ++i) {
-        char *key, *val;
-        if (hcfg_parse(hdesc->cmd[i], &key, &val) == NULL) {
+        char *key, *val, *cpy;
+        cpy = stralloc(hdesc->cmd[i]);
+        if (hcfg_parse(cpy, &key, &val) == NULL) {
             /* This should never fail, but just in case. */
             hdesc->errstr = "Internal error parsing argv config directive.";
             return -1;
@@ -256,6 +257,7 @@ int harmony_launch(hdesc_t *hdesc, const char *host, int port)
             hdesc->errstr = "Internal error applying argv config directive.";
             return -1;
         }
+        free(cpy);
     }
 
     /* Prepare a Harmony message. */
@@ -411,8 +413,9 @@ int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *name)
     /* Apply argv configuration directives now, if necessary. */
     if (apply_argv) {
         for (i = 0; i < hdesc->cmd_len; ++i) {
-            char *key, *val;
-            if (hcfg_parse(hdesc->cmd[i], &key, &val)) {
+            char *key, *val, *cpy;
+            cpy = stralloc(hdesc->cmd[i]);
+            if (hcfg_parse(cpy, &key, &val)) {
                 /* This should never fail, but just in case. */
                 hdesc->errstr = "Error parsing argv config directive.";
                 return -1;
@@ -421,6 +424,7 @@ int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *name)
                 hdesc->errstr = "Error applying argv config directive.";
                 return -1;
             }
+            free(cpy);
         }
     }
     return 0;
