@@ -556,6 +556,18 @@ int harmony_fetch(hdesc_t *hdesc)
                 return -1;
             }
         }
+        else if(hdesc->mesg.data.fetch.best.id >= 0) {
+            /* busy messages now contain best point data */
+            if (hpoint_copy(&hdesc->curr, &hdesc->mesg.data.fetch.best) < 0) {
+                hdesc->errstr = "Internal error copying point data.";
+                return -1;
+            } 
+            /* update hdesc->best too */
+            if (hpoint_copy(&hdesc->best, &hdesc->mesg.data.fetch.best) < 0) {
+                hdesc->errstr = "Internal error copying point data.";
+                return -1;
+            }
+        }
         else {
             /* Server cannot provide a candidate point, and we have no
              * prior points to fall back upon.  Inform user by returning 0.

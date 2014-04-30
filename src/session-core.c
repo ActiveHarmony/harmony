@@ -644,9 +644,15 @@ int handle_fetch(hmesg_t *mesg)
     hpoint_t *best = &mesg->data.fetch.best;
     htrial_t *next;
 
-    /* If ready queue is empty, inform client that we're busy. */
+    /* If ready queue is empty, inform client that we're busy.
+       and let client know what the best point is */
     if (idx == -1) {
         mesg->status = HMESG_STATUS_BUSY;
+        *best = HPOINT_INITIALIZER;
+        if(strategy_best(best) != 0) {
+          return -1;
+        }
+        hpoint_copy(&mesg->data.fetch.best, best);
         return 0;
     }
     next = &pending[idx];
