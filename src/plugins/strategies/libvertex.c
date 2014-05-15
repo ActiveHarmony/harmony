@@ -42,11 +42,11 @@ int    rotate(simplex_t *s);
 int    rparam_sort(const void *_a, const void *_b);
 
 /* Global variables which must be set via libvertex_init(). */
-int N, P;
-hrange_t *range;
-vertex_t *vmin;
-vertex_t *vmax;
-long sizeof_vertex;
+static int N, P;
+static hrange_t *range;
+static vertex_t *vmin;
+static vertex_t *vmax;
+static long sizeof_vertex;
 
 int libvertex_init(hsignature_t *sig)
 {
@@ -535,7 +535,7 @@ int simplex_from_vertex(const vertex_t *v, double percent, simplex_t *s)
         return -1;
     }
 
-    /* Generate a simplex or unit length. */
+    /* Generate a simplex of unit length. */
     unit_simplex(s);
 
     /* Pseudo-randomly rotate the unit simplex. */

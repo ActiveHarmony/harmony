@@ -67,8 +67,6 @@ int        simplex_outofbounds(const simplex_t *s);
 int        simplex_regrid(simplex_t *s);
 int        simplex_from_vertex(const vertex_t *v, double percent,
                                simplex_t *s);
-int        simplex_from_vertex_fast(const vertex_t *v, double percent,
-                                    simplex_t *s);
 int        simplex_collapsed(const simplex_t *s);
 
 #ifdef __cplusplus
