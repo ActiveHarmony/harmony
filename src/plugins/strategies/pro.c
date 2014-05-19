@@ -565,7 +565,7 @@ int pro_next_state(const simplex_t *input, int best_in)
             /* Expanded vertex does not improve performance.
              * Revert to the (unexpanded) reflected simplex.
              */
-            best_base = best_in;
+            best_base = best_stash;
             state = SIMPLEX_STATE_REFLECT;
         }
         break;
