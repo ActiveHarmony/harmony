@@ -73,16 +73,21 @@ int strategy_init(hsignature_t *sig)
     if (strategy_cfg() != 0)
         return -1;
 
-    best = HPOINT_INITIALIZER;
-    best_perf = INFINITY;
-
-    curr = vertex_alloc();
     if (!curr) {
-        session_error("Could not allocate memory for testing vertex.");
-        return -1;
+        /* One time memory allocation and/or initialization. */
+        curr = vertex_alloc();
+        if (!curr) {
+            session_error("Could not allocate memory for testing vertex.");
+            return -1;
+        }
+        curr->id = 1;
+
+        best = HPOINT_INITIALIZER;
     }
+
+    /* Initialization for subsequent calls to strategy_init(). */
     vertex_min(curr);
-    curr->id = 1;
+    best_perf = INFINITY;
 
     if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
         session_error("Could not set "
