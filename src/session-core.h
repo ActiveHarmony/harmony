@@ -76,6 +76,14 @@ typedef int (*cb_func_t)(int fd, hflow_t *flow, int n, htrial_t **trial);
 int callback_generate(int fd, cb_func_t func);
 int callback_analyze(int fd, cb_func_t func);
 
+/* Interface for plugins to retrieve the best known configuration.
+ */
+int session_best(hpoint_t *best);
+
+/* Interface for plugins to trigger a restart of the search session.
+ */
+int session_restart(void);
+
 /* Central interface for shared configuration between pluggable modules.
  *
  * Requests through this interface will propagate through all

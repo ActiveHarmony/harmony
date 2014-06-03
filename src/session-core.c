@@ -967,7 +967,47 @@ const char *session_getcfg(const char *key)
 
 int session_setcfg(const char *key, const char *val)
 {
-    return hcfg_set(sess->cfg, key, val);
+    int i;
+
+    if (hcfg_set(sess->cfg, key, val) != 0)
+        return -1;
+
+    /* Make sure setcfg callbacks are triggered after the
+     * configuration has been set.  Otherwise, any subsequent
+     * calls to setcfg further down the stack will be nullified
+     * when we return to this frame.
+     */
+    if (strategy_setcfg && strategy_setcfg(key, val) != 0)
+        return -1;
+
+    for (i = 0; i < lstack_len; ++i)
+        if (lstack[i].setcfg && lstack[i].setcfg(key, val) != 0)
+            return -1;
+
+    return 0;
+}
+
+int session_best(hpoint_t *pt)
+{
+    return strategy_best(pt);
+}
+
+int session_restart(void)
+{
+    int i;
+
+    for (i = lstack_len - 1; i >= 0; --i)
+        if (lstack[i].fini && lstack[i].fini() != 0)
+            return -1;
+
+    if (strategy_init && strategy_init(&sess->sig) != 0)
+        return -1;
+
+    for (i = 0; i < lstack_len; ++i)
+        if (lstack[i].init && lstack[i].init(&sess->sig) != 0)
+            return -1;
+
+    return 0;
 }
 
 void session_error(const char *msg)
