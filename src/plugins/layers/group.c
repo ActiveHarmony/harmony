@@ -79,6 +79,7 @@ typedef struct group_def {
     int idx_len;
 } group_def_t;
 
+static char internal_restart_req;
 static int cap_max;
 static hval_t *locked_val, *hint_val;
 static group_def_t *glist;
@@ -90,8 +91,8 @@ int group_init(hsignature_t *sig)
 {
     const char *ptr;
 
-    if (glist_len != glist_curr) {
-        /* Ignore requests to initialize if mid-search. */
+    if (internal_restart_req) {
+        /* Ignore our own requests to re-initialize. */
         return 0;
     }
 
@@ -126,7 +127,7 @@ int group_init(hsignature_t *sig)
 
 int group_setcfg(const char *key, const char *val)
 {
-    int i;
+    int i, retval = 0;
 
     if (strcmp(key, CFGKEY_STRATEGY_CONVERGED) == 0 && val && *val == '1') {
         session_best(&best);
@@ -137,10 +138,13 @@ int group_setcfg(const char *key, const char *val)
             locked_val[idx] = best.val[idx];
         }
 
-        if (++glist_curr < glist_len)
-            return session_restart();
+        if (++glist_curr < glist_len) {
+            internal_restart_req = 1;
+            retval = session_restart();
+            internal_restart_req = 0;
+        }
     }
-    return 0;
+    return retval;
 }
 
 int group_generate(hflow_t *flow, htrial_t *trial)
