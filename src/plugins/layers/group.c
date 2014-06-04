@@ -20,6 +20,7 @@
 #include "session-core.h"
 #include "hsignature.h"
 #include "hpoint.h"
+#include "hutil.h"
 #include "defaults.h"
 
 #include <stdio.h>
@@ -43,16 +44,16 @@ typedef struct group_def {
 
 static int cap_max;
 static hval_t *locked_val, *hint_val;
-static group_def_t *group;
-static int group_len, group_curr;
+static group_def_t *glist;
+static int glist_len, glist_cap;
+static int glist_curr;
 static hpoint_t best;
 
 int group_init(hsignature_t *sig)
 {
     const char *ptr;
-    int i;
 
-    if (group_len != group_curr) {
+    if (glist_len != glist_curr) {
         /* Ignore requests to initialize if mid-search. */
         return 0;
     }
@@ -63,30 +64,16 @@ int group_init(hsignature_t *sig)
         return -1;
     }
 
-    /* For now, make enough room for the max possible number of groups. */
+    /* The maximum group size is the number of input ranges. */
     cap_max = sig->range_len;
-    group = (group_def_t *) malloc(sizeof(group_def_t) * cap_max);
-    if (!group) {
-        session_error("Could not allocate memory for group definition list.");
-        return -1;
-    }
 
-    for (i = 0; i < sig->range_len; ++i) {
-        /* For now, make enough room for the max possible parameter size. */
-        group[i].idx = (int *) malloc(sizeof(int) * cap_max);
-        if (!group[i].idx) {
-            session_error("Could not allocate memory index list.");
-            return -1;
-        }
-    }
-
-    locked_val = (hval_t *) calloc(sizeof(hval_t), cap_max);
+    locked_val = (hval_t *) calloc(cap_max, sizeof(hval_t));
     if (!locked_val) {
         session_error("Could not allocate memory for locked value list.");
         return -1;
     }
 
-    hint_val = (hval_t *) calloc(sizeof(hval_t), cap_max);
+    hint_val = (hval_t *) calloc(cap_max, sizeof(hval_t));
     if (!hint_val) {
         session_error("Could not allocate memory for hint value list.");
         return -1;
@@ -97,12 +84,7 @@ int group_init(hsignature_t *sig)
         return -1;
     }
 
-    if (parse_group(ptr) != 0) {
-        session_error("Parse error while processing GROUP_LIST.");
-        return -1;
-    }
-
-    return 0;
+    return parse_group(ptr);
 }
 
 int group_setcfg(const char *key, const char *val)
@@ -113,12 +95,12 @@ int group_setcfg(const char *key, const char *val)
         session_best(&best);
 
         /* Update locked values with converged group. */
-        for (i = 0; i < group[group_curr].idx_len; ++i) {
-            int idx = group[group_curr].idx[i];
+        for (i = 0; i < glist[glist_curr].idx_len; ++i) {
+            int idx = glist[glist_curr].idx[i];
             locked_val[idx] = best.val[idx];
         }
 
-        if (++group_curr < group_len)
+        if (++glist_curr < glist_len)
             return session_restart();
     }
     return 0;
@@ -128,7 +110,7 @@ int group_generate(hflow_t *flow, htrial_t *trial)
 {
     int i;
 
-    if (group_curr < group_len) {
+    if (glist_curr < glist_len) {
         hval_t *trial_val = trial->point.val;
 
         /* Initialize locked values, if needed. */
@@ -141,8 +123,8 @@ int group_generate(hflow_t *flow, htrial_t *trial)
         memcpy(hint_val, locked_val, sizeof(hval_t) * cap_max);
 
         /* Allow current group values from the trial point to pass through. */
-        for (i = 0; i < group[group_curr].idx_len; ++i) {
-            int idx = group[group_curr].idx[i];
+        for (i = 0; i < glist[glist_curr].idx_len; ++i) {
+            int idx = glist[glist_curr].idx[i];
             hint_val[idx] = trial_val[idx];
         }
 
@@ -164,42 +146,100 @@ int group_fini(void)
 {
     int i;
 
-    if (group_curr == group_len) {
-        for (i = 0; i < group_len; ++i)
-            free(group[i].idx);
-        free(group);
+    if (glist_curr == glist_len) {
+        for (i = 0; i < glist_len; ++i)
+            free(glist[i].idx);
+        free(glist);
     }
     return 0;
 }
 
 int parse_group(const char *buf)
 {
-    int i, j, count;
+    int i, j, count, success;
 
+    int *list = (int *) malloc(cap_max * sizeof(int));
+    char *seen = (char *) calloc(cap_max, sizeof(char));
+
+    if (!list || !seen) {
+        session_error("Error allocating memory for group parsing function");
+        return -1;
+    }
+
+    success = 0;
     for (i = 0; *buf != '\0'; ++i) {
         while (isspace(*buf)) ++buf;
         if (*buf != '(') break;
         ++buf;
 
-        for (j = 0; *buf != ')'; ++j) {
-            if (j == cap_max)
-                return -1;
-            if (sscanf(buf, " %d %n", &group[i].idx[j], &count) < 1)
-                return -1;
-            if (0 > group[i].idx[j] || group[i].idx[j] >= cap_max)
-                return -1;
+        if (i >= glist_cap - 1) {
+            if (array_grow(&glist, &glist_cap, sizeof(group_def_t)) != 0) {
+                session_error("Error allocating group definition list");
+                goto cleanup;
+            }
+        }
 
+        for (j = 0; *buf != ')'; ++j) {
+            if (j >= cap_max) {
+                session_error("Too many indexes in group specification");
+                goto cleanup;
+            }
+            if (sscanf(buf, " %d %n", &list[j], &count) < 1) {
+                session_error("Error parsing group specification");
+                goto cleanup;
+            }
+            if (list[j] < 0 || list[j] >= cap_max) {
+                session_error("Group specification member out of bounds");
+                goto cleanup;
+            }
+            seen[ list[j] ] = 1;
             buf += count;
             if (*buf == ',') ++buf;
         }
         ++buf;
-        group[i].idx_len = j;
+
+        /* Allocate memory for the parsed index list. */
+        glist[i].idx = (int *) malloc(j * sizeof(int));
+        if (!glist[i].idx) {
+            session_error("Error allocating memory for group index list");
+            goto cleanup;
+        }
+        /* Copy index from list into glist. */
+        memcpy(glist[i].idx, list, j * sizeof(int));
+        glist[i].idx_len = j;
 
         while (isspace(*buf) || *buf == ',') ++buf;
     }
-    if (*buf != '\0')
-        return -1;
+    if (*buf != '\0') {
+        session_error("Error parsing group specification");
+        goto cleanup;
+    }
+    glist_len = i;
 
-    group_len = i;
+    /* Produce a final group of all unseen input indexes. */
+    for (i = 0, j = 0; j < cap_max; ++j) {
+        if (!seen[j])
+            list[i++] = j;
+    }
+
+    /* Only add the final group if necessary. */
+    if (i) {
+        glist[glist_len].idx = list;
+        glist[glist_len].idx_len = i;
+        ++glist_len;
+    }
+    else {
+        free(list);
+    }
+    success = 1;
+
+  cleanup:
+    free(seen);
+
+    if (!success) {
+        free(list);
+        return -1;
+    }
+
     return 0;
 }
