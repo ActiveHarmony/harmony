@@ -28,7 +28,7 @@
 const char harmony_layer_name[] = "<plugin>";
 
 /*
- * Invoked once on module load.
+ * Invoked once on module load, and during subsequent session restarts.
  *
  * Param:
  *   sig - Details of the parameter space (dimensions, bounds, etc.).

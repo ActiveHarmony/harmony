@@ -17,6 +17,43 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/**
+ * \page group Input Grouping (group.so)
+ *
+ * This processing layer allows search space input variables
+ * (dimensions) to be iteratively search in groups.  The value for all
+ * input variables not in the current search group remain constant.
+ *
+ * Input variables are specified via a zero-based index, determined by
+ * the order they are defined in the session signature.  For instance,
+ * the first variable defined via harmony_int(), harmony_real(), or
+ * harmony_enum() can be referenced via the index 0.
+ *
+ * ### Example ###
+ * Given a tuning session with nine input variables, the following
+ * group specification:
+ *
+ *     (0,1,2),(3,4,5,6),(7,8)
+ *
+ * would instruct the layer to search the first three variables until
+ * the search strategy converges.  Input values for the other six
+ * variables remain constant during this search.
+ *
+ * Upon convergence, the search is restarted and allowed to
+ * investigate the next four variables.  The first three variables are
+ * forced to use the best discovered values from the prior search.
+ * This pattern continues until all groups have been searched.
+ *
+ * Grouping should be beneficial for search spaces whose input
+ * variables are relatively independent with respect to the reported
+ * performance.
+ *
+ * **Configuration Variables**
+ * Key          | Type   | Default | Description
+ * ------------ | ------ | ------- | -----------
+ * GROUP_LIST   | String | (none)  | List of input parameter indexes.
+ */
+
 #include "session-core.h"
 #include "hsignature.h"
 #include "hpoint.h"
