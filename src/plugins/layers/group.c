@@ -122,6 +122,8 @@ int group_init(hsignature_t *sig)
         return -1;
     }
 
+    glist = NULL;
+    glist_len = glist_cap = 0;
     return parse_group(ptr);
 }
 
