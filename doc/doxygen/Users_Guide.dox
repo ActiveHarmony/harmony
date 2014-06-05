@@ -250,6 +250,7 @@ See the [Tuning Session](\ref intro_session) section for an overview of the proc
 \latexonly \begin{comment} \endlatexonly
 - \subpage agg
 - \subpage codesvr
+- \subpage group
 - \subpage logger
 - \subpage omega
 - \subpage TAUdb

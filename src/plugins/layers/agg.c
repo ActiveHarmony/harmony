@@ -101,6 +101,8 @@ int agg_init(hsignature_t *sig)
     }
     sizeof_store = sizeof(store_t) + sizeof(double) * trial_per_point;
 
+    slist = NULL;
+    slist_len = 0;
     return add_storage();
 }
 
@@ -167,6 +169,12 @@ int agg_analyze(hflow_t *flow, htrial_t *trial)
     store->id = -1;
     store->count = 0;
     flow->status = HFLOW_ACCEPT;
+    return 0;
+}
+
+int agg_fini(void)
+{
+    free(slist);
     return 0;
 }
 
