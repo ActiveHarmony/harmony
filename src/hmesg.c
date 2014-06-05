@@ -117,10 +117,7 @@ int hmesg_serialize(hmesg_t *mesg)
     if (count < 0) goto error;
     total += count;
 
-    if (0 && mesg->status == HMESG_STATUS_BUSY) {
-        /* Busy messages contain no data. */
-    }
-    else if (mesg->status == HMESG_STATUS_FAIL) {
+    if (mesg->status == HMESG_STATUS_FAIL) {
         count = printstr_serial(&buf, &buflen, mesg->data.string);
         if (count < 0) goto error;
         total += count;
@@ -155,7 +152,9 @@ int hmesg_serialize(hmesg_t *mesg)
                 if (count < 0) goto error;
                 total += count;
             }
-            else if (mesg->status == HMESG_STATUS_OK || mesg->status == HMESG_STATUS_BUSY) {
+            else if (mesg->status == HMESG_STATUS_OK ||
+                     mesg->status == HMESG_STATUS_BUSY)
+            {
                 count = hpoint_serialize(&buf, &buflen,
                                          &mesg->data.fetch.cand);
                 if (count < 0) goto error;
@@ -165,7 +164,7 @@ int hmesg_serialize(hmesg_t *mesg)
                                          &mesg->data.fetch.best);
                 if (count < 0) goto error;
                 total += count;
-            } 
+            }
             break;
 
         case HMESG_REPORT:
@@ -254,10 +253,7 @@ int hmesg_deserialize(hmesg_t *mesg)
     else if (strcmp(status_str, "BSY") == 0) mesg->status = HMESG_STATUS_BUSY;
     else goto invalid;
 
-    if (0 && mesg->status == HMESG_STATUS_BUSY) {
-        /* Busy messages contain no data. */
-    }
-    else if (mesg->status == HMESG_STATUS_FAIL) {
+    if (mesg->status == HMESG_STATUS_FAIL) {
         count = scanstr_serial(&mesg->data.string, buf + total);
         if (count < 0) goto error;
         total += count;
@@ -294,7 +290,9 @@ int hmesg_deserialize(hmesg_t *mesg)
                     goto invalid;
                 total += count;
             }
-            else if (mesg->status == HMESG_STATUS_OK || mesg->status == HMESG_STATUS_BUSY) {
+            else if (mesg->status == HMESG_STATUS_OK ||
+                     mesg->status == HMESG_STATUS_BUSY)
+            {
                 mesg->data.fetch.cand = HPOINT_INITIALIZER;
                 count = hpoint_deserialize(&mesg->data.fetch.cand,
                                            buf + total);

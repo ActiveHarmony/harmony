@@ -85,23 +85,22 @@ int logger_join(const char *id)
 int logger_analyze(hflow_t *flow, htrial_t *trial)
 {
     int i;
-    const hpoint_t *pt = &trial->point;
 
-    fprintf(fd, "%d,", pt->id);
-    for (i = 0; i < pt->n; ++i) {
+    fprintf(fd, "Point #%d: (", trial->point.id);
+    for (i = 0; i < trial->point.n; ++i) {
+        hval_t *v = &trial->point.val[i];
         if (i > 0) fprintf(fd, ",");
 
-        switch (pt->val[i].type) {
-        case HVAL_INT:  fprintf(fd, "%ld", pt->val[i].value.i); break;
-        case HVAL_REAL: fprintf(fd, "%lf", pt->val[i].value.r); break;
-        case HVAL_STR:  fprintf(fd, "%s",  pt->val[i].value.s); break;
+        switch (v->type) {
+        case HVAL_INT:  fprintf(fd, "%ld", v->value.i); break;
+        case HVAL_REAL: fprintf(fd, "%lf[%la]", v->value.r, v->value.r); break;
+        case HVAL_STR:  fprintf(fd, "\"%s\"", v->value.s); break;
         default:
             session_error("Invalid point value type");
             return -1;
         }
     }
-    fprintf(fd, ",%lf\n", trial->perf);
-
+    fprintf(fd, ") => (%lf[%la])\n", trial->perf, trial->perf);
     fflush(fd);
 
     flow->status = HFLOW_ACCEPT;
