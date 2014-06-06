@@ -109,6 +109,7 @@ static int handle_callback(callback_t *cb);
 static int handle_join(hmesg_t *mesg);
 static int handle_getcfg(hmesg_t *mesg);
 static int handle_setcfg(hmesg_t *mesg);
+static int handle_best(hmesg_t *mesg);
 static int handle_fetch(hmesg_t *mesg);
 static int handle_report(hmesg_t *mesg);
 static int handle_reject(int trial_idx);
@@ -269,6 +270,7 @@ int main(int argc, char **argv)
             case HMESG_JOIN:   retval = handle_join(&mesg); break;
             case HMESG_GETCFG: retval = handle_getcfg(&mesg); break;
             case HMESG_SETCFG: retval = handle_setcfg(&mesg); break;
+            case HMESG_BEST:   retval = handle_best(&mesg); break;
             case HMESG_FETCH:  retval = handle_fetch(&mesg); break;
             case HMESG_REPORT: retval = handle_report(&mesg); break;
             default:
@@ -280,6 +282,7 @@ int main(int argc, char **argv)
 
             hcfg_set(sess->cfg, CFGKEY_CURRENT_CLIENT, NULL);
             mesg.src_id = NULL;
+
             if (mesg_send(STDIN_FILENO, &mesg) < 1)
                 goto error;
         }
@@ -637,42 +640,43 @@ int handle_setcfg(hmesg_t *mesg)
     return 0;
 }
 
+int handle_best(hmesg_t *mesg)
+{
+    if (strategy_best(&mesg->data.point) != 0)
+        return -1;
+
+    mesg->status = HMESG_STATUS_OK;
+    return 0;
+}
+
 int handle_fetch(hmesg_t *mesg)
 {
     int idx = ready[ready_head];
-    hpoint_t *cand = &mesg->data.fetch.cand;
-    hpoint_t *best = &mesg->data.fetch.best;
     htrial_t *next;
 
-    /* If ready queue is empty, inform client that we're busy.
-       and let client know what the best point is */
-    if (idx == -1) {
-        mesg->status = HMESG_STATUS_BUSY;
-        *best = HPOINT_INITIALIZER;
-        if(strategy_best(best) != 0) {
-          return -1;
+    if (idx >= 0) {
+        /* Send the next point on the ready queue. */
+        next = &pending[idx];
+
+        mesg->data.point = HPOINT_INITIALIZER;
+        if (hpoint_copy(&mesg->data.point, &next->point) != 0) {
+            errmsg = "Internal error: Could not copy candidate point data.";
+            return -1;
         }
-        hpoint_copy(&mesg->data.fetch.best, best);
-        return 0;
+
+        /* Remove the first point from the ready queue. */
+        ready[ready_head] = -1;
+        ready_head = (ready_head + 1) % ready_cap;
+
+        mesg->status = HMESG_STATUS_OK;
     }
-    next = &pending[idx];
+    else {
+        /* Ready queue is empty.  Send the best known point. */
+        if (strategy_best(&mesg->data.point) != 0)
+            return -1;
 
-    /* Otherwise, prepare a response to the client. */
-    *cand = HPOINT_INITIALIZER;
-    if (hpoint_copy(cand, &next->point) != 0) {
-        errmsg = "Internal error: Could not copy candidate point data.";
-        return -1;
+        mesg->status = HMESG_STATUS_BUSY;
     }
-
-    *best = HPOINT_INITIALIZER;
-    if (strategy_best(best) != 0)
-        return -1;
-
-    /* Remove the first point from the ready queue. */
-    ready[ready_head] = -1;
-    ready_head = (ready_head + 1) % ready_cap;
-
-    mesg->status = HMESG_STATUS_OK;
     return 0;
 }
 

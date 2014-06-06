@@ -403,9 +403,17 @@ int harmony_report(hdesc_t *hdesc, double value);
  * \brief Sets variables under Harmony's control to the best known
  *        configuration.
  *
+ * If the client is currently connected, the best known configuration
+ * is retrieved from the session.  Otherwise, the a local copy of the
+ * best known point is used.
+ *
+ * If no best configuration exists (e.g. before any configurations
+ * have been evaluated), this function will return an error.
+ *
  * \param hdesc Harmony descriptor returned from harmony_init().
  *
- * \return Returns 0 on success, and -1 otherwise.
+ * \return Returns 1 if a new best point was retrieved from the
+ *         session, 0 if a local copy was used, and -1 otherwise.
  */
 int harmony_best(hdesc_t *hdesc);
 

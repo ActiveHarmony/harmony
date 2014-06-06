@@ -185,17 +185,27 @@ int main(int argc, char *argv[])
             report <<= 1;
         }
     }
-    printf("Final: %6d evaluations, best value: %lf", i, best);
-    if (finfo->optimal != -INFINITY)
-        printf(" (Global optimal: %lf)\n", finfo->optimal);
-    else
-        printf(" (Global optimal: <Unknown>)\n");
 
-    if (harmony_best(hdesc) != 0) {
+    hresult = harmony_best(hdesc);
+    if (hresult < 0) {
         fprintf(stderr, "Error setting best input values: %s\n",
                 harmony_error_string(hdesc));
         goto cleanup;
     }
+    else if (hresult == 1) {
+        /* A new point was retrieved.  Evaluate it. */
+        perf = eval_func();
+        if (perf < best)
+            best = perf;
+        ++i;
+    }
+
+    printf("Final: %6d evaluation%s, best value: %lf",
+           i, i == 1 ? "" : "s", best);
+    if (finfo->optimal != -INFINITY)
+        printf(" (Global optimal: %lf)\n", finfo->optimal);
+    else
+        printf(" (Global optimal: <Unknown>)\n");
 
     /* Initial pass through the point array to find maximum field width. */
     maxwidth = 0;

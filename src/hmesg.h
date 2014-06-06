@@ -56,6 +56,7 @@ typedef enum {
     HMESG_JOIN,    /* Client registration info              */
     HMESG_GETCFG,  /* Get session cfg key/value pair        */
     HMESG_SETCFG,  /* Set new session cfg key/value pair    */
+    HMESG_BEST,    /* Retrieve best known point             */
     HMESG_FETCH,   /* Retrieve search space point to test   */
     HMESG_REPORT,  /* Report search space point performance */
 
@@ -83,10 +84,7 @@ typedef struct {
     union {
         hsession_t session;
         hsignature_t join;
-        struct mesg_fetch {
-            hpoint_t cand;
-            hpoint_t best;
-        } fetch;
+        hpoint_t point;
         struct mesg_report {
             hpoint_t cand;
             double perf;

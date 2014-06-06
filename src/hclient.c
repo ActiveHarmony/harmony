@@ -72,6 +72,7 @@ struct hdesc_t {
 char *default_id(int n);
 int   ptr_bind(hdesc_t *hdesc, const char *name, hval_type type, void *ptr);
 int   mesg_send_and_recv(hdesc_t *hdesc);
+int   update_best(hdesc_t *hdesc, const hpoint_t *pt);
 int   set_values(hdesc_t *hdesc, const hpoint_t *pt);
 
 static int debug_mode = 0;
@@ -531,8 +532,6 @@ char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val)
 
 int harmony_fetch(hdesc_t *hdesc)
 {
-    int retval;
-
     if (hdesc->state < HARMONY_STATE_CONNECTED) {
         hdesc->errstr = "Descriptor not currently joined to any session.";
         errno = EINVAL;
@@ -544,27 +543,18 @@ int harmony_fetch(hdesc_t *hdesc)
     hdesc->mesg.type = HMESG_FETCH;
     hdesc->mesg.status = HMESG_STATUS_REQ;
     hdesc->mesg.src_id = hdesc->id;
-    hdesc->mesg.data.fetch.best.id = hdesc->best.id;
 
     if (mesg_send_and_recv(hdesc) < 0)
         return -1;
 
     if (hdesc->mesg.status == HMESG_STATUS_BUSY) {
+        if (update_best(hdesc, &hdesc->mesg.data.point) != 0)
+            return -1;
+
         if (hdesc->best.id >= 0) {
-            if (hpoint_copy(&hdesc->curr, &hdesc->best) < 0) {
+            if (hpoint_copy(&hdesc->curr, &hdesc->best) != 0) {
                 hdesc->errstr = "Internal error copying point data.";
-                return -1;
-            }
-        }
-        else if(hdesc->mesg.data.fetch.best.id >= 0) {
-            /* busy messages now contain best point data */
-            if (hpoint_copy(&hdesc->curr, &hdesc->mesg.data.fetch.best) < 0) {
-                hdesc->errstr = "Internal error copying point data.";
-                return -1;
-            } 
-            /* update hdesc->best too */
-            if (hpoint_copy(&hdesc->best, &hdesc->mesg.data.fetch.best) < 0) {
-                hdesc->errstr = "Internal error copying point data.";
+                errno = EINVAL;
                 return -1;
             }
         }
@@ -577,20 +567,10 @@ int harmony_fetch(hdesc_t *hdesc)
     }
     else if (hdesc->mesg.status == HMESG_STATUS_OK) {
         hdesc->state = HARMONY_STATE_TESTING;
-        retval = hpoint_copy(&hdesc->curr, &hdesc->mesg.data.fetch.cand);
-        if (retval < 0) {
+        if (hpoint_copy(&hdesc->curr, &hdesc->mesg.data.point) != 0) {
             hdesc->errstr = "Internal error copying point data.";
             errno = EINVAL;
             return -1;
-        }
-
-        if (hdesc->best.id < hdesc->mesg.data.fetch.best.id) {
-            retval = hpoint_copy(&hdesc->best, &hdesc->mesg.data.fetch.best);
-            if (retval < 0) {
-                hdesc->errstr = "Internal error copying point data.";
-                errno = EINVAL;
-                return -1;
-            }
         }
     }
     else {
@@ -603,6 +583,9 @@ int harmony_fetch(hdesc_t *hdesc)
     if (set_values(hdesc, &hdesc->curr) < 0)
         return -1;
 
+    /* Client variables were changed as a result of this fetch.
+     * Inform the user by returning 1.
+     */
     return 1;
 }
 
@@ -616,6 +599,9 @@ int harmony_report(hdesc_t *hdesc, double value)
 
     if (hdesc->state < HARMONY_STATE_TESTING)
         return 0;
+
+    if (update_best(hdesc, &hdesc->curr) != 0)
+        return -1;
 
     /* Prepare a Harmony message. */
     hmesg_scrub(&hdesc->mesg);
@@ -641,10 +627,40 @@ int harmony_report(hdesc_t *hdesc, double value)
 
 int harmony_best(hdesc_t *hdesc)
 {
-    if (hdesc->best.id < 0 || set_values(hdesc, &hdesc->best) < 0)
+    int retval = 0;
+
+    if (hdesc->state >= HARMONY_STATE_CONNECTED) {
+        /* Prepare a Harmony message. */
+        hdesc->mesg.type = HMESG_BEST;
+        hdesc->mesg.status = HMESG_STATUS_REQ;
+        hdesc->mesg.src_id = hdesc->id;
+
+        if (mesg_send_and_recv(hdesc) < 0)
+            return -1;
+
+        if (hdesc->mesg.status != HMESG_STATUS_OK) {
+            hdesc->errstr = "Invalid message received from server.";
+            errno = EINVAL;
+            return -1;
+        }
+
+        if (hdesc->best.id < hdesc->mesg.data.point.id) {
+            if (update_best(hdesc, &hdesc->mesg.data.point) != 0)
+                return -1;
+            retval = 1;
+        }
+    }
+
+    /* Make sure our best known point is valid. */
+    if (hdesc->best.id < 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (set_values(hdesc, &hdesc->best) != 0)
         return -1;
 
-    return 0;
+    return retval;
 }
 
 int harmony_converged(hdesc_t *hdesc)
@@ -706,6 +722,19 @@ int mesg_send_and_recv(hdesc_t *hdesc)
 
     if (hdesc->mesg.status == HMESG_STATUS_FAIL) {
         hdesc->errstr = hdesc->mesg.data.string;
+        return -1;
+    }
+    return 0;
+}
+
+int update_best(hdesc_t *hdesc, const hpoint_t *pt)
+{
+    if (hdesc->best.id >= pt->id)
+        return 0;
+
+    if (hpoint_copy(&hdesc->best, pt) != 0) {
+        hdesc->errstr = "Internal error copying point data.";
+        errno = EINVAL;
         return -1;
     }
     return 0;
