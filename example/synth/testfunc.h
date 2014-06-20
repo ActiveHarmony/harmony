@@ -26,7 +26,7 @@
 extern "C" {
 #endif
 
-typedef double (*benchfunc_t)(int n, double x[], double option[]);
+typedef double benchfunc_t(int n, double x[], double option[]);
 
 typedef struct finfo {
     const char *name;
@@ -35,7 +35,7 @@ typedef struct finfo {
     double b_min;
     double b_max;
     double optimal;
-    benchfunc_t f;
+    benchfunc_t *f;
     char *description;
 } finfo_t;
 
