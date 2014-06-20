@@ -123,7 +123,7 @@ void usage(const char *prog)
 
 int main(int argc, char *argv[])
 {
-    int i, j, retval, hresult, report;
+    int i, j, hresult, report, retval = 0;
     int width, maxwidth;
     double best_val = INFINITY;
     hdesc_t *hdesc;
