@@ -75,7 +75,8 @@ struct hdesc_t {
  */
 char *default_id(int n);
 int   ptr_bind(hdesc_t *hdesc, const char *name, hval_type type, void *ptr);
-int   mesg_send_and_recv(hdesc_t *hdesc);
+int   send_request(hdesc_t *hdesc, hmesg_type msg_type);
+int   update_best(hdesc_t *hdesc, const hpoint_t *pt);
 int   set_values(hdesc_t *hdesc, const hpoint_t *pt);
 
 static int debug_mode = 0;
@@ -151,6 +152,7 @@ void harmony_fini(hdesc_t *hdesc)
         hsession_fini(&hdesc->sess);
         hpoint_fini(&hdesc->curr);
         hpoint_fini(&hdesc->best);
+        hperf_fini(hdesc->perf);
 
         if (hdesc->id && hdesc->id != default_id_buf)
             free(hdesc->id);
@@ -266,13 +268,10 @@ int harmony_launch(hdesc_t *hdesc, const char *host, int port)
 
     /* Prepare a Harmony message. */
     hmesg_scrub(&hdesc->mesg);
-    hdesc->mesg.type = HMESG_SESSION;
-    hdesc->mesg.status = HMESG_STATUS_REQ;
-    hdesc->mesg.src_id = hdesc->id;
     hsession_init(&hdesc->mesg.data.session);
     hsession_copy(&hdesc->mesg.data.session, &hdesc->sess);
 
-    return mesg_send_and_recv(hdesc);
+    return send_request(hdesc, HMESG_SESSION);
 }
 
 /* -------------------------------------------------------------------
@@ -388,10 +387,6 @@ int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *name)
 
     /* Prepare a Harmony message. */
     hmesg_scrub(&hdesc->mesg);
-    hdesc->mesg.type = HMESG_JOIN;
-    hdesc->mesg.status = HMESG_STATUS_REQ;
-    hdesc->mesg.src_id = hdesc->id;
-
     hdesc->mesg.data.join = HSIGNATURE_INITIALIZER;
     if (hsignature_copy(&hdesc->mesg.data.join, &hdesc->sess.sig) < 0) {
         hdesc->errstr = "Internal error copying signature data";
@@ -399,7 +394,7 @@ int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *name)
     }
 
     /* send the client registration message */
-    if (mesg_send_and_recv(hdesc) < 0)
+    if (send_request(hdesc, HMESG_JOIN) != 0)
         return -1;
 
     if (hdesc->mesg.status != HMESG_STATUS_OK) {
@@ -488,12 +483,9 @@ char *harmony_getcfg(hdesc_t *hdesc, const char *key)
 
     /* Prepare a Harmony message. */
     hmesg_scrub(&hdesc->mesg);
-    hdesc->mesg.type = HMESG_GETCFG;
-    hdesc->mesg.status = HMESG_STATUS_REQ;
-    hdesc->mesg.src_id = hdesc->id;
     hdesc->mesg.data.string = key;
 
-    if (mesg_send_and_recv(hdesc) < 0)
+    if (send_request(hdesc, HMESG_GETCFG) != 0)
         return NULL;
 
     if (hdesc->mesg.status != HMESG_STATUS_OK) {
@@ -526,6 +518,8 @@ char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val)
         return NULL;
     }
 
+    /* Prepare a Harmony message. */
+    hmesg_scrub(&hdesc->mesg);
     if (val) {
         buf = sprintf_alloc("%s=%s", key, val);
         if (!buf) {
@@ -538,12 +532,7 @@ char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val)
         hdesc->mesg.data.string = key;
     }
 
-    /* Prepare a Harmony message. */
-    hmesg_scrub(&hdesc->mesg);
-    hdesc->mesg.type = HMESG_SETCFG;
-    hdesc->mesg.status = HMESG_STATUS_REQ;
-    hdesc->mesg.src_id = hdesc->id;
-    retval = mesg_send_and_recv(hdesc);
+    retval = send_request(hdesc, HMESG_SETCFG);
     free(buf);
 
     if (retval < 0)
@@ -569,48 +558,34 @@ int harmony_fetch(hdesc_t *hdesc)
 
     /* Prepare a Harmony message. */
     hmesg_scrub(&hdesc->mesg);
-    hdesc->mesg.type = HMESG_FETCH;
-    hdesc->mesg.status = HMESG_STATUS_REQ;
-    hdesc->mesg.src_id = hdesc->id;
-    hdesc->mesg.data.fetch.best.id = hdesc->best.id;
 
-    if (mesg_send_and_recv(hdesc) < 0)
+    if (send_request(hdesc, HMESG_FETCH) != 0)
         return -1;
 
     if (hdesc->mesg.status == HMESG_STATUS_BUSY) {
-        if (hdesc->best.id == 0)
-            return 0; /* No way to set bound variables. */
-
-        if (hpoint_copy(&hdesc->curr, &hdesc->best) < 0) {
-            hdesc->errstr = "Internal error copying point data.";
+        if (update_best(hdesc, &hdesc->mesg.data.point) != 0)
             return -1;
+
+        if (hdesc->best.id == -1) {
+            /* No best point is available. Inform the user by returning 0. */
+            return 0;
         }
 
-        /* Updating the variables from the content of the message */
-        if (set_values(hdesc, &hdesc->curr) < 0)
+        /* Update client variables to the best known values. */
+        if (set_values(hdesc, &hdesc->best) < 0)
             return -1;
     }
     else if (hdesc->mesg.status == HMESG_STATUS_OK) {
-        int retval, i;
+        int i;
 
-        retval = hpoint_copy(&hdesc->curr, &hdesc->mesg.data.fetch.cand);
-        if (retval < 0) {
+        if (hpoint_copy(&hdesc->curr, &hdesc->mesg.data.point) != 0) {
             hdesc->errstr = "Internal error copying point data.";
             errno = EINVAL;
             return -1;
         }
 
-        if (hdesc->best.id < hdesc->mesg.data.fetch.best.id) {
-            retval = hpoint_copy(&hdesc->best, &hdesc->mesg.data.fetch.best);
-            if (retval < 0) {
-                hdesc->errstr = "Internal error copying point data.";
-                errno = EINVAL;
-                return -1;
-            }
-        }
-
-        /* Updating the variables from the content of the message */
-        if (set_values(hdesc, &hdesc->curr) < 0)
+        /* Update the variables from the content of the message. */
+        if (set_values(hdesc, &hdesc->curr) != 0)
             return -1;
 
         /* Initialize our internal performance array. */
@@ -625,7 +600,7 @@ int harmony_fetch(hdesc_t *hdesc)
         return -1;
     }
 
-    /* Bound variables have been modified. */
+    /* Client variables were changed.  Inform the user by returning 1. */
     return 1;
 }
 
@@ -655,10 +630,6 @@ int harmony_report(hdesc_t *hdesc, double *perf)
 
     /* Prepare a Harmony message. */
     hmesg_scrub(&hdesc->mesg);
-    hdesc->mesg.type = HMESG_REPORT;
-    hdesc->mesg.status = HMESG_STATUS_REQ;
-    hdesc->mesg.src_id = hdesc->id;
-
     hdesc->mesg.data.report.cand_id = hdesc->curr.id;
     hdesc->mesg.data.report.perf = hperf_clone(hdesc->perf);
     if (!hdesc->mesg.data.report.perf) {
@@ -666,7 +637,7 @@ int harmony_report(hdesc_t *hdesc, double *perf)
         return -1;
     }
 
-    if (mesg_send_and_recv(hdesc) < 0)
+    if (send_request(hdesc, HMESG_REPORT) != 0)
         return -1;
 
     if (hdesc->mesg.status != HMESG_STATUS_OK) {
@@ -674,8 +645,11 @@ int harmony_report(hdesc_t *hdesc, double *perf)
         errno = EINVAL;
         return -1;
     }
-
     hdesc->state = HARMONY_STATE_READY;
+
+    if (update_best(hdesc, &hdesc->curr) != 0)
+        return -1;
+
     return 0;
 }
 
@@ -701,10 +675,38 @@ int harmony_report_one(hdesc_t *hdesc, int index, double value)
 
 int harmony_best(hdesc_t *hdesc)
 {
-    if (hdesc->best.id < 0 || set_values(hdesc, &hdesc->best) < 0)
+    int retval = 0;
+
+    if (hdesc->state >= HARMONY_STATE_CONNECTED) {
+        /* Prepare a Harmony message. */
+        hmesg_scrub(&hdesc->mesg);
+
+        if (send_request(hdesc, HMESG_BEST) != 0)
+            return -1;
+
+        if (hdesc->mesg.status != HMESG_STATUS_OK) {
+            hdesc->errstr = "Invalid message received from server.";
+            errno = EINVAL;
+            return -1;
+        }
+
+        if (hdesc->best.id < hdesc->mesg.data.point.id) {
+            if (update_best(hdesc, &hdesc->mesg.data.point) != 0)
+                return -1;
+            retval = 1;
+        }
+    }
+
+    /* Make sure our best known point is valid. */
+    if (hdesc->best.id < 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (set_values(hdesc, &hdesc->best) != 0)
         return -1;
 
-    return 0;
+    return retval;
 }
 
 int harmony_converged(hdesc_t *hdesc)
@@ -741,10 +743,11 @@ char *default_id(int n)
     return default_id_buf;
 }
 
-int mesg_send_and_recv(hdesc_t *hdesc)
+int send_request(hdesc_t *hdesc, hmesg_type msg_type)
 {
-    hmesg_type orig_type;
-    orig_type = hdesc->mesg.type;
+    hdesc->mesg.type = msg_type;
+    hdesc->mesg.status = HMESG_STATUS_REQ;
+    hdesc->mesg.src_id = hdesc->id;
 
     if (mesg_send(hdesc->socket, &hdesc->mesg) < 1) {
         hdesc->errstr = "Error sending Harmony message to server.";
@@ -758,7 +761,7 @@ int mesg_send_and_recv(hdesc_t *hdesc)
         return -1;
     }
 
-    if (orig_type != hdesc->mesg.type) {
+    if (hdesc->mesg.type != msg_type) {
         hdesc->mesg.status = HMESG_STATUS_FAIL;
         hdesc->errstr = "Internal error: Server response message mismatch.";
         return -1;
@@ -766,6 +769,19 @@ int mesg_send_and_recv(hdesc_t *hdesc)
 
     if (hdesc->mesg.status == HMESG_STATUS_FAIL) {
         hdesc->errstr = hdesc->mesg.data.string;
+        return -1;
+    }
+    return 0;
+}
+
+int update_best(hdesc_t *hdesc, const hpoint_t *pt)
+{
+    if (hdesc->best.id >= pt->id)
+        return 0;
+
+    if (hpoint_copy(&hdesc->best, pt) != 0) {
+        hdesc->errstr = "Internal error copying point data.";
+        errno = EINVAL;
         return -1;
     }
     return 0;

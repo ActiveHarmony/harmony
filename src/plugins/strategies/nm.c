@@ -495,7 +495,7 @@ int nm_algorithm(void)
         if (nm_next_vertex() != 0)
             return -1;
 
-    } while (vertex_outofbounds(test));
+    } while (vertex_outofbounds(next));
 
     return 0;
 }

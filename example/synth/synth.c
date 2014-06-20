@@ -195,19 +195,33 @@ int main(int argc, char *argv[])
         }
     }
 
-    fprintf(stdout, "%6d evals, best value: ", i);
+    hresult = harmony_best(hdesc);
+    if (hresult < 0) {
+        fprintf(stderr, "Error setting best input values: %s\n",
+                harmony_error_string(hdesc));
+        goto cleanup;
+    }
+    else if (hresult == 1) {
+        double cmp = 0.0;
+
+        /* A new point was retrieved.  Evaluate it. */
+        eval_func();
+        for (j = 0; j < o_cnt; ++j)
+            cmp += perf[j];
+        if (best_val > cmp) {
+            best_val = cmp;
+            memcpy(best, perf, sizeof(best));
+        }
+        ++i;
+    }
+
+    fprintf(stdout, "%6d eval%s, best value: ", i, i == 1 ? "" : "s");
     fprint_darr(stdout, "(", best, o_cnt, ")");
 
     if (o_cnt == 1 && finfo[0]->optimal != -INFINITY)
         printf(" [Global optimal: %lf]\n", finfo[0]->optimal);
     else
         printf(" [Global optimal: <Unknown>]\n");
-
-    if (harmony_best(hdesc) != 0) {
-        fprintf(stderr, "Error setting best input values: %s\n",
-                harmony_error_string(hdesc));
-        goto cleanup;
-    }
 
     /* Initial pass through the point array to find maximum field width. */
     maxwidth = 0;
@@ -621,9 +635,10 @@ void fprint_darr(FILE *fp, const char *head,
         fprintf(fp, "%s", head);
 
     if (len > 0) {
-        fprintf(fp, "%lf", arr[0]);
-        for (i = 0; i < len; ++i)
-            fprintf(fp, ",%lf", arr[i]);
+        for (i = 0; i < len; ++i) {
+            if (i > 0) fprintf(fp, ",");
+            fprintf(fp, "%lf", arr[i]);
+        }
     }
 
     if (tail)

@@ -112,6 +112,7 @@ int handle_callback(callback_t *cb);
 int handle_join(hmesg_t *mesg);
 int handle_getcfg(hmesg_t *mesg);
 int handle_setcfg(hmesg_t *mesg);
+int handle_best(hmesg_t *mesg);
 int handle_fetch(hmesg_t *mesg);
 int handle_report(hmesg_t *mesg);
 int handle_reject(int trial_idx);
@@ -229,6 +230,7 @@ int main(int argc, char **argv)
             case HMESG_JOIN:   retval = handle_join(&mesg); break;
             case HMESG_GETCFG: retval = handle_getcfg(&mesg); break;
             case HMESG_SETCFG: retval = handle_setcfg(&mesg); break;
+            case HMESG_BEST:   retval = handle_best(&mesg); break;
             case HMESG_FETCH:  retval = handle_fetch(&mesg); break;
             case HMESG_REPORT: retval = handle_report(&mesg); break;
             default:
@@ -240,6 +242,7 @@ int main(int argc, char **argv)
 
             hcfg_set(sess->cfg, CFGKEY_CURRENT_CLIENT, NULL);
             mesg.src_id = NULL;
+
             if (mesg_send(STDIN_FILENO, &mesg) < 1)
                 goto error;
         }
@@ -273,7 +276,7 @@ int main(int argc, char **argv)
 int init_session(void)
 {
     const char *ptr;
-    int count;
+    int count = DEFAULT_CLIENT_COUNT;
     long seed;
 
     /* Before anything else, control the random seeds. */
@@ -300,7 +303,14 @@ int init_session(void)
 
     /* Insure the output dimensionality exists in the config system. */
     ptr = hcfg_get(sess->cfg, CFGKEY_PERF_COUNT);
-    if (!ptr) {
+    if (ptr) {
+        perf_count = atoi(ptr);
+        if (count < 1) {
+            errmsg = "Invalid config value for " CFGKEY_PERF_COUNT ".";
+            return -1;
+        }
+    }
+    else {
         char buf[16];
         snprintf(buf, sizeof(buf), "%d", DEFAULT_PERF_COUNT);
         hcfg_set(sess->cfg, CFGKEY_PERF_COUNT, buf);
@@ -324,7 +334,6 @@ int init_session(void)
             errmsg = "Invalid config value for " CFGKEY_CLIENT_COUNT ".";
             return -1;
         }
-        count *= per_client;
     }
     else {
         /* Otherwise, make sure this key exists. */
@@ -335,6 +344,7 @@ int init_session(void)
             return -1;
         }
     }
+    count *= per_client;
 
     /* Load and initialize the strategy code object. */
     ptr = hcfg_get(sess->cfg, CFGKEY_SESSION_STRATEGY);
@@ -680,36 +690,44 @@ int handle_setcfg(hmesg_t *mesg)
     return 0;
 }
 
+int handle_best(hmesg_t *mesg)
+{
+    mesg->data.point = HPOINT_INITIALIZER;
+    if (strategy_best(&mesg->data.point) != 0)
+        return -1;
+
+    mesg->status = HMESG_STATUS_OK;
+    return 0;
+}
+
 int handle_fetch(hmesg_t *mesg)
 {
     int idx = ready[ready_head];
-    hpoint_t *cand = &mesg->data.fetch.cand;
-    hpoint_t *best = &mesg->data.fetch.best;
     htrial_t *next;
 
-    /* If ready queue is empty, inform client that we're busy. */
-    if (idx == -1) {
+    if (idx >= 0) {
+        /* Send the next point on the ready queue. */
+        next = &pending[idx];
+
+        mesg->data.point = HPOINT_INITIALIZER;
+        if (hpoint_copy(&mesg->data.point, &next->point) != 0) {
+            errmsg = "Internal error: Could not copy candidate point data.";
+            return -1;
+        }
+
+        /* Remove the first point from the ready queue. */
+        ready[ready_head] = -1;
+        ready_head = (ready_head + 1) % ready_cap;
+
+        mesg->status = HMESG_STATUS_OK;
+    }
+    else {
+        /* Ready queue is empty.  Send the best known point. */
+        if (strategy_best(&mesg->data.point) != 0)
+            return -1;
+
         mesg->status = HMESG_STATUS_BUSY;
-        return 0;
     }
-    next = &pending[idx];
-
-    /* Otherwise, prepare a response to the client. */
-    *cand = HPOINT_INITIALIZER;
-    if (hpoint_copy(cand, &next->point) != 0) {
-        errmsg = "Internal error: Could not copy candidate point data.";
-        return -1;
-    }
-
-    *best = HPOINT_INITIALIZER;
-    if (strategy_best(best) != 0)
-        return -1;
-
-    /* Remove the first point from the ready queue. */
-    ready[ready_head] = -1;
-    ready_head = (ready_head + 1) % ready_cap;
-
-    mesg->status = HMESG_STATUS_OK;
     return 0;
 }
 
@@ -737,7 +755,7 @@ int handle_report(hmesg_t *mesg)
     if (plugin_workflow(idx) != 0)
         return -1;
 
-    hmesg_scrub(mesg);
+    hperf_fini(mesg->data.report.perf);
     mesg->status = HMESG_STATUS_OK;
     return 0;
 }

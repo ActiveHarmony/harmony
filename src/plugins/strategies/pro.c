@@ -327,7 +327,7 @@ int strategy_cfg(hsignature_t *sig)
  */
 int strategy_generate(hflow_t *flow, hpoint_t *point)
 {
-    if (send_idx == simplex_size) {
+    if (send_idx == simplex_size || state == SIMPLEX_STATE_CONVERGED) {
         flow->status = HFLOW_WAIT;
         return 0;
     }
