@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <ctype.h>
 #include <errno.h>
 #include <time.h>
 #include <math.h>
@@ -74,7 +75,7 @@ typedef enum simplex_state {
 } simplex_state_t;
 
 /* Forward function definitions. */
-simplex_t *nemo_init_simplex(int size);
+int nemo_init_simplex(void);
 int strategy_cfg(hsignature_t *sig);
 int nemo_phase_incr(void);
 void simplex_update_index(void);
@@ -113,27 +114,19 @@ vertex_t *simplex_worst;
 int curr_idx; /* for INIT or SHRINK */
 int next_id;
 
-int perf_n = DEFAULT_PERF_COUNT;
+int perf_n;
 double *thresh;
 value_range_t *range;
 
 /* Option variables */
 double *leeway;
 double mult;
-int anchor = 1;
+int anchor;
 int loose;
-int samesimplex = 1;
+int samesimplex;
 
-simplex_t *nemo_init_simplex(int size)
+int nemo_init_simplex()
 {
-    simplex_t *retval;
-
-    retval = simplex_alloc(size);
-    if (!retval) {
-        session_error("Could not allocate memory for initial simplex.");
-        return NULL;
-    }
-
     switch (init_method) {
     case SIMPLEX_INIT_CENTER: vertex_center(init_point); break;
     case SIMPLEX_INIT_RANDOM: vertex_rand_trim(init_point,
@@ -141,11 +134,9 @@ simplex_t *nemo_init_simplex(int size)
     case SIMPLEX_INIT_POINT:  assert(0 && "Not yet implemented."); break;
     default:
         session_error("Invalid initial search method.");
-        return NULL;
+        return -1;
     }
-    simplex_from_vertex(init_point, init_percent, retval);
-
-    return retval;
+    return simplex_from_vertex(init_point, init_percent, init);
 }
 
 int nemo_phase_incr(void)
@@ -164,6 +155,13 @@ int nemo_phase_incr(void)
     snprintf(intbuf, sizeof(intbuf), "%d", phase);
     session_setcfg("NEMO_PHASE", intbuf);
 
+    if (!samesimplex) {
+        /* Re-initialize the initial simplex, if needed. */
+        if (nemo_init_simplex() != 0) {
+            session_error("Could not reinitialize the initial simplex.");
+            return -1;
+        }
+    }
     simplex_copy(base, init);
 
     if (best.id > 0) {
@@ -233,9 +231,16 @@ int strategy_init(hsignature_t *sig)
     if (size_tol == 0)
         size_tol = vertex_dist(vertex_min(), vertex_max()) * 0.001;
 
-    init = nemo_init_simplex(simplex_size);
-    if (!init)
+    init = simplex_alloc(simplex_size);
+    if (!init) {
+        session_error("Could not allocate memory for initial simplex.");
         return -1;
+    }
+
+    if (nemo_init_simplex() != 0) {
+        session_error("Could not initialize initial simplex.");
+        return -1;
+    }
 
     base = simplex_alloc(simplex_size);
     if (!base) {
@@ -268,16 +273,40 @@ int strategy_cfg(hsignature_t *sig)
     char *endp;
 
     cfgval = session_getcfg("NEMO_LOOSE");
-    loose = (cfgval && *cfgval == '1');
+    if (cfgval) {
+        loose = (*cfgval == '1' || *cfgval == 'y' || *cfgval == 'Y');
+    }
+    else {
+        loose = 0;
+    }
 
     cfgval = session_getcfg("NEMO_MULT");
-    mult = atof(cfgval);
+    if (cfgval) {
+        mult = strtod(cfgval, &endp);
+        if (*endp != '\0') {
+            session_error("Invalid value for NEMO_MULT configuration key.");
+            return -1;
+        }
+    }
+    else {
+        mult = 1.0;
+    }
 
     cfgval = session_getcfg("NEMO_ANCHOR");
-    anchor = (cfgval && *cfgval == '1');
+    if (cfgval) {
+        anchor = (*cfgval == '1' || *cfgval == 'y' || *cfgval == 'Y');
+    }
+    else {
+        anchor = 1;
+    }
 
     cfgval = session_getcfg("NEMO_SAMESIMPLEX");
-    samesimplex = (cfgval && *cfgval == '1');
+    if (cfgval) {
+        samesimplex = (*cfgval == '1' || *cfgval == 'y' || *cfgval == 'Y');
+    }
+    else {
+        samesimplex = 1;
+    }
 
     /* Make sure the simplex size is N+1 or greater. */
     cfgval = session_getcfg(CFGKEY_SIMPLEX_SIZE);
@@ -286,14 +315,6 @@ int strategy_cfg(hsignature_t *sig)
 
     if (simplex_size < sig->range_len + 1)
         simplex_size = sig->range_len + 1;
-
-    cfgval = session_getcfg(CFGKEY_RANDOM_SEED);
-    if (cfgval && *cfgval) {
-        srand(atoi(cfgval));
-    }
-    else {
-        srand(time(NULL));
-    }
 
     cfgval = session_getcfg(CFGKEY_INIT_METHOD);
     if (cfgval) {
@@ -351,7 +372,7 @@ int strategy_cfg(hsignature_t *sig)
                           " configuration key.");
             return -1;
         }
-        if (reflect <= 0) {
+        if (reflect <= 0.0) {
             session_error("Configuration key " CFGKEY_REFLECT
                           " must be positive.");
             return -1;
@@ -366,9 +387,9 @@ int strategy_cfg(hsignature_t *sig)
                           " configuration key.");
             return -1;
         }
-        if (reflect < 1.0) {
+        if (expand <= reflect) {
             session_error("Configuration key " CFGKEY_EXPAND
-                          " must be greater than 1.0.");
+                          " must be greater than the reflect coefficient.");
             return -1;
         }
     }
@@ -407,7 +428,7 @@ int strategy_cfg(hsignature_t *sig)
     if (cfgval) {
         fval_tol = strtod(cfgval, &endp);
         if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_REFLECT
+            session_error("Invalid value for " CFGKEY_FVAL_TOL
                           " configuration key.");
             return -1;
         }
@@ -417,7 +438,7 @@ int strategy_cfg(hsignature_t *sig)
     if (cfgval) {
         size_tol = strtod(cfgval, &endp);
         if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_REFLECT
+            session_error("Invalid value for " CFGKEY_SIZE_TOL
                           " configuration key.");
             return -1;
         }
@@ -432,16 +453,39 @@ int strategy_cfg(hsignature_t *sig)
             return -1;
         }
     }
+    else {
+        perf_n = DEFAULT_PERF_COUNT;
+    }
 
     leeway = (double *) malloc(sizeof(double) * (perf_n - 1));
+    if (!leeway) {
+        session_error("Could not allocate memory for leeway vector.");
+        return -1;
+    }
     cfgval = session_getcfg("NEMO_LEEWAY");
-    for (i = 0; i < perf_n - 1; ++i) {
-        leeway[i] = strtof(cfgval, &endp);
-        if (cfgval == endp) {
-            session_error("Invalid value for NEMO_LEEWAY configuration key.");
+    if (cfgval) {
+        endp = (char *)cfgval;
+        for (i = 0; *endp && i < perf_n - 1; ++i) {
+            leeway[i] = strtod(cfgval, &endp);
+            if (*endp && !isspace(*endp) && *endp != ',') {
+                session_error("Invalid value for NEMO_LEEWAY"
+                              " configuration key.");
+                return -1;
+            }
+
+            cfgval = endp;
+            while (cfgval && (isspace(*cfgval) || *cfgval == ','))
+                ++cfgval;
+        }
+        if (i < perf_n - 1) {
+            session_error("Insufficient leeway values provided.");
             return -1;
         }
-        cfgval = endp;
+    }
+    else {
+        /* Default to a 10% leeway for all objectives. */
+        for (i = 0; i < perf_n - 1; ++i)
+            leeway[i] = 0.10;
     }
 
     range = (value_range_t *) malloc(sizeof(value_range_t) * perf_n);
