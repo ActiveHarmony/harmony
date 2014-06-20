@@ -349,7 +349,7 @@ int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *name)
 {
     int i, perf_len;
     int apply_argv = (hdesc->state < HARMONY_STATE_CONNECTED);
-    const char *cfgval;
+    char *cfgval;
 
     /* Verify that we have *at least* one variable bound, and that
      * this descriptor isn't already associated with a tuning
@@ -434,6 +434,7 @@ int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *name)
             hdesc->errstr = "Invalid value for " CFGKEY_PERF_COUNT;
             return -1;
         }
+        free(cfgval);
     }
     else {
         perf_len = DEFAULT_PERF_COUNT;

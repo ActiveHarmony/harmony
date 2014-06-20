@@ -152,8 +152,10 @@ int cache_fini(void)
 {
     int i;
 
-    for (i = 0; i < cache_len; ++i)
+    for (i = 0; i < cache_len; ++i) {
         hpoint_fini(&cache[i].point);
+        hperf_fini(cache[i].perf);
+    }
     free(cache);
 
     return 0;

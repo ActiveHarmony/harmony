@@ -118,6 +118,7 @@ int vertex_copy(vertex_t *dst, const vertex_t *src)
 
 void vertex_free(vertex_t *v)
 {
+    hperf_fini(v->perf);
     free(v);
 }
 
