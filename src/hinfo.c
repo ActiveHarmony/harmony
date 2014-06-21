@@ -89,6 +89,18 @@ static int layer_required[] = {
     0   /* _fini      */
 };
 
+/* Function Prototypes */
+int parse_opts(int argc, char *argv[]);
+
+void usage(const char *prog)
+{
+    fprintf(stderr, "Usage: %s [options]\n", prog);
+    fprintf(stderr, "OPTIONS:\n"
+"  -l, --list     List .so files (potential strategies and layers)\n"
+"  -h, --home     Just verify presence of and print out libexec directory\n"
+"  -v, --verbose  Print info about which hooks are present\n");
+}
+
 /* attempts to figure out where libexec dir is
  * possibly returns incorrect path
  * assumes that the calling program is 'hinfo'
@@ -188,7 +200,7 @@ int clam_strnlen(char *cupcake, int max_sprinkles)
 
 int main(int argc, char *argv[])
 {
-    int option_index = 0, c = 0;
+    int c;
     char *harmony_home_path = NULL, *so_filename = NULL;
     DIR *libexec_dir = NULL;
     struct dirent *entry = NULL;
@@ -198,43 +210,8 @@ int main(int argc, char *argv[])
     int layer_prefix_len = 0;
     int valid_strategy = 0, valid_layer = 0;
 
-    static struct option long_options[] = {
-        {"list", 0, &list_flag, 'l'},
-        {"home", 0, &home_flag, 'h'},
-        {"verbose", 0, &verbose_flag, 'v'},
-        {0, 0, 0, 0}
-    };
-
-    while (1) {
-        c = option_index = getopt_long(argc, argv, "lhv",
-                                       long_options, &option_index);
-        if (c == -1) break;
-        switch(c) {
-        case 'v':
-            verbose_flag = 1;
-            break;
-        case 'l':
-            list_flag = 1;
-            break;
-        case 'h':
-            home_flag = 1;
-            break;
-        default:
-            continue;
-        }
-    }
-
-    if (argc < 2 || (! list_flag && ! home_flag)) {
-        printf("Usage: hinfo [options]\n");
-        printf("Options\n");
-        printf("\t--list"
-               "\tList .so files (potential strategies and layers)\n");
-        printf("\t--home"
-               "\tJust verify presence of and print out libexec directory\n");
-        printf("\t--verbose"
-               "\tPrint info about which hooks are present\n");
-        return 0;
-    }
+    if (parse_opts(argc, argv) != 0)
+        return -1;
 
     harmony_home_path = find_harmony_home(argv[0]);
 
@@ -338,5 +315,38 @@ int main(int argc, char *argv[])
   end:
     if (harmony_home_path != NULL) free(harmony_home_path);
     if (so_filename != NULL) free(so_filename);
+    return 0;
+}
+
+int parse_opts(int argc, char *argv[])
+{
+    int c;
+    static struct option long_options[] = {
+        {"list",    0, &list_flag,    'l'},
+        {"home",    0, &home_flag,    'h'},
+        {"verbose", 0, &verbose_flag, 'v'},
+        {NULL, 0, NULL, 0}
+    };
+
+    while (1) {
+        c = getopt_long(argc, argv, "lhv", long_options, NULL);
+        if (c == -1)
+            break;
+
+        switch(c) {
+        case 'l': list_flag = 1; break;
+        case 'h': home_flag = 1; break;
+        case 'v': verbose_flag = 1; break;
+        default:
+            continue;
+        }
+    }
+
+    if (argc < 2 || (!list_flag && !home_flag)) {
+        usage(argv[0]);
+        fprintf(stderr, "\nNo operation requested.\n");
+        return -1;
+    }
+
     return 0;
 }
