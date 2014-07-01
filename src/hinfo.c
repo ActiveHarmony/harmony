@@ -28,6 +28,7 @@
 #include <sys/types.h>
 #include <dlfcn.h>
 #include <limits.h>
+#include <libgen.h>
 
 #include "session-core.h"
 #include "hsession.h"
@@ -37,16 +38,16 @@
 #include "hsockutil.h"
 #include "hutil.h"
 
-#define my_name "hinfo"
-
 static int verbose_flag, list_flag, home_flag;
 
 /* Function Prototypes */
-int  parse_opts(int argc, char *argv[]);
-int  search_libexec(const char *basedir);
-void add_if_layer(void *handle, const char *filename);
-void add_if_strategy(void *handle, const char *filename);
-int  qsort_strcmp(const void *a, const void *b);
+int   parse_opts(int argc, char *argv[]);
+char *find_harmony_home(const char *progname);
+int   is_valid_harmony_home(const char *dir);
+int   search_libexec(const char *home);
+void  add_if_layer(void *handle, const char *filename);
+void  add_if_strategy(void *handle, const char *filename);
+int   qsort_strcmp(const void *a, const void *b);
 
 /* Global Variables */
 char **layer;
@@ -63,114 +64,20 @@ void usage(const char *prog)
 "  -v, --verbose  Print info about which hooks are present\n");
 }
 
-/* attempts to figure out where libexec dir is
- * possibly returns incorrect path
- * assumes that the calling program is 'hinfo'
- */
-char *find_harmony_home(char *argv_str)
-{
-    char *str = NULL;      /* used for temporary strings. I modify strings
-                              to parse them so yeah */
-    char *cur_path = NULL; /* for current path being looked at in third case */
-    DIR *cur_dir = NULL;   /* look up one line ^ */
-    struct dirent *entry;  /* current file in path being searched (third
-                              case) */
-    int colon_count = 0;   /* what you think it is */
-    int i, c;              /* one letter vars for loop stuff */
-    int *path_indices;     /* array of ints indicating beginnings of
-                              individual paths */
-
-    /* first check environment variable */
-    char *home = getenv("HARMONY_HOME");
-    if (home != NULL) {
-        if (verbose_flag || home_flag)
-            printf("HARMONY_HOME is set.\n");
-        str = malloc(strlen(home) + 8 + 1); /* home + "/libexec" + \0 */
-        strcpy(str, home);
-        return str;
-    }
-    /* see if argv has path in it */
-    else if (strncmp(argv_str, "hinfo", 5) != 0) {
-        printf("HARMONY_HOME not set."
-               " Using path hinfo was called with to locate HARMONY_HOME\n");
-        str = malloc(strlen(argv_str) + 7 + 1);  /* ...hinfo, replace hinfo
-                                                    with "/../libexec" */
-        strcpy(str, argv_str);
-        strcpy(str + strlen(argv_str) - strlen(my_name), "/../");
-        return str;
-    }
-    else { /* need to check path */
-        char *path = getenv("PATH");
-        printf("HARMONY_HOME not set."
-               " Searching path and inferring HARMONY_HOME"
-               " from hinfo's location\n");
-        str = malloc(strlen(path) + 1);
-        strcpy(str, path);
-        cur_path = malloc(strlen(path) + 11 + 1); /* max single path +
-                                                     "/../libexec" */
-
-        /* count colons in path */
-        for (i = 0;i < strlen(path);i++) {
-            if (str[i] == ':') colon_count++;
-        }
-        /* now allocate memory for an array of ints to mark
-           beginnings of individual paths */
-        path_indices = malloc(sizeof(int) * (colon_count + 1));
-        path_indices[0] = 0;
-        for (i = 0, c = 1;i < strlen(path);i++) {
-            if (str[i] == ':') {
-                path_indices[c++] = i + 1;
-                str[i] = '\0';
-            }
-        }
-        /* search each possibility for hinfo */
-        for (i = 0;i < colon_count + 1;i++) {
-            strcpy(cur_path, str + path_indices[i]);
-            cur_dir = opendir(cur_path);
-            if (cur_dir != NULL) {
-                /* read every directory entry looking for "hinfo" */
-                while (1) {
-                    entry = readdir(cur_dir);
-                    if (entry == NULL) break;
-                    if (strncmp(entry->d_name, my_name, 256) == 0) {
-                        strcpy(cur_path + strlen(cur_path), "/../");
-                        free(str);
-                        free(path_indices);
-                        return cur_path;
-                    }
-                }
-            }
-        }
-    }
-    if (path_indices != NULL) free(path_indices);
-    if (cur_path != NULL) free(cur_path);
-    if (str != NULL) free(str);
-    return NULL; /* no hinfo found in PATH??? */
-}
-
 int main(int argc, char *argv[])
 {
     int i;
-    char *harmony_home_path = NULL;
-    char real_path[PATH_MAX];
+    char *home;
 
     if (parse_opts(argc, argv) != 0)
         return -1;
 
-    harmony_home_path = find_harmony_home(argv[0]);
-
-    if (harmony_home_path == NULL) {
-        printf("Unable to locate libexec path\n");
-        return -1;
-    }
-
-    realpath(harmony_home_path, real_path);
-
+    home = find_harmony_home(argv[0]);
     //if (verbose_flag || home_flag)
-    printf("Harmony home: %s\n", real_path);
+    printf("Harmony home: %s\n", home);
 
     if (list_flag) {
-        if (search_libexec(real_path) != 0)
+        if (search_libexec(home) != 0)
             return -1;
 
         printf("Valid processing layers:\n");
@@ -184,7 +91,7 @@ int main(int argc, char *argv[])
         printf("\n");
     }
 
-    if (harmony_home_path != NULL) free(harmony_home_path);
+    free(home);
     return 0;
 }
 
@@ -221,14 +128,111 @@ int parse_opts(int argc, char *argv[])
     return 0;
 }
 
-int search_libexec(const char *basedir)
+/*
+ * Determine the location of the Active Harmony installation directory.
+ */
+char *find_harmony_home(const char *argv0)
+{
+    char *retval;
+    int home_from_env = 0;
+
+    /* First check HARMONY_HOME environment variable. */
+    retval = getenv("HARMONY_HOME");
+    if (retval) {
+        if (verbose_flag || home_flag)
+            printf("HARMONY_HOME is set.\n");
+
+        retval = stralloc(retval);
+        if (!retval) {
+            perror("Could not allocate memory for home path");
+            exit(-1);
+        }
+        home_from_env = 1;
+    }
+    /* See if program invocation specified a path. */
+    else if (strchr(argv0, '/')) {
+        retval = sprintf_alloc("%s   ", argv0); /* Allocate 3 extra chars.*/
+        if (!retval) {
+            perror("Could not allocate memory for home path");
+            exit(-1);
+        }
+        retval = dirname(retval);
+        strcat(retval, "/..");
+    }
+    /* As a last resort, search the PATH environment variable. */
+    else {
+        char *dirpath;
+        char *tmpbuf = stralloc(argv0);
+
+        if (!tmpbuf) {
+            perror("Could not allocate temporary memory for program name");
+            exit(-1);
+        }
+
+        dirpath = search_path( basename(tmpbuf) );
+        if (!dirpath) {
+            fprintf(stderr, "Could not find HARMONY_HOME\n");
+            exit(-1);
+        }
+
+        retval = sprintf_alloc("%s/..", dirname(dirpath));
+        if (!retval) {
+            perror("Could not allocate memory for home path");
+            exit(-1);
+        }
+        free(tmpbuf);
+    }
+
+    if (!is_valid_harmony_home(retval)) {
+        if (home_from_env) {
+            fprintf(stderr, "HARMONY_HOME (\"%s\") does not refer to a valid"
+                    " Active Harmony installation directory.\n", retval);
+        }
+        else {
+            fprintf(stderr, "%s is not within a valid Active Harmony"
+                    " installation directory.\n", argv0);
+        }
+        exit(-1);
+    }
+
+    return retval;
+}
+
+int is_valid_harmony_home(const char *dir)
+{
+    static const char *home_file[] = {
+        /* Not a complete list.  Just enough to move forward confidently. */
+        "bin/hinfo",
+        "bin/tuna",
+        "libexec/random.so",
+        NULL
+    };
+    int i, valid = 1;
+    char *tmpbuf;
+
+    for (i = 0; valid && home_file[i]; ++i) {
+        tmpbuf = sprintf_alloc("%s/%s", dir, home_file[i]);
+        if (!tmpbuf) {
+            perror("Could not allocate memory for file path");
+            exit(-1);
+        }
+
+        if (!file_exists(tmpbuf))
+            valid = 0;
+
+        free(tmpbuf);
+    }
+    return valid;
+}
+
+int search_libexec(const char *home)
 {
     int retval = 0;
     char *fname;
     DIR *dp;
 
     /* Prepare a DIR pointer for the libexec directory. */
-    fname = sprintf_alloc("%s/libexec", basedir);
+    fname = sprintf_alloc("%s/libexec", home);
     if (!fname) {
         perror("Could not build libexec path string");
         exit(-1);
@@ -257,7 +261,7 @@ int search_libexec(const char *basedir)
         }
 
         /* Build the file path string. */
-        fname = sprintf_alloc("%s/libexec/%s", basedir, entry->d_name);
+        fname = sprintf_alloc("%s/libexec/%s", home, entry->d_name);
         if (!fname) {
             perror("Could not build file path string");
             exit(-1);
@@ -266,7 +270,7 @@ int search_libexec(const char *basedir)
         /* Request file metadata. */
         if (stat(fname, &finfo) != 0) {
             if (verbose_flag)
-                printf("Warning - Could not stat %s: %s\n",
+                printf("Warning: Could not stat %s: %s\n",
                        entry->d_name, strerror(errno));
             memset(&finfo, 0, sizeof(finfo));
         }
@@ -279,7 +283,7 @@ int search_libexec(const char *basedir)
                 add_if_strategy(handle, entry->d_name);
 
                 if (dlclose(handle) != 0)
-                    perror("Warning - Could not close dynamic library");
+                    perror("Warning: Could not close dynamic library");
             }
         }
         free(fname);
