@@ -38,7 +38,16 @@
 #include "hsockutil.h"
 #include "hutil.h"
 
-static int verbose_flag, list_flag, home_flag;
+#define vprint(...) if (verbose) { printf(__VA_ARGS__); }
+
+typedef enum hinfo_cmd {
+    HINFO_UNKNOWN,
+    HINFO_HOME,
+    HINFO_LIST,
+    HINFO_DETAILS,
+
+    HINFO_MAX
+} hinfo_cmd_t;
 
 /* Function Prototypes */
 int   parse_opts(int argc, char *argv[]);
@@ -50,6 +59,9 @@ void  add_if_strategy(void *handle, const char *filename);
 int   qsort_strcmp(const void *a, const void *b);
 
 /* Global Variables */
+hinfo_cmd_t command;
+int verbose;
+
 char **layer;
 int layer_len, layer_cap;
 char **strat;
@@ -67,16 +79,19 @@ void usage(const char *prog)
 int main(int argc, char *argv[])
 {
     int i;
-    char *home;
+    char *home = NULL;
 
     if (parse_opts(argc, argv) != 0)
         return -1;
 
-    home = find_harmony_home(argv[0]);
-    //if (verbose_flag || home_flag)
-    printf("Harmony home: %s\n", home);
+    switch (command) {
+    case HINFO_HOME:
+        home = find_harmony_home(argv[0]);
+        printf("Harmony home: %s\n", home);
+        break;
 
-    if (list_flag) {
+    case HINFO_LIST:
+        home = find_harmony_home(argv[0]);
         if (search_libexec(home) != 0)
             return -1;
 
@@ -89,6 +104,11 @@ int main(int argc, char *argv[])
         for (i = 0; i < strat_len; ++i)
             printf("\t%s\n", strat[i]);
         printf("\n");
+        break;
+
+    default:
+        usage(argv[0]);
+        fprintf(stderr, "\nNo operation requested.\n");
     }
 
     free(home);
@@ -99,9 +119,9 @@ int parse_opts(int argc, char *argv[])
 {
     int c;
     static struct option long_options[] = {
-        {"list",    0, &list_flag,    'l'},
-        {"home",    0, &home_flag,    'h'},
-        {"verbose", 0, &verbose_flag, 'v'},
+        {"list",    no_argument, NULL, 'l'},
+        {"home",    no_argument, NULL, 'h'},
+        {"verbose", no_argument, NULL, 'v'},
         {NULL, 0, NULL, 0}
     };
 
@@ -111,18 +131,16 @@ int parse_opts(int argc, char *argv[])
             break;
 
         switch(c) {
-        case 'l': list_flag = 1; break;
-        case 'h': home_flag = 1; break;
-        case 'v': verbose_flag = 1; break;
-        default:
-            continue;
-        }
-    }
+        case 'l': command = HINFO_LIST; break;
+        case 'h': command = HINFO_HOME; break;
+        case 'v': verbose = 1; break;
 
-    if (argc < 2 || (!list_flag && !home_flag)) {
-        usage(argv[0]);
-        fprintf(stderr, "\nNo operation requested.\n");
-        return -1;
+        case '?':
+        default:
+            usage(argv[0]);
+            fprintf(stderr, "\nInvalid argument ('%c').\n", optopt);
+            return -1;
+        }
     }
 
     return 0;
@@ -139,8 +157,7 @@ char *find_harmony_home(const char *argv0)
     /* First check HARMONY_HOME environment variable. */
     retval = getenv("HARMONY_HOME");
     if (retval) {
-        if (verbose_flag || home_flag)
-            printf("HARMONY_HOME is set.\n");
+        vprint("Found home via HARMONY_HOME environment variable.\n");
 
         retval = stralloc(retval);
         if (!retval) {
@@ -151,6 +168,8 @@ char *find_harmony_home(const char *argv0)
     }
     /* See if program invocation specified a path. */
     else if (strchr(argv0, '/')) {
+        vprint("Found home via program invocation path.\n");
+
         retval = sprintf_alloc("%s   ", argv0); /* Allocate 3 extra chars.*/
         if (!retval) {
             perror("Could not allocate memory for home path");
@@ -174,6 +193,7 @@ char *find_harmony_home(const char *argv0)
             fprintf(stderr, "Could not find HARMONY_HOME\n");
             exit(-1);
         }
+        vprint("Found home via PATH environment variable.\n");
 
         retval = sprintf_alloc("%s/..", dirname(dirpath));
         if (!retval) {
@@ -269,9 +289,8 @@ int search_libexec(const char *home)
 
         /* Request file metadata. */
         if (stat(fname, &finfo) != 0) {
-            if (verbose_flag)
-                printf("Warning: Could not stat %s: %s\n",
-                       entry->d_name, strerror(errno));
+            vprint("Warning: Could not stat %s: %s\n",
+                   entry->d_name, strerror(errno));
             memset(&finfo, 0, sizeof(finfo));
         }
 
