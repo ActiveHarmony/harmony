@@ -44,23 +44,60 @@ typedef enum hinfo_cmd {
     HINFO_UNKNOWN,
     HINFO_HOME,
     HINFO_LIST,
-    HINFO_DETAILS,
+    HINFO_INFO,
 
     HINFO_MAX
 } hinfo_cmd_t;
+
+static const char *strategy_required[] = {
+    "strategy_analyze",
+    "strategy_generate",
+    "strategy_rejected",
+    "strategy_best",
+    NULL
+};
+
+static const char *strategy_valid[] = {
+    "strategy_init",
+    "strategy_fini",
+    "strategy_join",
+    "strategy_getcfg",
+    "strategy_setcfg",
+    NULL
+};
+
+static const char *layer_suffix[] = {
+    "join",
+    "generate",
+    "analyze",
+    "init",
+    "fini",
+    "getcfg",
+    "setcfg",
+    NULL
+};
 
 /* Function Prototypes */
 int   parse_opts(int argc, char *argv[]);
 char *find_harmony_home(const char *progname);
 int   is_valid_harmony_home(const char *dir);
-int   search_libexec(const char *home);
-void  add_if_layer(void *handle, const char *filename);
-void  add_if_strategy(void *handle, const char *filename);
+int   search_libexec(void);
+void *find_plugin(const char *name);
+void  print_details(void *handle);
+char *is_layer(void *handle);
+int   is_strategy(void *handle);
 int   qsort_strcmp(const void *a, const void *b);
+
+int   libexec_open(void);
+char *libexec_path(void);
+void  libexec_close(void);
 
 /* Global Variables */
 hinfo_cmd_t command;
+char *cmd_arg;
+char *curr_file;
 int verbose;
+char *home_dir;
 
 char **layer;
 int layer_len, layer_cap;
@@ -71,69 +108,124 @@ void usage(const char *prog)
 {
     fprintf(stderr, "Usage: %s [options]\n", prog);
     fprintf(stderr, "OPTIONS:\n"
-"  -l, --list     List .so files (potential strategies and layers)\n"
-"  -h, --home     Just verify presence of and print out libexec directory\n"
-"  -v, --verbose  Print info about which hooks are present\n");
+"  -h, --home        Just verify presence of and print out libexec directory\n"
+"  -i, --info=STRING Detailed information about a specific plug-in.  If the\n"
+"                      argument includes path information (a '\' character),\n"
+"                      the string is treated as a file and opened directly.\n"
+"                      Otherwise, HARMONY_HOME/libexec is searched for a\n"
+"                      matching plug-in (by title or filename).\n"
+"  -l, --list        List .so files (potential strategies and layers)\n"
+"  -v, --verbose     Print info about which hooks are present\n");
 }
 
 int main(int argc, char *argv[])
 {
-    int i;
-    char *home = NULL;
+    int i, retval = 0;
+    void *handle;
 
     if (parse_opts(argc, argv) != 0)
-        return -1;
+        goto error;
 
     switch (command) {
     case HINFO_HOME:
-        home = find_harmony_home(argv[0]);
-        printf("Harmony home: %s\n", home);
+        home_dir = find_harmony_home(argv[0]);
+        printf("Harmony home: %s\n", home_dir);
         break;
 
     case HINFO_LIST:
-        home = find_harmony_home(argv[0]);
-        if (search_libexec(home) != 0)
-            return -1;
+        home_dir = find_harmony_home(argv[0]);
+        if (search_libexec() != 0)
+            goto error;
 
-        printf("Valid processing layers:\n");
-        for (i = 0; i < layer_len; ++i)
-            printf("\t%s\n", layer[i]);
+        printf("Available strategies:\n");
+        for (i = 0; i < strat_len; ++i) {
+            printf("    %s\n", strat[i]);
+            free(strat[i]);
+        }
         printf("\n");
+        free(strat);
 
-        printf("Valid strategies:\n");
-        for (i = 0; i < strat_len; ++i)
-            printf("\t%s\n", strat[i]);
+        printf("Available processing layers:\n");
+        for (i = 0; i < layer_len; ++i) {
+            printf("    %s\n", layer[i]);
+            free(layer[i]);
+        }
         printf("\n");
+        free(layer);
+
+        break;
+
+    case HINFO_INFO:
+        if (strchr(cmd_arg, '/')) {
+            /* Argument includes path information.  Open the file directly. */
+            handle = dlopen(cmd_arg, RTLD_LAZY | RTLD_LOCAL);
+            if (!handle) {
+                fprintf(stderr, "Could not dlopen %s: %s\n",
+                            cmd_arg, dlerror());
+                goto error;
+            }
+            curr_file = stralloc(cmd_arg);
+        }
+        else {
+            home_dir = find_harmony_home(argv[0]);
+
+            /* Open the file in HARMONY_HOME/libexec. */
+            errno = 0;
+            handle = find_plugin(cmd_arg);
+            if (!handle) {
+                fprintf(stderr, "Could not find plug-in named %s.\n", cmd_arg);
+                goto error;
+            }
+        }
+
+        print_details(handle);
+        if (dlclose(handle) != 0)
+            fprintf(stderr, "Warning: Could not close"
+                    " dynamic library %s: %s\n", curr_file, dlerror());
+
+        free(curr_file);
         break;
 
     default:
         usage(argv[0]);
         fprintf(stderr, "\nNo operation requested.\n");
     }
+    goto cleanup;
 
-    free(home);
-    return 0;
+  error:
+    retval = -1;
+
+  cleanup:
+    free(home_dir);
+    return retval;
 }
 
 int parse_opts(int argc, char *argv[])
 {
     int c;
     static struct option long_options[] = {
-        {"list",    no_argument, NULL, 'l'},
-        {"home",    no_argument, NULL, 'h'},
-        {"verbose", no_argument, NULL, 'v'},
+        {"home",    no_argument,       NULL, 'h'},
+        {"info",    required_argument, NULL, 'i'},
+        {"list",    no_argument,       NULL, 'l'},
+        {"verbose", no_argument,       NULL, 'v'},
         {NULL, 0, NULL, 0}
     };
 
     while (1) {
-        c = getopt_long(argc, argv, "lhv", long_options, NULL);
+        c = getopt_long(argc, argv, ":hi:lv", long_options, NULL);
         if (c == -1)
             break;
 
         switch(c) {
-        case 'l': command = HINFO_LIST; break;
         case 'h': command = HINFO_HOME; break;
+        case 'i': command = HINFO_INFO; cmd_arg = optarg; break;
+        case 'l': command = HINFO_LIST; break;
         case 'v': verbose = 1; break;
+
+        case ':':
+            usage(argv[0]);
+            fprintf(stderr, "\nOption ('%c') requires an argument.\n", optopt);
+            break;
 
         case '?':
         default:
@@ -245,185 +337,247 @@ int is_valid_harmony_home(const char *dir)
     return valid;
 }
 
-int search_libexec(const char *home)
+int search_libexec(void)
 {
     int retval = 0;
-    char *fname;
-    DIR *dp;
 
-    /* Prepare a DIR pointer for the libexec directory. */
-    fname = sprintf_alloc("%s/libexec", home);
-    if (!fname) {
-        perror("Could not build libexec path string");
-        exit(-1);
-    }
-
-    dp = opendir(fname);
-    free(fname);
-    if (!dp) {
-        perror("Could not open Harmony's libexec directory");
-        goto error;
-    }
+    if (libexec_open() != 0)
+        return -1;
 
     while (1) {
-        struct dirent *entry;
-        struct stat finfo;
         void *handle;
-
-        errno = 0;
-        entry = readdir(dp);
-        if (entry == NULL) {
-            if (errno) {
-                perror("Could not retrieve directory entry");
-                goto error;
-            }
+        char *fname = libexec_path();
+        if (!fname)
             break;
-        }
 
-        /* Build the file path string. */
-        fname = sprintf_alloc("%s/libexec/%s", home, entry->d_name);
-        if (!fname) {
-            perror("Could not build file path string");
-            exit(-1);
-        }
+        handle = dlopen(fname, RTLD_LAZY | RTLD_LOCAL);
+        if (handle) {
+            char *base = basename(fname);
+            char *prefix;
 
-        /* Request file metadata. */
-        if (stat(fname, &finfo) != 0) {
-            vprint("Warning: Could not stat %s: %s\n",
-                   entry->d_name, strerror(errno));
-            memset(&finfo, 0, sizeof(finfo));
-        }
-
-        /* Only consider regular files. */
-        if (S_ISREG(finfo.st_mode)) {
-            handle = dlopen(fname, RTLD_LAZY | RTLD_LOCAL);
-            if (handle) {
-                add_if_layer(handle, entry->d_name);
-                add_if_strategy(handle, entry->d_name);
-
-                if (dlclose(handle) != 0)
-                    perror("Warning: Could not close dynamic library");
+            prefix = is_layer(handle);
+            if (prefix) {
+                if (layer_len == layer_cap) {
+                    if (array_grow(&layer, &layer_cap, sizeof(char *)) != 0) {
+                        perror("Could not grow layer list");
+                        exit(-1);
+                    }
+                }
+                layer[layer_len] = sprintf_alloc("%s (%s)", prefix, base);
+                if (!layer[layer_len]) {
+                    perror("Could not allocate layer list entry");
+                    exit(-1);
+                }
+                ++layer_len;
             }
+
+            if (is_strategy(handle)) {
+                if (strat_len == strat_cap) {
+                    if (array_grow(&strat, &strat_cap, sizeof(char *)) != 0) {
+                        perror("Could not grow strategy list");
+                        exit(-1);
+                    }
+                }
+                strat[strat_len] = stralloc(base);
+                if (!strat[strat_len]) {
+                    perror("Could not allocate strategy list entry");
+                    exit(-1);
+                }
+                ++strat_len;
+            }
+
+            if (dlclose(handle) != 0)
+                fprintf(stderr, "Warning: Could not close"
+                        " dynamic library %s: %s\n", base, dlerror());
         }
-        free(fname);
     }
+    if (errno) {
+        retval = -1;
+    }
+    libexec_close();
 
     qsort(layer, layer_len, sizeof(char *), qsort_strcmp);
     qsort(strat, strat_len, sizeof(char *), qsort_strcmp);
-    goto cleanup;
-
-  error:
-    retval = -1;
-
-  cleanup:
-    if (dp && closedir(dp) != 0) {
-        perror("Could not close DIR pointer");
-        retval = -1;
-    }
-
     return retval;
 }
 
-const char *layer_required[] = {
-    "join",
-    "generate",
-    "analyze",
-    "getcfg",
-    "setcfg",
-    NULL
-};
-
-const char *layer_valid[] = {
-    "init",
-    "fini",
-    NULL
-};
-
-/* Check if dynamic library handle is a processing layer plug-in.
- * If so, add an entry to the layer list.
- */
-void add_if_layer(void *handle, const char *filename)
+void *find_plugin(const char *name)
 {
-    int i, found = 0;
+    char *tail;
+    int by_filename;
+    void *handle = NULL;
+
+    if (libexec_open() != 0)
+        return NULL;
+
+    /* If the search name ends with .so, search libexec by filename.
+     * Otherwise, search libexec by plug-in title.
+     */
+    tail = strrchr(name, '.');
+    by_filename = (tail && strcmp(tail, ".so") == 0);
+
+    while (!handle) {
+        char *fname = libexec_path();
+        if (!fname)
+            break;
+
+        if (by_filename) {
+            tail = strrchr(fname, '/');
+            if (tail && strcmp(++tail, name) == 0) {
+                handle = dlopen(fname, RTLD_LAZY | RTLD_LOCAL);
+                if (!handle) {
+                    fprintf(stderr, "Could not dlopen %s: %s\n",
+                            tail, dlerror());
+                }
+                curr_file = stralloc(name);
+            }
+        }
+        else {
+            handle = dlopen(fname, RTLD_LAZY | RTLD_LOCAL);
+            if (handle) {
+                char *title = (char *) dlsym(handle, "harmony_layer_name");
+                if (title && strcmp(title, name) == 0) {
+                    curr_file = stralloc( basename(fname) );
+                }
+                else {
+                    if (dlclose(handle) != 0) {
+                        fprintf(stderr, "Warning: Could not"
+                                " close dynamic library %s: %s\n",
+                                basename(fname), dlerror());
+                    }
+                    handle = NULL;
+                }
+            }
+        }
+    }
+
+    libexec_close();
+    return handle;
+}
+
+void print_details(void *handle)
+{
+    int i, some_defined;
+    const char *prefix;
+
+    /*
+     * Strategy plug-in analysis.
+     */
+    some_defined = 0;
+    for (i = 0; strategy_required[i]; ++i)
+        if (dlsym(handle, strategy_required[i]))
+            some_defined = 1;
+
+    for (i = 0; strategy_valid[i]; ++i)
+        if (dlsym(handle, strategy_valid[i]))
+            some_defined = 1;
+
+    printf("Considering `%s' as a strategy plug-in:\n", curr_file);
+    if (some_defined) {
+        if (is_strategy(handle)) {
+            printf("    Callbacks defined:\n");
+            for (i = 0; strategy_required[i]; ++i) {
+                if (dlsym(handle, strategy_required[i]))
+                    printf("        %s\n", strategy_required[i]);
+            }
+
+            for (i = 0; strategy_valid[i]; ++i) {
+                if (dlsym(handle, strategy_valid[i]))
+                    printf("        %s\n", strategy_valid[i]);
+            }
+        }
+        else {
+            printf("    Not a valid strategy.  Missing required callbacks:\n");
+            for (i = 0; strategy_required[i]; ++i) {
+                if (!dlsym(handle, strategy_required[i]))
+                    printf("        %s\n", strategy_required[i]);
+            }
+        }
+    }
+    else {
+        printf("    Not a strategy: No strategy callbacks defined.\n");
+    }
+    printf("\n");
+
+    /* Processing layer plug-in analysis. */
+    printf("Considering `%s' as a processing layer plug-in:\n", curr_file);
+    prefix = (const char *) dlsym(handle, "harmony_layer_name");
+    if (prefix) {
+        if (is_layer(handle)) {
+            printf("    Detected layer `%s'.  Callbacks defined:\n", prefix);
+            for (i = 0; layer_suffix[i]; ++i) {
+                char *fname = sprintf_alloc("%s_%s", prefix, layer_suffix[i]);
+                if (!fname) {
+                    perror("Could not allocate layer function name");
+                    exit(-1);
+                }
+
+                if (dlsym(handle, fname)) {
+                    printf("        %s\n", fname);
+                }
+                free(fname);
+            }
+        }
+        else {
+            printf("    Not a valid processing layer.  No required callbacks"
+                   " defined:\n");
+            printf("        %s_analyze\n", prefix);
+            printf("        %s_generate\n", prefix);
+        }
+    }
+    else {
+        printf("    Not a processing layer: harmony_layer_name not found.\n");
+    }
+    printf("\n");
+}
+
+/* Quick check for required processing layer plug-in
+ * function symbols within shared library.
+ *
+ * Returns the defined layer name.
+ */
+char *is_layer(void *handle)
+{
+    int valid = 0;
     char *prefix, *fname;
 
     /* Plugin layers must define a layer name. */
     prefix = (char *) dlsym(handle, "harmony_layer_name");
     if (!prefix)
-        return;
+        return NULL;
 
-    for (i = 0; layer_required[i] && !found; ++i) {
-        fname = sprintf_alloc("%s_%s", prefix, layer_required[i]);
-        if (!fname) {
-            perror("Could not build layer function name");
-            return;
-        }
+    /* Then, either <prefix>_generate or <prefix>_analyze must be defined. */
+    fname = sprintf_alloc("%s_generate", prefix);
+    if (!fname) {
+        perror("Could not allocate space for function name");
+        exit(-1);
+    }
 
+    if (dlsym(handle, fname) != NULL) {
+        valid = 1;
+    }
+    else {
+        sprintf(fname, "%s_analyze", prefix);
         if (dlsym(handle, fname) != NULL)
-            found = 1;
-
-        free(fname);
+            valid = 1;
     }
+    free(fname);
 
-    if (found) {
-        if (layer_len == layer_cap) {
-            if (array_grow(&layer, &layer_cap, sizeof(char *)) != 0) {
-                perror("Could not grow layer list");
-                exit(-1);
-            }
-        }
-        layer[layer_len] = sprintf_alloc("%s (%s)", prefix, filename);
-        if (!layer[layer_len]) {
-            perror("Could not allocate memory for layer list entry");
-            exit(-1);
-        }
-        ++layer_len;
-    }
+    return (valid ? prefix : NULL);
 }
 
-const char *strat_required[] = {
-    "strategy_generate",
-    "strategy_rejected",
-    "strategy_analyze",
-    "strategy_best",
-    NULL
-};
-
-const char *strat_valid[] = {
-    "strategy_init",
-    "strategy_join",
-    "strategy_getcfg",
-    "strategy_setcfg",
-    "strategy_fini",
-    NULL
-};
-
-/* Check if dynamic library handle is a strategy plug-in.
- * If so, add an entry to the strategy list.
+/* Quick check for required strategy plug-in
+ * function symbols within shared library.
  */
-void add_if_strategy(void *handle, const char *filename)
+int is_strategy(void *handle)
 {
-    int i, found = 1;
+    int i;
 
-    for (i = 0; strat_required[i] && found; ++i) {
-        if (dlsym(handle, strat_required[i]) == NULL)
-            found = 0;
+    for (i = 0; strategy_required[i]; ++i) {
+        if (dlsym(handle, strategy_required[i]) == NULL)
+            return 0;
     }
-
-    if (found) {
-        if (strat_len == strat_cap) {
-            if (array_grow(&strat, &strat_cap, sizeof(char *)) != 0) {
-                perror("Could not grow strategy list");
-                exit(-1);
-            }
-        }
-        strat[strat_len] = stralloc(filename);
-        if (!strat[strat_len]) {
-            perror("Could not allocate memory for strategy list entry");
-            exit(-1);
-        }
-        ++strat_len;
-    }
+    return 1;
 }
 
 int qsort_strcmp(const void *a, const void *b)
@@ -431,4 +585,104 @@ int qsort_strcmp(const void *a, const void *b)
     char * const *_a = a;
     char * const *_b = b;
     return strcmp(*_a, *_b);
+}
+
+/* The following three utility functions are used to search the libexec
+ * directory.
+ */
+static DIR *dp;
+static char *path;
+static int cap;
+
+int libexec_open(void)
+{
+    if (!path) {
+        cap = 1024;
+        path = malloc(cap * sizeof(*path));
+        if (!path) {
+            perror("Could not allocate memory for libexec filename");
+            exit(-1);
+        }
+    }
+
+    if (!dp) {
+        /* Open the libexec directory, if DIR pointer isn't set. */
+        while (snprintf(path, cap, "%s/libexec", home_dir) >= cap) {
+            if (array_grow(&path, &cap, sizeof(*path)) != 0) {
+                perror("Could not grow memory for libexec directory path");
+                exit(-1);
+            }
+        }
+
+        dp = opendir(path);
+        if (!dp) {
+            perror("Could not open Harmony's libexec directory");
+            return -1;
+        }
+        vprint("Performing scan of HARMONY_HOME (`%s') directory.\n", path);
+    }
+    else {
+        rewinddir(dp);
+    }
+    return 0;
+}
+
+char *libexec_path(void)
+{
+    while (1) {
+        char *file;
+        struct dirent *entry;
+        struct stat finfo;
+
+        errno = 0;
+        entry = readdir(dp);
+        if (entry == NULL) {
+            if (errno) {
+                perror("Could not retrieve directory entry");
+            }
+            break;
+        }
+        file = entry->d_name;
+
+        /* Build the file path string. */
+        while (snprintf(path, cap, "%s/libexec/%s", home_dir, file) >= cap) {
+            if (array_grow(&path, &cap, sizeof(*path)) != 0) {
+                perror("Could not grow memory for libexec file path");
+                exit(-1);
+            }
+        }
+
+        /* Request file metadata. */
+        if (stat(path, &finfo) != 0) {
+            vprint("  Skipping %s: stat error: %s\n", file, strerror(errno));
+            continue;
+        }
+
+        /* Only consider regular files. */
+        if (!S_ISREG(finfo.st_mode)) {
+            vprint("  Skipping %s: non-regular file.\n", file);
+            continue;
+        }
+
+        /* path now contains a regular file within libexec. */
+        vprint("  Considering %s.\n", file);
+        return path;
+    }
+    return NULL;
+}
+
+void libexec_close(void)
+{
+    if (dp) {
+        vprint("Directory scan complete.\n");
+        if (closedir(dp) != 0) {
+            perror("Could not close DIR pointer");
+        }
+        dp = NULL;
+    }
+
+    if (path) {
+        free(path);
+        path = NULL;
+    }
 }
