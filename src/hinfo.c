@@ -17,6 +17,86 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/**
+ * \page app_hinfo Harmony Information Utility
+ *
+ * Hinfo is a tool used to print information about an Active Harmony
+ * installation and its configuration.  The application can also
+ * perform basic validation of the installation or included
+ * components, and warn the user if any problems are detected.
+ *
+ * **Usage Syntax**
+ *
+ *     hinfo [flags]
+ *
+ * **Flag Information**
+ * Flag            | Short | Description
+ * --------------- | ----- | -----------
+ * --home          | -h    | Print Active Harmony installation path.
+ * --info=[STRING] | -i    | Display detailed information about a specific plug-in.  If the argument includes path information (a '\' character), the string is treated as a file and opened directly.  Otherwise, HARMONY_HOME/libexec is searched for a matching plug-in (by title or filename).
+ * --list          | -l    | List all available Active Harmony plug-ins.
+ * --verbose       | -v    | Display verbose output during operation.
+ *
+ * **Usage and Output Examples**
+ *
+ * Many hinfo operations require a valid Active Harmony installation.
+ * The location this directory is inferred or explicitly set using the
+ * following rules, in decreasing order of precedence:
+ *
+ * 1. HARMONY_HOME environment variable.
+ * 2. Invocation path of hinfo.
+ * 3. PATH environment variable.
+ *
+ * The following example instructs hinfo to print the Active Harmony
+ * installation path to be used, and verbosely explain how the path
+ * was inferred.
+ *
+ *     $ hinfo --home -v
+ *     Inferring home via PATH environment variable.
+ *     Harmony home: /usr/local/packages/activeharmony/bin/..
+ *
+ *     $ ./bin/hinfo --home -v
+ *     Inferring home via program invocation path.
+ *     Harmony home: ./bin/..
+ *
+ * The following example instructs hinfo to list all available
+ * plug-ins.  The plug-ins are listed by title (when available), and
+ * file name.
+ *
+ *     $ hinfo --list
+ *     Available strategies:
+ *         exhaustive.so
+ *         nemo.so
+ *         nm.so
+ *         pro.so
+ *         random.so
+ *
+ *     Available processing layers:
+ *         agg (agg.so)
+ *         cache (cache.so)
+ *         codegen (codegen.so)
+ *         constraint (constraint.so)
+ *         group (group.so)
+ *         logger (log.so)
+ *         xmlWriter (xmlWriter.so)
+ *
+ * Hinfo can also provide detailed information about specific
+ * plug-ins.  Plug-ins may be specified by title or file name, as in
+ * the following example:
+ *
+ *     $ hinfo -i logger
+ *     Considering `log.so' as a strategy plug-in:
+ *         Not a strategy: No strategy callbacks defined.
+ *
+ *     Considering `log.so' as a processing layer plug-in:
+ *         Detected `logger' layer.  Valid callbacks defined:
+ *             logger_join
+ *             logger_analyze
+ *             logger_init
+ *             logger_fini
+ *
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -108,14 +188,14 @@ void usage(const char *prog)
 {
     fprintf(stderr, "Usage: %s [options]\n", prog);
     fprintf(stderr, "OPTIONS:\n"
-"  -h, --home        Just verify presence of and print out libexec directory\n"
+"  -h, --home        Print Active Harmony installation path.\n"
 "  -i, --info=STRING Detailed information about a specific plug-in.  If the\n"
 "                      argument includes path information (a '\' character),\n"
-"                      the string is treated as a file and opened directly.\n"
+"                      STRING is treated as a file and opened directly.\n"
 "                      Otherwise, HARMONY_HOME/libexec is searched for a\n"
 "                      matching plug-in (by title or filename).\n"
-"  -l, --list        List .so files (potential strategies and layers)\n"
-"  -v, --verbose     Print info about which hooks are present\n");
+"  -l, --list        List all available Active Harmony plug-ins.\n"
+"  -v, --verbose     Print additional information during operation.\n");
 }
 
 int main(int argc, char *argv[])
@@ -260,7 +340,7 @@ char *find_harmony_home(const char *argv0)
     }
     /* See if program invocation specified a path. */
     else if (strchr(argv0, '/')) {
-        vprint("Found home via program invocation path.\n");
+        vprint("Inferring home via program invocation path.\n");
 
         retval = sprintf_alloc("%s   ", argv0); /* Allocate 3 extra chars.*/
         if (!retval) {
@@ -285,7 +365,7 @@ char *find_harmony_home(const char *argv0)
             fprintf(stderr, "Could not find HARMONY_HOME\n");
             exit(-1);
         }
-        vprint("Found home via PATH environment variable.\n");
+        vprint("Inferring home via PATH environment variable.\n");
 
         retval = sprintf_alloc("%s/..", dirname(dirpath));
         if (!retval) {

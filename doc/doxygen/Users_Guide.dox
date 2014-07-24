@@ -84,46 +84,7 @@ Active Harmony is distributed with a set of search strategies and processing lay
 \latexonly \end{comment}
 \endlatexonly
 
-\page app_hinfo Harmony Information Utility
-Hinfo is a tool used to test the current Harmony configuration. Hinfo can list loadable strategies and layers. If HARMONY_HOME is not set, hinfo can also guess which path HARMONY_HOME should be set to. 
 
-## Usage Syntax ##
-
-    hinfo [flags]
-
-**Hinfo Flags**
-Flag               | Short Form | Description
--------------------| -----------|-------------------
---home             | -h         | Hinfo will display the current HARMONY_HOME path. If HARMONY_HOME is not set, it will suggest a path for HARMONY_HOME based on hinfo's own location.
---list             | -l         | Hinfo will perform basic checks on whether shared object files can be loaded as strategies or plugins. To locate these files, it uses the path in HARMONY_HOME, or its best guess for HARMONY_HOME if HARMONY_HOME is not set. 
---verbose          | -v         | For each shared object file, hinfo will display whether it thinks its a strategy or layer, and which expected symbols are present. Not all displayed possible symbols are required for a strategy or layer to be valid. 
-
-**Usage and Output Examples**
-
-The example below causes hinfo to display what it thinks is Active Harmony's installation directory. If HARMONY_HOME is not set, hinfo's output can be used as a suggestion for setting HARMONY_HOME.
-
-    ./hinfo --home
-
-Output:
-
-     HARMONY_HOME not set. Using path hinfo was called with to locate HARMONY_HOME
-     Harmony home: /fs/userdata/clam/junkfood/Documents/ah_hadm
-
-The example below causes hinfo to look at potential strategies and layers. In this case, all of the investigated .so files are valid strategies or layers. HARMONY_HOME has also been set to Active Harmony's installation directory.
-
-    ./hinfo --list
-
-Output:
-
-    Harmony home: /fs/userdata/clam/junkfood/Documents/ah_hadm
-    nm.so:  valid strategy
-    constraint.so:  valid layer
-    codegen.so: valid layer
-    pro.so: valid strategy
-    random.so:  valid strategy
-    exhaustive.so:  valid strategy
-    agg.so: valid layer
-    log.so: valid layer
 
 \page app_hserver Harmony Server
 For some advanced uses of auto-tuning, multiple clients need to communicate to a single tuning session.  For instance, if an MPI program is being tuned, all the constituent ranks may participate in parallel to expedite the search.  In this case, the Active Harmony Server must be used as a central multiplexing unit.
