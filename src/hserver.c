@@ -555,13 +555,17 @@ int handle_client_socket(int fd)
         if we do try to update best point data */
         if (sess->best_perf > perf && mesg_in.status != HMESG_STATUS_BUSY) {
             sess->best_perf = perf;
-            sess->best = &sess->log[sess->log_len].pt;
+            if (hpoint_copy(&sess->best, &sess->log[sess->log_len].pt) != 0) {
+                perror("Internal error copying hpoint to best");
+                goto error;
+            }
         }
         ++sess->log_len;
 
         /* Remove point from fetched list. */
-        if (hpoint_copy(&sess->fetched[i],
-                        &sess->fetched[sess->fetched_len]) != 0)
+        if (i < sess->fetched_len - 1 &&
+            hpoint_copy(&sess->fetched[i],
+                        &sess->fetched[sess->fetched_len - 1]) != 0)
         {
             perror("Internal error copying hpoint within fetch log");
             goto error;
@@ -760,7 +764,7 @@ session_state_t *session_open(hmesg_t *mesg)
         return NULL;
 
     sess->client_len = 0;
-    sess->best = NULL;
+    hpoint_fini(&sess->best);
     sess->best_perf = INFINITY;
 
     if (hcfg_merge(mesg->data.session.cfg, cfg) < 0) {

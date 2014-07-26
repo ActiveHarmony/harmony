@@ -588,32 +588,32 @@ int http_overview_send(int fd)
             return -1;
         total += count;
 
-        if (slist[i].best == NULL) {
+        if (slist[i].best.id == -1) {
             count = snprintf_serial(&buf, &buflen, "&lt;unknown&gt;");
             if (count < 0)
                 return -1;
             total += count;
         }
         else {
-            for (j = 0; j < slist[i].best->n; ++j) {
-                switch (slist[i].best->val[j].type) {
+            for (j = 0; j < slist[i].best.n; ++j) {
+                switch (slist[i].best.val[j].type) {
                 case HVAL_INT:
                     count = snprintf_serial(&buf, &buflen, "%ld",
-                                            slist[i].best->val[j].value.i);
+                                            slist[i].best.val[j].value.i);
                     if (count < 0)
                         return -1;
                     total += count;
                     break;
                 case HVAL_REAL:
                     count = snprintf_serial(&buf, &buflen, "%lf",
-                                            slist[i].best->val[j].value.r);
+                                            slist[i].best.val[j].value.r);
                     if (count < 0)
                         return -1;
                     total += count;
                     break;
                 case HVAL_STR:
                     count = snprintf_serial(&buf, &buflen, "\"%s\"",
-                                            slist[i].best->val[j].value.s);
+                                            slist[i].best.val[j].value.s);
                     if (count < 0)
                         return -1;
                     total += count;
@@ -622,7 +622,7 @@ int http_overview_send(int fd)
                     break;
                 }
 
-                if (j != slist[i].best->n - 1) {
+                if (j != slist[i].best.n - 1) {
                     count = snprintf_serial(&buf, &buflen, " ");
                     if (count < 0)
                         return -1;
@@ -776,7 +776,7 @@ char *http_session_header(session_state_t *sess, struct timeval *tv)
     total += count;
 
     count = report_append(&buf, &buflen, sess, NULL,
-                          sess->best, sess->best_perf);
+                          &sess->best, sess->best_perf);
     if (count < 0)
         return NULL;
     total += count;
