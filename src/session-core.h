@@ -21,6 +21,7 @@
 #define __SESSION_CORE_H__
 
 #include "hpoint.h"
+#include "hperf.h"
 #include "hsignature.h"
 
 #ifdef __cplusplus
@@ -45,7 +46,7 @@ typedef struct hflow {
 
 typedef struct htrial {
     const hpoint_t point;
-    double perf;
+    hperf_t *perf;
 } htrial_t;
 
 /* Generic plug-in event-hook signatures. */

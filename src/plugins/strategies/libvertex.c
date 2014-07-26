@@ -19,51 +19,73 @@
 
 #include "libvertex.h"
 #include "hpoint.h"
+#include "hperf.h"
 #include "hsession.h"
+#include "session-core.h"
+#include "defaults.h"
 
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 
 /* Forward definitions of internal helper functions. */
-int    internal_vertex_min(vertex_t *v);
-int    internal_vertex_max(vertex_t *v);
 long   max_int(int_bounds_t *b);
 double max_real(real_bounds_t *b);
 int    max_str(str_bounds_t *b);
-int    next_int(double *val, int_bounds_t *b);
-int    next_real(double *val, real_bounds_t *b);
-int    next_str(double *val, str_bounds_t *b);
-long   random_int(int_bounds_t *b);
-double random_real(real_bounds_t *b);
-int    random_str(str_bounds_t *b);
 long   closest_int(double val, double max, int_bounds_t *b);
 double closest_real(double val, double max, real_bounds_t *b);
-int    closest_str(double val, double max, str_bounds_t *b);
+int    closest_str(double val, str_bounds_t *b);
 int    simplex_fit(simplex_t *s);
+void   unit_simplex(simplex_t *s);
+int    rotate_simplex(simplex_t *s);
+int    rotate(simplex_t *s);
+int    rparam_sort(const void *_a, const void *_b);
 
 /* Global variables which must be set via libvertex_init(). */
-int N;
-hrange_t *range;
-vertex_t *vmin;
-vertex_t *vmax;
-long sizeof_vertex;
+static int N, P;
+static hrange_t *range;
+static vertex_t *vmin;
+static vertex_t *vmax;
+static long sizeof_vertex;
 
 int libvertex_init(hsignature_t *sig)
 {
+    int i;
+
+    P = atoi( session_getcfg(CFGKEY_PERF_COUNT) );
     N = sig->range_len;
     range = sig->range;
     sizeof_vertex = sizeof(vertex_t) + N * sizeof(double);
 
     free(vmin);
     vmin = vertex_alloc();
-    if (!vmin || internal_vertex_min(vmin) != 0)
+    if (!vmin) {
         return -1;
+    }
+    for (i = 0; i < N; ++i) {
+        switch (range[i].type) {
+        case HVAL_INT:  vmin->term[i] = range[i].bounds.i.min; break;
+        case HVAL_REAL: vmin->term[i] = range[i].bounds.r.min; break;
+        case HVAL_STR:  vmin->term[i] = 0.0; break;
+        default: return -1;
+        }
+    }
+    hperf_reset(vmin->perf);
 
     free(vmax);
     vmax = vertex_alloc();
-    if (!vmax || internal_vertex_max(vmax) != 0)
+    if (!vmax) {
         return -1;
+    }
+    for (i = 0; i < N; ++i) {
+        switch (range[i].type) {
+        case HVAL_INT:  vmax->term[i] = max_int(&range[i].bounds.i);  break;
+        case HVAL_REAL: vmax->term[i] = max_real(&range[i].bounds.r); break;
+        case HVAL_STR:  vmax->term[i] = max_str(&range[i].bounds.s);  break;
+        default: return -1;
+        }
+    }
+    hperf_reset(vmax->perf);
 
     return 0;
 }
@@ -76,42 +98,38 @@ vertex_t *vertex_alloc()
     if (!v)
         return NULL;
     v->id = 0;
-    v->perf = INFINITY;
-
+    v->perf = hperf_alloc(P);
+    if (!v->perf) {
+        free(v);
+        return NULL;
+    }
     return v;
 }
 
 int vertex_copy(vertex_t *dst, const vertex_t *src)
 {
-    if (dst != src)
-        memcpy(dst, src, sizeof_vertex);
+    if (dst != src) {
+        dst->id = src->id;
+        memcpy(dst->term, src->term, N * sizeof(double));
+        hperf_copy(dst->perf, src->perf);
+    }
     return 0;
 }
 
 void vertex_free(vertex_t *v)
 {
+    hperf_fini(v->perf);
     free(v);
 }
 
-int vertex_min(vertex_t *v)
+const vertex_t *vertex_min(void)
 {
-    return vertex_copy(v, vmin);
+    return vmin;
 }
 
-int internal_vertex_min(vertex_t *v)
+const vertex_t *vertex_max(void)
 {
-    int i;
-
-    for (i = 0; i < N; ++i) {
-        switch (range[i].type) {
-        case HVAL_INT:  v->term[i] = range[i].bounds.i.min; break;
-        case HVAL_REAL: v->term[i] = range[i].bounds.r.min; break;
-        case HVAL_STR:  v->term[i] = 0.0; break;
-        default: return -1;
-        }
-    }
-    v->perf = INFINITY;
-    return 0;
+    return vmax;
 }
 
 int vertex_center(vertex_t *v)
@@ -122,28 +140,17 @@ int vertex_center(vertex_t *v)
     for (i = 0; i < N; ++i)
         v->term[i] += (vmax->term[i] - vmin->term[i]) / 2;
 
-    v->perf = INFINITY;
+    hperf_reset(v->perf);
     return 0;
 }
 
-int vertex_max(vertex_t *v)
-{
-    return vertex_copy(v, vmax);
-}
-
-int internal_vertex_max(vertex_t *v)
+int vertex_percent(vertex_t *v, double percent)
 {
     int i;
+    for (i = 0; i < N; ++i)
+        v->term[i] = (vmax->term[i] - vmin->term[i]) * percent;
 
-    for (i = 0; i < N; ++i) {
-        switch (range[i].type) {
-        case HVAL_INT:  v->term[i] = max_int(&range[i].bounds.i);  break;
-        case HVAL_REAL: v->term[i] = max_real(&range[i].bounds.r); break;
-        case HVAL_STR:  v->term[i] = max_str(&range[i].bounds.s);  break;
-        default: return -1;
-        }
-    }
-    v->perf = INFINITY;
+    hperf_reset(v->perf);
     return 0;
 }
 
@@ -176,102 +183,48 @@ int max_str(str_bounds_t *b)
     return b->set_len - 1;
 }
 
-int vertex_incr(vertex_t *v)
-{
-    int i, of;
-
-    v->perf = INFINITY;
-    for (i = 0; i < N; ++i) {
-        switch (range[i].type) {
-        case HVAL_INT:  of = next_int(&v->term[i], &range[i].bounds.i);  break;
-        case HVAL_REAL: of = next_real(&v->term[i], &range[i].bounds.r); break;
-        case HVAL_STR:  of = next_str(&v->term[i], &range[i].bounds.s);  break;
-        default: return -1;
-        }
-        if (!of)
-            return 0;
-    }
-    return 1;
-}
-
-int next_int(double *val, int_bounds_t *b)
-{
-    *val += b->step;
-    if (*val > b->max) {
-        *val = b->min;
-        return 1;
-    }
-    return 0;
-}
-
-int next_real(double *val, real_bounds_t *b)
-{
-    if (b->step > 0.0) {
-        *val -= b->min;
-        *val  = b->step * (round(*val / b->step) + 1);
-        *val += b->min;
-    }
-    else {
-        *val = nextafter(*val, INFINITY);
-    }
-
-    if (*val > b->max) {
-        *val = b->min;
-        return 1;
-    }
-    return 0;
-}
-
-int next_str(double *val, str_bounds_t *b)
-{
-    ++(*val);
-    if (*val >= b->set_len) {
-        *val = 0;
-        return 1;
-    }
-    return 0;
-}
-
 int vertex_rand(vertex_t *v)
 {
+    return vertex_rand_trim(v, 0.0);
+}
+
+int vertex_rand_trim(vertex_t *v, double trim_percentage)
+{
     int i;
+    double rval;
+
+    if (vertex_percent(v, trim_percentage) != 0)
+        return -1;
 
     for (i = 0; i < N; ++i) {
         switch (range[i].type) {
-        case HVAL_INT:  v->term[i] = random_int(&range[i].bounds.i);  break;
-        case HVAL_REAL: v->term[i] = random_real(&range[i].bounds.r); break;
-        case HVAL_STR:  v->term[i] = random_str(&range[i].bounds.s);  break;
-        default: return -1;
+        case HVAL_INT: {
+            int_bounds_t *b = &range[i].bounds.i;
+            rval = (b->max - b->min - v->term[i]) * drand48();
+            rval += b->min + (v->term[i] / 2);
+            v->term[i] = closest_int(rval, vmax->term[i], b);
+            break;
+        }
+        case HVAL_REAL: {
+            real_bounds_t *b = &range[i].bounds.r;
+            rval = (b->max - b->min - v->term[i]) * drand48();
+            rval += b->min + (v->term[i] / 2);
+            v->term[i] = closest_real(rval, vmax->term[i], b);
+            break;
+        }
+        case HVAL_STR: {
+            str_bounds_t *b = &range[i].bounds.s;
+            rval = (b->set_len - 1 - v->term[i]) * drand48();
+            rval += v->term[i] / 2;
+            v->term[i] = closest_str(rval, b);
+            break;
+        }
+        default:
+            return -1;
         }
     }
-    v->perf = INFINITY;
+    hperf_reset(v->perf);
     return 0;
-}
-
-long random_int(int_bounds_t *b)
-{
-    long ridx;
-
-    ridx = rand() % (((b->max - b->min) / b->step) + 1);
-    return b->min + b->step * ridx;
-}
-
-double random_real(real_bounds_t *b)
-{
-    double rval;
-    double ridx;
-
-    rval = ((double)rand()) / RAND_MAX;
-    if (b->step > 0.0) {
-        ridx = round(rval * floor((b->max - b->min) / b->step));
-        return b->min + b->step * ridx;
-    }
-    return b->min + rval * (b->max - b->min);
-}
-
-int random_str(str_bounds_t *b)
-{
-    return rand() % b->set_len;
 }
 
 double vertex_dist(const vertex_t *v1, const vertex_t *v2)
@@ -294,7 +247,7 @@ void vertex_transform(const vertex_t *src, const vertex_t *wrt,
     for (i = 0; i < N; ++i)
         result->term[i] =
             coefficient * src->term[i] + (1.0 - coefficient) * wrt->term[i];
-    result->perf = INFINITY;
+    hperf_reset(result->perf);
 }
 
 int vertex_outofbounds(const vertex_t *v)
@@ -334,8 +287,7 @@ int vertex_regrid(vertex_t *v)
             break;
 
         case HVAL_STR:
-            v->term[i] = closest_str(v->term[i], vmax->term[i],
-                                     &range[i].bounds.s);
+            v->term[i] = closest_str(v->term[i], &range[i].bounds.s);
             break;
 
         default:
@@ -344,7 +296,7 @@ int vertex_regrid(vertex_t *v)
     }
 
     v->id = 0;
-    v->perf = INFINITY;
+    hperf_reset(v->perf);
     return 0;
 }
 
@@ -385,10 +337,14 @@ double closest_real(double val, double max, real_bounds_t *b)
     return val;
 }
 
-int closest_str(double val, double max, str_bounds_t *b)
+int closest_str(double val, str_bounds_t *b)
 {
-    if (val < 0)   return 0;
-    if (val > max) return (int)max;
+    if (val < 0)
+        return 0;
+
+    if (val >= b->set_len)
+        return b->set_len - 1;
+
     return lround(val);
 }
 
@@ -412,7 +368,7 @@ int vertex_to_hpoint(const vertex_t *v, hpoint_t *result)
 
         case HVAL_STR:
             result->val[i].value.s =
-                range[i].bounds.s.set[closest_str(v->term[i], vmax->term[i],
+                range[i].bounds.s.set[closest_str(v->term[i],
                                                   &range[i].bounds.s)];
             break;
 
@@ -462,21 +418,29 @@ simplex_t *simplex_alloc(int m)
     s->len = m;
 
     buf = (unsigned char *) malloc(m * sizeof_vertex);
-    for (i = 0; i < m; ++i)
+    for (i = 0; i < m; ++i) {
         s->vertex[i] = (vertex_t *)(buf + i * sizeof_vertex);
+        s->vertex[i]->perf = hperf_alloc(P);
+        if (!s->vertex[i]->perf)
+            return NULL;
+    }
 
     return s;
 }
 
 int simplex_copy(simplex_t *dst, const simplex_t *src)
 {
+    int i;
+
     if (dst == src)
         return 0;
 
     if (dst->len != src->len)
         return -1;
 
-    memcpy(dst->vertex[0], src->vertex[0], src->len * sizeof_vertex);
+    for (i = 0; i < src->len; ++i)
+        vertex_copy(dst->vertex[i], src->vertex[i]);
+
     return 0;
 }
 
@@ -500,22 +464,27 @@ void simplex_centroid(const simplex_t *s, vertex_t *v)
     int i, j, count;
 
     count = 0;
-    memset(v, 0, sizeof_vertex);
+    memset(v->term, 0, N * sizeof(double));
+    memset(v->perf->p, 0, P * sizeof(double));
 
     for (i = 0; i < s->len; ++i) {
-        v->perf += s->vertex[i]->perf;
         if (s->vertex[i]->id < 0)
             continue;
 
         for (j = 0; j < N; ++j)
             v->term[j] += s->vertex[i]->term[j];
 
+        for (j = 0; j < P; ++j)
+            v->perf->p[j] += s->vertex[i]->perf->p[j];
+
         ++count;
     }
 
-    v->perf /= s->len;
     for (j = 0; j < N; ++j)
         v->term[j] /= count;
+
+    for (j = 0; j < P; ++j)
+        v->perf->p[j] /= count;
 }
 
 void simplex_transform(const simplex_t *src, const vertex_t *wrt,
@@ -556,79 +525,41 @@ int simplex_regrid(simplex_t *s)
 
 int simplex_from_vertex(const vertex_t *v, double percent, simplex_t *s)
 {
-    int i, ii, j;
-    double sum, dim_len;
-
-    percent /= 2.0;
-    memset(s->vertex[0], 0, s->len * sizeof_vertex);
-    for (i = 0; i < N; ++i) {
-        sum = 0.0;
-        for (ii = 0; ii < i; ++ii)
-            sum = sum + s->vertex[i]->term[ii] * s->vertex[i]->term[ii];
-
-        s->vertex[i]->term[i] = sqrt(1.0 - sum);
-
-        for (j = i + 1; j < N + 1; ++j) {
-            sum = 0.0;
-            for (ii = 0; ii < i; ++ii)
-                sum = sum + s->vertex[i]->term[ii] * s->vertex[j]->term[ii];
-            s->vertex[j]->term[i] = ((-1.0 / ((double)N) - sum) /
-                                     s->vertex[i]->term[i]);
-        }
-    }
-
-    for (i = 0; i < s->len; ++i) {
-        for (j = 0; j < N; ++j) {
-            dim_len = (vmax->term[j] - vmin->term[j]) * percent;
-            s->vertex[i]->term[j] = (v->term[j] +
-                                     s->vertex[i]->term[j] * dim_len);
-        }
-    }
-
-    if (simplex_fit(s) != 0)
-        return -1;
-
-    for (i = N + 1; i < s->len; ++i)
-        vertex_rand(s->vertex[i]);
-
-    return 0;
-}
-
-int simplex_from_vertex_fast(const vertex_t *v, double percent, simplex_t *s)
-{
     int i, j;
-    double dim_len;
-    vertex_t *shift;
+    vertex_t *size = vertex_alloc();
 
-    percent /= 2.0;
-    memset(s->vertex[0], 0, s->len * sizeof_vertex);
-    vertex_copy(s->vertex[N], v);
-    for (i = 0; i < N; ++i) {
-        vertex_copy(s->vertex[i], v);
-        dim_len = (vmax->term[i] - vmin->term[i]) * percent;
-        s->vertex[i]->term[i] += dim_len;
-        s->vertex[N]->term[i] -= ((sqrt(N + 1) - 1.0) * dim_len)/N;
+    if (!size)
+        return -1;
+
+    if (vertex_percent(size, percent / 2) != 0) {
+        vertex_free(size);
+        return -1;
     }
 
-    shift = vertex_alloc();
-    if (!shift)
+    /* Generate a simplex of unit length. */
+    unit_simplex(s);
+
+    /* Pseudo-randomly rotate the unit simplex. */
+    rotate(s);
+
+    /* Grow and translate the simplex. */
+    for (i = 0; i <= N; ++i) {
+        for (j = 0; j < N; ++j) {
+            s->vertex[i]->term[j] *= size->term[j];
+            s->vertex[i]->term[j] += v->term[j];
+        }
+    }
+
+    if (simplex_fit(s) != 0) {
+        vertex_free(size);
         return -1;
+    }
 
-    simplex_centroid(s, shift);
-    for (j = 0; j < N; ++j)
-        shift->term[j] = v->term[j] - shift->term[j];
-
-    for (i = 0; i <= N; ++i)
-        for (j = 0; j < N; ++j)
-            s->vertex[i]->term[j] += shift->term[j];
-    free(shift);
-
-    if (simplex_fit(s) != 0)
-        return -1;
-
-    for (i = N + 1; i < s->len; ++i)
+    /* Fill any remaining points with random vertices. */
+    for (i = N+1; i < s->len; ++i)
         vertex_rand(s->vertex[i]);
 
+    vertex_free(size);
     return 0;
 }
 
@@ -655,22 +586,16 @@ int simplex_fit(simplex_t *s)
 
         /* Shift all vertices up, if necessary. */
         if (lo < vmin->term[i]) {
-            for (j = 0; j <= N; ++j) {
-                if (s->vertex[j]->term[i] == lo)
-                    s->vertex[j]->term[i]  = vmin->term[i];
-                else
-                    s->vertex[j]->term[i] += vmin->term[i] - lo;
-            }
+            double shift = vmin->term[i] - lo;
+            for (j = 0; j <= N; ++j)
+                s->vertex[j]->term[i] += shift;
         }
 
         /* Shift all vertices down, if necessary. */
         if (hi > vmax->term[i]) {
-            for (j = 0; j <= N; ++j) {
-                if (s->vertex[j]->term[i] == hi)
-                    s->vertex[j]->term[i]  = vmax->term[i];
-                else
-                    s->vertex[j]->term[i] -= hi - vmax->term[i];
-            }
+            double shift = hi - vmax->term[i];
+            for (j = 0; j <= N; ++j)
+                s->vertex[j]->term[i] -= shift;
         }
     }
     return 0;
@@ -702,4 +627,96 @@ int simplex_collapsed(const simplex_t *s)
         }
     }
     return 1;
+}
+
+/*
+ * Calculate a unit-length simplex about the origin.
+ */
+void unit_simplex(simplex_t *s)
+{
+    int i, j, k;
+    double sum;
+
+    // Clear the simplex.
+    for (i = 0; i < s->len; ++i) {
+        s->vertex[i]->id = 0;
+        memset(s->vertex[i]->term, 0, N * sizeof(double));
+        hperf_reset(s->vertex[i]->perf);
+    }
+
+    // Calculate values for the first N+1 vertices.
+    for (i = 0; i < N; ++i) {
+        sum = 0.0;
+        for (j = 0; j < i; ++j)
+            sum += s->vertex[i]->term[j] * s->vertex[i]->term[j];
+        s->vertex[i]->term[i] = sqrt(1.0 - sum);
+
+        for (j = i+1; j <= N; ++j) {
+            sum = 0.0;
+            for (k = 0; k < i; ++k)
+                sum += s->vertex[i]->term[k] * s->vertex[j]->term[k];
+            s->vertex[j]->term[i] = ((-1.0 / ((double)N) - sum) /
+                                     s->vertex[i]->term[i]);
+        }
+    }
+}
+
+/*
+ * Data structure used for simplex rotation.
+ */
+typedef struct {
+    unsigned long order;
+    int x;
+    int y;
+} rparam_t;
+
+/*
+ * Rotates a simplex about the origin.
+ */
+int rotate(simplex_t *s)
+{
+    int i, j, k, combos = (N * (N - 1)) / 2;
+    rparam_t *rp;
+
+    rp = (rparam_t *) malloc(combos * sizeof(rparam_t));
+    if (!rp)
+        return -1;
+
+    /* Generate a random ordering for all pairs of terms. */
+    i = 0;
+    for (j = 0; j < N-1; ++j) {
+        for (k = j+1; k < N; ++k) {
+            rp[i].order  = lrand48();
+            rp[i].x = j;
+            rp[i].y = k;
+            ++i;
+        }
+    }
+    qsort(rp, combos, sizeof(rparam_t), rparam_sort);
+
+    /* Rotate each pair of terms by a random angle. */
+    for (i = 0; i < combos; ++i) {
+        double theta = drand48() * (2 * M_PI);
+
+        for (j = 0; j < s->len; ++j) {
+            double term_x = s->vertex[j]->term[rp[i].x];
+            double term_y = s->vertex[j]->term[rp[i].y];
+
+            s->vertex[j]->term[rp[i].x] = (term_x * cos(theta) -
+                                           term_y * sin(theta));
+            s->vertex[j]->term[rp[i].y] = (term_x * sin(theta) +
+                                           term_y * cos(theta));
+        }
+    }
+
+    free(rp);
+    return 0;
+}
+
+int rparam_sort(const void *_a, const void *_b)
+{
+    const rparam_t *a = (rparam_t *)_a;
+    const rparam_t *b = (rparam_t *)_b;
+
+    return (a->order - b->order);
 }

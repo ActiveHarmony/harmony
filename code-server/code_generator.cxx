@@ -142,7 +142,7 @@ void generator_main(generator_t &gen)
     //  make a call to chill_script.appname.sh
     // Note that appname has to match the name given to this session.
 
-    vector<long> values = values_of(&gen.mesg.data.fetch.cand);
+    vector<long> values = values_of(&gen.mesg.data.point);
 
     /* Print a message to the logger */
     log_message.str("");

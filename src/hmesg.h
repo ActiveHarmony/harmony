@@ -21,6 +21,7 @@
 #define __HMESG_H__
 
 #include "hpoint.h"
+#include "hperf.h"
 #include "hsession.h"
 
 /* Message header layout:
@@ -41,7 +42,7 @@
 #define HMESG_HDRLEN    10         /* int32 + char[4] + char[2]             */
 #define HMESG_OLD_MAGIC 0x5261793a /* Magic number for packets (pre v4.5).  */
 #define HMESG_MAGIC     0x5261797c /* Magic number for packet.              */
-#define HMESG_VERSION   0x04       /* Protocol version.                     */
+#define HMESG_VERSION   0x05       /* Protocol version.                     */
 
 #ifdef __cplusplus
 extern "C" {
@@ -56,6 +57,7 @@ typedef enum {
     HMESG_JOIN,    /* Client registration info              */
     HMESG_GETCFG,  /* Get session cfg key/value pair        */
     HMESG_SETCFG,  /* Set new session cfg key/value pair    */
+    HMESG_BEST,    /* Retrieve best known point             */
     HMESG_FETCH,   /* Retrieve search space point to test   */
     HMESG_REPORT,  /* Report search space point performance */
     HMESG_RESTART, /* Restart the search                    */
@@ -84,13 +86,10 @@ typedef struct {
     union {
         hsession_t session;
         hsignature_t join;
-        struct mesg_fetch {
-            hpoint_t cand;
-            hpoint_t best;
-        } fetch;
+        hpoint_t point;
         struct mesg_report {
-            hpoint_t cand;
-            double perf;
+            int cand_id;
+            hperf_t *perf;
         } report;
         const char *string;
     } data;
