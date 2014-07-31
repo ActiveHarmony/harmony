@@ -54,6 +54,7 @@ int handle_client_socket(int fd);
 int handle_session_socket(int idx);
 int available_index(int **list, int *cap);
 void client_close(int fd);
+int append_http_log(session_state_t *sess, const hpoint_t *pt, double perf);
 
 /*
  * Main variables
@@ -450,7 +451,7 @@ int handle_unknown_connection(int fd)
 
 int handle_client_socket(int fd)
 {
-    int idx, i, retval, client_idx;
+    int idx, i, retval;
     double perf;
     session_state_t *sess;
 
@@ -509,69 +510,48 @@ int handle_client_socket(int fd)
         break;
 
     case HMESG_REPORT:
-        /* Before we forward this report to the session-core process,
-         * add it to our HTTP log.
-         */
-        if (mesg_in.data.report.cand_id == -1)
-            break;
+        perf = hperf_unify(mesg_in.data.report.perf);
 
         for (i = 0; i < sess->fetched_len; ++i) {
             if (sess->fetched[i].id == mesg_in.data.report.cand_id)
                 break;
         }
-        if (i == sess->fetched_len)
-            break;
+        if (i < sess->fetched_len) {
+            const hpoint_t *pt = &sess->fetched[i];
 
-        /* keep track of last point id in case there's a restart,
-           in which case sess->restart_id is set to sess->last_id */
-        sess->last_id = mesg_in.data.report.cand_id;
+            /* Copy point from fetched list to HTTP log. */
+            if (append_http_log(sess, pt, perf) != 0) {
+                perror("Internal error copying fetched point to HTTP log");
+                goto error;
+            }
 
-        if (sess->log_len == sess->log_cap) {
-            if (array_grow(&sess->log, &sess->log_cap,
-                           sizeof(http_log_t)) < 0)
-            {
-                perror("Could not grow HTTP log");
+            /* Also update our best point data, if necessary. */
+            if (sess->best_perf > perf && sess->best.id != pt->id) {
+                sess->best_perf = perf;
+                if (hpoint_copy(&sess->best, pt) != 0) {
+                    perror("Internal error copying hpoint to best");
+                    goto error;
+                }
+            }
+
+            /* Remove point from fetched list. */
+            --sess->fetched_len;
+            if (i < sess->fetched_len) {
+                if (hpoint_copy(&sess->fetched[i],
+                                &sess->fetched[sess->fetched_len]) != 0)
+                {
+                    perror("Internal error copying hpoint within fetch log");
+                    goto error;
+                }
+            }
+        }
+        else {
+            /* Copy point from fetched list to HTTP log. */
+            if (append_http_log(sess, &sess->best, perf) != 0) {
+                perror("Internal error copying best point to HTTP log");
                 goto error;
             }
         }
-        if (gettimeofday(&sess->log[sess->log_len].stamp, NULL) != 0)
-            goto error;
-
-        if (hpoint_copy(&sess->log[sess->log_len].pt,
-                        &sess->fetched[i]) != 0)
-        {
-            perror("Internal error copying hpoint to HTTP log");
-            goto error;
-        }
-
-        perf = hperf_unify(mesg_in.data.report.perf);
-        sess->log[sess->log_len].perf = perf;
-
-        /* Also update our best point data, if necessary. */
-
-        /* If busy is set indicating that the session is paused, don't bother
-        to update the best point. Data received while paused isn't really relevant
-        to the session anyways, and sometimes causes a realloc failure for some reason
-        if we do try to update best point data */
-        if (sess->best_perf > perf && mesg_in.status != HMESG_STATUS_BUSY) {
-            sess->best_perf = perf;
-            if (hpoint_copy(&sess->best, &sess->log[sess->log_len].pt) != 0) {
-                perror("Internal error copying hpoint to best");
-                goto error;
-            }
-        }
-        ++sess->log_len;
-
-        /* Remove point from fetched list. */
-        if (i < sess->fetched_len - 1 &&
-            hpoint_copy(&sess->fetched[i],
-                        &sess->fetched[sess->fetched_len - 1]) != 0)
-        {
-            perror("Internal error copying hpoint within fetch log");
-            goto error;
-        }
-        --sess->fetched_len;
-
         break;
 
     default:
@@ -583,62 +563,11 @@ int handle_client_socket(int fd)
     mesg_out.status = mesg_in.status;
     mesg_out.src_id = mesg_in.src_id;
     mesg_out.data = mesg_in.data;
-
-    // For restart, we need to clear client state. 
-    // Saving the last message type received makes that easier
-
-    /* look up the client in session_state's client list by fd */
-    for(client_idx = 0;client_idx < sess->client_len;client_idx++) {
-      if(sess->client[client_idx] == fd) break;
-    }
-
-    // Case for fetch msg for paused session. deflect fetch messages
-    // and tell the client the session is busy so it keeps
-    // testing the current point
-    if (sess->paused && mesg_in.type == HMESG_FETCH) {
-      // client sees BUSY and replies with the busy status
-      // so the session knows that the subsequent report (with busy status)
-      // is for a paused session and therefore should be deflected 
-      // as well.
-      mesg_out.status = HMESG_STATUS_BUSY;
-      // this message is going back to the client so the destination
-      // should indicate which session it belongs to.
-      mesg_out.dest = idx;
-      // send message back to client
-      if (mesg_send(fd, &mesg_out) < 1) {
-        perror("Error deflecting fetch message back to client (session paused)");
+    if (mesg_send(sess->fd, &mesg_out) < 1) {
+        perror("Error forwarding message to session");
         FD_CLR(sess->fd, &listen_fds);
         session_close(sess);
-        goto shutdown; 
-      }
-    } 
-    // Case for client reporting to a paused session 
-    // the session shouldn't be getting these reports.
-    // no checking of paused variable, because right when session is resumed it'll
-    // still get a message back from the client that corresponds to data gathered
-    // while it was paused. We still need to respond to that message with the "paused" response
-    else if (mesg_in.type == HMESG_REPORT && mesg_in.status == HMESG_STATUS_BUSY) {
-      // Tell the client it's all good
-      mesg_out.status = HMESG_STATUS_OK;
-      // Going back to client, so indicate the session it belongs to
-      mesg_out.dest = idx;
-      // send message back to client. Keep the session out of the loop while things are paused
-      if (mesg_send(fd, &mesg_out) < 1) {
-        perror("Error deflecting report message back to client (session paused)");
-        FD_CLR(sess->fd, &listen_fds);
-        session_close(sess);
-        goto shutdown;  
-      }
-    }
-    /* case for message to a defunct session not needed - 
-       the new session's ids start from 1, but that doesn't seem
-        to knock anything out of place */
-    /* base case - forward message to session as normal */
-    else if (mesg_send(sess->fd, &mesg_out) < 1) {
-      perror("Error forwarding message to session");
-      FD_CLR(sess->fd, &listen_fds);
-      session_close(sess);
-      goto shutdown;
+        goto shutdown;
     }
     /* mesg_in data was free()'ed along with mesg_out. */
     mesg_in.type = HMESG_UNKNOWN;
@@ -667,12 +596,6 @@ int handle_session_socket(int idx)
 
     switch (mesg_in.type) {
     case HMESG_SESSION:
-        /* after a restart, the hserver-generated session message's response
-           should not be forwarded to the client */
-        if (sess->restart_id > 0) {
-          mesg_in.type = HMESG_UNKNOWN;
-          return 0;
-        }
     case HMESG_JOIN:
     case HMESG_SETCFG:
     case HMESG_GETCFG:
@@ -807,9 +730,6 @@ session_state_t *session_open(hmesg_t *mesg)
     if (highest_socket < sess->fd)
         highest_socket = sess->fd;
 
-    sess->paused = 0; /* session should not start paused or converged */
-    sess->converged = 0; 
-
     /* save session strategy */
     strategy_name = hcfg_get(mesg->data.session.cfg, CFGKEY_SESSION_STRATEGY);
     if(strategy_name == NULL)
@@ -825,10 +745,6 @@ session_state_t *session_open(hmesg_t *mesg)
 
     /* also save initial hcfg for restart */
     sess->ini_hcfg = hcfg_copy(mesg->data.session.cfg);
-
-    /* set restart id */
-    sess->restart_id = 0;
-    sess->last_id = 0;
 
     return sess;
 
@@ -885,10 +801,6 @@ void session_restart(char *name) {
   child_argv[1] = NULL;
   sess->fd = socket_launch(session_bin, child_argv, NULL);
 
-  /* so that messages with id <= id of last message from client
-     before restart are not passed on to session */
-  sess->restart_id = sess->last_id;
-  
   /* send initial session message */
   hmesg_scrub(&ini_mesg);
   ini_mesg.dest = sess->fd;
@@ -968,4 +880,65 @@ int available_index(int **list, int *cap)
     memset((*list) + orig_cap, -1, (*cap - orig_cap) * sizeof(int));
 
     return orig_cap;
+}
+
+int append_http_log(session_state_t *sess, const hpoint_t *pt, double perf)
+{
+    http_log_t *entry;
+
+    /* Extend HTTP log if necessary. */
+    if (sess->log_len == sess->log_cap) {
+        if (array_grow(&sess->log, &sess->log_cap, sizeof(http_log_t)) != 0) {
+            perror("Could not grow HTTP log");
+            return -1;
+        }
+    }
+    entry = &sess->log[sess->log_len];
+
+    if (hpoint_copy(&entry->pt, pt) != 0) {
+        perror("Internal error copying point into HTTP log");
+        return -1;
+    }
+
+    entry->perf = perf;
+    if (gettimeofday(&entry->stamp, NULL) != 0)
+        return -1;
+
+    ++sess->log_len;
+    return 0;
+}
+
+const char *session_getcfg(session_state_t *sess, const char *key)
+{
+    /* Create an empty message */
+    static hmesg_t mesg;
+
+    mesg.type = HMESG_GETCFG;
+    mesg.status = HMESG_STATUS_REQ;
+    mesg.data.string = key;
+
+    if (mesg_send(sess->fd, &mesg) < 1 || mesg_recv(sess->fd, &mesg) < 1)
+        return NULL;
+
+    return mesg.data.string;
+}
+
+int session_setcfg(session_state_t *sess, const char *key, const char *val)
+{
+    hmesg_t mesg = HMESG_INITIALIZER;
+    int retval = 0;
+
+    mesg.type = HMESG_SETCFG;
+    mesg.status = HMESG_STATUS_REQ;
+    mesg.data.string = sprintf_alloc("%s=%s", key, val);
+
+    if (mesg_send(sess->fd, &mesg) < 1)
+        retval = -1;
+    free((char *)mesg.data.string);
+
+    if (retval == 0 && mesg_recv(sess->fd, &mesg) < 1)
+        retval = -1;
+
+    hmesg_fini(&mesg);
+    return retval;
 }

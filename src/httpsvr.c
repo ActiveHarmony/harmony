@@ -314,124 +314,127 @@ int http_request_handle(int fd, char *req)
         opt_http_write(fd, "FAIL");
         opt_http_write(fd, "");
         return 0;
-
     }
     else if (strncmp(req, "/pause", 6) == 0) {
-       // An argument must be supplied to indicate which session to pause
-       printf("pause received\n");
-       if (arg) {
+        opt_sock_write(fd, status_200);
+        opt_sock_write(fd, http_type_text);
+        opt_sock_write(fd, http_headers);
+        opt_sock_write(fd, HTTP_ENDL);
+
+        /* An argument must exist to indicate which session to pause. */
+        if (arg) {
             for (i = 0; i < slist_cap; ++i) {
-                if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
-                    slist[i].paused = 1;
+                if (slist[i].name &&
+                    strcmp(slist[i].name, arg) == 0 &&
+                    session_setcfg(&slist[i], CFGKEY_SESSION_PAUSED, "1") == 0)
+                {
                     opt_http_write(fd, "OK");
                     opt_http_write(fd, "");
                     return 0;
                 }
             }
         }
+
         opt_http_write(fd, "FAIL");
         opt_http_write(fd, "");
         return 0;
-    } 
+    }
     else if (strncmp(req, "/resume", 7) == 0) {
-       // argument indicates which session to resume
-       if (arg) {
+        opt_sock_write(fd, status_200);
+        opt_sock_write(fd, http_type_text);
+        opt_sock_write(fd, http_headers);
+        opt_sock_write(fd, HTTP_ENDL);
+
+        /* An argument must exist to indicate which session to resume. */
+        if (arg) {
             for (i = 0; i < slist_cap; ++i) {
-                if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
-                    slist[i].paused = 0;
+                if (slist[i].name &&
+                    strcmp(slist[i].name, arg) == 0 &&
+                    session_setcfg(&slist[i], CFGKEY_SESSION_PAUSED, "0") == 0)
+                {
                     opt_http_write(fd, "OK");
                     opt_http_write(fd, "");
                     return 0;
                 }
             }
         }
+
         opt_http_write(fd, "FAIL");
-        opt_http_write(fd, ""); 
+        opt_http_write(fd, "");
         return 0;
     }
-    else if (strncmp(req, "/restart", 8) == 0) {    
+    else if (strncmp(req, "/restart", 8) == 0) {
         opt_sock_write(fd, status_200);
         opt_sock_write(fd, http_type_text);
         opt_sock_write(fd, http_headers);
-        opt_sock_write(fd, HTTP_ENDL);  
-        // argument indicates which session to restart
-        if(arg) {
-          session_restart(arg);
-          opt_http_write(fd, "OK");
-          opt_http_write(fd, "");
+        opt_sock_write(fd, HTTP_ENDL);
+
+        /* argument indicates which session to restart */
+        if (arg) {
+            session_restart(arg);
+            opt_http_write(fd, "OK");
         }
-        opt_http_write(fd, "FAIL");
-        opt_http_write(fd, ""); 
-        return 0; 
+        else {
+            opt_http_write(fd, "FAIL");
+        }
+
+        opt_http_write(fd, "");
+        return 0;
     }
-    else if(strncmp(req, "/strategy", 9) == 0) {
-        /* if these lines aren't there the browser
-           keeps waiting until hserver is closed */
+    else if (strncmp(req, "/strategy", 9) == 0) {
         opt_sock_write(fd, status_200);
         opt_sock_write(fd, http_type_text);
         opt_sock_write(fd, http_headers);
-        opt_sock_write(fd, HTTP_ENDL); 
-        
+        opt_sock_write(fd, HTTP_ENDL);
+
         /* look up specified session */
-        if(arg) {
-          for (i = 0; i < slist_cap; ++i) {
-            if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
-              /* strategy name is set in session_open, off the 
-                 initial session message */
-              opt_http_write(fd, slist[i].strategy_name); 
-              opt_http_write(fd, "");
-              return 0;
+        if (arg) {
+            for (i = 0; i < slist_cap; ++i) {
+                if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
+                    opt_http_write(fd, slist[i].strategy_name);
+                    opt_http_write(fd, "");
+                    return 0;
+                }
             }
-          }
-        } else {
-          opt_http_write(fd, "FAIL");
-          opt_http_write(fd, "");
-          return 0;
         }
-    } else if(strncmp(req, "/converged", 10) == 0) {
+        else {
+            opt_http_write(fd, "FAIL");
+            opt_http_write(fd, "");
+            return 0;
+        }
+    }
+    else if (strncmp(req, "/converged", 10) == 0) {
         opt_sock_write(fd, status_200);
         opt_sock_write(fd, http_type_text);
         opt_sock_write(fd, http_headers);
-        opt_sock_write(fd, HTTP_ENDL);  
-        if(arg) {
-          for (i = 0; i < slist_cap; ++i) {
-            if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
-              /* convereged var is set in handle_session_socket
-                 when the session indicates that it has 
-                 converved */
-              /*opt_http_write(fd, slist[i].converged?"1":"0"); 
-              opt_http_write(fd, "");
-              return 0;*/
+        opt_sock_write(fd, HTTP_ENDL);
 
-              /* Create an empty message */
-              hmesg_t converged_mesg;
-              converged_mesg = HMESG_INITIALIZER;
-
-              /* ask session whether strategy has converged */
-              converged_mesg.type = HMESG_GETCFG;
-              converged_mesg.data.string = CFGKEY_STRATEGY_CONVERGED;
-              converged_mesg.status = HMESG_STATUS_REQ;
-
-              mesg_send(slist[i].fd, &converged_mesg);
-              mesg_recv(slist[i].fd, &converged_mesg);
-
-              /* tell interface that session has converged if reply says so */
-              if(converged_mesg.data.string && converged_mesg.data.string[0] == '1') {
-                opt_http_write(fd, "1");
-              } else opt_http_write(fd, "0");
-              opt_http_write(fd, "");
-              return 0;
+        if (arg) {
+            for (i = 0; i < slist_cap; ++i) {
+                if (slist[i].name && strcmp(slist[i].name, arg) == 0)
+                    break;
             }
-          }
-        } else {
-          opt_http_write(fd, "FAIL");
-          opt_http_write(fd, "");
-          return 0;
+            if (i < slist_cap) {
+                const char *cfgval = session_getcfg(&slist[i],
+                                                    CFGKEY_STRATEGY_CONVERGED);
+                if (cfgval && *cfgval == '1')
+                    opt_http_write(fd, "1");
+                else
+                    opt_http_write(fd, "0");
+                opt_http_write(fd, "");
+                return 0;
+            }
+        }
+        else {
+            opt_http_write(fd, "FAIL");
+            opt_http_write(fd, "");
+            return 0;
         }
     }
 
     /* If request is not handled by any special cases above,
-       look for a known html file corresponding to the request. */
+     * look for a known html file corresponding to the request.
+     */
     for (i = 0; html_file[i].filename != NULL; ++i) {
         if (strcmp(req + 1, html_file[i].filename) == 0) {
             opt_sock_write(fd, status_200);

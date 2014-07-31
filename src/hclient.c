@@ -71,11 +71,6 @@ struct hdesc_t {
 };
 
 /* -------------------------------------------------------------------
- * Some local variables
- */
-int paused = 0;   // Is the associated session paused?
-
-/* -------------------------------------------------------------------
  * Forward declarations for internal helper functions
  */
 char *default_id(int n);
@@ -556,6 +551,8 @@ char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val)
 
 int harmony_fetch(hdesc_t *hdesc)
 {
+    int i;
+
     if (hdesc->state < HARMONY_STATE_CONNECTED) {
         hdesc->errstr = "Descriptor not currently joined to any session.";
         errno = EINVAL;
@@ -569,8 +566,6 @@ int harmony_fetch(hdesc_t *hdesc)
         return -1;
 
     if (hdesc->mesg.status == HMESG_STATUS_BUSY) {
-        // currently HMESG_STATUS_BUSY is being used to indicate that the session is paused
-        paused = 1;    
         if (update_best(hdesc, &hdesc->mesg.data.point) != 0)
             return -1;
 
@@ -579,30 +574,19 @@ int harmony_fetch(hdesc_t *hdesc)
             return 0;
         }
 
-        /* Update client variables to the best known values. */
-        if (set_values(hdesc, &hdesc->best) < 0)
+        /* Set current point to best point. */
+        if (hpoint_copy(&hdesc->curr, &hdesc->best) != 0) {
+            hdesc->errstr = "Internal error copying point data.";
+            errno = EINVAL;
             return -1;
+        }
     }
     else if (hdesc->mesg.status == HMESG_STATUS_OK) {
-        int i;
-
-        paused = 0; // If the status is not HMESG_STATUS_BUSY, session isn't paused.
-        hdesc->state = HARMONY_STATE_TESTING;
         if (hpoint_copy(&hdesc->curr, &hdesc->mesg.data.point) != 0) {
             hdesc->errstr = "Internal error copying point data.";
             errno = EINVAL;
             return -1;
         }
-
-        /* Update the variables from the content of the message. */
-        if (set_values(hdesc, &hdesc->curr) != 0)
-            return -1;
-
-        /* Initialize our internal performance array. */
-        for (i = 0; i < hdesc->perf->n; ++i)
-            hdesc->perf->p[i] = NAN;
-
-        hdesc->state = HARMONY_STATE_TESTING;
     }
     else {
         hdesc->errstr = "Invalid message received from server.";
@@ -610,7 +594,16 @@ int harmony_fetch(hdesc_t *hdesc)
         return -1;
     }
 
+    /* Update the variables from the content of the message. */
+    if (set_values(hdesc, &hdesc->curr) != 0)
+        return -1;
+
+    /* Initialize our internal performance array. */
+    for (i = 0; i < hdesc->perf->n; ++i)
+        hdesc->perf->p[i] = NAN;
+
     /* Client variables were changed.  Inform the user by returning 1. */
+    hdesc->state = HARMONY_STATE_TESTING;
     return 1;
 }
 
@@ -624,12 +617,7 @@ int harmony_report(hdesc_t *hdesc, double *perf)
         return -1;
     }
 
-    /* when the client gets a busy message, hdesc->state becomes HARMONY_STATE_READY.
-       That happens when the session is paused, but we still want performance
-       to be logged and sent using the http server (so fluctuations and things
-       like that can be spotted through the web interface). 
-       So, report anyways if hdesc->state == HARMONY_STATE_READY */
-    if (hdesc->state < HARMONY_STATE_TESTING && hdesc->state != HARMONY_STATE_READY)
+    if (hdesc->state < HARMONY_STATE_TESTING)
         return 0;
 
     if (perf)
@@ -652,15 +640,6 @@ int harmony_report(hdesc_t *hdesc, double *perf)
         return -1;
     }
 
-    hdesc->state = HARMONY_STATE_READY;
-
-    if (paused) {
-      // if paused, let the hserver know that this is a report
-      // while paused, not associated with fetch requests sent
-      // before being paused
-      hdesc->mesg.status = HMESG_STATUS_BUSY;
-    }
-
     if (send_request(hdesc, HMESG_REPORT) != 0)
         return -1;
 
@@ -669,11 +648,8 @@ int harmony_report(hdesc_t *hdesc, double *perf)
         errno = EINVAL;
         return -1;
     }
+
     hdesc->state = HARMONY_STATE_READY;
-
-    if (update_best(hdesc, &hdesc->curr) != 0)
-        return -1;
-
     return 0;
 }
 

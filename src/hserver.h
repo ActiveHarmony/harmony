@@ -45,9 +45,7 @@ typedef struct session_state {
     hpoint_t *fetched;
     int fetched_len, fetched_cap;
     int reported;
-    int paused, converged;
     char *strategy_name;
-    unsigned int restart_id, last_id;
     hcfg_t *ini_hcfg;
 } session_state_t;
 
@@ -59,6 +57,8 @@ extern hmesg_t mesg_in;
 session_state_t *session_open(hmesg_t *mesg);
 void session_close(session_state_t *sess);
 void session_restart(char *name);
+const char *session_getcfg(session_state_t *sess, const char *key);
+int session_setcfg(session_state_t *sess, const char *key, const char *val);
 
 #ifdef __cplusplus
 }

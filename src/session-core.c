@@ -128,6 +128,7 @@ void reverse_array(void *ptr, int head, int tail);
 const char *errmsg;
 int curr_layer = 0;
 hflow_t flow;
+int paused_id;
 
 /* List of all points generated, but not yet returned to the strategy. */
 htrial_t *pending = NULL;
@@ -228,12 +229,12 @@ int main(int argc, char **argv)
 
             hcfg_set(sess->cfg, CFGKEY_CURRENT_CLIENT, mesg.src_id);
             switch (mesg.type) {
-            case HMESG_JOIN:   retval = handle_join(&mesg); break;
-            case HMESG_GETCFG: retval = handle_getcfg(&mesg); break;
-            case HMESG_SETCFG: retval = handle_setcfg(&mesg); break;
-            case HMESG_BEST:   retval = handle_best(&mesg); break;
-            case HMESG_FETCH:  retval = handle_fetch(&mesg); break;
-            case HMESG_REPORT: retval = handle_report(&mesg); break;
+            case HMESG_JOIN:    retval = handle_join(&mesg); break;
+            case HMESG_GETCFG:  retval = handle_getcfg(&mesg); break;
+            case HMESG_SETCFG:  retval = handle_setcfg(&mesg); break;
+            case HMESG_BEST:    retval = handle_best(&mesg); break;
+            case HMESG_FETCH:   retval = handle_fetch(&mesg); break;
+            case HMESG_REPORT:  retval = handle_report(&mesg); break;
             case HMESG_RESTART: retval = strategy_init(&sess->sig); break;
             default:
                 errmsg = "Internal error: Unknown message type.";
@@ -704,10 +705,15 @@ int handle_best(hmesg_t *mesg)
 
 int handle_fetch(hmesg_t *mesg)
 {
-    int idx = ready[ready_head];
+    int idx = ready[ready_head], paused;
+    const char *cfgval;
     htrial_t *next;
 
-    if (idx >= 0) {
+    /* Check if the session is paused. */
+    cfgval = hcfg_get(sess->cfg, CFGKEY_SESSION_PAUSED);
+    paused = (cfgval && *cfgval == '1');
+
+    if (!paused && idx >= 0) {
         /* Send the next point on the ready queue. */
         next = &pending[idx];
 
@@ -724,11 +730,15 @@ int handle_fetch(hmesg_t *mesg)
         mesg->status = HMESG_STATUS_OK;
     }
     else {
-        /* Ready queue is empty.  Send the best known point. */
+        /* Ready queue is empty, or session is paused.
+         * Send the best known point. */
+        mesg->data.point = HPOINT_INITIALIZER;
         if (strategy_best(&mesg->data.point) != 0)
             return -1;
 
+        paused_id = mesg->data.point.id;
         mesg->status = HMESG_STATUS_BUSY;
+        if (paused) fprintf(stderr, "Session paused.  Returning best.\n");
     }
     return 0;
 }
@@ -745,13 +755,17 @@ int handle_report(hmesg_t *mesg)
             break;
     }
     if (idx == pending_cap) {
-        /*errmsg = "Rouge point support not yet implemented.";
-        return -1; */
-        /* now it is */
-        hmesg_scrub(mesg);
-        mesg->status = HMESG_STATUS_OK;
-        return 0;
+        if (mesg->data.report.cand_id == paused_id) {
+            hperf_fini(mesg->data.report.perf);
+            mesg->status = HMESG_STATUS_OK;
+            return 0;
+        }
+        else {
+            errmsg = "Rouge point support not yet implemented.";
+            return -1;
+        }
     }
+    paused_id = 0;
 
     /* Update performance in our local records. */
     hperf_copy(trial->perf, mesg->data.report.perf);
@@ -774,8 +788,9 @@ int handle_report(hmesg_t *mesg)
 #define dlfptr(x, y) ((void (*)(void))(long)(dlsym((x), (y))))
 
 /* Loads strategy given name of library file.
-   Checks that strategy defines required functions,
-   and then calls the strategy's init function (if defined) */
+ * Checks that strategy defines required functions,
+ * and then calls the strategy's init function (if defined)
+ */
 int load_strategy(const char *file)
 {
     const char *root;
