@@ -70,8 +70,6 @@
 hpoint_t best;
 double   best_perf;
 
-hpoint_t curr;
-
 typedef enum simplex_init {
     SIMPLEX_INIT_UNKNOWN = 0,
     SIMPLEX_INIT_CENTER,
@@ -151,46 +149,46 @@ int strategy_init(hsignature_t *sig)
         return -1;
     }
 
-    coords = sig->range_len;
-
-    init_point = vertex_alloc();
-    if (!init_point) {
-        session_error("Could not allocate memory for initial point.");
-        return -1;
-    }
-
     if (strategy_cfg(sig) != 0)
         return -1;
 
-    best = HPOINT_INITIALIZER;
-    best_perf = INFINITY;
-
-    if (hpoint_init(&curr, simplex_size) != 0) {
-        session_error("Could not initialize point structure.");
-        return -1;
-    }
-
-    centroid = vertex_alloc();
-    if (!centroid) {
-        session_error("Could not allocate memory for centroid vertex.");
-        return -1;
-    }
-
-    test = vertex_alloc();
-    if (!test) {
-        session_error("Could not allocate memory for testing vertex.");
-        return -1;
-    }
-
-    /* Default stopping criteria: 0.5% of dist(vertex_min, vertex_max). */
-    if (size_tol == 0)
-        size_tol = vertex_dist(vertex_min(), vertex_max()) * 0.005;
-
-    base = simplex_alloc(simplex_size);
     if (!base) {
-        session_error("Could not allocate memory for base simplex.");
-        return -1;
+        /* One time memory allocation and/or initialization. */
+        init_point = vertex_alloc();
+        if (!init_point) {
+            session_error("Could not allocate memory for initial point.");
+            return -1;
+        }
+
+        centroid = vertex_alloc();
+        if (!centroid) {
+            session_error("Could not allocate memory for centroid vertex.");
+            return -1;
+        }
+
+        test = vertex_alloc();
+        if (!test) {
+            session_error("Could not allocate memory for testing vertex.");
+            return -1;
+        }
+
+        base = simplex_alloc(simplex_size);
+        if (!base) {
+            session_error("Could not allocate memory for base simplex.");
+            return -1;
+        }
+
+        best = HPOINT_INITIALIZER;
+        next_id = 1;
     }
+
+    /* Initialization for subsequent calls to strategy_init(). */
+    vertex_reset(init_point);
+    vertex_reset(centroid);
+    vertex_reset(test);
+    simplex_reset(base);
+    best_perf = INFINITY;
+    coords = sig->range_len;
 
     switch (init_method) {
     case SIMPLEX_INIT_CENTER: vertex_center(init_point); break;
@@ -203,15 +201,14 @@ int strategy_init(hsignature_t *sig)
     }
     simplex_from_vertex(init_point, init_percent, base);
 
-    next_id = 1;
-    state = SIMPLEX_STATE_INIT;
-
     if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
         session_error("Could not set "
                       CFGKEY_STRATEGY_CONVERGED " config variable.");
         return -1;
     }
 
+    index_curr = 0;
+    state = SIMPLEX_STATE_INIT;
     if (nm_next_vertex() != 0) {
         session_error("Could not initiate test vertex.");
         return -1;
@@ -359,6 +356,10 @@ int strategy_cfg(hsignature_t *sig)
                           " configuration key.");
             return -1;
         }
+    }
+    else {
+        /* Default stopping criteria: 0.5% of dist(vertex_min, vertex_max). */
+        size_tol = vertex_dist(vertex_min(), vertex_max()) * 0.005;
     }
     return 0;
 }

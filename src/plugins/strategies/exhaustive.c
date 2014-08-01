@@ -70,36 +70,43 @@ int strategy_init(hsignature_t *sig)
 {
     int i;
 
-    if (strategy_cfg() != 0)
-        return -1;
-
-    best = HPOINT_INITIALIZER;
-    best_perf = INFINITY;
-
     N = sig->range_len;
     range = sig->range;
-    if (hpoint_init(&curr, N) != 0) {
-        session_error("Could not allocate memory candidate point.");
-        return -1;
-    }
-    for (i = 0; i < N; ++i) {
-        curr.val[i].type = range[i].type;
-        switch (range[i].type) {
-        case HVAL_INT:  curr.val[i].value.i = range[i].bounds.i.min; break;
-        case HVAL_REAL: curr.val[i].value.r = range[i].bounds.r.min; break;
-        case HVAL_STR:  curr.val[i].value.s = range[i].bounds.s.set[0]; break;
-        default:
-            session_error("Invalid range detected during strategy init.");
+
+    if (!idx) {
+        /* One time memory allocation and/or initialization. */
+        if (hpoint_init(&curr, N) != 0) {
+            session_error("Could not allocate memory candidate point.");
             return -1;
         }
-    }
-    curr.id = 1;
+        for (i = 0; i < N; ++i) {
+            hval_t *v = &curr.val[i];
 
-    idx = (unsigned long *) calloc(N, sizeof(unsigned long));
-    if (!idx) {
-        session_error("Could not allocate memory for index array.");
-        return -1;
+            v->type = range[i].type;
+            switch (range[i].type) {
+            case HVAL_INT:  v->value.i = range[i].bounds.i.min; break;
+            case HVAL_REAL: v->value.r = range[i].bounds.r.min; break;
+            case HVAL_STR:  v->value.s = range[i].bounds.s.set[0]; break;
+            default:
+                session_error("Invalid range detected during strategy init.");
+                return -1;
+            }
+        }
+        curr.id = 1;
+
+        idx = (unsigned long *) calloc(N, sizeof(unsigned long));
+        if (!idx) {
+            session_error("Could not allocate memory for index array.");
+            return -1;
+        }
+
+        best = HPOINT_INITIALIZER;
+        best_perf = INFINITY;
     }
+
+    /* Initialization for subsequent calls to strategy_init(). */
+    if (strategy_cfg() != 0)
+        return -1;
 
     if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
         session_error("Could not set "

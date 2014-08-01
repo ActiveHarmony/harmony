@@ -67,15 +67,20 @@ int strategy_init(hsignature_t *sig)
         return -1;
     }
 
-    best = HPOINT_INITIALIZER;
-    best_perf = INFINITY;
-
-    curr = vertex_alloc();
     if (!curr) {
-        session_error("Could not allocate memory for testing vertex.");
-        return -1;
+        /* One time memory allocation and/or initialization. */
+        curr = vertex_alloc();
+        if (!curr) {
+            session_error("Could not allocate memory for testing vertex.");
+            return -1;
+        }
+        curr->id = 1;
+
+        best = HPOINT_INITIALIZER;
     }
-    curr->id = 1;
+
+    /* Initialization for subsequent calls to strategy_init(). */
+    best_perf = INFINITY;
 
     if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
         session_error("Could not set "
@@ -87,7 +92,6 @@ int strategy_init(hsignature_t *sig)
 
 /*
  * Generate a new candidate configuration.
- * FETCH
  */
 int strategy_generate(hflow_t *flow, hpoint_t *point)
 {
@@ -132,7 +136,6 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
 
 /*
  * Analyze the observed performance for this configuration point.
-  REPORT
  */
 int strategy_analyze(htrial_t *trial)
 {

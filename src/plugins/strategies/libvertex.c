@@ -29,6 +29,8 @@
 #include <math.h>
 
 /* Forward definitions of internal helper functions. */
+int    internal_vertex_min(vertex_t *v);
+int    internal_vertex_max(vertex_t *v);
 long   max_int(int_bounds_t *b);
 double max_real(real_bounds_t *b);
 int    max_str(str_bounds_t *b);
@@ -50,43 +52,24 @@ static long sizeof_vertex;
 
 int libvertex_init(hsignature_t *sig)
 {
-    int i;
+    if (range != sig->range) {
+        range = sig->range;
+        N = sig->range_len;
+        P = atoi( session_getcfg(CFGKEY_PERF_COUNT) );
+        sizeof_vertex = sizeof(vertex_t) + N * sizeof(double);
 
-    P = atoi( session_getcfg(CFGKEY_PERF_COUNT) );
-    N = sig->range_len;
-    range = sig->range;
-    sizeof_vertex = sizeof(vertex_t) + N * sizeof(double);
+        free(vmin);
+        vmin = vertex_alloc();
+        if (!vmin || internal_vertex_min(vmin) != 0)
+            return -1;
+        hperf_reset(vmin->perf);
 
-    free(vmin);
-    vmin = vertex_alloc();
-    if (!vmin) {
-        return -1;
+        free(vmax);
+        vmax = vertex_alloc();
+        if (!vmax || internal_vertex_max(vmax) != 0)
+            return -1;
+        hperf_reset(vmax->perf);
     }
-    for (i = 0; i < N; ++i) {
-        switch (range[i].type) {
-        case HVAL_INT:  vmin->term[i] = range[i].bounds.i.min; break;
-        case HVAL_REAL: vmin->term[i] = range[i].bounds.r.min; break;
-        case HVAL_STR:  vmin->term[i] = 0.0; break;
-        default: return -1;
-        }
-    }
-    hperf_reset(vmin->perf);
-
-    free(vmax);
-    vmax = vertex_alloc();
-    if (!vmax) {
-        return -1;
-    }
-    for (i = 0; i < N; ++i) {
-        switch (range[i].type) {
-        case HVAL_INT:  vmax->term[i] = max_int(&range[i].bounds.i);  break;
-        case HVAL_REAL: vmax->term[i] = max_real(&range[i].bounds.r); break;
-        case HVAL_STR:  vmax->term[i] = max_str(&range[i].bounds.s);  break;
-        default: return -1;
-        }
-    }
-    hperf_reset(vmax->perf);
-
     return 0;
 }
 
@@ -104,6 +87,12 @@ vertex_t *vertex_alloc()
         return NULL;
     }
     return v;
+}
+
+void vertex_reset(vertex_t *v)
+{
+    v->id = 0;
+    hperf_reset(v->perf);
 }
 
 int vertex_copy(vertex_t *dst, const vertex_t *src)
@@ -127,30 +116,40 @@ const vertex_t *vertex_min(void)
     return vmin;
 }
 
+int internal_vertex_min(vertex_t *v)
+{
+    int i;
+
+    vertex_reset(v);
+    for (i = 0; i < N; ++i) {
+        switch (range[i].type) {
+        case HVAL_INT:  v->term[i] = range[i].bounds.i.min; break;
+        case HVAL_REAL: v->term[i] = range[i].bounds.r.min; break;
+        case HVAL_STR:  v->term[i] = 0.0; break;
+        default: return -1;
+        }
+    }
+    return 0;
+}
+
 const vertex_t *vertex_max(void)
 {
     return vmax;
 }
 
-int vertex_center(vertex_t *v)
+int internal_vertex_max(vertex_t *v)
 {
     int i;
 
-    vertex_copy(v, vmin);
-    for (i = 0; i < N; ++i)
-        v->term[i] += (vmax->term[i] - vmin->term[i]) / 2;
-
-    hperf_reset(v->perf);
-    return 0;
-}
-
-int vertex_percent(vertex_t *v, double percent)
-{
-    int i;
-    for (i = 0; i < N; ++i)
-        v->term[i] = (vmax->term[i] - vmin->term[i]) * percent;
-
-    hperf_reset(v->perf);
+    vertex_reset(v);
+    for (i = 0; i < N; ++i) {
+        switch (range[i].type) {
+        case HVAL_INT:  v->term[i] = max_int(&range[i].bounds.i);  break;
+        case HVAL_REAL: v->term[i] = max_real(&range[i].bounds.r); break;
+        case HVAL_STR:  v->term[i] = max_str(&range[i].bounds.s);  break;
+        default: return -1;
+        }
+    }
     return 0;
 }
 
@@ -181,6 +180,28 @@ double max_real(real_bounds_t *b)
 int max_str(str_bounds_t *b)
 {
     return b->set_len - 1;
+}
+
+int vertex_center(vertex_t *v)
+{
+    int i;
+
+    vertex_copy(v, vmin);
+    for (i = 0; i < N; ++i)
+        v->term[i] += (vmax->term[i] - vmin->term[i]) / 2;
+
+    hperf_reset(v->perf);
+    return 0;
+}
+
+int vertex_percent(vertex_t *v, double percent)
+{
+    int i;
+    for (i = 0; i < N; ++i)
+        v->term[i] = (vmax->term[i] - vmin->term[i]) * percent;
+
+    hperf_reset(v->perf);
+    return 0;
 }
 
 int vertex_rand(vertex_t *v)
@@ -295,8 +316,7 @@ int vertex_regrid(vertex_t *v)
         }
     }
 
-    v->id = 0;
-    hperf_reset(v->perf);
+    vertex_reset(v);
     return 0;
 }
 
@@ -423,9 +443,18 @@ simplex_t *simplex_alloc(int m)
         s->vertex[i]->perf = hperf_alloc(P);
         if (!s->vertex[i]->perf)
             return NULL;
+
+        vertex_reset(s->vertex[i]);
     }
 
     return s;
+}
+
+void simplex_reset(simplex_t *s)
+{
+    int i;
+    for (i = 0; i < s->len; ++i)
+        vertex_reset(s->vertex[i]);
 }
 
 int simplex_copy(simplex_t *dst, const simplex_t *src)
