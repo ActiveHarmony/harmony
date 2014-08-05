@@ -30,7 +30,6 @@ extern "C" {
 
 typedef struct session_state {
     char *name;
-    char *src_id;
     int fd, old_fd;
     int *client;
     int client_len, client_cap;
@@ -45,8 +44,6 @@ typedef struct session_state {
     hpoint_t *fetched;
     int fetched_len, fetched_cap;
     int reported;
-    char *strategy_name;
-    hcfg_t *ini_hcfg;
 } session_state_t;
 
 extern session_state_t *slist;
@@ -56,9 +53,9 @@ extern hmesg_t mesg_in;
 
 session_state_t *session_open(hmesg_t *mesg);
 void session_close(session_state_t *sess);
-void session_restart(char *name);
 const char *session_getcfg(session_state_t *sess, const char *key);
 int session_setcfg(session_state_t *sess, const char *key, const char *val);
+int session_restart(session_state_t *sess);
 
 #ifdef __cplusplus
 }

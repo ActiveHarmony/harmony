@@ -371,13 +371,19 @@ int http_request_handle(int fd, char *req)
 
         /* argument indicates which session to restart */
         if (arg) {
-            session_restart(arg);
-            opt_http_write(fd, "OK");
-        }
-        else {
-            opt_http_write(fd, "FAIL");
+            for (i = 0; i < slist_cap; ++i) {
+                if (slist[i].name &&
+                    strcmp(slist[i].name, arg) == 0 &&
+                    session_restart(&slist[i]) == 0)
+                {
+                    opt_http_write(fd, "OK");
+                    opt_http_write(fd, "");
+                    return 0;
+                }
+            }
         }
 
+        opt_http_write(fd, "FAIL");
         opt_http_write(fd, "");
         return 0;
     }
@@ -391,17 +397,22 @@ int http_request_handle(int fd, char *req)
         if (arg) {
             for (i = 0; i < slist_cap; ++i) {
                 if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
-                    opt_http_write(fd, slist[i].strategy_name);
-                    opt_http_write(fd, "");
-                    return 0;
+                    const char *cfgval =
+                        session_getcfg(&slist[i], CFGKEY_SESSION_STRATEGY);
+
+                    if (cfgval) {
+                        opt_http_write(fd, cfgval);
+                        opt_http_write(fd, "");
+                        return 0;
+                    }
+                    break;
                 }
             }
         }
-        else {
-            opt_http_write(fd, "FAIL");
-            opt_http_write(fd, "");
-            return 0;
-        }
+
+        opt_http_write(fd, "FAIL");
+        opt_http_write(fd, "");
+        return 0;
     }
     else if (strncmp(req, "/converged", 10) == 0) {
         opt_sock_write(fd, status_200);
@@ -411,25 +422,24 @@ int http_request_handle(int fd, char *req)
 
         if (arg) {
             for (i = 0; i < slist_cap; ++i) {
-                if (slist[i].name && strcmp(slist[i].name, arg) == 0)
-                    break;
-            }
-            if (i < slist_cap) {
-                const char *cfgval = session_getcfg(&slist[i],
-                                                    CFGKEY_STRATEGY_CONVERGED);
-                if (cfgval && *cfgval == '1')
-                    opt_http_write(fd, "1");
-                else
-                    opt_http_write(fd, "0");
-                opt_http_write(fd, "");
-                return 0;
+                if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
+                    const char *cfgval =
+                        session_getcfg(&slist[i], CFGKEY_STRATEGY_CONVERGED);
+
+                    if (cfgval && *cfgval == '1')
+                        opt_http_write(fd, "1");
+                    else
+                        opt_http_write(fd, "0");
+                    opt_http_write(fd, "");
+                    return 0;
+                }
+                break;
             }
         }
-        else {
-            opt_http_write(fd, "FAIL");
-            opt_http_write(fd, "");
-            return 0;
-        }
+
+        opt_http_write(fd, "FAIL");
+        opt_http_write(fd, "");
+        return 0;
     }
 
     /* If request is not handled by any special cases above,

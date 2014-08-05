@@ -116,6 +116,7 @@ int handle_best(hmesg_t *mesg);
 int handle_fetch(hmesg_t *mesg);
 int handle_report(hmesg_t *mesg);
 int handle_reject(int trial_idx);
+int handle_restart(hmesg_t *mesg);
 int handle_wait(int trial_idx);
 int load_strategy(const char *file);
 int load_layers(const char *list);
@@ -235,7 +236,7 @@ int main(int argc, char **argv)
             case HMESG_BEST:    retval = handle_best(&mesg); break;
             case HMESG_FETCH:   retval = handle_fetch(&mesg); break;
             case HMESG_REPORT:  retval = handle_report(&mesg); break;
-            case HMESG_RESTART: retval = strategy_init(&sess->sig); break;
+            case HMESG_RESTART: retval = handle_restart(&mesg); break;
             default:
                 errmsg = "Internal error: Unknown message type.";
                 goto error;
@@ -738,7 +739,6 @@ int handle_fetch(hmesg_t *mesg)
 
         paused_id = mesg->data.point.id;
         mesg->status = HMESG_STATUS_BUSY;
-        if (paused) fprintf(stderr, "Session paused.  Returning best.\n");
     }
     return 0;
 }
@@ -776,6 +776,13 @@ int handle_report(hmesg_t *mesg)
         return -1;
 
     hperf_fini(mesg->data.report.perf);
+    mesg->status = HMESG_STATUS_OK;
+    return 0;
+}
+
+int handle_restart(hmesg_t *mesg)
+{
+    session_restart();
     mesg->status = HMESG_STATUS_OK;
     return 0;
 }

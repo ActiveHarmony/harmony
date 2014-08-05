@@ -473,6 +473,13 @@ int handle_client_socket(int fd)
     }
 
     switch (mesg_in.type) {
+    case HMESG_GETCFG:
+    case HMESG_SETCFG:
+    case HMESG_BEST:
+    case HMESG_FETCH:
+    case HMESG_RESTART:
+        break;
+
     case HMESG_SESSION:
         sess = session_open(&mesg_in);
         if (!sess) {
@@ -499,14 +506,9 @@ int handle_client_socket(int fd)
             perror("Could not grow session client list");
             goto error;
         }
+
         sess->client[idx] = fd;
         ++sess->client_len;
-
-        break;
-
-    case HMESG_FETCH:
-    case HMESG_GETCFG:
-    case HMESG_SETCFG:
         break;
 
     case HMESG_REPORT:
@@ -599,6 +601,8 @@ int handle_session_socket(int idx)
     case HMESG_JOIN:
     case HMESG_SETCFG:
     case HMESG_GETCFG:
+    case HMESG_BEST:
+    case HMESG_RESTART:
         break;
 
     case HMESG_FETCH:
@@ -633,7 +637,7 @@ int handle_session_socket(int idx)
         goto error;
     }
 
-    mesg_out.dest = idx;          
+    mesg_out.dest = idx;
     mesg_out.type = mesg_in.type;
     mesg_out.status = mesg_in.status;
     mesg_out.src_id = mesg_in.src_id;
@@ -658,7 +662,6 @@ session_state_t *session_open(hmesg_t *mesg)
     session_state_t *sess;
     char *child_argv[2];
     const char *cfgstr;
-    const char *strategy_name;
 
     idx = -1;
     /* check if session already exists, and return if it does */
@@ -730,22 +733,6 @@ session_state_t *session_open(hmesg_t *mesg)
     if (highest_socket < sess->fd)
         highest_socket = sess->fd;
 
-    /* save session strategy */
-    strategy_name = hcfg_get(mesg->data.session.cfg, CFGKEY_SESSION_STRATEGY);
-    if(strategy_name == NULL)
-      sess->strategy_name = DEFAULT_STRATEGY;
-    else {
-      sess->strategy_name = malloc(strlen(strategy_name) + 1);
-      strcpy(sess->strategy_name, strategy_name);
-    }
-
-    /* save src_id string for restart */
-    sess->src_id = malloc(strlen(mesg->src_id) + 1);
-    strcpy(sess->src_id, mesg->src_id);
-
-    /* also save initial hcfg for restart */
-    sess->ini_hcfg = hcfg_copy(mesg->data.session.cfg);
-
     return sess;
 
   error:
@@ -754,82 +741,12 @@ session_state_t *session_open(hmesg_t *mesg)
     return NULL;
 }
 
-/* Restarts the session with the specified name:
-    - Closes the old session
-    - Opens a new session, and configures it in the same way 
-      as the previous one.
-   On failure, simply returns without restarting.
-   args:
-     -name = session name
-     -stuff after name; = point (or simplex) to start from. semicolon-delimited list of coords */
-void session_restart(char *name) {
-  int idx, i;
-  char *child_argv[2];
-  char *coord_ptr = NULL;
-  session_state_t *sess = NULL;
-  hmesg_t ini_mesg = HMESG_INITIALIZER;
-  
-  /* check for extra params (is semicolon present?) */
-  for(i = 0;i < strlen(name);i++) {
-    if(name[i] == ';') {
-      name[i] = '\0';   // new str now starts after this. prevents mishaps with name comp later on
-      coord_ptr = &name[i] + 1;
-      break;
-    }
-  }
-  
-  /* Look up session to restart by name */
-  for (idx = 0; idx < slist_cap; ++idx) {
-    if (slist[idx].name && strcmp(slist[idx].name, name) == 0) {
-      sess = &slist[idx]; 
-      break;
-    }
-  }
-  
-  if (idx == slist_cap) { /* session with specified name not found */
-    return;
-  }
-
-  /* Close old session (close socket so it dies) */
-  printf("Restart: old fd is %d\n", sess->fd);
-  close(sess->fd);
-
-  /* Start new session:
-      Fork and exec a session handler. 
-      Set sess->fd to that of the new session */
-  child_argv[0] = sess->name;
-  child_argv[1] = NULL;
-  sess->fd = socket_launch(session_bin, child_argv, NULL);
-
-  /* send initial session message */
-  hmesg_scrub(&ini_mesg);
-  ini_mesg.dest = sess->fd;
-  ini_mesg.type = HMESG_SESSION;
-  ini_mesg.status = HMESG_STATUS_REQ;
-  ini_mesg.src_id = sess->src_id;
-  hsession_init(&ini_mesg.data.session);
-  /* hsignature does not change */
-  hsignature_copy(&ini_mesg.data.session.sig, &sess->sig);
-
-  /* replay initial configuration */
-  /* coords provided -> set that in cfg. otherwise just replay initial config */
-  ini_mesg.data.session.cfg = hcfg_copy(sess->ini_hcfg);
-  if(coord_ptr != NULL) {
-    hcfg_set(ini_mesg.data.session.cfg, CFGKEY_POINT_DATA, coord_ptr);
-    hcfg_set(ini_mesg.data.session.cfg, CFGKEY_INIT_METHOD, "point_set");
-  } 
-  
-  mesg_send(sess->fd, &ini_mesg);
-}
-
 void session_close(session_state_t *sess)
 {
     int i;
 
     free(sess->name);
     sess->name = NULL;
-    free(sess->src_id);
-    sess->src_id = NULL;
 
     for (i = 0; i < sess->client_cap; ++i) {
         if (sess->client[i] != -1)
@@ -913,6 +830,7 @@ const char *session_getcfg(session_state_t *sess, const char *key)
     /* Create an empty message */
     static hmesg_t mesg;
 
+    mesg.dest = -1;
     mesg.type = HMESG_GETCFG;
     mesg.status = HMESG_STATUS_REQ;
     mesg.data.string = key;
@@ -937,6 +855,21 @@ int session_setcfg(session_state_t *sess, const char *key, const char *val)
     free((char *)mesg.data.string);
 
     if (retval == 0 && mesg_recv(sess->fd, &mesg) < 1)
+        retval = -1;
+
+    hmesg_fini(&mesg);
+    return retval;
+}
+
+int session_restart(session_state_t *sess)
+{
+    hmesg_t mesg = HMESG_INITIALIZER;
+    int retval = 0;
+
+    mesg.type = HMESG_RESTART;
+    mesg.status = HMESG_STATUS_REQ;
+
+    if (mesg_send(sess->fd, &mesg) < 1 || mesg_recv(sess->fd, &mesg) < 1)
         retval = -1;
 
     hmesg_fini(&mesg);
