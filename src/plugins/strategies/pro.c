@@ -135,7 +135,6 @@ int strategy_init(hsignature_t *sig)
         return -1;
     }
 
-
     if (strategy_cfg(sig) != 0)
         return -1;
 
@@ -159,7 +158,11 @@ int strategy_init(hsignature_t *sig)
             return -1;
         }
 
+        /* The best point and trial counter should only be initialized once,
+         * and thus be retained across a restart.
+         */
         best = HPOINT_INITIALIZER;
+        best_perf = INFINITY;
         next_id = 1;
     }
 
@@ -167,7 +170,8 @@ int strategy_init(hsignature_t *sig)
     vertex_reset(init_point);
     simplex_reset(test);
     simplex_reset(base);
-    best_perf = INFINITY;
+    reported = 0;
+    send_idx = 0;
     coords = sig->range_len;
 
     switch (init_method) {

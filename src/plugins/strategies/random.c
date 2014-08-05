@@ -74,14 +74,16 @@ int strategy_init(hsignature_t *sig)
             session_error("Could not allocate memory for testing vertex.");
             return -1;
         }
-        curr->id = 1;
 
+        /* The best point and trial counter should only be initialized once,
+         * and thus be retained across a restart.
+         */
         best = HPOINT_INITIALIZER;
+        best_perf = INFINITY;
+        curr->id = 1;
     }
 
     /* Initialization for subsequent calls to strategy_init(). */
-    best_perf = INFINITY;
-
     if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
         session_error("Could not set "
                       CFGKEY_STRATEGY_CONVERGED " config variable.");

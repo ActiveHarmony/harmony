@@ -178,7 +178,11 @@ int strategy_init(hsignature_t *sig)
             return -1;
         }
 
+        /* The best point and trial counter should only be initialized once,
+         * and thus be retained across a restart.
+         */
         best = HPOINT_INITIALIZER;
+        best_perf = INFINITY;
         next_id = 1;
     }
 
@@ -187,7 +191,6 @@ int strategy_init(hsignature_t *sig)
     vertex_reset(centroid);
     vertex_reset(test);
     simplex_reset(base);
-    best_perf = INFINITY;
     coords = sig->range_len;
 
     switch (init_method) {
@@ -527,8 +530,7 @@ int strategy_analyze(htrial_t *trial)
     double perf = hperf_unify(trial->perf);
 
     if (trial->point.id != next->id) {
-        session_error("Rouge points not supported.");
-        return -1;
+        return 0;
     }
     hperf_copy(next->perf, trial->perf);
 
