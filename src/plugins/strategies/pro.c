@@ -135,11 +135,14 @@ int strategy_init(hsignature_t *sig)
         return -1;
     }
 
-    if (strategy_cfg(sig) != 0)
-        return -1;
-
     if (!base) {
         /* One time memory allocation and/or initialization. */
+
+        /* Make sure the simplex size is N+1 or greater. */
+        simplex_size = atoi( session_getcfg(CFGKEY_SIMPLEX_SIZE) );
+        if (simplex_size < sig->range_len + 1)
+            simplex_size = sig->range_len + 1;
+
         init_point = vertex_alloc();
         if (!init_point) {
             session_error("Could not allocate memory for initial point.");
@@ -174,11 +177,22 @@ int strategy_init(hsignature_t *sig)
     send_idx = 0;
     coords = sig->range_len;
 
+    if (strategy_cfg(sig) != 0)
+        return -1;
+
     switch (init_method) {
-    case SIMPLEX_INIT_CENTER: vertex_center(init_point); break;
-    case SIMPLEX_INIT_RANDOM: vertex_rand_trim(init_point,
-                                               init_percent); break;
-    case SIMPLEX_INIT_POINT:  init_by_specified_point(session_getcfg(CFGKEY_POINT_DATA)); break;
+    case SIMPLEX_INIT_CENTER:
+        vertex_center(init_point);
+        break;
+
+    case SIMPLEX_INIT_RANDOM:
+        vertex_rand_trim(init_point, init_percent);
+        break;
+
+    case SIMPLEX_INIT_POINT:
+        vertex_from_string(session_getcfg(CFGKEY_INIT_POINT), sig, init_point);
+        break;
+
     default:
         session_error("Invalid initial search method.");
         return -1;
@@ -205,14 +219,6 @@ int strategy_cfg(hsignature_t *sig)
     const char *cfgval;
     char *endp;
 
-    /* Make sure the simplex size is N+1 or greater. */
-    cfgval = session_getcfg(CFGKEY_SIMPLEX_SIZE);
-    if (cfgval)
-        simplex_size = atoi(cfgval);
-
-    if (simplex_size < sig->range_len + 1)
-        simplex_size = sig->range_len + 1;
-
     cfgval = session_getcfg(CFGKEY_INIT_METHOD);
     if (cfgval) {
         if (strcasecmp(cfgval, "center") == 0) {
@@ -229,6 +235,12 @@ int strategy_cfg(hsignature_t *sig)
                           CFGKEY_INIT_METHOD " configuration key.");
             return -1;
         }
+    }
+
+    /* CFGKEY_INIT_POINT will override CFGKEY_INIT_METHOD if necessary. */
+    cfgval = session_getcfg(CFGKEY_INIT_POINT);
+    if (cfgval) {
+        init_method = SIMPLEX_INIT_POINT;
     }
 
     cfgval = session_getcfg(CFGKEY_INIT_PERCENT);
@@ -330,85 +342,6 @@ int strategy_cfg(hsignature_t *sig)
         size_tol = vertex_dist(vertex_min(), vertex_max()) * 0.005;
     }
     return 0;
-}
-
-/* Counts semicolons in string. String MUST be null terminated */
-int count_semicolons(const char *str) {
-  unsigned int i, c;
-  for(i = 0, c = 0;str[i] != '\0';i++) {
-    if(str[i] == ';') c++;
-  }
-  return c;
-}
-
-/* Replaces all semicolons in string with null terminators,
-   Populates arr with indices of substring starts */   
-void replace_semicolons(char *str, int *arr) {
-  unsigned int i, c;
-  arr[0] = 0;
-  c = 1;
-  for(i = 0;str[i] != '\0';i++) {
-    if(str[i] == ';') {
-      arr[c] = i + 1;  /* right past new null terminator */
-      c++;
-      str[i] = '\0';
-    }
-  }
-}
-
-/* takes a string containing dash-separated values,
-   and sets the initial simplex to the specified points.
-   Ignores extra coordinates. If there aren't enough
-   to set up a simplex, it uses the first n numbers to initialize
-   a simplex from a vertex (n = number of coordinates per point)
-   for multiple points, points go one after another, like
-     x1;x2;x3;y1;y2;y3,....etc.
-   If there aren't even ehough points to do that, it returns -1.
-   Use semicolons b/c they aren't reserved for URLs */
-int init_by_specified_point(const char *str) {
-  /* parse string */
-  char *mod_str;
-  int n_coords, *str_indices, i, rc = 0;
-  int vertex_idx;
-  double *coord_arr;
-  
-  n_coords = count_semicolons(str) + 1;
-  mod_str = malloc(strlen(str) + 1); /* make copy we can modify */
-  strcpy(mod_str, str);
-  str_indices = malloc(sizeof(int) * n_coords);
-  coord_arr = malloc(sizeof(int) * n_coords);
-  replace_semicolons(mod_str, str_indices);
-   
-  if(n_coords < coords * simplex_size) {
-    /* not enough data to setup simplex. try with one point */
-    init_point->id = 0;
-    init_point->perf = 0;
-    if(n_coords >= coords) {
-      for(i = 0;i < n_coords;i++) {
-        init_point->term[i] = atof(mod_str + str_indices[i]);
-      }
-      rc = simplex_from_vertex(init_point, init_percent, base);
-    } else {
-      rc = -1;
-    }
-  } else {
-    //vertex.term = malloc(sizeof(double) * coords); // guess we don't actually need to do this?
-    for(vertex_idx = 0, i = 0;vertex_idx < simplex_size;vertex_idx++) {
-      base->vertex[vertex_idx]->id = 0;
-      base->vertex[vertex_idx]->perf = 0;
-      for(;i < n_coords;i++) { /* fill in vertex */
-        base->vertex[vertex_idx]->term[i] = atof(mod_str + str_indices[i]);
-      }
-      /* call simplex_set_vertex */
-      if(rc == -1) break;
-    }
-  }
-  //rc = simplex_from_vertex();
-
-  free(mod_str);
-  free(coord_arr);
-  free(str_indices);
-  return rc;
 }
 
 /*

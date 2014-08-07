@@ -24,8 +24,72 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
+
+int hval_parse_string(const char *buf, const char **newbuf);
 
 const hval_t HVAL_INITIALIZER = {0};
+
+int hval_parse(hval_t *val, const char *buf)
+{
+    int ret, cnt;
+
+    switch (val->type) {
+    case HVAL_INT:  ret = sscanf(buf, " %ld%n", &val->value.i, &cnt); break;
+    case HVAL_REAL: ret = sscanf(buf, " %lf%n", &val->value.r, &cnt); break;
+    case HVAL_STR:  ret = cnt = hval_parse_string(buf, &val->value.s); break;
+    default: return -1;
+    }
+    return (ret > 0) ? cnt : -1;
+}
+
+int hval_parse_string(const char *buf, const char **newbuf)
+{
+    const char *head;
+    const char *tail;
+    int len, span, quoted = 0;
+
+    /* Find the head. */
+    head = buf;
+    while (head && isspace(*head))
+        ++head;
+    if (!head)
+        return -1;
+    if (*head == '"') {
+        ++head;
+        quoted = 1;
+    }
+
+    /* Find tail, length, and span. */
+    len = 0;
+    tail = head;
+    while (tail && (quoted ? *tail == '"'
+                           : isspace(*tail)))
+    {
+        if (*tail == '\\')
+            tail += 2;
+        else
+            tail += 1;
+        ++len;
+    }
+    if (!tail)
+        return -1;
+    span = tail - buf + 1;
+
+    /* Allocate memory and copy an unescaped version of the string. */
+    if (newbuf) {
+        char *ptr = calloc(len + 1, sizeof(*ptr));
+        if (!ptr)
+            return -1;
+        *newbuf = ptr;
+
+        while (head < tail) {
+            if (*head == '\\') ++head;
+            *(ptr++) = *(head++);
+        }
+    }
+    return span;
+}
 
 int hval_serialize(char **buf, int *buflen, const hval_t *val)
 {

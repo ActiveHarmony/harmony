@@ -57,6 +57,8 @@ int        vertex_outofbounds(const vertex_t *v);
 int        vertex_regrid(vertex_t *v);
 int        vertex_to_hpoint(const vertex_t *v, hpoint_t *result);
 int        vertex_from_hpoint(const hpoint_t *pt, vertex_t *result);
+int        vertex_from_string(const char *str, hsignature_t *sig,
+                              vertex_t *result);
 
 simplex_t *simplex_alloc(int m);
 void       simplex_reset(simplex_t *s);

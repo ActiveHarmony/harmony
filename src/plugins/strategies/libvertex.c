@@ -34,9 +34,6 @@ int    internal_vertex_max(vertex_t *v);
 long   max_int(int_bounds_t *b);
 double max_real(real_bounds_t *b);
 int    max_str(str_bounds_t *b);
-long   closest_int(double val, double max, int_bounds_t *b);
-double closest_real(double val, double max, real_bounds_t *b);
-int    closest_str(double val, str_bounds_t *b);
 int    simplex_fit(simplex_t *s);
 void   unit_simplex(simplex_t *s);
 int    rotate_simplex(simplex_t *s);
@@ -143,43 +140,29 @@ int internal_vertex_max(vertex_t *v)
 
     vertex_reset(v);
     for (i = 0; i < N; ++i) {
+        int idx = hrange_max_idx(&range[i]);
+
         switch (range[i].type) {
-        case HVAL_INT:  v->term[i] = max_int(&range[i].bounds.i);  break;
-        case HVAL_REAL: v->term[i] = max_real(&range[i].bounds.r); break;
-        case HVAL_STR:  v->term[i] = max_str(&range[i].bounds.s);  break;
-        default: return -1;
+        case HVAL_INT:
+            v->term[i] = hrange_int_value(&range[i].bounds.i, idx);
+            break;
+
+        case HVAL_REAL:
+            if (range[i].bounds.r.step > 0.0)
+                v->term[i] = hrange_real_value(&range[i].bounds.r, idx);
+            else
+                v->term[i] = range[i].bounds.r.max;
+            break;
+
+        case HVAL_STR:
+            v->term[i] = range[i].bounds.s.set_len - 1;
+            break;
+
+        default:
+            return -1;
         }
     }
     return 0;
-}
-
-long max_int(int_bounds_t *b)
-{
-    long val;
-
-    val  = b->max - b->min;
-    val -= val % b->step;
-    val += b->min;
-
-    return val;
-}
-
-double max_real(real_bounds_t *b)
-{
-    double val;
-
-    val = b->max;
-    if (b->step > 0.0) {
-        val -= b->min;
-        val  = b->step * floor(val / b->step);
-        val += b->min;
-    }
-    return val;
-}
-
-int max_str(str_bounds_t *b)
-{
-    return b->set_len - 1;
 }
 
 int vertex_center(vertex_t *v)
@@ -223,21 +206,21 @@ int vertex_rand_trim(vertex_t *v, double trim_percentage)
             int_bounds_t *b = &range[i].bounds.i;
             rval = (b->max - b->min - v->term[i]) * drand48();
             rval += b->min + (v->term[i] / 2);
-            v->term[i] = closest_int(rval, vmax->term[i], b);
+            v->term[i] = hrange_int_nearest(b, rval);
             break;
         }
         case HVAL_REAL: {
             real_bounds_t *b = &range[i].bounds.r;
             rval = (b->max - b->min - v->term[i]) * drand48();
             rval += b->min + (v->term[i] / 2);
-            v->term[i] = closest_real(rval, vmax->term[i], b);
+            v->term[i] = hrange_real_nearest(b, rval);
             break;
         }
         case HVAL_STR: {
             str_bounds_t *b = &range[i].bounds.s;
             rval = (b->set_len - 1 - v->term[i]) * drand48();
             rval += v->term[i] / 2;
-            v->term[i] = closest_str(rval, b);
+            v->term[i] = rval;
             break;
         }
         default:
@@ -298,17 +281,19 @@ int vertex_regrid(vertex_t *v)
     for (i = 0; i < N; ++i) {
         switch (range[i].type) {
         case HVAL_INT:
-            v->term[i] = closest_int(v->term[i], vmax->term[i],
-                                     &range[i].bounds.i);
+            v->term[i] = hrange_int_nearest(&range[i].bounds.i, v->term[i]);
             break;
 
         case HVAL_REAL:
-            v->term[i] = closest_real(v->term[i], vmax->term[i],
-                                      &range[i].bounds.r);
+            v->term[i] = hrange_real_nearest(&range[i].bounds.r, v->term[i]);
             break;
 
         case HVAL_STR:
-            v->term[i] = closest_str(v->term[i], &range[i].bounds.s);
+            if (v->term[i] < 0.0)
+                v->term[i] = 0.0;
+            if (v->term[i] > range[i].bounds.s.set_len - 1)
+                v->term[i] = range[i].bounds.s.set_len - 1;
+            v->term[i] = (unsigned long)(v->term[i] + 0.5);
             break;
 
         default:
@@ -320,78 +305,34 @@ int vertex_regrid(vertex_t *v)
     return 0;
 }
 
-long closest_int(double val, double max, int_bounds_t *b)
-{
-    int neg;
-
-    if (val < b->min)
-        return b->min;
-
-    if (val > max)
-        return (long)max;
-
-    neg = (val < 0.0);
-    val = (val - b->min) / b->step;
-    val = (neg ?  ceil(val - 0.5)
-               : floor(val + 0.5));
-    return b->min + b->step * (long)val;
-}
-
-double closest_real(double val, double max, real_bounds_t *b)
-{
-    int neg;
-
-    if (val < b->min)
-        return b->min;
-
-    if (val > max)
-        return max;
-
-    if (b->step > 0.0) {
-        neg = (val < 0.0);
-        val = (val - b->min) / b->step;
-        val = (neg ?  ceil(val - 0.5)
-                   : floor(val + 0.5));
-        val = b->min + b->step * val;
-    }
-    return val;
-}
-
-int closest_str(double val, str_bounds_t *b)
-{
-    if (val < 0)
-        return 0;
-
-    if (val >= b->set_len)
-        return b->set_len - 1;
-
-    return lround(val);
-}
-
 int vertex_to_hpoint(const vertex_t *v, hpoint_t *result)
 {
     int i;
 
     hpoint_init(result, N);
     for (i = 0; i < N; ++i) {
-        result->val[i].type = range[i].type;
+        hval_t *val = &result->val[i];
+
+        val->type = range[i].type;
         switch (range[i].type) {
         case HVAL_INT:
-            result->val[i].value.i = closest_int(v->term[i], vmax->term[i],
-                                                 &range[i].bounds.i);
+            val->value.i = hrange_int_nearest(&range[i].bounds.i, v->term[i]);
             break;
-
         case HVAL_REAL:
-            result->val[i].value.r = closest_real(v->term[i], vmax->term[i],
-                                                  &range[i].bounds.r);
+            val->value.r = hrange_real_nearest(&range[i].bounds.r, v->term[i]);
             break;
+        case HVAL_STR: {
+            unsigned long idx = v->term[i];
 
-        case HVAL_STR:
-            result->val[i].value.s =
-                range[i].bounds.s.set[closest_str(v->term[i],
-                                                  &range[i].bounds.s)];
+            idx = v->term[i] + 0.5;
+            if (idx < 0)
+                idx = 0;
+            if (idx > range[i].bounds.s.set_len - 1)
+                idx = range[i].bounds.s.set_len - 1;
+
+            val->value.s = hrange_str_value(&range[i].bounds.s, idx);
             break;
-
+        }
         default:
             return -1;
         }
@@ -420,6 +361,39 @@ int vertex_from_hpoint(const hpoint_t *pt, vertex_t *result)
             return -1;
         }
     }
+    return 0;
+}
+
+int vertex_from_string(const char *str, hsignature_t *sig, vertex_t *result)
+{
+    hpoint_t pt = HPOINT_INITIALIZER;
+
+    if (!str) {
+        session_error("Cannot convert null string to vertex");
+        return -1;
+    }
+
+    if (hpoint_init(&pt, sig->range_len) != 0) {
+        session_error("Error initializing temporary hpoint");
+        return -1;
+    }
+
+    if (hpoint_parse(&pt, sig, str) != 0) {
+        session_error("Error parsing point string");
+        return -1;
+    }
+
+    if (hpoint_align(&pt, sig) != 0) {
+        session_error("Error aligning point to session signature");
+        return -1;
+    }
+
+    if (vertex_from_hpoint(&pt, result) != 0) {
+        session_error("Error converting point to vertex");
+        return -1;
+    }
+
+    hpoint_fini(&pt);
     return 0;
 }
 

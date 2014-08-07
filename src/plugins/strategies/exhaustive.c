@@ -52,7 +52,7 @@ hpoint_t best;
 double   best_perf;
 
 /* Forward function definitions. */
-int strategy_cfg(void);
+int strategy_cfg(hsignature_t *sig);
 int increment(void);
 
 /* Variables to track current search state. */
@@ -68,8 +68,6 @@ int final_id = 0;
  */
 int strategy_init(hsignature_t *sig)
 {
-    int i;
-
     N = sig->range_len;
     range = sig->range;
 
@@ -95,23 +93,8 @@ int strategy_init(hsignature_t *sig)
     }
 
     /* Initialization for subsequent calls to strategy_init(). */
-    if (strategy_cfg() != 0)
+    if (strategy_cfg(sig) != 0)
         return -1;
-
-    for (i = 0; i < N; ++i) {
-        hval_t *v = &curr.val[i];
-
-        v->type = range[i].type;
-        switch (range[i].type) {
-        case HVAL_INT:  v->value.i = range[i].bounds.i.min; break;
-        case HVAL_REAL: v->value.r = range[i].bounds.r.min; break;
-        case HVAL_STR:  v->value.s = range[i].bounds.s.set[0]; break;
-        default:
-            session_error("Invalid range detected during strategy init.");
-            return -1;
-        }
-    }
-    memset(idx, 0, N * sizeof(unsigned long));
 
     if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
         session_error("Could not set "
@@ -121,13 +104,64 @@ int strategy_init(hsignature_t *sig)
     return 0;
 }
 
-int strategy_cfg(void)
+int strategy_cfg(hsignature_t *sig)
 {
     const char *cfgstr;
+    int i;
 
     cfgstr = session_getcfg(CFGKEY_PASSES);
     if (cfgstr)
         remaining_passes = atoi(cfgstr);
+
+    cfgstr = session_getcfg(CFGKEY_INIT_POINT);
+    if (cfgstr) {
+        if (hpoint_parse(&curr, sig, cfgstr) != 0) {
+            session_error("Error parsing point from " CFGKEY_INIT_POINT ".");
+            return -1;
+        }
+
+        if (hpoint_align(&curr, sig) != 0) {
+            session_error("Error aligning point to parameter space.");
+            return -1;
+        }
+
+        for (i = 0; i < sig->range_len; ++i) {
+            switch (sig->range[i].type) {
+            case HVAL_INT:
+                idx[i] = hrange_int_index(&sig->range[i].bounds.i,
+                                          curr.val[i].value.i);
+                break;
+            case HVAL_REAL:
+                idx[i] = hrange_real_index(&sig->range[i].bounds.r,
+                                           curr.val[i].value.r);
+                break;
+            case HVAL_STR:
+                idx[i] = hrange_str_index(&sig->range[i].bounds.s,
+                                          curr.val[i].value.s);
+                break;
+
+            default:
+                session_error("Invalid type detected in signature.");
+                return -1;
+            }
+        }
+    }
+    else {
+        for (i = 0; i < N; ++i) {
+            hval_t *v = &curr.val[i];
+
+            v->type = range[i].type;
+            switch (range[i].type) {
+            case HVAL_INT:  v->value.i = range[i].bounds.i.min; break;
+            case HVAL_REAL: v->value.r = range[i].bounds.r.min; break;
+            case HVAL_STR:  v->value.s = range[i].bounds.s.set[0]; break;
+            default:
+                session_error("Invalid range detected during strategy init.");
+                return -1;
+            }
+        }
+        memset(idx, 0, N * sizeof(unsigned long));
+    }
 
     return 0;
 }

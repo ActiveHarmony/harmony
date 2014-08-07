@@ -53,6 +53,7 @@ hpoint_t best;
 double   best_perf;
 
 /* Forward function definitions. */
+int strategy_cfg(hsignature_t *sig);
 
 /* Variables to track current search state. */
 vertex_t *curr;
@@ -84,10 +85,28 @@ int strategy_init(hsignature_t *sig)
     }
 
     /* Initialization for subsequent calls to strategy_init(). */
+    if (strategy_cfg(sig) != 0)
+        return -1;
+
     if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
         session_error("Could not set "
                       CFGKEY_STRATEGY_CONVERGED " config variable.");
         return -1;
+    }
+    return 0;
+}
+
+int strategy_cfg(hsignature_t *sig)
+{
+    const char *cfgval;
+
+    cfgval = session_getcfg(CFGKEY_INIT_POINT);
+    if (cfgval) {
+        if (vertex_from_string(cfgval, sig, curr) != 0)
+            return -1;
+    }
+    else {
+        vertex_rand(curr);
     }
     return 0;
 }
@@ -97,12 +116,14 @@ int strategy_init(hsignature_t *sig)
  */
 int strategy_generate(hflow_t *flow, hpoint_t *point)
 {
-    vertex_rand(curr);
     if (vertex_to_hpoint(curr, point) != 0) {
         session_error("Internal error: Could not make point from vertex.");
         return -1;
     }
     ++curr->id;
+
+    /* Prepare a new random vertex for the next call to strategy_generate. */
+    vertex_rand(curr);
 
     flow->status = HFLOW_ACCEPT;
     return 0;
