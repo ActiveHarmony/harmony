@@ -88,6 +88,11 @@ along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
           </li>
 
         </ul>
+        <span id='restart_controls'>
+        Restart with point (works with pro and nm only, coordinates are semicolon-separated, leave blank to just restart with initial config):<br />
+        <input type='text' id='restart_point' value='25;25;25;25;25;25' />
+        <input type='button' name='restart' value='Restart' onclick='sessionRestart()' />
+        </span>
       </div>
     </div>
     <div style="clear:both">

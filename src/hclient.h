@@ -392,20 +392,55 @@ int harmony_fetch(hdesc_t *hdesc);
 /**
  * \brief Report the performance of a configuration to the Harmony server.
  *
+ * Sends a complete performance report regarding the current
+ * configuration to the Harmony session.  For multi-objective search
+ * problems, the performance parameter should point to an array
+ * containing all performance values.
+ *
+ * If all performance values have been reported via
+ * harmony_report_one(), then `NULL` may be passed as the performance
+ * pointer.  Unreported performance values will result in error.
+ *
  * \param hdesc Harmony descriptor returned from harmony_init().
+ * \param value Performance vector for the current configuration.
+ *
+ * \return Returns 0 on success, and -1 otherwise.
+ */
+int harmony_report(hdesc_t *hdesc, double *perf);
+
+/**
+ * \brief Report a single performance value for the current configuration.
+ *
+ * Allows performance values to be reported one at a time for
+ * multi-objective search problems.
+ *
+ * Note that this function only caches values to send to the Harmony
+ * session.  Once all values have been reported, harmony_report() must
+ * be called (passing `NULL` as the performance argument).
+ *
+ * \param hdesc Harmony descriptor returned from harmony_init().
+ * \param index Objective index of the value to report.
  * \param value Performance measured for the current configuration.
  *
  * \return Returns 0 on success, and -1 otherwise.
  */
-int harmony_report(hdesc_t *hdesc, double value);
+int harmony_report_one(hdesc_t *hdesc, int index, double value);
 
 /**
  * \brief Sets variables under Harmony's control to the best known
  *        configuration.
  *
+ * If the client is currently connected, the best known configuration
+ * is retrieved from the session.  Otherwise, the a local copy of the
+ * best known point is used.
+ *
+ * If no best configuration exists (e.g. before any configurations
+ * have been evaluated), this function will return an error.
+ *
  * \param hdesc Harmony descriptor returned from harmony_init().
  *
- * \return Returns 0 on success, and -1 otherwise.
+ * \return Returns 1 if a new best point was retrieved from the
+ *         session, 0 if a local copy was used, and -1 otherwise.
  */
 int harmony_best(hdesc_t *hdesc);
 

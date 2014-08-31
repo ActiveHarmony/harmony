@@ -15,13 +15,17 @@ LIBEXEC_SRCS=libvertex.c \
              exhaustive.c \
              random.c \
              nm.c \
-             pro.c
+             pro.c \
+             nemo.c
+
 SRCS=$(LIBEXEC_SRCS)
 
 LIBEXEC_TARGETS=exhaustive.so \
                 random.so \
                 nm.so \
-                pro.so
+                pro.so \
+                nemo.so
+
 TARGETS=$(LIBEXEC_TARGETS)
 
 .PHONY: all install clean distclean
@@ -49,6 +53,9 @@ nm.so: libvertex.o
 
 pro.so: override LDLIBS+=-lm
 pro.so: libvertex.o
+
+nemo.so: override LDLIBS+=-lm
+nemo.so: libvertex.o
 
 %.so: %.o
 	$(CC) -shared $(LDFLAGS) $(CFLAGS) $^ $(LOADLIBES) $(LDLIBS) -o $@

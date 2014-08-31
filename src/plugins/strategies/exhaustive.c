@@ -38,10 +38,10 @@
 
 #include "strategy.h"
 #include "session-core.h"
+#include "hperf.h"
 #include "hutil.h"
 #include "hcfg.h"
 #include "defaults.h"
-#include "libvertex.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -52,11 +52,14 @@ hpoint_t best;
 double   best_perf;
 
 /* Forward function definitions. */
-int strategy_cfg(void);
+int strategy_cfg(hsignature_t *sig);
 int increment(void);
 
 /* Variables to track current search state. */
-vertex_t *curr;
+int N;
+hrange_t *range;
+hpoint_t curr;
+unsigned long *idx;
 int remaining_passes = 1;
 int final_id = 0;
 
@@ -65,24 +68,33 @@ int final_id = 0;
  */
 int strategy_init(hsignature_t *sig)
 {
-    if (libvertex_init(sig) != 0) {
-        session_error("Could not initialize vertex library.");
-        return -1;
+    N = sig->range_len;
+    range = sig->range;
+
+    if (!idx) {
+        /* One time memory allocation and/or initialization. */
+        if (hpoint_init(&curr, N) != 0) {
+            session_error("Could not allocate memory candidate point.");
+            return -1;
+        }
+
+        idx = malloc(N * sizeof(unsigned long));
+        if (!idx) {
+            session_error("Could not allocate memory for index array.");
+            return -1;
+        }
+
+        /* The best point and trial counter should only be initialized once,
+         * and thus be retained across a restart.
+         */
+        best = HPOINT_INITIALIZER;
+        best_perf = INFINITY;
+        curr.id = 1;
     }
 
-    if (strategy_cfg() != 0)
+    /* Initialization for subsequent calls to strategy_init(). */
+    if (strategy_cfg(sig) != 0)
         return -1;
-
-    best = HPOINT_INITIALIZER;
-    best_perf = INFINITY;
-
-    curr = vertex_alloc();
-    if (!curr) {
-        session_error("Could not allocate memory for testing vertex.");
-        return -1;
-    }
-    vertex_min(curr);
-    curr->id = 1;
 
     if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
         session_error("Could not set "
@@ -92,13 +104,64 @@ int strategy_init(hsignature_t *sig)
     return 0;
 }
 
-int strategy_cfg(void)
+int strategy_cfg(hsignature_t *sig)
 {
     const char *cfgstr;
+    int i;
 
     cfgstr = session_getcfg(CFGKEY_PASSES);
     if (cfgstr)
         remaining_passes = atoi(cfgstr);
+
+    cfgstr = session_getcfg(CFGKEY_INIT_POINT);
+    if (cfgstr) {
+        if (hpoint_parse(&curr, sig, cfgstr) != 0) {
+            session_error("Error parsing point from " CFGKEY_INIT_POINT ".");
+            return -1;
+        }
+
+        if (hpoint_align(&curr, sig) != 0) {
+            session_error("Error aligning point to parameter space.");
+            return -1;
+        }
+
+        for (i = 0; i < sig->range_len; ++i) {
+            switch (sig->range[i].type) {
+            case HVAL_INT:
+                idx[i] = hrange_int_index(&sig->range[i].bounds.i,
+                                          curr.val[i].value.i);
+                break;
+            case HVAL_REAL:
+                idx[i] = hrange_real_index(&sig->range[i].bounds.r,
+                                           curr.val[i].value.r);
+                break;
+            case HVAL_STR:
+                idx[i] = hrange_str_index(&sig->range[i].bounds.s,
+                                          curr.val[i].value.s);
+                break;
+
+            default:
+                session_error("Invalid type detected in signature.");
+                return -1;
+            }
+        }
+    }
+    else {
+        for (i = 0; i < N; ++i) {
+            hval_t *v = &curr.val[i];
+
+            v->type = range[i].type;
+            switch (range[i].type) {
+            case HVAL_INT:  v->value.i = range[i].bounds.i.min; break;
+            case HVAL_REAL: v->value.r = range[i].bounds.r.min; break;
+            case HVAL_STR:  v->value.s = range[i].bounds.s.set[0]; break;
+            default:
+                session_error("Invalid range detected during strategy init.");
+                return -1;
+            }
+        }
+        memset(idx, 0, N * sizeof(unsigned long));
+    }
 
     return 0;
 }
@@ -109,18 +172,18 @@ int strategy_cfg(void)
 int strategy_generate(hflow_t *flow, hpoint_t *point)
 {
     if (remaining_passes > 0) {
-        if (vertex_to_hpoint(curr, point) != 0) {
-            session_error("Internal error: Could not make point from vertex.");
+        if (hpoint_copy(point, &curr) != 0) {
+            session_error("Could not copy current point during generation.");
             return -1;
         }
 
-        ++curr->id;
         if (increment() != 0)
             return -1;
+        ++curr.id;
     }
     else {
         if (hpoint_copy(point, &best) != 0) {
-            session_error("Internal error: Could not copy point.");
+            session_error("Could not copy best point during generation.");
             return -1;
         }
     }
@@ -139,13 +202,13 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
 
     if (hint && hint->id != -1) {
         if (hpoint_copy(point, hint) != 0) {
-            session_error("Internal error: Could not copy point.");
+            session_error("Could not copy hint during reject.");
             return -1;
         }
     }
     else {
-        if (vertex_to_hpoint(curr, point) != 0) {
-            session_error("Internal error: Could not make point from vertex.");
+        if (hpoint_copy(point, &curr) != 0) {
+            session_error("Could not copy current point during reject.");
             return -1;
         }
 
@@ -158,27 +221,15 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
     return 0;
 }
 
-int increment(void)
-{
-    if (remaining_passes <= 0)
-        return 0;
-
-    if (vertex_incr(curr))
-        --remaining_passes;
-
-    if (remaining_passes <= 0)
-        final_id = curr->id - 1;
-
-    return 0;
-}
-
 /*
  * Analyze the observed performance for this configuration point.
  */
 int strategy_analyze(htrial_t *trial)
 {
-    if (best_perf > trial->perf) {
-        best_perf = trial->perf;
+    double perf = hperf_unify(trial->perf);
+
+    if (best_perf > perf) {
+        best_perf = perf;
         if (hpoint_copy(&best, &trial->point) != 0) {
             session_error("Internal error: Could not copy point.");
             return -1;
@@ -201,8 +252,65 @@ int strategy_analyze(htrial_t *trial)
 int strategy_best(hpoint_t *point)
 {
     if (hpoint_copy(point, &best) != 0) {
-        session_error("Internal error: Could not copy point.");
+        session_error("Could not copy best point during request for best.");
         return -1;
     }
+    return 0;
+}
+
+int increment(void)
+{
+    int i;
+
+    if (remaining_passes <= 0)
+        return 0;
+
+    for (i = 0; i < N; ++i) {
+        ++idx[i];
+        switch (range[i].type) {
+        case HVAL_INT:
+            curr.val[i].value.i += range[i].bounds.i.step;
+            if (curr.val[i].value.i > range[i].bounds.i.max) {
+                curr.val[i].value.i = range[i].bounds.i.min;
+                idx[i] = 0;
+                continue;  // Overflow detected.
+            }
+            break;
+
+        case HVAL_REAL:
+            curr.val[i].value.r =
+                (range[i].bounds.r.step > 0.0)
+                ? range[i].bounds.r.min + (idx[i] * range[i].bounds.r.step)
+                : nextafter(curr.val[i].value.r, INFINITY);
+
+            if (curr.val[i].value.r > range[i].bounds.r.max) {
+                curr.val[i].value.r = range[i].bounds.r.min;
+                idx[i] = 0;
+                continue;  // Overflow detected.
+            }
+            break;
+
+        case HVAL_STR:
+            if (idx[i] >= range[i].bounds.s.set_len) {
+                curr.val[i].value.s = range[i].bounds.s.set[0];
+                idx[i] = 0;
+                continue;  // Overflow detected.
+            }
+            curr.val[i].value.s = range[i].bounds.s.set[ idx[i] ];
+            break;
+
+        default:
+            session_error("Invalid range detected.");
+            return -1;
+        }
+
+        // No overflow detected.  Leave the function.
+        return 0;
+    }
+
+    // We only reach this point if all values overflowed.
+    if (--remaining_passes <= 0)
+        final_id = curr.id - 1;
+
     return 0;
 }

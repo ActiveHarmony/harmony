@@ -10,18 +10,22 @@ override LDFLAGS+=-L$(TO_BASE)/src
 override LDLIBS+=-lharmony
 
 SRCS=agg.c \
+     cache.c \
      codegen.c \
      codegen-helper.c \
+     constraint.c \
+     group.c \
      log.c \
      TAUdb.c \
-     xmlWriter.c \
-     constraint.c
+     xmlWriter.c
 
 LIBEXEC_TARGETS=agg.so \
+                cache.so \
                 codegen.so \
                 codegen-helper \
-                log.so \
-                constraint.so
+                constraint.so \
+                group.so \
+                log.so
 TARGETS=$(LIBEXEC_TARGETS)
 
 LIBXML2=

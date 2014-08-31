@@ -78,11 +78,33 @@ function refresh()
         body.rows[i].cells[3].innerHTML = field[3];
         body.rows[i].cells[4].innerHTML = field[4];
 
-        var link_str = "Pause";
-        link_str += " Resume";
-        link_str += "<a href='' onclick='sessionKill(\"" + field[0] + "\");return false'>Kill</a>";
-        body.rows[i].cells[5].innerHTML = link_str;
+        var pause_restart_kill_str = "<a href='' onclick='sessionPause(\"" + field[0] + "\");return false;'>Pause</a>";
+        pause_restart_kill_str += "<a href='' onclick='sessionResume(\"" + field[0] + "\");return false;'>Resume</a>";
+        pause_restart_kill_str += "<a href='' onclick='sessionRestart(\"" + field[0] + "\");return false;'>Restart</a>";
+        pause_restart_kill_str += "<a href='' onclick='sessionKill(\"" + field[0] + "\");return false'>Kill</a>";
+        body.rows[i].cells[5].innerHTML = pause_restart_kill_str;
     }
+}
+
+function sessionPause(name) {
+    // tell hserver to pause the session
+    // async send because we can (and because hserver doesn't respond nicely)
+    var asdf = new XMLHttpRequest();
+    asdf.open("GET", "pause?" + name, true);
+    asdf.send();
+}
+
+function sessionResume(name) {
+    // tell server to resume session
+    var asdf = new XMLHttpRequest();
+    asdf.open("GET", "resume?" + name, true);
+    asdf.send();
+}
+
+function sessionRestart(name) {
+    var asdf = new XMLHttpRequest();
+    asdf.open("GET", "restart?" + name, true);
+    asdf.send();
 }
 
 function sessionKill(name)

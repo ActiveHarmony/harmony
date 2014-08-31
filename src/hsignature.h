@@ -71,6 +71,23 @@ typedef struct hsignature {
 } hsignature_t;
 extern const hsignature_t HSIGNATURE_INITIALIZER;
 
+/* Harmony range functions */
+unsigned long hrange_max_idx(hrange_t *range);
+
+unsigned long hrange_int_max_idx(int_bounds_t *bound);
+unsigned long hrange_int_index(int_bounds_t *bound, long val);
+long          hrange_int_value(int_bounds_t *bound, unsigned long idx);
+long          hrange_int_nearest(int_bounds_t *bound, long val);
+
+unsigned long hrange_real_max_idx(real_bounds_t *bound);
+unsigned long hrange_real_index(real_bounds_t *bound, double val);
+double        hrange_real_value(real_bounds_t *bound, unsigned long idx);
+double        hrange_real_nearest(real_bounds_t *bound, double val);
+
+unsigned long hrange_str_max_idx(str_bounds_t *bound);
+unsigned long hrange_str_index(str_bounds_t *bound, const char *val);
+const char *  hrange_str_value(str_bounds_t *bound, unsigned long idx);
+
 /* Harmony signature functions */
 int  hsignature_copy(hsignature_t *dst, const hsignature_t *src);
 void hsignature_fini(hsignature_t *sig);

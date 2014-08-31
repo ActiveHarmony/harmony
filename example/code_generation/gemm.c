@@ -219,7 +219,7 @@ int main(int argc, char *argv[])
                TI, TJ, TK, UI, UJ, perf);
 
         /* update the performance result */
-        if (harmony_report(hdesc, perf) != 0) {
+        if (harmony_report(hdesc, &perf) != 0) {
             errprint("Error reporting performance to server.\n");
             goto cleanup;
         }

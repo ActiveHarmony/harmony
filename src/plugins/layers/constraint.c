@@ -233,6 +233,12 @@ int constraint_generate(hflow_t *flow, hpoint_t *point)
     return 0;
 }
 
+int constraint_fini(void)
+{
+    hsignature_fini(&local_sig);
+    return 0;
+}
+
 int build_vars_text(hsignature_t *sig)
 {
     int i;

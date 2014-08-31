@@ -31,8 +31,7 @@
  * Key           | Type    | Default | Description
  * --------------| ------- | ------- | -----------
  * SIMPLEX_SIZE  | Integer | N+1     | Number of vertices in the simplex.  Defaults to the number of tuning variables + 1.
- * RANDOM_SEED   | Integer | time()  | Value to seed the pseudo-random number generator.  Default is to seed the random generator by time.
- * INIT_METHOD   | String  | point   | Initial simplex generation method.  Valid values are "point", "point_fast", and "random" (without quotes).
+ * INIT_METHOD   | String  | point   | Initial simplex generation method.  Valid values are "point", and "random" (without quotes).
  * INIT_PERCENT  | Real    | 0.35    | Initial simplex size as a percentage of the total search space.  Only for "point" and "point_fast" initial simplex methods.
  * REJECT_METHOD | String  | penalty | How to choose a replacement when dealing with rejected points:<br> **Penalty** - Use this method if the chance of point rejection is relatively low.  It applies an infinite penalty factor for invalid points, allowing the PRO algorithm to select a sensible next point.  However, if the entire simplex is comprised of invalid points, an infinite loop of invalid points may occur.<br> **Random** - Use this method if the chance of point rejection is high.  It reduces the risk of infinitely selecting invalid points at the cost of increasing the risk of deforming the simplex.
  * REFLECT       | Real    | 1.0     | Multiplicative coefficient for simplex reflection step.
@@ -56,17 +55,16 @@
 #include <errno.h>
 #include <time.h>
 #include <math.h>
+#include <assert.h>
 
 hpoint_t best;
 double   best_perf;
 
-hpoint_t curr;
-
 typedef enum simplex_init {
     SIMPLEX_INIT_UNKNOWN = 0,
+    SIMPLEX_INIT_CENTER,
     SIMPLEX_INIT_RANDOM,
     SIMPLEX_INIT_POINT,
-    SIMPLEX_INIT_POINT_FAST,
 
     SIMPLEX_INIT_MAX
 } simplex_init_t;
@@ -95,20 +93,20 @@ typedef enum simplex_state {
 int  strategy_cfg(hsignature_t *sig);
 int  init_by_random(void);
 int  init_by_point(int fast);
+int  init_by_specified_point(const char *str);
 int  pro_algorithm(void);
 int  pro_next_state(const simplex_t *input, int best_in);
 int  pro_next_simplex(simplex_t *output);
 void check_convergence(void);
 
 /* Variables to control search properties. */
-simplex_init_t  init_method  = SIMPLEX_INIT_POINT;
+simplex_init_t  init_method  = SIMPLEX_INIT_CENTER;
 vertex_t *      init_point;
 double          init_percent = 0.35;
 reject_method_t reject_type  = REJECT_METHOD_PENALTY;
 
 double reflect  = 1.0;
 double expand   = 2.0;
-double contract = 0.5;
 double shrink   = 0.5;
 double fval_tol = 1e-4;
 double size_tol;
@@ -125,6 +123,7 @@ int best_stash;
 int next_id;
 int send_idx;
 int reported;
+int coords;    /* number of coordinates per vertex */
 
 /*
  * Invoked once on strategy load.
@@ -136,51 +135,69 @@ int strategy_init(hsignature_t *sig)
         return -1;
     }
 
-    init_point = vertex_alloc();
-    if (!init_point) {
-        session_error("Could not allocate memory for initial point.");
-        return -1;
+    if (!base) {
+        /* One time memory allocation and/or initialization. */
+
+        /* Make sure the simplex size is N+1 or greater. */
+        simplex_size = atoi( session_getcfg(CFGKEY_SIMPLEX_SIZE) );
+        if (simplex_size < sig->range_len + 1)
+            simplex_size = sig->range_len + 1;
+
+        init_point = vertex_alloc();
+        if (!init_point) {
+            session_error("Could not allocate memory for initial point.");
+            return -1;
+        }
+
+        test = simplex_alloc(simplex_size);
+        if (!test) {
+            session_error("Could not allocate memory for candidate simplex.");
+            return -1;
+        }
+
+        base = simplex_alloc(simplex_size);
+        if (!base) {
+            session_error("Could not allocate memory for reference simplex.");
+            return -1;
+        }
+
+        /* The best point and trial counter should only be initialized once,
+         * and thus be retained across a restart.
+         */
+        best = HPOINT_INITIALIZER;
+        best_perf = INFINITY;
+        next_id = 1;
     }
+
+    /* Initialization for subsequent calls to strategy_init(). */
+    vertex_reset(init_point);
+    simplex_reset(test);
+    simplex_reset(base);
+    reported = 0;
+    send_idx = 0;
+    coords = sig->range_len;
 
     if (strategy_cfg(sig) != 0)
         return -1;
 
-    best = HPOINT_INITIALIZER;
-    best_perf = INFINITY;
-
-    if (hpoint_init(&curr, sig->range_len) < 0)
-        return -1;
-
-    test = simplex_alloc(simplex_size);
-    if (!test) {
-        session_error("Could not allocate memory for candidate simplex.");
-        return -1;
-    }
-
-    base = simplex_alloc(simplex_size);
-    if (!base) {
-        session_error("Could not allocate memory for reference simplex.");
-        return -1;
-    }
-
-    /* Default stopping criteria: 0.5% of dist(vertex_min, vertex_max). */
-    if (size_tol == 0.0) {
-        vertex_min(base->vertex[0]);
-        vertex_max(base->vertex[1]);
-        size_tol = vertex_dist(base->vertex[0], base->vertex[1]) * 0.005;
-    }
-
     switch (init_method) {
-    case SIMPLEX_INIT_RANDOM:     init_by_random(); break;
-    case SIMPLEX_INIT_POINT:      init_by_point(0); break;
-    case SIMPLEX_INIT_POINT_FAST: init_by_point(1); break;
+    case SIMPLEX_INIT_CENTER:
+        vertex_center(init_point);
+        break;
+
+    case SIMPLEX_INIT_RANDOM:
+        vertex_rand_trim(init_point, init_percent);
+        break;
+
+    case SIMPLEX_INIT_POINT:
+        vertex_from_string(session_getcfg(CFGKEY_INIT_POINT), sig, init_point);
+        break;
+
     default:
         session_error("Invalid initial search method.");
         return -1;
     }
-
-    next_id = 1;
-    state = SIMPLEX_STATE_INIT;
+    simplex_from_vertex(init_point, init_percent, base);
 
     if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
         session_error("Could not set "
@@ -188,6 +205,7 @@ int strategy_init(hsignature_t *sig)
         return -1;
     }
 
+    state = SIMPLEX_STATE_INIT;
     if (pro_next_simplex(test) != 0) {
         session_error("Could not initiate the simplex.");
         return -1;
@@ -201,38 +219,28 @@ int strategy_cfg(hsignature_t *sig)
     const char *cfgval;
     char *endp;
 
-    /* Make sure the simplex size is N+1 or greater. */
-    cfgval = session_getcfg(CFGKEY_SIMPLEX_SIZE);
-    if (cfgval)
-        simplex_size = atoi(cfgval);
-
-    if (simplex_size < sig->range_len + 1)
-        simplex_size = sig->range_len + 1;
-
-    cfgval = session_getcfg(CFGKEY_RANDOM_SEED);
-    if (cfgval && *cfgval) {
-        srand(atoi(cfgval));
-    }
-    else {
-        srand(time(NULL));
-    }
-
     cfgval = session_getcfg(CFGKEY_INIT_METHOD);
     if (cfgval) {
-        if (strcasecmp(cfgval, "random") == 0) {
+        if (strcasecmp(cfgval, "center") == 0) {
+            init_method = SIMPLEX_INIT_CENTER;
+        }
+        else if (strcasecmp(cfgval, "random") == 0) {
             init_method = SIMPLEX_INIT_RANDOM;
         }
         else if (strcasecmp(cfgval, "point") == 0) {
             init_method = SIMPLEX_INIT_POINT;
-        }
-        else if (strcasecmp(cfgval, "point_fast") == 0) {
-            init_method = SIMPLEX_INIT_POINT_FAST;
         }
         else {
             session_error("Invalid value for "
                           CFGKEY_INIT_METHOD " configuration key.");
             return -1;
         }
+    }
+
+    /* CFGKEY_INIT_POINT will override CFGKEY_INIT_METHOD if necessary. */
+    cfgval = session_getcfg(CFGKEY_INIT_POINT);
+    if (cfgval) {
+        init_method = SIMPLEX_INIT_POINT;
     }
 
     cfgval = session_getcfg(CFGKEY_INIT_PERCENT);
@@ -273,7 +281,7 @@ int strategy_cfg(hsignature_t *sig)
                           " configuration key.");
             return -1;
         }
-        if (reflect <= 0) {
+        if (reflect <= 0.0) {
             session_error("Configuration key " CFGKEY_REFLECT
                           " must be positive.");
             return -1;
@@ -288,24 +296,9 @@ int strategy_cfg(hsignature_t *sig)
                           " configuration key.");
             return -1;
         }
-        if (reflect <= 1) {
+        if (expand <= reflect) {
             session_error("Configuration key " CFGKEY_EXPAND
-                          " must be greater than 1.0.");
-            return -1;
-        }
-    }
-
-    cfgval = session_getcfg(CFGKEY_CONTRACT);
-    if (cfgval) {
-        contract = strtod(cfgval, &endp);
-        if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_CONTRACT
-                          " configuration key.");
-            return -1;
-        }
-        if (reflect <= 0 || reflect >= 1) {
-            session_error("Configuration key " CFGKEY_CONTRACT
-                          " must be between 0.0 and 1.0 (exclusive).");
+                          " must be greater than the reflect coefficient.");
             return -1;
         }
     }
@@ -318,7 +311,7 @@ int strategy_cfg(hsignature_t *sig)
                           " configuration key.");
             return -1;
         }
-        if (reflect <= 0 || reflect >= 1) {
+        if (shrink <= 0.0 || shrink >= 1.0) {
             session_error("Configuration key " CFGKEY_SHRINK
                           " must be between 0.0 and 1.0 (exclusive).");
             return -1;
@@ -344,28 +337,11 @@ int strategy_cfg(hsignature_t *sig)
             return -1;
         }
     }
+    else {
+        /* Default stopping criteria: 0.5% of dist(vertex_min, vertex_max). */
+        size_tol = vertex_dist(vertex_min(), vertex_max()) * 0.005;
+    }
     return 0;
-}
-
-int init_by_random(void)
-{
-    int i;
-
-    for (i = 0; i < simplex_size; ++i)
-        vertex_rand(base->vertex[i]);
-
-    return 0;
-}
-
-int init_by_point(int fast)
-{
-    if (init_point->id == 0)
-        vertex_center(init_point);
-
-    if (fast)
-        return simplex_from_vertex_fast(init_point, init_percent, base);
-
-    return simplex_from_vertex(init_point, init_percent, base);
 }
 
 /*
@@ -373,7 +349,7 @@ int init_by_point(int fast)
  */
 int strategy_generate(hflow_t *flow, hpoint_t *point)
 {
-    if (send_idx == simplex_size) {
+    if (send_idx == simplex_size || state == SIMPLEX_STATE_CONVERGED) {
         flow->status = HFLOW_WAIT;
         return 0;
     }
@@ -428,7 +404,7 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
             /* Apply an infinite penalty to the invalid point and
              * allow the algorithm to determine the next point to try.
              */
-            test->vertex[i]->perf = INFINITY;
+            hperf_reset(test->vertex[i]->perf);
             ++reported;
 
             if (reported == simplex_size) {
@@ -475,6 +451,7 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
 int strategy_analyze(htrial_t *trial)
 {
     int i;
+    double perf = hperf_unify(trial->perf);
 
     for (i = 0; i < simplex_size; ++i) {
         if (test->vertex[i]->id == trial->point.id)
@@ -486,8 +463,8 @@ int strategy_analyze(htrial_t *trial)
     }
 
     ++reported;
-    test->vertex[i]->perf = trial->perf;
-    if (test->vertex[i]->perf < test->vertex[best_test]->perf)
+    hperf_copy(test->vertex[i]->perf, trial->perf);
+    if (hperf_cmp(test->vertex[i]->perf, test->vertex[best_test]->perf) < 0)
         best_test = i;
 
     if (reported == simplex_size) {
@@ -500,8 +477,8 @@ int strategy_analyze(htrial_t *trial)
     }
 
     /* Update the best performing point, if necessary. */
-    if (best_perf > trial->perf) {
-        best_perf = trial->perf;
+    if (best_perf > perf) {
+        best_perf = perf;
         if (hpoint_copy(&best, &trial->point) != 0) {
             session_error( strerror(errno) );
             return -1;
@@ -554,7 +531,9 @@ int pro_next_state(const simplex_t *input, int best_in)
         break;
 
     case SIMPLEX_STATE_REFLECT:
-        if (input->vertex[best_in]->perf < base->vertex[best_base]->perf) {
+        if (hperf_cmp(input->vertex[best_in]->perf,
+                      base->vertex[best_base]->perf) < 0)
+        {
             /* Reflected simplex has best known performance.
              * Accept the reflected simplex, and prepare a trial expansion.
              */
@@ -571,7 +550,9 @@ int pro_next_state(const simplex_t *input, int best_in)
         break;
 
     case SIMPLEX_STATE_EXPAND_ONE:
-        if (input->vertex[0]->perf < base->vertex[best_base]->perf) {
+        if (hperf_cmp(input->vertex[0]->perf,
+                      base->vertex[best_base]->perf) < 0)
+        {
             /* Trial expansion has found the best known vertex thus far.
              * We are now free to expand the entire reflected simplex.
              */
@@ -581,13 +562,15 @@ int pro_next_state(const simplex_t *input, int best_in)
             /* Expanded vertex does not improve performance.
              * Revert to the (unexpanded) reflected simplex.
              */
-            best_base = best_in;
+            best_base = best_stash;
             state = SIMPLEX_STATE_REFLECT;
         }
         break;
 
     case SIMPLEX_STATE_EXPAND_ALL:
-        if (input->vertex[best_in]->perf < base->vertex[best_base]->perf) {
+        if (hperf_cmp(input->vertex[best_in]->perf,
+                      base->vertex[best_base]->perf) < 0)
+        {
             /* Expanded simplex has found the best known vertex thus far.
              * Accept the expanded simplex as the reference simplex. */
             simplex_copy(base, input);
@@ -661,7 +644,7 @@ int pro_next_simplex(simplex_t *output)
 void check_convergence(void)
 {
     int i;
-    double fval_err, size_max, dist;
+    double fval_err, size_max, avg_perf;
     static vertex_t *centroid;
 
     if (!centroid)
@@ -671,17 +654,18 @@ void check_convergence(void)
         goto converged;
 
     simplex_centroid(base, centroid);
+    avg_perf = hperf_unify(centroid->perf);
 
-    fval_err = 0;
+    fval_err = 0.0;
     for (i = 0; i < simplex_size; ++i) {
-        fval_err += ((base->vertex[i]->perf - centroid->perf) *
-                     (base->vertex[i]->perf - centroid->perf));
+        double vert_perf = hperf_unify(base->vertex[i]->perf);
+        fval_err += ((vert_perf - avg_perf) * (vert_perf - avg_perf));
     }
     fval_err /= simplex_size;
 
-    size_max = 0;
+    size_max = 0.0;
     for (i = 0; i < simplex_size; ++i) {
-        dist = vertex_dist(base->vertex[i], centroid);
+        double dist = vertex_dist(base->vertex[i], centroid);
         if (size_max < dist)
             size_max = dist;
     }
