@@ -656,7 +656,6 @@ int handle_setcfg(hmesg_t *mesg)
     static char *buf = NULL;
     static int buflen = 0;
 
-    int i;
     char *key, *val;
     const char *oldval;
 
@@ -666,15 +665,6 @@ int handle_setcfg(hmesg_t *mesg)
         return -1;
     }
 
-    /* Launch all setcfg hooks defined in the plug-in stack. */
-    if (strategy_setcfg && strategy_setcfg(key, val) != 0)
-        return -1;
-
-    for (i = 0; i < lstack_len; ++i) {
-        if (lstack[i].setcfg && lstack[i].setcfg(key, val) != 0)
-            return -1;
-    }
-
     /* Store the original value, possibly allocating memory for it. */
     oldval = hcfg_get(sess->cfg, key);
     if (oldval) {
@@ -682,9 +672,8 @@ int handle_setcfg(hmesg_t *mesg)
         oldval = buf;
     }
 
-    /* Finally, update the configuration system. */
-    if (hcfg_set(sess->cfg, key, val) != 0) {
-        errmsg = "Internal error: Could not modify configuration.";
+    if (session_setcfg(key, val) != 0) {
+        errmsg = "Error setting session configuration variable";
         return -1;
     }
 
