@@ -15,6 +15,7 @@ SRCS=agg.c \
      codegen-helper.c \
      constraint.c \
      group.c \
+     httpinfo.c \
      log.c \
      TAUdb.c \
      xmlWriter.c
@@ -25,6 +26,7 @@ LIBEXEC_TARGETS=agg.so \
                 codegen-helper \
                 constraint.so \
                 group.so \
+                httpinfo.so \
                 log.so
 TARGETS=$(LIBEXEC_TARGETS)
 
