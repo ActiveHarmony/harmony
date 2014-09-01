@@ -92,10 +92,6 @@ function refresh() {
         case "time":
             document.getElementById("svr_time").innerHTML = date2Str(val);
             break;
-        case "app":
-            document.getElementById("appName").innerHTML = val;
-            appName = val;
-            break;
         case "var":
             updateVarList(val);
             break;

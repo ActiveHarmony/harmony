@@ -759,8 +759,8 @@ char *http_session_header(session_state_t *sess, struct timeval *tv)
     buflen = sizeof(sendbuf);
     total = 0;
 
-    count = snprintf_serial(&buf, &buflen, "time:%ld%03ld|app:%s|var:",
-                            tv->tv_sec, tv->tv_usec/1000, sess->name);
+    count = snprintf_serial(&buf, &buflen, "time:%ld%03ld|var:",
+                            tv->tv_sec, tv->tv_usec/1000);
     if (count < 0)
         return NULL;
     total += count;
