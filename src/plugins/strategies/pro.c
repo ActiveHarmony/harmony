@@ -136,10 +136,14 @@ int strategy_init(hsignature_t *sig)
     }
 
     if (!base) {
+        const char *cfgval;
         /* One time memory allocation and/or initialization. */
 
+        cfgval = session_getcfg(CFGKEY_SIMPLEX_SIZE);
+        if (cfgval)
+            simplex_size = atoi(cfgval);
+
         /* Make sure the simplex size is N+1 or greater. */
-        simplex_size = atoi( session_getcfg(CFGKEY_SIMPLEX_SIZE) );
         if (simplex_size < sig->range_len + 1)
             simplex_size = sig->range_len + 1;
 
