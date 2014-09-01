@@ -755,11 +755,18 @@ int send_request(hdesc_t *hdesc, hmesg_type msg_type)
         return -1;
     }
 
-    if (mesg_recv(hdesc->socket, &hdesc->mesg) < 1) {
-        hdesc->errstr = "Error retrieving Harmony message from server.";
-        errno = ECOMM;
-        return -1;
-    }
+    do {
+        if (mesg_recv(hdesc->socket, &hdesc->mesg) < 1) {
+            hdesc->errstr = "Error retrieving Harmony message from server.";
+            errno = ECOMM;
+            return -1;
+        }
+
+        /* If the httpinfo layer is enabled during a stand-alone session,
+         * it will generate extraneous messages where dest == -1.
+         * Make sure to ignore these messages.
+         */
+    } while (hdesc->mesg.dest == -1);
 
     if (hdesc->mesg.type != msg_type) {
         hdesc->mesg.status = HMESG_STATUS_FAIL;

@@ -20,6 +20,7 @@
 #include "hserver.h"
 #include "hutil.h"
 #include "hsockutil.h"
+#include "hcfg.h"
 #include "defaults.h" /* needed for looking cfg params up */
 
 #include <stdio.h>
@@ -252,6 +253,24 @@ int handle_http_socket(int fd)
     return 0;
 }
 
+int handle_http_info(session_state_t *sess, char *buf)
+{
+    char *key, *val;
+
+    if (hcfg_parse(buf, &key, &val) == NULL)
+        return -1;
+
+    if (strcmp(key, CFGKEY_SESSION_STRATEGY) == 0) {
+        free(sess->strategy);
+        sess->strategy = stralloc(val);
+    }
+    else if (strcmp(key, CFGKEY_STRATEGY_CONVERGED) == 0) {
+        sess->converged = (*val == '1');
+    }
+
+    return 0;
+}
+
 /**************************************
  * Internal helper function definitions
  */
@@ -301,6 +320,7 @@ int http_request_handle(int fd, char *req)
         opt_sock_write(fd, http_type_text);
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
+
         if (arg) {
             for (i = 0; i < slist_cap; ++i) {
                 if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
@@ -321,20 +341,16 @@ int http_request_handle(int fd, char *req)
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        /* An argument must exist to indicate which session to pause. */
         if (arg) {
             for (i = 0; i < slist_cap; ++i) {
-                if (slist[i].name &&
-                    strcmp(slist[i].name, arg) == 0 &&
-                    session_setcfg(&slist[i], CFGKEY_SESSION_PAUSED, "1") == 0)
-                {
+                if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
+                    session_setcfg(&slist[i], CFGKEY_SESSION_PAUSED, "1");
                     opt_http_write(fd, "OK");
                     opt_http_write(fd, "");
                     return 0;
                 }
             }
         }
-
         opt_http_write(fd, "FAIL");
         opt_http_write(fd, "");
         return 0;
@@ -345,20 +361,16 @@ int http_request_handle(int fd, char *req)
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        /* An argument must exist to indicate which session to resume. */
         if (arg) {
             for (i = 0; i < slist_cap; ++i) {
-                if (slist[i].name &&
-                    strcmp(slist[i].name, arg) == 0 &&
-                    session_setcfg(&slist[i], CFGKEY_SESSION_PAUSED, "0") == 0)
-                {
+                if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
+                    session_setcfg(&slist[i], CFGKEY_SESSION_PAUSED, "0");
                     opt_http_write(fd, "OK");
                     opt_http_write(fd, "");
                     return 0;
                 }
             }
         }
-
         opt_http_write(fd, "FAIL");
         opt_http_write(fd, "");
         return 0;
@@ -369,20 +381,16 @@ int http_request_handle(int fd, char *req)
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        /* argument indicates which session to restart */
         if (arg) {
             for (i = 0; i < slist_cap; ++i) {
-                if (slist[i].name &&
-                    strcmp(slist[i].name, arg) == 0 &&
-                    session_restart(&slist[i]) == 0)
-                {
+                if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
+                    session_restart(&slist[i]);
                     opt_http_write(fd, "OK");
                     opt_http_write(fd, "");
                     return 0;
                 }
             }
         }
-
         opt_http_write(fd, "FAIL");
         opt_http_write(fd, "");
         return 0;
@@ -393,23 +401,16 @@ int http_request_handle(int fd, char *req)
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        /* look up specified session */
         if (arg) {
             for (i = 0; i < slist_cap; ++i) {
                 if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
-                    const char *cfgval =
-                        session_getcfg(&slist[i], CFGKEY_SESSION_STRATEGY);
-
-                    if (cfgval) {
-                        opt_http_write(fd, cfgval);
-                        opt_http_write(fd, "");
-                        return 0;
-                    }
-                    break;
+                    opt_http_write(fd, slist[i].strategy);
+                    opt_http_write(fd, "");
+                    return 0;
                 }
+                break;
             }
         }
-
         opt_http_write(fd, "FAIL");
         opt_http_write(fd, "");
         return 0;
@@ -423,20 +424,13 @@ int http_request_handle(int fd, char *req)
         if (arg) {
             for (i = 0; i < slist_cap; ++i) {
                 if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
-                    const char *cfgval =
-                        session_getcfg(&slist[i], CFGKEY_STRATEGY_CONVERGED);
-
-                    if (cfgval && *cfgval == '1')
-                        opt_http_write(fd, "1");
-                    else
-                        opt_http_write(fd, "0");
+                    opt_http_write(fd, slist[i].converged ? "1" : "0");
                     opt_http_write(fd, "");
                     return 0;
                 }
                 break;
             }
         }
-
         opt_http_write(fd, "FAIL");
         opt_http_write(fd, "");
         return 0;

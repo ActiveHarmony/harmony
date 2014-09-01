@@ -19,17 +19,12 @@
 #ifndef __HTTPSVR_H__
 #define __HTTPSVR_H__
 
+#include "hserver.h"
 #include <sys/time.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-typedef struct http_log {
-    struct timeval stamp;
-    hpoint_t pt;
-    double perf;
-} http_log_t;
 
 extern unsigned int http_connection_limit;
 
@@ -37,6 +32,7 @@ int http_init(const char *basedir);
 void http_send_error(int fd, int status, const char *message);
 int http_session_data_send(int fd, const char *data);
 int handle_http_socket(int fd);
+int handle_http_info(session_state_t *sess, char *buf);
 
 #ifdef __cplusplus
 }

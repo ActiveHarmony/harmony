@@ -21,12 +21,17 @@
 
 #include "hmesg.h"
 #include "hpoint.h"
-#include "httpsvr.h"
 #include <sys/time.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef struct http_log {
+    struct timeval stamp;
+    hpoint_t pt;
+    double perf;
+} http_log_t;
 
 typedef struct session_state {
     char *name;
@@ -39,6 +44,9 @@ typedef struct session_state {
     /* Fields used by the HTTP server. */
     struct timeval start;
     hsignature_t sig;
+    char *strategy;
+    int converged;
+
     http_log_t *log;
     int log_len, log_cap;
     hpoint_t *fetched;

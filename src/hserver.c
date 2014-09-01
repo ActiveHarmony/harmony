@@ -462,6 +462,11 @@ int handle_client_socket(int fd)
     if (retval < 0)
         goto error;
 
+    if (mesg_in.dest == -1) {
+        /* Message was intended to be ignored. */
+        return 0;
+    }
+
     /* Sanity check input */
     if (mesg_in.type != HMESG_SESSION && mesg_in.type != HMESG_JOIN) {
         idx = mesg_in.dest;
@@ -596,6 +601,16 @@ int handle_session_socket(int idx)
     if (mesg_recv(sess->fd, &mesg_in) < 1)
         goto error;
 
+    if (mesg_in.dest == -1) {
+        if (mesg_in.status == HMESG_STATUS_REQ) {
+            if (handle_http_info(sess, (char *)mesg_in.data.string) != 0) {
+                perror("Error handling http info message");
+                goto error;
+            }
+        }
+        return 0;
+    }
+
     switch (mesg_in.type) {
     case HMESG_SESSION:
     case HMESG_JOIN:
@@ -698,6 +713,18 @@ session_state_t *session_open(hmesg_t *mesg)
         goto error;
     }
 
+    /* Force sessions to load the httpinfo plugin layer. */
+    #define HTTPINFO "httpinfo.so"
+    cfgstr = hcfg_get(mesg->data.session.cfg, CFGKEY_SESSION_LAYERS);
+    if (!cfgstr || *cfgstr == '\0') {
+        hcfg_set(mesg->data.session.cfg, CFGKEY_SESSION_LAYERS, HTTPINFO);
+    }
+    else if (strstr(cfgstr, HTTPINFO) == NULL) {
+        char *buf = sprintf_alloc(HTTPINFO ";%s", cfgstr);
+        hcfg_set(mesg->data.session.cfg, CFGKEY_SESSION_LAYERS, buf);
+        free(buf);
+    }
+
     /* Make sure we have at least 1 expected client. */
     cfgstr = hcfg_get(mesg->data.session.cfg, CFGKEY_CLIENT_COUNT);
     if (!cfgstr) {
@@ -722,12 +749,14 @@ session_state_t *session_open(hmesg_t *mesg)
     if (hsignature_copy(&sess->sig, &mesg->data.session.sig) != 0)
         goto error;
 
-    sess->reported = 0;
-
     if (gettimeofday(&sess->start, NULL) < 0)
         goto error;
 
+    cfgstr = hcfg_get(mesg->data.session.cfg, CFGKEY_SESSION_STRATEGY);
+    sess->strategy = stralloc(cfgstr);
+    sess->converged = 0;
     sess->log_len = 0;
+    sess->reported = 0;
 
     FD_SET(sess->fd, &listen_fds);
     if (highest_socket < sess->fd)
@@ -745,6 +774,7 @@ void session_close(session_state_t *sess)
 {
     int i;
 
+    free(sess->strategy);
     free(sess->name);
     sess->name = NULL;
 
@@ -825,38 +855,20 @@ int append_http_log(session_state_t *sess, const hpoint_t *pt, double perf)
     return 0;
 }
 
-const char *session_getcfg(session_state_t *sess, const char *key)
-{
-    /* Create an empty message */
-    static hmesg_t mesg;
-
-    mesg.dest = -1;
-    mesg.type = HMESG_GETCFG;
-    mesg.status = HMESG_STATUS_REQ;
-    mesg.data.string = key;
-
-    if (mesg_send(sess->fd, &mesg) < 1 || mesg_recv(sess->fd, &mesg) < 1)
-        return NULL;
-
-    return mesg.data.string;
-}
-
 int session_setcfg(session_state_t *sess, const char *key, const char *val)
 {
     hmesg_t mesg = HMESG_INITIALIZER;
     int retval = 0;
 
+    mesg.dest = -1;
     mesg.type = HMESG_SETCFG;
     mesg.status = HMESG_STATUS_REQ;
     mesg.data.string = sprintf_alloc("%s=%s", key, val);
 
     if (mesg_send(sess->fd, &mesg) < 1)
         retval = -1;
+
     free((char *)mesg.data.string);
-
-    if (retval == 0 && mesg_recv(sess->fd, &mesg) < 1)
-        retval = -1;
-
     hmesg_fini(&mesg);
     return retval;
 }
@@ -866,10 +878,11 @@ int session_restart(session_state_t *sess)
     hmesg_t mesg = HMESG_INITIALIZER;
     int retval = 0;
 
+    mesg.dest = -1;
     mesg.type = HMESG_RESTART;
     mesg.status = HMESG_STATUS_REQ;
 
-    if (mesg_send(sess->fd, &mesg) < 1 || mesg_recv(sess->fd, &mesg) < 1)
+    if (mesg_send(sess->fd, &mesg) < 1)
         retval = -1;
 
     hmesg_fini(&mesg);
