@@ -22,6 +22,12 @@ var xmlhttp;
 var viewData = new Array();
 var viewChart;
 var appName;
+var best_coord = new Array();
+var coords = new Array();
+var chartDataIdx;
+var varList;
+var tableColMap;
+var refreshInterval = 5000;
 
 // Effectively, the main() routine for this program.
 $(document).ready(function(){
@@ -31,47 +37,19 @@ $(document).ready(function(){
         xmlhttp = new ActiveXObject("Microsoft.XMLHTTP"); // IE6, IE5
 
     viewData.push(new Array());
+
     var s_idx = document.URL.indexOf("?");
     appName = document.URL.slice(s_idx + 1);
+    document.getElementById("app_name").innerHTML = appName;
+
+    xmlhttp.open("GET", "strategy?" + appName, false);
+    xmlhttp.send();
+    document.getElementById("app_strategy").innerHTML = xmlhttp.responseText;
 
     updatePlotSize();
     refresh();
 });
 
-function date2Str(milliseconds) {
-    if (typeof d == "undefined")
-        d = new Date();
-
-    d.setTime(milliseconds);
-    var retval = d.getFullYear() + "/";
-    if (d.getMonth() < 9)
-        retval += "0";
-    retval += (d.getMonth() + 1) + "/";
-    if (d.getDate() < 10)
-        retval += "0";
-    retval += d.getDate() + " ";
-
-    if (d.getHours() < 10)
-        retval += "0";
-    retval += d.getHours() + ":";
-    if (d.getMinutes() < 10)
-        retval += "0";
-    retval += d.getMinutes() + ":";
-    if (d.getSeconds() < 10)
-        retval += "0";
-    retval += d.getSeconds();
-
-    return retval;
-}
-
-var best_coord = new Array();
-var coords = new Array();
-var chartDataIdx;
-var varList;
-var tableColMap;
-var appName;
-
-var refreshInterval = 5000;
 function refresh() {
     xmlhttp.open("GET", "session-data?"+appName+"&"+coords.length, false);
     xmlhttp.send();
@@ -90,7 +68,8 @@ function refresh() {
 
         switch (key) {
         case "time":
-            document.getElementById("svr_time").innerHTML = date2Str(val);
+            document.getElementById("svr_time").innerHTML =
+                dateString(val) + " " + timeString(val);
             break;
         case "var":
             updateVarList(val);
@@ -126,22 +105,22 @@ function refresh() {
         updateDataTable();
         drawChart();
     }
-     
-    xmlhttp.open("GET", "strategy?" + appName, false);
-    xmlhttp.send();
-    var strategy_name = xmlhttp.responseText; 
 
+    var status = document.getElementById("app_status");
     xmlhttp.open("GET", "converged?" + appName, false);
     xmlhttp.send();
-    var is_converged = parseInt(xmlhttp.responseText);
 
-    var appName_div = document.getElementById("appName");
-
-    appName_div.innerHTML += " (" + strategy_name;
-    appName_div.innerHTML += " - " + (is_converged?"converged":"not converged") + ")";
-
-    if(is_converged) {
-      document.getElementById('restart_controls').style.display = 'none';
+    switch (xmlhttp.responseText) {
+    case "FAIL":
+        status.innerHTML = "Dead";
+        $('#sess_ctl_div :input').attr('disabled', true);
+        return;
+    case "1":
+        status.innerHTML = "Active - converged";
+        break;
+    default:
+        status.innerHTML = "Active - searching";
+        break;
     }
 
     var i_select = document.getElementById("interval");
@@ -209,7 +188,7 @@ function updateDataTable() {
         if (idx >= 0) {
             var coord = coords[idx];
 
-            tableBody.rows[i].cells[0].innerHTML = date2Str( coord[0] );
+            tableBody.rows[i].cells[0].innerHTML = timeString( coord[0] );
             for (var j = 1; j < cols-1; ++j) {
                 tableBody.rows[i].cells[j].innerHTML = "";
             }
@@ -337,13 +316,22 @@ function labelString(idx) {
     return retval;
 }
 
-/* restarts session */
-function sessionRestart() {
-  var asdf = new XMLHttpRequest();
-  var str = "restart?" + appName;
-  if(document.getElementById("restart_point").value.length > 0) {
-    str += ";" + document.getElementById("restart_point").value;
-  }
-  asdf.open("GET", str, true);
-  asdf.send();
+/* Restart session */
+function restart() {
+    sendRestart(xmlhttp, appName, document.getElementById("init_point").value);
+}
+
+/* Pause session */
+function pause() {
+    sendPause(xmlhttp, appName);
+}
+
+/* Resume session */
+function resume() {
+    sendResume(xmlhttp, appName);
+}
+
+/* Kill session */
+function kill() {
+    sendKill(xmlhttp, appName);
 }

@@ -383,8 +383,13 @@ int http_request_handle(int fd, char *req)
         opt_sock_write(fd, HTTP_ENDL);
 
         if (arg) {
+            char *init_pt = strchr(arg, '&');
+            if (init_pt)
+                *(init_pt++) = '\0';
+
             for (i = 0; i < slist_cap; ++i) {
                 if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
+                    session_setcfg(&slist[i], CFGKEY_INIT_POINT, init_pt);
                     session_restart(&slist[i]);
                     opt_http_write(fd, "OK");
                     opt_http_write(fd, "");

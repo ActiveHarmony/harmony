@@ -30,71 +30,78 @@ along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
     <!--[if lte IE 8]>
     <script type="text/javascript" src="excanvas.min.js"></script>
     <![endif]-->
+    <script type="text/javascript" src="common.js"></script>
     <script type="text/javascript" src="session-view.js"></script>
     <link rel="stylesheet" type="text/css" href="activeharmony.css" />
   </head>
 
   <body>
-    <div id="server_status" style="clear:both">
-      <div style="float:left; width:150px">
-        Server Status:
-      </div>
-      <div id="appName" style="float:left">
-      </div>
-      <div id="app_div" style="float:right">
-        <ul style="list-style-type:none; margin:0; padding:0">
-          <li style="display:inline">Refresh Interval:
-            <select id="interval">
-              <option value="1000">1</option>
-              <option value="5000" selected>5</option>
-              <option value="10000">10</option>
-              <option value="30000">30</option>
-              <option value="60000">60</option>
-            </select>
-          </li>
 
-          <li id="svr_time" style="display:inline">
-          </li>
-        </ul>
-      </div>
-
-    <div style="clear:both">
-      <div style="float:left">
-        <ul style="list-style-type:none; margin:0; padding:0">
-          <li style="display:inline">
-            View:
-            <select id="view_list" onchange="drawChart()">
-              <option>Overview</option>
-            </select>
-          </li>
-
-          <li style="display:inline">
-            Table Length:
-            <select id="table_len" onchange="updateDataTable()">
-              <option>5</option>
-              <option selected>10</option>
-              <option>25</option>
-              <option>50</option>
-            </select>
-          </li>
-          <li style="display:inline">
-            Chart Size:
-            <select id="chart_size" onchange="updatePlotSize()">
-              <option>640x480</option>
-              <option>800x600</option>
-              <option>1024x768</option>
-              <option>1200x1024</option>
-            </select>
-          </li>
-
-        </ul>
-        <span id='restart_controls'>
-        Restart with point (works with pro and nm only, coordinates are semicolon-separated, leave blank to just restart with initial config):<br />
-        <input type='text' id='restart_point' value='25;25;25;25;25;25' />
-        <input type='button' name='restart' value='Restart' onclick='sessionRestart()' />
-        </span>
-      </div>
+    <div id="status_div" style="float:left">
+      <table>
+        <tr>
+          <td>Session Name:</td><td id="app_name"></td>
+        </tr>
+        <tr>
+          <td>Session Strategy:</td><td id="app_strategy"></td>
+        </tr>
+        <tr>
+          <td>Session Status:</td><td id="app_status"></td>
+        </tr>
+      </table>
     </div>
+
+    <div id="ui_ctl_div" style="float:right">
+      <ul style="list-style-type:none; margin:0; padding:0">
+        <li style="display:inline">Refresh Interval:
+          <select id="interval">
+            <option value="1000">1</option>
+            <option value="5000" selected>5</option>
+            <option value="10000">10</option>
+            <option value="30000">30</option>
+            <option value="60000">60</option>
+            </select>
+        </li>
+        <li id="svr_time" style="display:inline">
+        </li>
+      </ul>
+      <ul style="list-style-type:none; margin:0; padding:0">
+        <li style="display:inline">
+          View:
+          <select id="view_list" onchange="drawChart()">
+            <option>Timeline</option>
+          </select>
+        </li>
+        <li style="display:inline">
+          Table Length:
+          <select id="table_len" onchange="updateDataTable()">
+            <option>5</option>
+            <option selected>10</option>
+            <option>25</option>
+            <option>50</option>
+          </select>
+        </li>
+        <li style="display:inline">
+          Chart Size:
+          <select id="chart_size" onchange="updatePlotSize()">
+            <option>640x480</option>
+            <option>800x600</option>
+            <option>1024x768</option>
+            <option>1200x1024</option>
+          </select>
+        </li>
+      </ul>
+    </div>
+
+    <div id ="sess_ctl_div" style="clear:both; float:left">
+        Restart Point:
+        <input type="text" id="init_point" />
+        <input type="button" value="Restart" onclick="restart()" />
+        <input type="button" value="Pause" onclick="pause()" />
+        <input type="button" value="Resume" onclick="resume()" />
+        <input type="button" value="Kill" onclick="kill()" />
+    </div>
+
     <div style="clear:both">
       <hr />
       <div id="plot_area">
