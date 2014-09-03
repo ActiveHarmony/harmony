@@ -366,6 +366,7 @@ int vertex_from_hpoint(const hpoint_t *pt, vertex_t *result)
 
 int vertex_from_string(const char *str, hsignature_t *sig, vertex_t *result)
 {
+    int retval = 0;
     hpoint_t pt = HPOINT_INITIALIZER;
 
     if (!str) {
@@ -380,21 +381,24 @@ int vertex_from_string(const char *str, hsignature_t *sig, vertex_t *result)
 
     if (hpoint_parse(&pt, sig, str) != 0) {
         session_error("Error parsing point string");
-        return -1;
+        retval = -1;
+        goto cleanup;
     }
 
     if (hpoint_align(&pt, sig) != 0) {
         session_error("Error aligning point to session signature");
-        return -1;
+        retval = -1;
+        goto cleanup;
     }
 
     if (vertex_from_hpoint(&pt, result) != 0) {
         session_error("Error converting point to vertex");
-        return -1;
+        retval = -1;
     }
 
+  cleanup:
     hpoint_fini(&pt);
-    return 0;
+    return retval;
 }
 
 simplex_t *simplex_alloc(int m)
