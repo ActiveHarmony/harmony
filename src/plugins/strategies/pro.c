@@ -100,7 +100,7 @@ int  pro_next_simplex(simplex_t *output);
 void check_convergence(void);
 
 /* Variables to control search properties. */
-simplex_init_t  init_method  = SIMPLEX_INIT_CENTER;
+simplex_init_t  init_method;
 vertex_t *      init_point;
 double          init_percent = 0.35;
 reject_method_t reject_type  = REJECT_METHOD_PENALTY;
@@ -223,6 +223,7 @@ int strategy_cfg(hsignature_t *sig)
     const char *cfgval;
     char *endp;
 
+    init_method = SIMPLEX_INIT_CENTER; /* Default value. */
     cfgval = session_getcfg(CFGKEY_INIT_METHOD);
     if (cfgval) {
         if (strcasecmp(cfgval, "center") == 0) {
