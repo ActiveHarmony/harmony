@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <time.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -469,25 +470,20 @@ char *uri_decode(char *buf)
 {
     char *head = buf;
     char *tail = buf;
-    unsigned int conv;
-    int count;
 
     while (*head != '\0') {
         if (*head == '%') {
-            if (sscanf(head, "%%%x%n", &conv, &count) && conv < 0xFF) {
-                head += count;
-                *tail = (char)conv;
-                ++tail;
+            if (isxdigit(head[1]) && isxdigit(head[2])) {
+                unsigned int val;
+                sscanf(head + 1, "%2x", &val);
+                *(tail++) = (char)val;
+                head += 3;
+                continue;
             }
         }
-
-        if (tail != head)
-            *tail = *head;
-        ++tail;
-        ++head;
+        *(tail++) = *(head++);
     }
-    if (tail != head)
-        *tail = '\0';
+    *tail = '\0';
 
     return buf;
 }
