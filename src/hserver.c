@@ -858,17 +858,18 @@ int append_http_log(session_state_t *sess, const hpoint_t *pt, double perf)
 int session_setcfg(session_state_t *sess, const char *key, const char *val)
 {
     hmesg_t mesg = HMESG_INITIALIZER;
+    char *buf = sprintf_alloc("%s=%s", key, val ? val : "");
     int retval = 0;
 
     mesg.dest = -1;
     mesg.type = HMESG_SETCFG;
     mesg.status = HMESG_STATUS_REQ;
-    mesg.data.string = sprintf_alloc("%s=%s", key, val);
+    mesg.data.string = buf;
 
     if (mesg_send(sess->fd, &mesg) < 1)
         retval = -1;
 
-    free((char *)mesg.data.string);
+    free(buf);
     hmesg_fini(&mesg);
     return retval;
 }

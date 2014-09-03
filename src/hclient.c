@@ -501,7 +501,7 @@ char *harmony_getcfg(hdesc_t *hdesc, const char *key)
 
 char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val)
 {
-    char *buf = NULL;
+    char *buf;
     int retval;
 
     if (hdesc->state < HARMONY_STATE_CONNECTED) {
@@ -519,19 +519,15 @@ char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val)
         return NULL;
     }
 
+    buf = sprintf_alloc("%s=%s", key, val ? val : "");
+    if (!buf) {
+        hdesc->errstr = "Internal memory allocation error.";
+        return NULL;
+    }
+
     /* Prepare a Harmony message. */
     hmesg_scrub(&hdesc->mesg);
-    if (val) {
-        buf = sprintf_alloc("%s=%s", key, val);
-        if (!buf) {
-            hdesc->errstr = "Internal memory allocation error.";
-            return NULL;
-        }
-        hdesc->mesg.data.string = buf;
-    }
-    else {
-        hdesc->mesg.data.string = key;
-    }
+    hdesc->mesg.data.string = buf;
 
     retval = send_request(hdesc, HMESG_SETCFG);
     free(buf);
