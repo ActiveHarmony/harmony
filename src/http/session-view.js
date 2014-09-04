@@ -26,15 +26,16 @@ var coords = new Array();
 var chartDataIdx;
 var varList;
 var tableColMap;
-var refreshInterval = 5000;
+var intervalHandle;
 
 function shutdown_comm(message)
 {
+    if (intervalHandle)
+        clearInterval(intervalHandle);
+
     $("#app_status").html(message);
     $("#sess_ctl_div :input").attr("disabled", true);
     $("#interval").attr("disabled", true);
-
-    throw new Error("Exiting on error.");
 }
 
 // Effectively, the main() routine for this program.
@@ -50,6 +51,7 @@ $(document).ready(function(){
 
     updatePlotSize();
     refresh();
+    updateInterval();
 });
 
 function refresh() {
@@ -109,9 +111,15 @@ function refresh() {
         updateDataTable();
         drawChart();
     }
+}
 
-    var i_select = document.getElementById("interval");
-    setTimeout("refresh()", i_select[ i_select.selectedIndex ].value);
+function updateInterval() {
+    var delay = $("#interval option:selected").val();
+
+    if (intervalHandle)
+        clearInterval(intervalHandle);
+
+    intervalHandle = setInterval(function(){ refresh() }, delay);
 }
 
 function updateChartData(arr) {
@@ -306,19 +314,23 @@ function labelString(idx) {
 /* Restart session */
 function restart() {
     sendRestart(appName, document.getElementById("init_point").value);
+    setTimeout(function(){ refresh() }, 250);
 }
 
 /* Pause session */
 function pause() {
     sendPause(appName);
+    setTimeout(function(){ refresh() }, 250);
 }
 
 /* Resume session */
 function resume() {
     sendResume(appName);
+    setTimeout(function(){ refresh() }, 250);
 }
 
 /* Kill session */
 function kill() {
     sendKill(appName);
+    setTimeout(function(){ refresh() }, 250);
 }

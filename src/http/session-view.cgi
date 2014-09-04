@@ -54,7 +54,7 @@ along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
     <div id="ui_ctl_div" style="float:right">
       <ul style="list-style-type:none; margin:0; padding:0">
         <li style="display:inline">Refresh Interval:
-          <select id="interval">
+          <select id="interval" onchange="updateInterval()">
             <option value="1000">1</option>
             <option value="5000" selected>5</option>
             <option value="10000">10</option>
