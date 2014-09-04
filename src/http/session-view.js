@@ -51,8 +51,25 @@ $(document).ready(function(){
 });
 
 function refresh() {
-    xmlhttp.open("GET", "session-data?"+appName+"&"+coords.length, false);
-    xmlhttp.send();
+    var errorString;
+
+    try {
+        xmlhttp.open("GET", "session-data?"+appName+"&"+coords.length, false);
+        xmlhttp.send();
+    }
+    catch (exception) {
+        errorString = "Network Error";
+    }
+
+    if (xmlhttp.responseText == "FAIL")
+        errorString = "Dead";
+
+    if (errorString) {
+        $("#app_status").html(errorString);
+        $("#sess_ctl_div :input").attr("disabled", true);
+        return;
+    }
+
     var pairs = xmlhttp.responseText.split("|");
     var newCoords = 0;
 
@@ -68,8 +85,11 @@ function refresh() {
 
         switch (key) {
         case "time":
-            document.getElementById("svr_time").innerHTML =
-                dateString(val) + " " + timeString(val);
+            var fullDate = dateString(val) + " " + timeString(val);
+            document.getElementById("svr_time").innerHTML = fullDate;
+            break;
+        case "status":
+            $("#app_status").html("Active - " + val);
             break;
         case "var":
             updateVarList(val);
@@ -88,8 +108,8 @@ function refresh() {
                         row.cells[j].style.backgroundColor = "inherit";
                     }
                 }
-
-            } else {
+            }
+            else {
                 coords.push(c_arr);
                 updateChartData(c_arr);
                 newCoords = 1;
@@ -104,23 +124,6 @@ function refresh() {
     if (newCoords) {
         updateDataTable();
         drawChart();
-    }
-
-    var status = document.getElementById("app_status");
-    xmlhttp.open("GET", "converged?" + appName, false);
-    xmlhttp.send();
-
-    switch (xmlhttp.responseText) {
-    case "FAIL":
-        status.innerHTML = "Dead";
-        $('#sess_ctl_div :input').attr('disabled', true);
-        return;
-    case "1":
-        status.innerHTML = "Active - converged";
-        break;
-    default:
-        status.innerHTML = "Active - searching";
-        break;
     }
 
     var i_select = document.getElementById("interval");

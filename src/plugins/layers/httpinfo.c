@@ -38,11 +38,12 @@ int httpinfo_setcfg(const char *key, const char *val)
     static int buflen = 0;
 
     if (strcmp(key, CFGKEY_STRATEGY_CONVERGED) == 0 ||
-        strcmp(key, CFGKEY_SESSION_STRATEGY)   == 0)
+        strcmp(key, CFGKEY_SESSION_STRATEGY)   == 0 ||
+        strcmp(key, CFGKEY_SESSION_PAUSED)     == 0)
     {
         hmesg_t mesg = HMESG_INITIALIZER;
 
-        if (snprintf_grow(&buf, &buflen, "%s=%s", key, val) == -1) {
+        if (snprintf_grow(&buf, &buflen, "%s=%s", key, val ? val : "") == -1) {
             session_error("Error allocating memory for http info string");
             return -1;
         }

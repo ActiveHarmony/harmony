@@ -45,7 +45,7 @@ typedef struct session_state {
     struct timeval start;
     hsignature_t sig;
     char *strategy;
-    int converged;
+    unsigned int status;
 
     http_log_t *log;
     int log_len, log_cap;

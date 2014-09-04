@@ -754,7 +754,7 @@ session_state_t *session_open(hmesg_t *mesg)
 
     cfgstr = hcfg_get(mesg->data.session.cfg, CFGKEY_SESSION_STRATEGY);
     sess->strategy = stralloc(cfgstr);
-    sess->converged = 0;
+    sess->status = 0x0;
     sess->log_len = 0;
     sess->reported = 0;
 

@@ -49,6 +49,11 @@
 
 unsigned int http_connection_limit = 32;
 
+typedef enum http_status {
+    HTTP_STATUS_CONVERGED = 0x1,
+    HTTP_STATUS_PAUSED    = 0x2
+} http_status_t;
+
 typedef enum {
     CONTENT_HTML,
     CONTENT_JAVASCRIPT,
@@ -101,6 +106,7 @@ char sendbuf[8192];  /* Static buffer used for outgoing HTTP data. */
 char recvbuf[10240]; /* Static buffer used for incoming HTTP data. */
 
 /* Internal helper function declarations */
+const char *status_string(session_state_t *sess);
 char *uri_decode(char *buf);
 int http_request_handle(int fd, char *req);
 char *http_request_recv(int fd, char *buf, int buflen, char **data);
@@ -266,10 +272,30 @@ int handle_http_info(session_state_t *sess, char *buf)
         sess->strategy = stralloc(val);
     }
     else if (strcmp(key, CFGKEY_STRATEGY_CONVERGED) == 0) {
-        sess->converged = (*val == '1');
+        if (*val == '1')
+            sess->status |= HTTP_STATUS_CONVERGED;
+        else
+            sess->status &= ~HTTP_STATUS_CONVERGED;
+    }
+    else if (strcmp(key, CFGKEY_SESSION_PAUSED) == 0) {
+        if (*val == '1')
+            sess->status |= HTTP_STATUS_PAUSED;
+        else
+            sess->status &= ~HTTP_STATUS_PAUSED;
     }
 
     return 0;
+}
+
+const char *status_string(session_state_t *sess)
+{
+    if (sess->status & HTTP_STATUS_PAUSED)
+        return "Paused";
+
+    if (sess->status & HTTP_STATUS_CONVERGED)
+        return "Converged";
+
+    return "Searching";
 }
 
 /**************************************
@@ -336,7 +362,7 @@ int http_request_handle(int fd, char *req)
         opt_http_write(fd, "");
         return 0;
     }
-    else if (strncmp(req, "/pause", 6) == 0) {
+    else if (strcmp(req, "/pause") == 0) {
         opt_sock_write(fd, status_200);
         opt_sock_write(fd, http_type_text);
         opt_sock_write(fd, http_headers);
@@ -356,7 +382,7 @@ int http_request_handle(int fd, char *req)
         opt_http_write(fd, "");
         return 0;
     }
-    else if (strncmp(req, "/resume", 7) == 0) {
+    else if (strcmp(req, "/resume") == 0) {
         opt_sock_write(fd, status_200);
         opt_sock_write(fd, http_type_text);
         opt_sock_write(fd, http_headers);
@@ -376,7 +402,7 @@ int http_request_handle(int fd, char *req)
         opt_http_write(fd, "");
         return 0;
     }
-    else if (strncmp(req, "/restart", 8) == 0) {
+    else if (strcmp(req, "/restart") == 0) {
         opt_sock_write(fd, status_200);
         opt_sock_write(fd, http_type_text);
         opt_sock_write(fd, http_headers);
@@ -401,7 +427,7 @@ int http_request_handle(int fd, char *req)
         opt_http_write(fd, "");
         return 0;
     }
-    else if (strncmp(req, "/strategy", 9) == 0) {
+    else if (strcmp(req, "/strategy") == 0) {
         opt_sock_write(fd, status_200);
         opt_sock_write(fd, http_type_text);
         opt_sock_write(fd, http_headers);
@@ -411,26 +437,6 @@ int http_request_handle(int fd, char *req)
             for (i = 0; i < slist_cap; ++i) {
                 if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
                     opt_http_write(fd, slist[i].strategy);
-                    opt_http_write(fd, "");
-                    return 0;
-                }
-                break;
-            }
-        }
-        opt_http_write(fd, "FAIL");
-        opt_http_write(fd, "");
-        return 0;
-    }
-    else if (strncmp(req, "/converged", 10) == 0) {
-        opt_sock_write(fd, status_200);
-        opt_sock_write(fd, http_type_text);
-        opt_sock_write(fd, http_headers);
-        opt_sock_write(fd, HTTP_ENDL);
-
-        if (arg) {
-            for (i = 0; i < slist_cap; ++i) {
-                if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
-                    opt_http_write(fd, slist[i].converged ? "1" : "0");
                     opt_http_write(fd, "");
                     return 0;
                 }
@@ -760,8 +766,8 @@ char *http_session_header(session_state_t *sess, struct timeval *tv)
     buflen = sizeof(sendbuf);
     total = 0;
 
-    count = snprintf_serial(&buf, &buflen, "time:%ld%03ld|var:",
-                            tv->tv_sec, tv->tv_usec/1000);
+    count = snprintf_serial(&buf, &buflen, "time:%ld%03ld|status:%s|var:",
+                            tv->tv_sec, tv->tv_usec/1000, status_string(sess));
     if (count < 0)
         return NULL;
     total += count;
