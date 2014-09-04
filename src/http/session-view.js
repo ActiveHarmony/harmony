@@ -27,6 +27,7 @@ var chartDataIdx;
 var varList;
 var tableColMap;
 var intervalHandle;
+var timezoneOffset;
 
 function shutdown_comm(message)
 {
@@ -42,6 +43,9 @@ function shutdown_comm(message)
 $(document).ready(function(){
     AJAXinit(shutdown_comm);
     viewData.push(new Array());
+
+    var d = new Date();
+    timezoneOffset = d.getTimezoneOffset() * 60 * 1000;
 
     var s_idx = document.URL.indexOf("?");
     appName = document.URL.slice(s_idx + 1);
@@ -123,7 +127,7 @@ function updateInterval() {
 }
 
 function updateChartData(arr) {
-    var timestamp = parseInt(arr[0]);
+    var timestamp = parseInt(arr[0]) - timezoneOffset;
     var perf = parseFloat(arr.slice(-1));
     viewData[0].push([timestamp, perf]);
 
