@@ -17,6 +17,44 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+function abort(message) {
+    alert(message);
+    throw new Error("Exiting on error.");
+}
+
+var ajax;
+var ajax_error_function = abort;
+
+function AJAXinit(func) {
+    if (func)
+        ajax_error_function = func;
+
+    try {
+        if (window.XMLHttpRequest)
+            xmlhttp = new XMLHttpRequest(); // IE7+ and modern browsers
+        else // IE6, IE5
+            xmlhttp = new ActiveXObject("Microsoft.XMLHTTP");
+    }
+    catch (exception) {
+        ajax_error_function(exception.name);
+    }
+}
+
+function AJAXsend(URL) {
+    try {
+        xmlhttp.open("GET", URL, false);
+        xmlhttp.send();
+    }
+    catch (exception) {
+        ajax_error_function(exception.name);
+    }
+
+    if (xmlhttp.responseText == "FAIL")
+        ajax_error_function("Dead");
+
+    return xmlhttp.responseText;
+}
+
 function dateString(milliseconds) {
     var d = new Date();
     d.setTime(milliseconds);
@@ -30,42 +68,26 @@ function timeString(milliseconds) {
 }
 
 /* Restart session */
-function sendRestart(comm, name, init) {
+function sendRestart(name, init) {
     var command = "restart?" + name;
 
-    if (init.length > 0)
+    if (init && init.length > 0)
         command += "&" + init;
 
-    comm.open("GET", encodeURI(command.trim()), false);
-    comm.send();
-
-    if (comm.responseText == "FAIL")
-        alert("Error restarting session.");
+    AJAXsend(encodeURI(command.trim()));
 }
 
 /* Pause session */
-function sendPause(comm, name) {
-    comm.open("GET", "pause?" + name, false);
-    comm.send();
-
-    if (comm.responseText == "FAIL")
-        alert("Error pausing session.");
+function sendPause(name) {
+    AJAXsend("pause?" + name);
 }
 
 /* Resume session */
-function sendResume(comm, name) {
-    comm.open("GET", "resume?" + name, false);
-    comm.send();
-
-    if (comm.responseText == "FAIL")
-        alert("Error resuming session.");
+function sendResume(name) {
+    AJAXsend("resume?" + name);
 }
 
 /* Kill session */
-function sendKill(comm, name) {
-    comm.open("GET", "kill?" + name, false);
-    comm.send();
-
-    if (comm.responseText == "FAIL")
-        alert("Error killing session.");
+function sendKill(name) {
+    AJAXsend("kill?" + name);
 }

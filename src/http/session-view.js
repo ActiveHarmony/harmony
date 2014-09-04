@@ -18,7 +18,6 @@
  */
 
 /* Global Variables */
-var xmlhttp;
 var viewData = new Array();
 var viewChart;
 var appName;
@@ -29,48 +28,33 @@ var varList;
 var tableColMap;
 var refreshInterval = 5000;
 
+function shutdown_comm(message)
+{
+    $("#app_status").html(message);
+    $("#sess_ctl_div :input").attr("disabled", true);
+    $("#interval").attr("disabled", true);
+
+    throw new Error("Exiting on error.");
+}
+
 // Effectively, the main() routine for this program.
 $(document).ready(function(){
-    if (window.XMLHttpRequest)
-        xmlhttp = new XMLHttpRequest(); // IE7+, Firefox, Chrome, Opera, Safari
-    else
-        xmlhttp = new ActiveXObject("Microsoft.XMLHTTP"); // IE6, IE5
-
+    AJAXinit(shutdown_comm);
     viewData.push(new Array());
 
     var s_idx = document.URL.indexOf("?");
     appName = document.URL.slice(s_idx + 1);
-    document.getElementById("app_name").innerHTML = appName;
 
-    xmlhttp.open("GET", "strategy?" + appName, false);
-    xmlhttp.send();
-    document.getElementById("app_strategy").innerHTML = xmlhttp.responseText;
+    $("#app_name").html(appName);
+    $("#app_strategy").html( AJAXsend("strategy?" + appName) );
 
     updatePlotSize();
     refresh();
 });
 
 function refresh() {
-    var errorString;
-
-    try {
-        xmlhttp.open("GET", "session-data?"+appName+"&"+coords.length, false);
-        xmlhttp.send();
-    }
-    catch (exception) {
-        errorString = "Network Error";
-    }
-
-    if (xmlhttp.responseText == "FAIL")
-        errorString = "Dead";
-
-    if (errorString) {
-        $("#app_status").html(errorString);
-        $("#sess_ctl_div :input").attr("disabled", true);
-        return;
-    }
-
-    var pairs = xmlhttp.responseText.split("|");
+    var response = AJAXsend("session-data?" + appName + "&" + coords.length);
+    var pairs = response.split("|");
     var newCoords = 0;
 
     /* mechanism only updates parts of the page that need to be updated
@@ -321,20 +305,20 @@ function labelString(idx) {
 
 /* Restart session */
 function restart() {
-    sendRestart(xmlhttp, appName, document.getElementById("init_point").value);
+    sendRestart(appName, document.getElementById("init_point").value);
 }
 
 /* Pause session */
 function pause() {
-    sendPause(xmlhttp, appName);
+    sendPause(appName);
 }
 
 /* Resume session */
 function resume() {
-    sendResume(xmlhttp, appName);
+    sendResume(appName);
 }
 
 /* Kill session */
 function kill() {
-    sendKill(xmlhttp, appName);
+    sendKill(appName);
 }
