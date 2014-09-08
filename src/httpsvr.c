@@ -108,12 +108,13 @@ char recvbuf[10240]; /* Static buffer used for incoming HTTP data. */
 /* Internal helper function declarations */
 const char *status_string(session_state_t *sess);
 char *uri_decode(char *buf);
+session_state_t *find_session(const char *name);
 int http_request_handle(int fd, char *req);
 char *http_request_recv(int fd, char *buf, int buflen, char **data);
 int http_chunk_send(int fd, const char *data, int datalen);
 int http_overview_send(int fd);
-int http_session_send(int fd, const char *req);
-char *http_session_header(session_state_t *sess, struct timeval *tv);
+int http_send_init(int fd, session_state_t *sess);
+int http_send_refresh(int fd, session_state_t *sess, const char *arg);
 int report_append(char **buf, int *buflen, session_state_t *sess,
                   struct timeval *tv, const hpoint_t *pt, const double perf);
 
@@ -301,15 +302,54 @@ const char *status_string(session_state_t *sess)
 /**************************************
  * Internal helper function definitions
  */
-int http_request_handle(int fd, char *req)
+char *uri_decode(char *buf)
 {
-    char *arg;
+    char *head = buf;
+    char *tail = buf;
+
+    while (*head != '\0') {
+        if (*head == '%') {
+            if (isxdigit(head[1]) && isxdigit(head[2])) {
+                unsigned int val;
+                sscanf(head + 1, "%2x", &val);
+                *(tail++) = (char)val;
+                head += 3;
+                continue;
+            }
+        }
+        *(tail++) = *(head++);
+    }
+    *tail = '\0';
+
+    return buf;
+}
+
+session_state_t *find_session(const char *name)
+{
     int i;
 
-    arg = strchr(req, '?');
-    if (arg) {
-        *arg = '\0';
-        ++arg;
+    for (i = 0; i < slist_cap; ++i) {
+        if (slist[i].name && strcmp(slist[i].name, name) == 0)
+            return &slist[i];
+    }
+    return NULL;
+}
+
+int http_request_handle(int fd, char *req)
+{
+    session_state_t *sess = NULL;
+    char *sess_name, *arg;
+    int i;
+
+    sess_name = strchr(req, '?');
+    if (sess_name) {
+        *(sess_name++) = '\0';
+
+        arg = strchr(sess_name, '&');
+        if (arg)
+            *(arg++) = '\0';
+
+        sess = find_session(sess_name);
     }
 
     if (strcmp(req, "/") == 0) {
@@ -332,13 +372,33 @@ int http_request_handle(int fd, char *req)
         opt_http_write(fd, "");
         return 0;
     }
-    else if (strcmp(req, "/session-data") == 0) {
+    else if (strcmp(req, "/init") == 0) {
         opt_sock_write(fd, status_200);
         opt_sock_write(fd, http_type_text);
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        http_session_send(fd, arg);
+        if (sess) {
+            http_send_init(fd, sess);
+            opt_http_write(fd, "");
+            return 0;
+        }
+        opt_http_write(fd, "FAIL");
+        opt_http_write(fd, "");
+        return 0;
+    }
+    else if (strcmp(req, "/refresh") == 0) {
+        opt_sock_write(fd, status_200);
+        opt_sock_write(fd, http_type_text);
+        opt_sock_write(fd, http_headers);
+        opt_sock_write(fd, HTTP_ENDL);
+
+        if (sess) {
+            http_send_refresh(fd, sess, arg);
+            opt_http_write(fd, "");
+            return 0;
+        }
+        opt_http_write(fd, "FAIL");
         opt_http_write(fd, "");
         return 0;
     }
@@ -348,15 +408,11 @@ int http_request_handle(int fd, char *req)
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        if (arg) {
-            for (i = 0; i < slist_cap; ++i) {
-                if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
-                    session_close(&slist[i]);
-                    opt_http_write(fd, "OK");
-                    opt_http_write(fd, "");
-                    return 0;
-                }
-            }
+        if (sess) {
+            session_close(sess);
+            opt_http_write(fd, "OK");
+            opt_http_write(fd, "");
+            return 0;
         }
         opt_http_write(fd, "FAIL");
         opt_http_write(fd, "");
@@ -368,15 +424,11 @@ int http_request_handle(int fd, char *req)
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        if (arg) {
-            for (i = 0; i < slist_cap; ++i) {
-                if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
-                    session_setcfg(&slist[i], CFGKEY_SESSION_PAUSED, "1");
-                    opt_http_write(fd, "OK");
-                    opt_http_write(fd, "");
-                    return 0;
-                }
-            }
+        if (sess) {
+            session_setcfg(sess, CFGKEY_SESSION_PAUSED, "1");
+            opt_http_write(fd, "OK");
+            opt_http_write(fd, "");
+            return 0;
         }
         opt_http_write(fd, "FAIL");
         opt_http_write(fd, "");
@@ -388,15 +440,11 @@ int http_request_handle(int fd, char *req)
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        if (arg) {
-            for (i = 0; i < slist_cap; ++i) {
-                if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
-                    session_setcfg(&slist[i], CFGKEY_SESSION_PAUSED, "0");
-                    opt_http_write(fd, "OK");
-                    opt_http_write(fd, "");
-                    return 0;
-                }
-            }
+        if (sess) {
+            session_setcfg(sess, CFGKEY_SESSION_PAUSED, "0");
+            opt_http_write(fd, "OK");
+            opt_http_write(fd, "");
+            return 0;
         }
         opt_http_write(fd, "FAIL");
         opt_http_write(fd, "");
@@ -408,40 +456,12 @@ int http_request_handle(int fd, char *req)
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        if (arg) {
-            char *init_pt = strchr(arg, '&');
-            if (init_pt)
-                *(init_pt++) = '\0';
-
-            for (i = 0; i < slist_cap; ++i) {
-                if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
-                    session_setcfg(&slist[i], CFGKEY_INIT_POINT, init_pt);
-                    session_restart(&slist[i]);
-                    opt_http_write(fd, "OK");
-                    opt_http_write(fd, "");
-                    return 0;
-                }
-            }
-        }
-        opt_http_write(fd, "FAIL");
-        opt_http_write(fd, "");
-        return 0;
-    }
-    else if (strcmp(req, "/strategy") == 0) {
-        opt_sock_write(fd, status_200);
-        opt_sock_write(fd, http_type_text);
-        opt_sock_write(fd, http_headers);
-        opt_sock_write(fd, HTTP_ENDL);
-
-        if (arg) {
-            for (i = 0; i < slist_cap; ++i) {
-                if (slist[i].name && strcmp(slist[i].name, arg) == 0) {
-                    opt_http_write(fd, slist[i].strategy);
-                    opt_http_write(fd, "");
-                    return 0;
-                }
-                break;
-            }
+        if (sess) {
+            session_setcfg(sess, CFGKEY_INIT_POINT, arg);
+            session_restart(sess);
+            opt_http_write(fd, "OK");
+            opt_http_write(fd, "");
+            return 0;
         }
         opt_http_write(fd, "FAIL");
         opt_http_write(fd, "");
@@ -475,28 +495,6 @@ int http_request_handle(int fd, char *req)
     }
 
     return -1;
-}
-
-char *uri_decode(char *buf)
-{
-    char *head = buf;
-    char *tail = buf;
-
-    while (*head != '\0') {
-        if (*head == '%') {
-            if (isxdigit(head[1]) && isxdigit(head[2])) {
-                unsigned int val;
-                sscanf(head + 1, "%2x", &val);
-                *(tail++) = (char)val;
-                head += 3;
-                continue;
-            }
-        }
-        *(tail++) = *(head++);
-    }
-    *tail = '\0';
-
-    return buf;
 }
 
 int http_chunk_send(int fd, const char *data, int datalen)
@@ -673,54 +671,105 @@ int http_overview_send(int fd)
     return 0;
 }
 
-int http_session_send(int fd, const char *req)
+int http_send_init(int fd, session_state_t *sess)
 {
-    char *ptr, *buf;
-    int i, idx, buflen, count, total;
-    struct timeval tv;
-    session_state_t *sess;
+    char *buf = sendbuf;
+    int buflen = sizeof(sendbuf), total = 0;
+    int i, j, count;
 
-    ptr = strchr(req, '&');
-    if (ptr) {
-        buflen = ptr - req;
-        idx = atoi(++ptr);
-    }
-    else {
-        buflen = strlen(req);
-        idx = 0;
-    }
+    count = snprintf_serial(&buf, &buflen, "sig:");
+    if (count < 0)
+        goto error;
+    total += count;
 
-    for (i = 0; i < slist_cap; ++i) {
-        if (!slist[i].name)
-            continue;
+    for (i = 0; i < sess->sig.range_len; ++i) {
+        char type;
+        hrange_t *range = &sess->sig.range[i];
 
-        if (strncmp(req, slist[i].name, buflen) == 0 &&
-            slist[i].name[buflen] == '\0')
-        {
-            sess = &slist[i];
-            break;
+        if (i > 0) {
+            count = snprintf_serial(&buf, &buflen, ",");
+            if (count < 0)
+                goto error;
+            total += count;
+        }
+
+        switch (range->type) {
+        case HVAL_INT:  type = 'i'; break;
+        case HVAL_REAL: type = 'r'; break;
+        case HVAL_STR:  type = 's'; break;
+        default: goto error;
+        }
+
+        count = snprintf_serial(&buf, &buflen, "%s;%c", range->name, type);
+        if (count < 0)
+            goto error;
+        total += count;
+
+        if (range->type == HVAL_STR) {
+            for (j = 0; j < range->bounds.s.set_len; ++j) {
+                count = snprintf_serial(&buf, &buflen, ";%s",
+                                        range->bounds.s.set[j]);
+                if (count < 0)
+                    goto error;
+                total += count;
+            }
         }
     }
-    if (i == slist_cap)
+
+    count = snprintf_serial(&buf, &buflen, "|strat:%s", sess->strategy);
+    if (count < 0)
         goto error;
+    total += count;
+
+    if (total >= sizeof(sendbuf))
+        goto error;
+
+    opt_http_write(fd, sendbuf);
+    return 0;
+
+  error:
+    opt_http_write(fd, "FAIL");
+    return -1;
+}
+
+int http_send_refresh(int fd, session_state_t *sess, const char *arg)
+{
+    char *ptr, *buf = sendbuf;
+    int idx = 0, buflen = sizeof(sendbuf), total = 0;
+    int i, count;
+    struct timeval tv;
+
+    if (arg)
+        idx = atoi(arg);
 
     if (gettimeofday(&tv, NULL) != 0)
         goto error;
 
-    buf = http_session_header(sess, &tv);
-    if (!buf)
+    count = snprintf_serial(&buf, &buflen,
+                            "time:%ld%03ld|status:%s|clients:%d|index:%d",
+                            tv.tv_sec, tv.tv_usec/1000,
+                            status_string(sess),
+                            sess->client_len,
+                            idx);
+    if (count < 0)
         goto error;
-    opt_http_write(fd, buf);
+    total += count;
 
-    sendbuf[0] = '\0';
-    buf = sendbuf;
-    buflen = sizeof(sendbuf);
-    total = 0;
+    count = snprintf_serial(&buf, &buflen, "|best:");
+    if (count < 0)
+        goto error;
+    total += count;
+
+    count = report_append(&buf, &buflen, sess, NULL,
+                          &sess->best, sess->best_perf);
+    if (count < 0)
+        goto error;
+    total += count;
 
     for (i = idx; i < sess->log_len; ++i) {
         ptr = buf;
 
-        count = snprintf_serial(&buf, &buflen, "|coord:");
+        count = snprintf_serial(&buf, &buflen, "|trial:");
         if (count < 0)
             goto error;
         total += count;
@@ -756,115 +805,59 @@ int http_session_send(int fd, const char *req)
     return -1;
 }
 
-char *http_session_header(session_state_t *sess, struct timeval *tv)
-{
-    int i, count, total;
-    char *buf;
-    int buflen;
-
-    buf = sendbuf;
-    buflen = sizeof(sendbuf);
-    total = 0;
-
-    count = snprintf_serial(&buf, &buflen, "time:%ld%03ld|status:%s|var:",
-                            tv->tv_sec, tv->tv_usec/1000, status_string(sess));
-    if (count < 0)
-        return NULL;
-    total += count;
-
-    for (i = 0; i < sess->sig.range_len - 1; ++i) {
-        count = snprintf_serial(&buf, &buflen, "g:%s,",
-                                sess->sig.range[i].name);
-        if (count < 0)
-            return NULL;
-        total += count;
-    }
-    count = snprintf_serial(&buf, &buflen, "g:%s", sess->sig.range[i].name);
-    if (count < 0)
-        return NULL;
-    total += count;
-
-    count = snprintf_serial(&buf, &buflen, "|coord:best");
-    if (count < 0)
-        return NULL;
-    total += count;
-
-    count = report_append(&buf, &buflen, sess, NULL,
-                          &sess->best, sess->best_perf);
-    if (count < 0)
-        return NULL;
-    total += count;
-
-    return sendbuf;
-}
-
 int report_append(char **buf, int *buflen, session_state_t *sess,
                   struct timeval *tv, const hpoint_t *pt, const double perf)
 {
-    int i, count, total;
+    int i, count, total = 0;
 
-    total = 0;
     if (tv) {
-        count = snprintf_serial(buf, buflen, "%ld%03ld,%ld%03ld",
-                                tv->tv_sec, tv->tv_usec/1000,
+        count = snprintf_serial(buf, buflen, "%ld%03ld,",
                                 tv->tv_sec, tv->tv_usec/1000);
         if (count < 0)
             return -1;
         total += count;
     }
 
-    for (i = 0; i < pt->n; ++i) {
-        if (pt->id == -1) {
-            count = snprintf_serial(buf, buflen, ",?");
-            if (count < 0)
-                return -1;
-            total += count;
-        }
-        else {
+    if (pt->id == -1) {
+        for (i = 0; i < sess->sig.range_len; ++i) {
             count = snprintf_serial(buf, buflen, ",");
             if (count < 0)
                 return -1;
             total += count;
+        }
+    }
+    else {
+        for (i = 0; i < sess->sig.range_len; ++i) {
+            hval_t *val;
 
-            if (tv) {
-                count = snprintf_serial(buf, buflen, "%s:",
-                                        sess->sig.range[i].name);
-                if (count < 0)
-                    return -1;
-                total += count;
-            }
-
-            switch (pt->val[i].type) {
+            val = &pt->val[i];
+            switch (val->type) {
             case HVAL_INT:
-                count = snprintf_serial(buf, buflen, "%ld",
-                                        pt->val[i].value.i);
+                count = snprintf_serial(buf, buflen, "%ld,", val->value.i);
                 break;
             case HVAL_REAL:
-                count = snprintf_serial(buf, buflen, "%lf",
-                                        pt->val[i].value.r);
+                count = snprintf_serial(buf, buflen, "%.17lf,", val->value.r);
                 break;
-            case HVAL_STR:
-                count = snprintf_serial(buf, buflen, "%s",
-                                        pt->val[i].value.s);
+            case HVAL_STR: {
+                str_bounds_t *bounds = &sess->sig.range[i].bounds.s;
+                unsigned long index = hrange_str_index(bounds, val->value.s);
+                count = snprintf_serial(buf, buflen, "%ld,", index);
                 break;
+            }
             default:
                 return -1;
             }
+
             if (count < 0)
                 return -1;
             total += count;
         }
-    }
 
-    if (pt->id == -1) {
-        count = snprintf_serial(buf, buflen, ",?");
+        count = snprintf_serial(buf, buflen, "%lf", perf);
+        if (count < 0)
+            return -1;
+        total += count;
     }
-    else {
-        count = snprintf_serial(buf, buflen, ",%lf", perf);
-    }
-    if (count < 0)
-        return -1;
-    total += count;
 
     return total;
 }

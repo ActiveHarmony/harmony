@@ -36,61 +36,78 @@ along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
   </head>
 
   <body>
-
     <div id="status_div" style="float:left">
       <table>
         <tr>
-          <td>Session Name:</td><td id="app_name"></td>
+          <td>Session Name:</td>
+          <td id="app_name"></td>
         </tr>
         <tr>
-          <td>Session Strategy:</td><td id="app_strategy"></td>
+          <td>Session Strategy:</td>
+          <td id="app_strategy"></td>
         </tr>
         <tr>
-          <td>Session Status:</td><td id="app_status"></td>
+          <td>Session Status:</td>
+          <td id="app_status">Loading session data.  Please wait.</td>
+        </tr>
+        <tr>
+          <td>Connected Clients:</td>
+          <td id="app_clients"></td>
         </tr>
       </table>
     </div>
 
     <div id="ui_ctl_div" style="float:right">
-      <ul style="list-style-type:none; margin:0; padding:0">
-        <li style="display:inline">Refresh Interval:
-          <select id="interval" onchange="updateInterval()">
-            <option value="1000">1</option>
-            <option value="5000" selected>5</option>
-            <option value="10000">10</option>
-            <option value="30000">30</option>
-            <option value="60000">60</option>
-            </select>
-        </li>
-        <li id="svr_time" style="display:inline">
-        </li>
-      </ul>
-      <ul style="list-style-type:none; margin:0; padding:0">
-        <li style="display:inline">
-          View:
-          <select id="view_list" onchange="drawChart()">
-            <option>Timeline</option>
-          </select>
-        </li>
-        <li style="display:inline">
-          Table Length:
-          <select id="table_len" onchange="updateDataTable()">
-            <option>5</option>
-            <option selected>10</option>
-            <option>25</option>
-            <option>50</option>
-          </select>
-        </li>
-        <li style="display:inline">
-          Chart Size:
-          <select id="chart_size" onchange="updatePlotSize()">
-            <option>640x480</option>
-            <option>800x600</option>
-            <option>1024x768</option>
-            <option>1200x1024</option>
-          </select>
-        </li>
-      </ul>
+      Refresh Interval:
+      <select id="interval" onchange="updateInterval()">
+        <option value="1000">1</option>
+        <option value="5000">5</option>
+        <option value="10000">10</option>
+        <option value="30000">30</option>
+        <option value="60000">60</option>
+      </select>
+      <span id="svr_time"></span>
+
+      <hr class="thin" />
+      View:
+      <select id="view_list" onchange="redrawChart()">
+        <option id="view_opts">Timeline</option>
+      </select>
+      Chart Size:
+      <select id="chart_size" onchange="updatePlotSize()">
+        <option>400x300</option>
+        <option selected>640x480</option>
+        <option>800x600</option>
+        <option>1024x768</option>
+        <option>1200x1024</option>
+      </select>
+
+      <hr class="thin" />
+      Table Length:
+      <select id="table_len" onchange="redrawTable()">
+        <option>5</option>
+        <option selected>10</option>
+        <option>25</option>
+        <option>50</option>
+      </select>
+      Report Precision:
+      <select id="precision" onchange="redrawBest(false); redrawTable()">
+        <option>2</option>
+        <option>3</option>
+        <option selected>4</option>
+        <option>5</option>
+        <option>6</option>
+        <option>7</option>
+        <option>8</option>
+        <option>9</option>
+        <option>10</option>
+        <option>11</option>
+        <option>12</option>
+        <option>13</option>
+        <option>14</option>
+        <option>15</option>
+        <option>16</option>
+      </select>
     </div>
 
     <div id ="sess_ctl_div" style="clear:both; float:left">
@@ -104,24 +121,25 @@ along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
 
     <div style="clear:both">
       <hr />
-      <div id="plot_area">
+      <div id="plot_div">
       </div>
-      <div id="table_area">
-        <table id="data_table">
+      <div id="table_div">
+        <table>
           <thead>
             <tr>
-              <td style="border:none"></td>
+              <th id="table_head" style="border:none"></th>
             </tr>
           </thead>
-
           <tbody>
-            <tr id="data_table_row_best">
-              <td>Best</td>
+            <tr>
+              <td id="table_best">Best</td>
             </tr>
+          </tbody>
+          <tbody id="table_body">
           </tbody>
         </table>
       </div>
-
     </div>
+
   </body>
 </html>

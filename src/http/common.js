@@ -17,77 +17,98 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-function abort(message) {
-    alert(message);
-    throw new Error("Exiting on error.");
+var ajaxErrorHandler = ajaxDefaultErrorFunc;
+
+function ajaxDefaultErrorFunc(hdr, status, message)
+{
+    alert("AJAX Error: " + message + "(" + status + ")");
+    throw new Error("Abort");
 }
 
-var ajax;
-var ajax_error_function = abort;
-
-function AJAXinit(func) {
+function ajaxSetup(func)
+{
     if (func)
-        ajax_error_function = func;
+        ajaxErrorHandler = func;
 
-    try {
-        if (window.XMLHttpRequest)
-            xmlhttp = new XMLHttpRequest(); // IE7+ and modern browsers
-        else // IE6, IE5
-            xmlhttp = new ActiveXObject("Microsoft.XMLHTTP");
-    }
-    catch (exception) {
-        ajax_error_function(exception.name);
-    }
+    $.ajaxSetup({
+        cache: false,
+        error: ajaxErrorHandler,
+    });
 }
 
-function AJAXsend(URL) {
-    try {
-        xmlhttp.open("GET", URL, false);
-        xmlhttp.send();
-    }
-    catch (exception) {
-        ajax_error_function(exception.name);
-    }
-
-    if (xmlhttp.responseText == "FAIL")
-        ajax_error_function("Dead");
-
-    return xmlhttp.responseText;
+function ajaxSend(url, callback)
+{
+    $.get(url, function(data) {
+        if (data == "FAIL") {
+            ajaxErrorHandler(null, "Dead", null);
+        }
+        else if (callback) {
+            callback(data);
+        }
+    });
 }
 
-function dateString(milliseconds) {
+function keyval(text)
+{
+    var arr = text.split(":", 2);
+    return {
+        key: arr[0],
+        val: arr[1]
+    };
+}
+
+function fullDate(milliseconds)
+{
     var d = new Date();
-    d.setTime(milliseconds);
-    return d.toLocaleDateString();
+    if (milliseconds)
+        d.setTime(milliseconds);
+    return d.toLocaleDateString() + " " + d.toLocaleTimeString();
 }
 
-function timeString(milliseconds) {
+function timeDate(milliseconds)
+{
     var d = new Date();
-    d.setTime(milliseconds);
+    if (milliseconds)
+        d.setTime(milliseconds);
     return d.toLocaleTimeString();
 }
 
-/* Restart session */
-function sendRestart(name, init) {
+function requestOverview(callback)
+{
+    ajaxSend("session-list", callback);
+}
+
+function requestInit(name, callback)
+{
+    ajaxSend("init?" + name, callback);
+}
+
+function requestRefresh(name, index, callback)
+{
+    ajaxSend("refresh?" + name + "&" + index, callback);
+}
+
+function requestRestart(name, init)
+{
     var command = "restart?" + name;
 
     if (init && init.length > 0)
         command += "&" + init;
 
-    AJAXsend(encodeURI(command.trim()));
+    ajaxSend(encodeURI(command.trim()));
 }
 
-/* Pause session */
-function sendPause(name) {
-    AJAXsend("pause?" + name);
+function requestPause(name)
+{
+    ajaxSend("pause?" + name);
 }
 
-/* Resume session */
-function sendResume(name) {
-    AJAXsend("resume?" + name);
+function requestResume(name)
+{
+    ajaxSend("resume?" + name);
 }
 
-/* Kill session */
-function sendKill(name) {
-    AJAXsend("kill?" + name);
+function requestKill(name)
+{
+    ajaxSend("kill?" + name);
 }

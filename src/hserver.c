@@ -753,6 +753,9 @@ session_state_t *session_open(hmesg_t *mesg)
         goto error;
 
     cfgstr = hcfg_get(mesg->data.session.cfg, CFGKEY_SESSION_STRATEGY);
+    if (!cfgstr)
+        cfgstr = DEFAULT_STRATEGY;
+
     sess->strategy = stralloc(cfgstr);
     sess->status = 0x0;
     sess->log_len = 0;
