@@ -112,7 +112,7 @@ session_state_t *find_session(const char *name);
 int http_request_handle(int fd, char *req);
 char *http_request_recv(int fd, char *buf, int buflen, char **data);
 int http_chunk_send(int fd, const char *data, int datalen);
-int http_overview_send(int fd);
+int http_send_overview(int fd);
 int http_send_init(int fd, session_state_t *sess);
 int http_send_refresh(int fd, session_state_t *sess, const char *arg);
 int report_append(char **buf, int *buflen, session_state_t *sess,
@@ -368,7 +368,7 @@ int http_request_handle(int fd, char *req)
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        http_overview_send(fd);
+        http_send_overview(fd);
         opt_http_write(fd, "");
         return 0;
     }
@@ -575,7 +575,7 @@ char *http_request_recv(int fd, char *buf, int buflen, char **data)
     return retval;
 }
 
-int http_overview_send(int fd)
+int http_send_overview(int fd)
 {
     char *buf, *ptr;
     int i, j, buflen, count, total;
@@ -608,6 +608,13 @@ int http_overview_send(int fd)
         }
         else {
             for (j = 0; j < slist[i].best.n; ++j) {
+                if (j > 0) {
+                    count = snprintf_serial(&buf, &buflen, " ");
+                    if (count < 0)
+                        return -1;
+                    total += count;
+                }
+
                 switch (slist[i].best.val[j].type) {
                 case HVAL_INT:
                     count = snprintf_serial(&buf, &buflen, "%ld",
@@ -633,20 +640,13 @@ int http_overview_send(int fd)
                 default:
                     break;
                 }
-
-                if (j != slist[i].best.n - 1) {
-                    count = snprintf_serial(&buf, &buflen, " ");
-                    if (count < 0)
-                        return -1;
-                    total += count;
-                }
             }
-
-            count = snprintf_serial(&buf, &buflen, "|");
-            if (count < 0)
-                return -1;
-            total += count;
         }
+
+        count = snprintf_serial(&buf, &buflen, "|");
+        if (count < 0)
+            return -1;
+        total += count;
 
         if (total >= sizeof(sendbuf)) {
             /* Corner Case: No room for any session data.  Error out. */
@@ -667,7 +667,8 @@ int http_overview_send(int fd)
         }
     }
 
-    opt_http_write(fd, sendbuf);
+    if (sendbuf[0])
+        opt_http_write(fd, sendbuf);
     return 0;
 }
 
