@@ -24,6 +24,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 const hpoint_t HPOINT_INITIALIZER = {-1, 0, NULL, 0};
 
@@ -82,6 +83,80 @@ int hpoint_copy(hpoint_t *copy, const hpoint_t *orig)
             copy->memlevel = 1;
         }
     }
+
+    return 0;
+}
+
+int hpoint_align(hpoint_t *pt, hsignature_t *sig)
+{
+    int i;
+
+    if (pt->n != sig->range_len)
+        return -1;
+
+    for (i = 0; i < pt->n; ++i) {
+        hval_t *val = &pt->val[i];
+
+        if (val->type != sig->range[i].type)
+            return -1;
+
+        switch (sig->range[i].type) {
+        case HVAL_INT:
+            val->value.i = hrange_int_nearest(&sig->range[i].bounds.i,
+                                              val->value.i);
+            break;
+
+        case HVAL_REAL:
+            val->value.r = hrange_real_nearest(&sig->range[i].bounds.r,
+                                               val->value.r);
+            break;
+
+        case HVAL_STR: {
+            unsigned long idx = hrange_str_index(&sig->range[i].bounds.s,
+                                                 val->value.s);
+            if (pt->memlevel == 1)
+                free((char *)val->value.s);
+
+            val->value.s = sig->range[i].bounds.s.set[idx];
+            break;
+        }
+
+        default:
+            return -1;
+        }
+    }
+
+    pt->memlevel = 0;
+    return 0;
+}
+
+int hpoint_parse(hpoint_t *pt, hsignature_t *sig, const char *buf)
+{
+    int i, span;
+
+    if (pt->n != sig->range_len) {
+        hpoint_fini(pt);
+        hpoint_init(pt, sig->range_len);
+    }
+
+    for (i = 0; i < pt->n; ++i) {
+        pt->val[i].type = sig->range[i].type;
+
+        span = hval_parse(&pt->val[i], buf);
+        if (span < 0)
+            return -1;
+        buf += span;
+
+        if (pt->val[i].type == HVAL_STR)
+            pt->memlevel = 1;
+
+        /* Skip whitespace and a single separator character. */
+        while (isspace(*buf)) ++buf;
+        if (*buf == ',' || *buf == ';')
+            ++buf;
+    }
+    if (*buf != '\0')
+        return -1;
 
     return 0;
 }

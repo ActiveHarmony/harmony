@@ -221,7 +221,7 @@ int main(int argc, char **argv)
         }
 
         /* Update the performance result */
-        if (harmony_report(hdesc, perf) < 0) {
+        if (harmony_report(hdesc, &perf) < 0) {
             fprintf(stderr, "Failed to report performance to server.\n");
             goto cleanup;
         }
@@ -230,7 +230,7 @@ int main(int argc, char **argv)
             break;
     }
 
-    if (harmony_best(hdesc) == 0) {
+    if (harmony_best(hdesc) >= 0) {
         printf("Best configuration found:\n");
         for (i = 0; i < bcount; ++i) {
             printf("\t%s: ", binfo[i].name);

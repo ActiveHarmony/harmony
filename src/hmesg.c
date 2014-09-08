@@ -47,22 +47,25 @@ void hmesg_scrub(hmesg_t *mesg)
         }
         break;
 
+    case HMESG_BEST:
     case HMESG_FETCH:
-        if (mesg->status == HMESG_STATUS_OK) {
-            hpoint_fini(&mesg->data.fetch.cand);
-            hpoint_fini(&mesg->data.fetch.best);
+        if (mesg->status == HMESG_STATUS_OK ||
+            mesg->status == HMESG_STATUS_BUSY)
+        {
+            hpoint_fini(&mesg->data.point);
         }
         break;
 
     case HMESG_REPORT:
         if (mesg->status == HMESG_STATUS_REQ)
-            hpoint_fini(&mesg->data.fetch.cand);
+            hperf_fini(mesg->data.report.perf);
         break;
 
     default:
         break;
         /* All other cases have no heap memory to release. */
     }
+    mesg->type = HMESG_UNKNOWN;
 }
 
 void hmesg_fini(hmesg_t *mesg)
@@ -95,8 +98,10 @@ int hmesg_serialize(hmesg_t *mesg)
     case HMESG_JOIN:    type_str = "JOI"; break;
     case HMESG_GETCFG:  type_str = "QRY"; break;
     case HMESG_SETCFG:  type_str = "INF"; break;
+    case HMESG_BEST:    type_str = "BST"; break;
     case HMESG_FETCH:   type_str = "FET"; break;
     case HMESG_REPORT:  type_str = "REP"; break;
+    case HMESG_RESTART: type_str = "RES"; break;
     default: goto invalid;
     }
 
@@ -117,10 +122,7 @@ int hmesg_serialize(hmesg_t *mesg)
     if (count < 0) goto error;
     total += count;
 
-    if (mesg->status == HMESG_STATUS_BUSY) {
-        /* Busy messages contain no data. */
-    }
-    else if (mesg->status == HMESG_STATUS_FAIL) {
+    if (mesg->status == HMESG_STATUS_FAIL) {
         count = printstr_serial(&buf, &buflen, mesg->data.string);
         if (count < 0) goto error;
         total += count;
@@ -148,21 +150,12 @@ int hmesg_serialize(hmesg_t *mesg)
             total += count;
             break;
 
+        case HMESG_BEST:
         case HMESG_FETCH:
-            if (mesg->status == HMESG_STATUS_REQ) {
-                count = snprintf_serial(&buf, &buflen, "%d ",
-                                        mesg->data.fetch.best.id);
-                if (count < 0) goto error;
-                total += count;
-            }
-            else if (mesg->status == HMESG_STATUS_OK) {
-                count = hpoint_serialize(&buf, &buflen,
-                                         &mesg->data.fetch.cand);
-                if (count < 0) goto error;
-                total += count;
-
-                count = hpoint_serialize(&buf, &buflen,
-                                         &mesg->data.fetch.best);
+            if (mesg->status == HMESG_STATUS_OK ||
+                mesg->status == HMESG_STATUS_BUSY)
+            {
+                count = hpoint_serialize(&buf, &buflen, &mesg->data.point);
                 if (count < 0) goto error;
                 total += count;
             }
@@ -170,16 +163,18 @@ int hmesg_serialize(hmesg_t *mesg)
 
         case HMESG_REPORT:
             if (mesg->status == HMESG_STATUS_REQ) {
-                count = hpoint_serialize(&buf, &buflen,
-                                         &mesg->data.report.cand);
+                count = snprintf_serial(&buf, &buflen, "%d ",
+                                        mesg->data.report.cand_id);
                 if (count < 0) goto error;
                 total += count;
 
-                count = snprintf_serial(&buf, &buflen, "%la ",
-                                        mesg->data.report.perf);
+                count = hperf_serialize(&buf, &buflen, mesg->data.report.perf);
                 if (count < 0) goto error;
                 total += count;
             }
+            break;
+
+        case HMESG_RESTART:
             break;
 
         default:
@@ -244,8 +239,10 @@ int hmesg_deserialize(hmesg_t *mesg)
     else if (strcmp(type_str, "JOI") == 0) mesg->type = HMESG_JOIN;
     else if (strcmp(type_str, "QRY") == 0) mesg->type = HMESG_GETCFG;
     else if (strcmp(type_str, "INF") == 0) mesg->type = HMESG_SETCFG;
+    else if (strcmp(type_str, "BST") == 0) mesg->type = HMESG_BEST;
     else if (strcmp(type_str, "FET") == 0) mesg->type = HMESG_FETCH;
     else if (strcmp(type_str, "REP") == 0) mesg->type = HMESG_REPORT;
+    else if (strcmp(type_str, "RES") == 0) mesg->type = HMESG_RESTART;
     else goto invalid;
 
     if      (strcmp(status_str, "REQ") == 0) mesg->status = HMESG_STATUS_REQ;
@@ -254,10 +251,7 @@ int hmesg_deserialize(hmesg_t *mesg)
     else if (strcmp(status_str, "BSY") == 0) mesg->status = HMESG_STATUS_BUSY;
     else goto invalid;
 
-    if (mesg->status == HMESG_STATUS_BUSY) {
-        /* Busy messages contain no data. */
-    }
-    else if (mesg->status == HMESG_STATUS_FAIL) {
+    if (mesg->status == HMESG_STATUS_FAIL) {
         count = scanstr_serial(&mesg->data.string, buf + total);
         if (count < 0) goto error;
         total += count;
@@ -287,23 +281,13 @@ int hmesg_deserialize(hmesg_t *mesg)
             total += count;
             break;
 
+        case HMESG_BEST:
         case HMESG_FETCH:
-            if (mesg->status == HMESG_STATUS_REQ) {
-                if (sscanf(buf + total, " %d%n",
-                           &mesg->data.fetch.best.id, &count) < 1)
-                    goto invalid;
-                total += count;
-            }
-            else if (mesg->status == HMESG_STATUS_OK) {
-                mesg->data.fetch.cand = HPOINT_INITIALIZER;
-                count = hpoint_deserialize(&mesg->data.fetch.cand,
-                                           buf + total);
-                if (count < 0) goto error;
-                total += count;
-
-                mesg->data.fetch.best = HPOINT_INITIALIZER;
-                count = hpoint_deserialize(&mesg->data.fetch.best,
-                                           buf + total);
+            if (mesg->status == HMESG_STATUS_OK ||
+                mesg->status == HMESG_STATUS_BUSY)
+            {
+                mesg->data.point = HPOINT_INITIALIZER;
+                count = hpoint_deserialize(&mesg->data.point, buf + total);
                 if (count < 0) goto error;
                 total += count;
             }
@@ -311,17 +295,19 @@ int hmesg_deserialize(hmesg_t *mesg)
 
         case HMESG_REPORT:
             if (mesg->status == HMESG_STATUS_REQ) {
-                mesg->data.fetch.cand = HPOINT_INITIALIZER;
-                count = hpoint_deserialize(&mesg->data.report.cand,
-                                           buf + total);
-                if (count < 0) goto error;
-                total += count;
-
-                if (sscanf(buf + total, " %la%n",
-                           &mesg->data.report.perf, &count) < 1)
+                if (sscanf(buf + total, " %d%n",
+                           &mesg->data.report.cand_id, &count) < 1)
                     goto invalid;
                 total += count;
+
+                count = hperf_deserialize(&mesg->data.report.perf,
+                                          buf + total);
+                if (count < 0) goto error;
+                total += count;
             }
+            break;
+
+        case HMESG_RESTART:
             break;
 
         default:

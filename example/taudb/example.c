@@ -22,6 +22,7 @@
 #include <strings.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <math.h>
 
 #include <sys/utsname.h>
 #include <stdbool.h>
@@ -149,7 +150,7 @@ int main(int argc, char **argv)
     const char *name;
     hdesc_t *hdesc;
     int i, retval, loop = 200;
-    long perf = -1000;
+    double perf = -INFINITY;
     char *metadata;
 
     /* Variables to hold the application's runtime tunable parameters.
@@ -293,13 +294,13 @@ int main(int argc, char **argv)
 
         if (hresult > 0) {
             /* Only print performance if new values were fetched. */
-            printf("%ld, %ld, %ld, %ld, %ld, %ld = %ld\n",
+            printf("%ld, %ld, %ld, %ld, %ld, %ld = %lf\n",
                    param_1, param_2, param_3,
                    param_4, param_5, param_6, perf);
         }
 
         /* Report the performance we've just measured. */
-        if (harmony_report(hdesc, perf) < 0) {
+        if (harmony_report(hdesc, &perf) < 0) {
             fprintf(stderr, "Failed to report performance to server.\n");
             retval = -1;
             goto cleanup;

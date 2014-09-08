@@ -181,7 +181,7 @@ int main(int argc, char **argv)
         }
 
         /* Report the performance we've just measured. */
-        if (harmony_report(hdesc, perf) != 0) {
+        if (harmony_report(hdesc, &perf) != 0) {
             fprintf(stderr, "Failed to report performance to server.\n");
             retval = -1;
             goto cleanup;
@@ -200,7 +200,7 @@ int main(int argc, char **argv)
         retval = -1;
     }
 
-    if (harmony_best(hdesc) == 0) {
+    if (harmony_best(hdesc) >= 0) {
         printf("\n");
         printf("Optimal point:      ( 15,  30,  45,  60,  75,  90)\n");
         printf("Best point found:   "

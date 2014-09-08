@@ -26,16 +26,16 @@
 extern "C" {
 #endif
 
-typedef double (*benchfunc_t)(int n, double x[], double option[]);
+typedef double benchfunc_t(int n, double x[], double option[]);
 
 typedef struct finfo {
-    char *name;
+    const char *name;
     char *title;
     int n_max;
     double b_min;
     double b_max;
     double optimal;
-    benchfunc_t f;
+    benchfunc_t *f;
     char *description;
 } finfo_t;
 

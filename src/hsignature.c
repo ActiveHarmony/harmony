@@ -33,6 +33,136 @@ const hsignature_t HSIGNATURE_INITIALIZER = {0};
 /*
  * Harmony range related function definitions.
  */
+unsigned long hrange_max_idx(hrange_t *range)
+{
+    switch (range->type) {
+    case HVAL_INT:  return hrange_int_max_idx(&range->bounds.i);
+    case HVAL_REAL: return hrange_real_max_idx(&range->bounds.r);
+    case HVAL_STR:  return hrange_str_max_idx(&range->bounds.s);
+    default:
+        return 0;
+    }
+    return 0;
+}
+
+unsigned long hrange_int_max_idx(int_bounds_t *bound)
+{
+    return (bound->max - bound->min) / bound->step;
+}
+
+unsigned long hrange_int_index(int_bounds_t *bound, long val)
+{
+    unsigned long max_idx = hrange_int_max_idx(bound);
+    double idx;
+
+    idx  = val - bound->min;
+    idx /= bound->step;
+    idx += 0.5;
+
+    if (idx < 0.0)
+        idx = 0.0;
+    if (idx > max_idx)
+        idx = max_idx;
+
+    return idx;
+}
+
+long hrange_int_value(int_bounds_t *bound, unsigned long idx)
+{
+    unsigned long max_idx = hrange_int_max_idx(bound);
+
+    if (idx < 0.0)
+        idx = 0.0;
+    if (idx > max_idx)
+        idx = max_idx;
+
+    return bound->min + idx * bound->step;
+}
+
+long hrange_int_nearest(int_bounds_t *bound, long val)
+{
+    return bound->min + hrange_int_index(bound, val) * bound->step;
+}
+
+unsigned long hrange_real_max_idx(real_bounds_t *bound)
+{
+    if (bound->step > 0.0)
+        return (bound->max - bound->min) / bound->step;
+    return 0;
+}
+
+unsigned long hrange_real_index(real_bounds_t *bound, double val)
+{
+    unsigned long max_idx = hrange_real_max_idx(bound);
+    double idx;
+
+    idx  = val - bound->min;
+    idx /= bound->step;
+    idx += 0.5;
+
+    if (idx < 0.0)
+        idx = 0.0;
+    if (idx > max_idx)
+        idx = max_idx;
+
+    return idx;
+}
+
+double hrange_real_value(real_bounds_t *bound, unsigned long idx)
+{
+    unsigned long max_idx = hrange_real_max_idx(bound);
+
+    if (idx < 0.0)
+        idx = 0.0;
+    if (idx > max_idx)
+        idx = max_idx;
+
+    return bound->min + idx * bound->step;
+}
+
+double hrange_real_nearest(real_bounds_t *bound, double val)
+{
+    if (bound->step > 0.0) {
+        val = bound->min + hrange_real_index(bound, val) * bound->step;
+    }
+    else {
+        if (val < bound->min)
+            val = bound->min;
+        if (val > bound->max)
+            val = bound->max;
+    }
+    return val;
+}
+
+unsigned long hrange_str_max_idx(str_bounds_t *bound)
+{
+    return bound->set_len - 1;
+}
+
+unsigned long hrange_str_index(str_bounds_t *bound, const char *val)
+{
+    unsigned long idx;
+
+    for (idx = 0; idx < bound->set_len; ++idx) {
+        if (strcmp(bound->set[idx], val) == 0)
+            break;
+    }
+    if (idx >= bound->set_len)
+        idx = 0;
+
+    return idx;
+}
+
+const char *hrange_str_value(str_bounds_t *bound, unsigned long idx)
+{
+    if (idx < 0)
+        idx = 0;
+    if (idx > bound->set_len - 1)
+        idx = bound->set_len - 1;
+
+    return bound->set[idx];
+}
+
 hrange_t *hrange_find(hsignature_t *sig, const char *name)
 {
     int i;
@@ -77,6 +207,7 @@ void hrange_fini(hrange_t *range)
     if (range->type == HVAL_STR) {
         for (i = 0; i < range->bounds.s.set_len; ++i)
             free(range->bounds.s.set[i]);
+        free(range->bounds.s.set);
     }
     *range = HRANGE_INITIALIZER;
 }
@@ -302,13 +433,8 @@ void hsignature_fini(hsignature_t *sig)
 {
     int i;
 
-    for (i = 0; i < sig->range_len; ++i) {
-        free(sig->range[i].name);
-        if (sig->range[i].type == HVAL_STR) {
-            sig->range[i].name = NULL;
-            hrange_fini(&sig->range[i]);
-        }
-    }
+    for (i = 0; i < sig->range_len; ++i)
+        hrange_fini(&sig->range[i]);
 
     free(sig->range);
     free(sig->name);
@@ -538,6 +664,7 @@ int hsignature_deserialize(hsignature_t *sig, char *buf)
     }
 
     for (i = 0; i < sig->range_len; ++i) {
+        sig->range[i] = HRANGE_INITIALIZER;
         count = hrange_deserialize(&sig->range[i], buf + total);
         if (count < 0) goto invalid;
         total += count;

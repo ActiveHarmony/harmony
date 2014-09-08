@@ -22,6 +22,7 @@
 
 #include "hsignature.h"
 #include "hpoint.h"
+#include "hperf.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,7 +30,7 @@ extern "C" {
 
 typedef struct vertex {
     int id;
-    double perf;
+    hperf_t *perf;
     double term[];
 } vertex_t;
 
@@ -38,17 +39,17 @@ typedef struct simplex {
     vertex_t *vertex[];
 } simplex_t;
 
-int        libvertex_init(hsignature_t *sig);
+int libvertex_init(hsignature_t *sig);
+const vertex_t *vertex_min(void);
+const vertex_t *vertex_max(void);
 
-vertex_t  *vertex_alloc();
+vertex_t * vertex_alloc();
 void       vertex_reset(vertex_t *v);
 int        vertex_copy(vertex_t *dst, const vertex_t *src);
 void       vertex_free(vertex_t *v);
-int        vertex_min(vertex_t *v);
 int        vertex_center(vertex_t *v);
-int        vertex_max(vertex_t *v);
-int        vertex_incr(vertex_t *v);
 int        vertex_rand(vertex_t *v);
+int        vertex_rand_trim(vertex_t *v, double trim);
 double     vertex_dist(const vertex_t *v1, const vertex_t *v2);
 void       vertex_transform(const vertex_t *src, const vertex_t *wrt,
                             double coefficient, vertex_t *result);
@@ -56,6 +57,8 @@ int        vertex_outofbounds(const vertex_t *v);
 int        vertex_regrid(vertex_t *v);
 int        vertex_to_hpoint(const vertex_t *v, hpoint_t *result);
 int        vertex_from_hpoint(const hpoint_t *pt, vertex_t *result);
+int        vertex_from_string(const char *str, hsignature_t *sig,
+                              vertex_t *result);
 
 simplex_t *simplex_alloc(int m);
 void       simplex_reset(simplex_t *s);
@@ -68,9 +71,8 @@ int        simplex_outofbounds(const simplex_t *s);
 int        simplex_regrid(simplex_t *s);
 int        simplex_from_vertex(const vertex_t *v, double percent,
                                simplex_t *s);
-int        simplex_from_vertex_fast(const vertex_t *v, double percent,
-                                    simplex_t *s);
 int        simplex_collapsed(const simplex_t *s);
+int simplex_set_vertex(simplex_t *s, const vertex_t *v, int n);
 
 #ifdef __cplusplus
 }

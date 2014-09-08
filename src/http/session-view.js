@@ -18,273 +18,303 @@
  */
 
 /* Global Variables */
-var xmlhttp;
-var viewData = new Array();
-var viewChart;
 var appName;
+var sig;
+var trials = new Array();
+var best;
+var chartData;
+var intervalHandle;
+var timezoneOffset;
+
+function shutdown_comm(xhr, status, error)
+{
+    if (intervalHandle)
+        clearInterval(intervalHandle);
+
+    $("#app_status").html(status);
+    $("#sess_ctl_div :input").attr("disabled", true);
+    $("#interval").attr("disabled", true);
+}
 
 // Effectively, the main() routine for this program.
 $(document).ready(function(){
-    if (window.XMLHttpRequest)
-        xmlhttp = new XMLHttpRequest(); // IE7+, Firefox, Chrome, Opera, Safari
-    else
-        xmlhttp = new ActiveXObject("Microsoft.XMLHTTP"); // IE6, IE5
+    ajaxSetup(shutdown_comm);
 
-    viewData.push(new Array());
+    var d = new Date();
+    timezoneOffset = d.getTimezoneOffset() * 60 * 1000;
+
     var s_idx = document.URL.indexOf("?");
     appName = document.URL.slice(s_idx + 1);
+    $("#app_name").html(appName);
 
-    updatePlotSize();
-    refresh();
+    requestInit(appName, handleInitData);
 });
 
-function date2Str(milliseconds) {
-    if (typeof d == "undefined")
-        d = new Date();
-
-    d.setTime(milliseconds);
-    var retval = d.getFullYear() + "/";
-    if (d.getMonth() < 9)
-        retval += "0";
-    retval += (d.getMonth() + 1) + "/";
-    if (d.getDate() < 10)
-        retval += "0";
-    retval += d.getDate() + " ";
-
-    if (d.getHours() < 10)
-        retval += "0";
-    retval += d.getHours() + ":";
-    if (d.getMinutes() < 10)
-        retval += "0";
-    retval += d.getMinutes() + ":";
-    if (d.getSeconds() < 10)
-        retval += "0";
-    retval += d.getSeconds();
-
-    return retval;
-}
-
-var best_coord = new Array();
-var coords = new Array();
-var chartDataIdx;
-var varList;
-var tableColMap;
-
-var refreshInterval = 5000;
-function refresh() {
-    xmlhttp.open("GET", "session-data?"+appName+"&"+coords.length, false);
-    xmlhttp.send();
-    var pairs = xmlhttp.responseText.split("|");
-    var newCoords = 0;
+function handleInitData(data)
+{
+    var pairs = data.split("|");
 
     for (var i = 0; i < pairs.length; ++i) {
-        var sep = pairs[i].search(":");
-        if (sep == -1) {
-            continue;
+        var pair = keyval(pairs[i]);
+
+        switch (pair.key) {
+        case "sig":
+            updateSignature(pair.val);
+            break;
+        case "strat":
+            $("#app_strategy").html(pair.val);
+            break;
+        default:
+            alert("Protocol error: Static data: " + pairs[i]);
+            break;
         }
-        var key = pairs[i].substr(0, sep);
-        var val = pairs[i].substr(++sep);
+    }
 
-        switch (key) {
+    chartData = new Array();
+    for (var i = 0; i < sig.varNames.length + 1; ++i)
+        chartData[i] = new Array();
+    refresh();
+
+    updateTableHeader();
+    updateViewList();
+    updatePlotSize();
+    updateInterval();
+    $("#table_div").css("display", "inherit");
+}
+
+function updateSignature(sig_string)
+{
+    sig = new Object();
+    sig.varNames = new Array();
+    sig.varTypes = new Array();
+    sig.setVals  = new Array();
+
+    var ranges = sig_string.split(",");
+    for (var i = 0; i < ranges.length; ++i) {
+        var arr = ranges[i].split(";");
+        var name = arr.shift();
+        var type = arr.shift();
+
+        sig.varNames[i] = name;
+        sig.varTypes[i] = type;
+        if (type == "s")
+            sig.setVals[i] = arr;
+    }
+}
+
+function updateTableHeader()
+{
+    var cell = $("#table_head");
+    var names = sig.varNames.concat(["Performance"]);
+
+    for (var i = 0; i < names.length; ++i) {
+        if (cell.is(":last-child"))
+            cell.after("<th></th>");
+        cell = cell.next("th");
+        cell.html(names[i]);
+    }
+    cell.nextAll("th").remove();
+}
+
+function updateViewList()
+{
+    var list = $("#view_opts");
+
+    for (var i = 0; i < sig.varNames.length; ++i) {
+        if (list.is(":last-child"))
+            list.after("<option></option>");
+        list = list.next("option");
+        list.text(sig.varNames[i]);
+    }
+    list.nextAll("option").remove();
+}
+
+function updatePlotSize()
+{
+    var dim = $("#chart_size").val().split("x");
+    $("#plot_div").css("width",  dim[0] + "px");
+    $("#plot_div").css("height", dim[1] + "px");
+}
+
+function updateInterval()
+{
+    var delay = $("#interval").val();
+
+    if (intervalHandle)
+        clearInterval(intervalHandle);
+
+    intervalHandle = setInterval(refresh, delay);
+}
+
+function handleRefreshData(data)
+{
+    var pairs = data.split("|");
+    var oldTrialsLength = trials.length;
+    var index;
+
+    /* mechanism only updates parts of the page that need to be updated
+      (what was sent from the session with the session data request) */
+    for (var i = 0; i < pairs.length; ++i) {
+        var pair = keyval(pairs[i]);
+
+        switch (pair.key) {
         case "time":
-            document.getElementById("svr_time").innerHTML = date2Str(val);
+            $("#svr_time").html(fullDate(pair.val));
             break;
-        case "app":
-            document.getElementById("appName").innerHTML = val;
+        case "status":
+            $("#app_status").html("Active - " + pair.val);
             break;
-        case "var":
-            updateVarList(val);
+        case "best":
+            best = parseTrial("Best," + pair.val);
+            redrawBest(true);
             break;
-        case "coord":
-            var c_arr = val.split(",");
-
-            if (c_arr[0] == "best") {
-                best_coord = c_arr;
-                var row = document.getElementById("data_table_row_best");
-                for (var j = 1; j < best_coord.length; ++j) {
-                    if (row.cells[j].innerHTML != best_coord[j]) {
-                        row.cells[j].style.background = "GreenYellow";
-                        row.cells[j].innerHTML = best_coord[j];
-                    } else {
-                        row.cells[j].style.backgroundColor = "inherit";
-                    }
-                }
-
-            } else {
-                coords.push(c_arr);
-                updateChartData(c_arr);
-                newCoords = 1;
+        case "clients":
+            $("#app_clients").html(pair.val);
+            break;
+        case "index":
+            index = parseInt(pair.val);
+            break;
+        case "trial":
+            if (index == trials.length) {
+                appendTrial(pair.val);
             }
+            else if (index > trials.length) {
+                alert("Timing error: Invalid index. (Got:" +
+                      index + " Expecting:" + trials.length + ")");
+            }
+            ++index;
             break;
 
         default:
-            alert("Unknown key in data pair: [ " + pairs[i] + "]");
+            alert("Protocol error: Refresh data: " + pairs[i]);
         }
     }
 
-    if (newCoords) {
-        updateDataTable();
-        drawChart();
+    if (oldTrialsLength != trials.length) {
+        redrawTable();
+        redrawChart();
     }
-
-    var i_select = document.getElementById("interval");
-    setTimeout("refresh()", i_select[ i_select.selectedIndex ].value);
 }
 
-function updateChartData(arr) {
-    var timestamp = parseInt(arr[0]);
-    var perf = parseFloat(arr.slice(-1));
-    viewData[0].push([timestamp, perf]);
+function appendTrial(trial_string)
+{
+    var trial = parseTrial(trial_string);
 
-    for (var i = 2; i < arr.length - 1; ++i) {
-        var sep = arr[i].search(":");
-        if (sep == -1) {
-            continue;
+    var xvals = [trial["time"] - timezoneOffset].concat(trial);
+    for (var i = 0; i < xvals.length; ++i) {
+        var point = new Array();
+        point[0] = xvals[i];
+        point[1] = trial["perf"];
+        point["trial"] = trial;
+
+        chartData[i].push(point);
+    }
+    trials.push(trial);
+}
+
+function parseTrial(trial_string)
+{
+    var text = trial_string.split(",");
+    var trial = new Array();
+
+    trial["time"] = parseInt(text.shift());
+    for (var i = 0; i < sig.varTypes.length; ++i) {
+        switch (sig.varTypes[i]) {
+        case "i":
+        case "s": trial[i] = parseInt(text[i]); break;
+        case "r": trial[i] = parseFloat(text[i]); break;
         }
-        var key = arr[i].substr(0, sep);
-        var val = arr[i].substr(++sep);
-        var idx = tableColMap[key];
-
-        viewData[idx].push([parseFloat(val), perf]);
-        chartDataIdx[idx][viewData[idx].length - 1]= coords.length - 1;
     }
+    trial["perf"] = parseFloat(text.splice(-1));
+
+    return trial;
 }
 
-function updateDataTableDimensions() {
-    var l_select = document.getElementById("table_len");
-    var numRows = parseInt(l_select[ l_select.selectedIndex ].text) + 1;
-    var numCols = currVars.split(",").length + 2;
-    var tableBody = document.getElementById("data_table").tBodies[0];
+function redrawBest(highlight)
+{
+    var cell = $("#table_best");
+    var vals = new Array();
 
-    if (tableBody.rows.length == numRows &&
-        tableBody.rows[0].cells.length == numCols) {
-        return;
+    for (var i = 0; i < best.length; ++i)
+        vals[i] = displayVal(best, i);
+    vals.push(displayVal(best, "perf"));
+
+    for (var i = 0; i < vals.length; ++i) {
+        if (cell.is(":last-child"))
+            cell.after("<td></td>");
+        cell = cell.next("td");
+
+        if (highlight) {
+            if (cell.html() != vals[i])
+                cell.css("background-color", "GreenYellow");
+            else
+                cell.css("background-color", "inherit");
+        }
+        cell.html(vals[i]);
     }
+    cell.nextAll("td").remove();
+}
 
+function redrawTable()
+{
+    var numRows = $("#table_len").val();
+    var valCols = sig.varNames.length;
+    var tblHtml;
+
+    var idx = trials.length - 1;
     for (var i = 0; i < numRows; ++i) {
-        if (tableBody.rows.length <= i) {
-            tableBody.appendChild( document.createElement("tr") );
-        }
+        var trial = trials[idx];
 
-        var row = tableBody.rows[i];
-        if (row.cells.length > numCols)
-            row.cells.length = numCols;
+        tblHtml += "<tr><td>" + displayVal(trial, "time") + "</td>";
+        for (var j = 0; j < valCols; ++j)
+            tblHtml += "<td>" + displayVal(trial, j) + "</td>";
+        tblHtml += "<td>" + displayVal(trial, "perf") + "</td></tr>";
 
-        while (row.cells.length < numCols) {
-            row.appendChild( document.createElement("td") );
-        }
-        while (row.cells.length > numCols) {
-            row.removeChild( row.lastChild );
-        }
+        if (--idx < 0)
+            break;
     }
-    while (tableBody.rows.length > numRows) {
-        tableBody.removeChild( tableBody.lastChild );
-    }
+    $("#table_body").html(tblHtml);
 }
 
-function updateDataTable() {
-    var tableBody = document.getElementById("data_table").tBodies[0];
-    var cols = currVars.split(",").length + 2;
-    updateDataTableDimensions();
+function displayVal(trial, index)
+{
+    var type;
+    var val = trial[index];
 
-    var idx = coords.length - 1;
-    for (var i = 1; i < tableBody.rows.length; ++i) {
-        if (idx >= 0) {
-            var coord = coords[idx];
-
-            tableBody.rows[i].cells[0].innerHTML = date2Str( coord[0] );
-            for (var j = 1; j < cols-1; ++j) {
-                tableBody.rows[i].cells[j].innerHTML = "";
-            }
-            tableBody.rows[i].cells[cols-1].innerHTML = coord.slice(-1);
-
-            for (var j = 1; j < coord.length; ++j) {
-                var sep = coord[j].search(":");
-                if (sep == -1) {
-                    continue;
-                }
-                var key = coord[j].substr(0, sep);
-                var val = coord[j].substr(++sep);
-                var col = tableColMap[key];
-
-                tableBody.rows[i].cells[col].innerHTML = val;
-            }
-            --idx;
-
-        } else {
-            tableBody.rows[i].cells[0].innerHTML = "&lt;N/A&gt;";
-            for (var j = 1; j < cols; ++j) {
-                tableBody.rows[i].cells[j].innerHTML = "";
-            }
-        }
-    }
-}
-
-var currVars = "";
-function updateVarList(vars) {
-    if (vars == currVars)
-        return;
-
-    var v_select = document.getElementById("view_list");
-    var tableHead = document.getElementById("data_table").tHead;
-    v_select.length = 1;
-
-    var v_arr = vars.split(",");
-    tableColMap = new Object();
-    chartDataIdx = new Array(v_arr.length + 1);
-
-    for (var i = 0; i < v_arr.length; ++i) {
-        var col = document.createElement("td");
-        col.innerHTML = v_arr[i].substr(2);
-        tableHead.rows[0].appendChild(col);
-
-        var option = document.createElement("option");
-        option.text = v_arr[i].substr(2);
-        v_select.add(option, null);
-
-        viewData.push(new Array());
-        chartDataIdx[i] = new Array();
-        tableColMap[v_arr[i].substr(2)] = i + 1;
+    switch (index) {
+    case "time": type = "t"; break;
+    case "perf": type = "r"; break;
+    default:     type = sig.varTypes[index];
     }
 
-    var col = document.createElement("td");
-    col.innerHTML = "Performance";
-    tableHead.rows[0].appendChild(col);
-    chartDataIdx[v_arr.length] = new Array();
-
-    currVars = vars;
-    updateDataTableDimensions();
-}
-
-function updatePlotSize() {
-    var c_select = document.getElementById("chart_size");
-    var dim = c_select[ c_select.selectedIndex ].value.split("x");
-    var p_div = document.getElementById("plot_area");
-
-    p_div.style.width = dim[0] + "px";
-    p_div.style.height = dim[1] + "px";
+    switch (type) {
+    case "i": return val.toString();
+    case "r": return val.toPrecision($("#precision").val());
+    case "s": return '"' + sig.setVals[index][val] + '"';
+    case "t": return timeDate(val);
+    }
 }
 
 var prevPoint = null;
-function drawChart() {
-    var i = document.getElementById("view_list").selectedIndex;
+function redrawChart()
+{
+    var i = $("#view_list :selected").index();
     var x_mode = null;
-    if (i == 0) {
+    if (i == 0)
         x_mode = "time";
-    }
 
-    $.plot($("#plot_area"), [viewData[i]], { xaxis:  {mode:x_mode},
+    $.plot($("#plot_div"), [chartData[i]], { xaxis:  {mode:x_mode},
                                              grid:   {hoverable:true},
                                              points: {show:true}});
-    $("#plot_area").bind("plothover", function (event, pos, item) {
+    $("#plot_div").bind("plothover", function (event, pos, item) {
         if (item) {
             if (prevPoint != item.dataIndex) {
-                if (prevPoint != null) {
-                    $("#tooltip").remove();
-                }
+                if (prevPoint != null)
+                    $("#popup_div").remove();
                 prevPoint = item.dataIndex;
 
-                $('<div id="tooltip">' + labelString(item.dataIndex) + '</div>').css( {
+                var details = popupText(item.dataIndex);
+                $("<div id='popup_div'>" + details + "</div>").css( {
                     position: 'absolute',
                     display: 'none',
                     top: item.pageY + 5,
@@ -295,27 +325,52 @@ function drawChart() {
                     opacity: 0.80
                 }).appendTo("body").fadeIn(100);
             }
-        } else {
-            $("#tooltip").remove();
+        }
+        else {
+            $("#popup_div").remove();
             prevPoint = null;
         }
     });
 }
 
-function labelString(idx) {
-    var chartNum = document.getElementById("view_list").selectedIndex;
-    var coord;
-    if (chartNum == 0) {
-        coord = coords[idx];
-    } else {
-        coord = coords[ chartDataIdx[chartNum][idx] ];
-    }
+function popupText(pointIdx)
+{
+    var chartIdx = $("#view_list :selected").index();
+    var trial = chartData[chartIdx][pointIdx]["trial"];
 
-    var retval = "Node:";
-    for (var i = 1; i < coord.length - 1; ++i) {
-        retval += coord[i] + "<br>";
-    }
-    retval += "Performance:" + coord.slice(-1);
+    var retval = "Timestamp:" + displayVal(trial, "time") + "<br>";
+    for (var i = 0; i < sig.varNames.length; ++i)
+        retval += sig.varNames[i] + ": " + displayVal(trial, i) + "<br>";
+    retval += "Performance:" + displayVal(trial, "perf");
 
     return retval;
+}
+
+function refresh()
+{
+    requestRefresh(appName, trials.length, handleRefreshData);
+}
+
+function restart()
+{
+    requestRestart(appName, document.getElementById("init_point").value);
+    setTimeout(refresh, 250);
+}
+
+function pause()
+{
+    requestPause(appName);
+    setTimeout(refresh, 250);
+}
+
+function resume()
+{
+    requestResume(appName);
+    setTimeout(refresh, 250);
+}
+
+function kill()
+{
+    requestKill(appName);
+    setTimeout(refresh, 250);
 }

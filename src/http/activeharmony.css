@@ -16,7 +16,13 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-#plot_area
+#refresh_row
+{
+  border: none;
+  text-align: center;
+}
+
+#plot_div
 {
   float: right;
   width: 640px;
@@ -24,8 +30,9 @@
   margin-right: 15px;
 }
 
-#table_area
+#table_div
 {
+  display: none;
   float: left;
   margin-left: auto;
   margin-right: auto;
@@ -39,9 +46,20 @@ table
   margin-right: auto;
 }
 
-th, td
+th
+{
+  border: 1px solid black;
+  font-weight: normal;
+}
+
+td
 {
   border: 1px solid black;
   text-align: right;
   padding: 2px;
+}
+
+hr.thin
+{
+  margin: 0;
 }

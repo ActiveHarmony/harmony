@@ -37,6 +37,7 @@
 #include "strategy.h"
 #include "session-core.h"
 #include "hsignature.h"
+#include "hperf.h"
 #include "hutil.h"
 #include "hcfg.h"
 #include "defaults.h"
@@ -52,7 +53,7 @@ hpoint_t best;
 double   best_perf;
 
 /* Forward function definitions. */
-int strategy_cfg(void);
+int strategy_cfg(hsignature_t *sig);
 
 /* Variables to track current search state. */
 vertex_t *curr;
@@ -67,9 +68,6 @@ int strategy_init(hsignature_t *sig)
         return -1;
     }
 
-    if (strategy_cfg() != 0)
-        return -1;
-
     if (!curr) {
         /* One time memory allocation and/or initialization. */
         curr = vertex_alloc();
@@ -77,13 +75,18 @@ int strategy_init(hsignature_t *sig)
             session_error("Could not allocate memory for testing vertex.");
             return -1;
         }
-        curr->id = 1;
 
+        /* The best point and trial counter should only be initialized once,
+         * and thus be retained across a restart.
+         */
         best = HPOINT_INITIALIZER;
+        best_perf = INFINITY;
+        curr->id = 1;
     }
 
     /* Initialization for subsequent calls to strategy_init(). */
-    best_perf = INFINITY;
+    if (strategy_cfg(sig) != 0)
+        return -1;
 
     if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
         session_error("Could not set "
@@ -93,18 +96,18 @@ int strategy_init(hsignature_t *sig)
     return 0;
 }
 
-int strategy_cfg(void)
+int strategy_cfg(hsignature_t *sig)
 {
-    const char *cfgstr;
+    const char *cfgval;
 
-    cfgstr = session_getcfg(CFGKEY_RANDOM_SEED);
-    if (cfgstr && *cfgstr) {
-        srand(atoi(cfgstr));
+    cfgval = session_getcfg(CFGKEY_INIT_POINT);
+    if (cfgval) {
+        if (vertex_from_string(cfgval, sig, curr) != 0)
+            return -1;
     }
     else {
-        srand(time(NULL));
+        vertex_rand(curr);
     }
-
     return 0;
 }
 
@@ -113,12 +116,14 @@ int strategy_cfg(void)
  */
 int strategy_generate(hflow_t *flow, hpoint_t *point)
 {
-    vertex_rand(curr);
     if (vertex_to_hpoint(curr, point) != 0) {
         session_error("Internal error: Could not make point from vertex.");
         return -1;
     }
     ++curr->id;
+
+    /* Prepare a new random vertex for the next call to strategy_generate. */
+    vertex_rand(curr);
 
     flow->status = HFLOW_ACCEPT;
     return 0;
@@ -157,8 +162,10 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
  */
 int strategy_analyze(htrial_t *trial)
 {
-    if (best_perf > trial->perf) {
-        best_perf = trial->perf;
+    double perf = hperf_unify(trial->perf);
+
+    if (best_perf > perf) {
+        best_perf = perf;
         if (hpoint_copy(&best, &trial->point) != 0) {
             session_error("Internal error: Could not copy point.");
             return -1;
