@@ -207,6 +207,7 @@ void hrange_fini(hrange_t *range)
     if (range->type == HVAL_STR) {
         for (i = 0; i < range->bounds.s.set_len; ++i)
             free(range->bounds.s.set[i]);
+        free(range->bounds.s.set);
     }
     *range = HRANGE_INITIALIZER;
 }
@@ -432,13 +433,8 @@ void hsignature_fini(hsignature_t *sig)
 {
     int i;
 
-    for (i = 0; i < sig->range_len; ++i) {
-        free(sig->range[i].name);
-        if (sig->range[i].type == HVAL_STR) {
-            sig->range[i].name = NULL;
-            hrange_fini(&sig->range[i]);
-        }
-    }
+    for (i = 0; i < sig->range_len; ++i)
+        hrange_fini(&sig->range[i]);
 
     free(sig->range);
     free(sig->name);
@@ -668,6 +664,7 @@ int hsignature_deserialize(hsignature_t *sig, char *buf)
     }
 
     for (i = 0; i < sig->range_len; ++i) {
+        sig->range[i] = HRANGE_INITIALIZER;
         count = hrange_deserialize(&sig->range[i], buf + total);
         if (count < 0) goto invalid;
         total += count;
