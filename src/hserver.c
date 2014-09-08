@@ -810,7 +810,7 @@ void client_close(int fd)
         }
     }
 
-    if (close(fd) < 0)
+    if (shutdown(fd, SHUT_RDWR) != 0 || close(fd) != 0)
         perror("Error closing client connection post error");
 
     FD_CLR(fd, &listen_fds);
