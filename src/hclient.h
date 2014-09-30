@@ -296,7 +296,7 @@ int harmony_bind_enum(hdesc_t *hdesc, const char *name, const char **ptr);
  *
  * Establishes a connection with the Harmony Server on a specific
  * host and port, and joins the named session.  All variables must be
- * bound to local memory via harmony_bind() for this call to succeed.
+ * bound to local memory via harmony_bind_XXX() for this call to succeed.
  *
  * If `host` is `NULL` or `port` is 0, values from the environment
  * variable `HARMONY_S_HOST` or `HARMONY_S_PORT` will be used,
@@ -315,8 +315,7 @@ int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *sess);
 /**
  * \brief Leave a Harmony tuning session.
  *
- * End participation in a Harmony tuning session by closing the
- * connection to the Harmony server.
+ * End participation in a Harmony tuning session.
  *
  * \param hdesc Harmony descriptor returned from harmony_init().
  *
@@ -338,7 +337,7 @@ int harmony_leave(hdesc_t *hdesc);
 /**
  * \brief Get a key value from the session's configuration.
  *
- * Searches the server's configuration system for key, and returns
+ * Searches the session's configuration system for key, and returns
  * the string value associated with it if found. Heap memory is
  * allocated for the result string.
  *
@@ -346,7 +345,7 @@ int harmony_leave(hdesc_t *hdesc);
  *          is the user's responsibility to free this memory.
  *
  * \param hdesc Harmony descriptor returned from harmony_init().
- * \param key   Config key to search for on the server.
+ * \param key   Config key to search for on the session.
  *
  * \return Returns a c-style string on success, and `NULL` otherwise.
  */
@@ -355,17 +354,16 @@ char *harmony_getcfg(hdesc_t *hdesc, const char *key);
 /**
  * \brief Set a new key/value pair in the session's configuration.
  *
- * Writes the new key/value pair into the server's run-time
+ * Writes the new key/value pair into the session's run-time
  * configuration database.  If the key exists in the database, its
  * value is overwritten.  If val is `NULL`, the key will be erased
- * from the database.  These key/value pairs exist only in memory, and
- * will not be written back to the server's configuration file.
+ * from the database.
  *
  * \warning This function allocates memory for the return value.  It
  *          is the user's responsibility to free this memory.
  *
  * \param hdesc Harmony descriptor returned from harmony_init().
- * \param key   Config key to modify on the server.
+ * \param key   Config key to modify in the session.
  * \param val   Config value to associate with the key.
  *
  * \return Returns the original key value string on success and `NULL`
@@ -376,7 +374,7 @@ char *harmony_getcfg(hdesc_t *hdesc, const char *key);
 char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val);
 
 /**
- * \brief Fetch a new configuration from the Harmony server.
+ * \brief Fetch a new configuration from the Harmony session.
  *
  * If a new configuration is available, this function will update the
  * values of all registered variables.  Otherwise, it will configure
@@ -390,7 +388,18 @@ char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val);
 int harmony_fetch(hdesc_t *hdesc);
 
 /**
- * \brief Report the performance of a configuration to the Harmony server.
+ * \brief Report the performance of a configuration to the Harmony session.
+ *
+ * Sends a report of the tested performance to the Harmony session.
+ * The report will be analyzed by the session to produce values for
+ * the next set of calls to harmony_fetch().
+ *
+ * The `value` parameter should point to a floating-point double.  For
+ * multi-objective tuning, where multiple performance values are
+ * required for a single test, `value` should point to an array of
+ * floating-point doubles.  Finally, `value` may be NULL, provided
+ * that all performance values have already been set via
+ * harmony_single_perf().
  *
  * Sends a complete performance report regarding the current
  * configuration to the Harmony session.  For multi-objective search
