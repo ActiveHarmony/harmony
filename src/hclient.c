@@ -501,7 +501,7 @@ char *harmony_getcfg(hdesc_t *hdesc, const char *key)
 
 char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val)
 {
-    char *buf = NULL;
+    char *buf;
     int retval;
 
     if (hdesc->state < HARMONY_STATE_CONNECTED) {
@@ -519,19 +519,15 @@ char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val)
         return NULL;
     }
 
+    buf = sprintf_alloc("%s=%s", key, val ? val : "");
+    if (!buf) {
+        hdesc->errstr = "Internal memory allocation error.";
+        return NULL;
+    }
+
     /* Prepare a Harmony message. */
     hmesg_scrub(&hdesc->mesg);
-    if (val) {
-        buf = sprintf_alloc("%s=%s", key, val);
-        if (!buf) {
-            hdesc->errstr = "Internal memory allocation error.";
-            return NULL;
-        }
-        hdesc->mesg.data.string = buf;
-    }
-    else {
-        hdesc->mesg.data.string = key;
-    }
+    hdesc->mesg.data.string = buf;
 
     retval = send_request(hdesc, HMESG_SETCFG);
     free(buf);
@@ -551,6 +547,8 @@ char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val)
 
 int harmony_fetch(hdesc_t *hdesc)
 {
+    int i;
+
     if (hdesc->state < HARMONY_STATE_CONNECTED) {
         hdesc->errstr = "Descriptor not currently joined to any session.";
         errno = EINVAL;
@@ -572,28 +570,19 @@ int harmony_fetch(hdesc_t *hdesc)
             return 0;
         }
 
-        /* Update client variables to the best known values. */
-        if (set_values(hdesc, &hdesc->best) < 0)
+        /* Set current point to best point. */
+        if (hpoint_copy(&hdesc->curr, &hdesc->best) != 0) {
+            hdesc->errstr = "Internal error copying point data.";
+            errno = EINVAL;
             return -1;
+        }
     }
     else if (hdesc->mesg.status == HMESG_STATUS_OK) {
-        int i;
-
         if (hpoint_copy(&hdesc->curr, &hdesc->mesg.data.point) != 0) {
             hdesc->errstr = "Internal error copying point data.";
             errno = EINVAL;
             return -1;
         }
-
-        /* Update the variables from the content of the message. */
-        if (set_values(hdesc, &hdesc->curr) != 0)
-            return -1;
-
-        /* Initialize our internal performance array. */
-        for (i = 0; i < hdesc->perf->n; ++i)
-            hdesc->perf->p[i] = NAN;
-
-        hdesc->state = HARMONY_STATE_TESTING;
     }
     else {
         hdesc->errstr = "Invalid message received from server.";
@@ -601,7 +590,16 @@ int harmony_fetch(hdesc_t *hdesc)
         return -1;
     }
 
+    /* Update the variables from the content of the message. */
+    if (set_values(hdesc, &hdesc->curr) != 0)
+        return -1;
+
+    /* Initialize our internal performance array. */
+    for (i = 0; i < hdesc->perf->n; ++i)
+        hdesc->perf->p[i] = NAN;
+
     /* Client variables were changed.  Inform the user by returning 1. */
+    hdesc->state = HARMONY_STATE_TESTING;
     return 1;
 }
 
@@ -646,11 +644,8 @@ int harmony_report(hdesc_t *hdesc, double *perf)
         errno = EINVAL;
         return -1;
     }
+
     hdesc->state = HARMONY_STATE_READY;
-
-    if (update_best(hdesc, &hdesc->curr) != 0)
-        return -1;
-
     return 0;
 }
 
@@ -756,11 +751,18 @@ int send_request(hdesc_t *hdesc, hmesg_type msg_type)
         return -1;
     }
 
-    if (mesg_recv(hdesc->socket, &hdesc->mesg) < 1) {
-        hdesc->errstr = "Error retrieving Harmony message from server.";
-        errno = ECOMM;
-        return -1;
-    }
+    do {
+        if (mesg_recv(hdesc->socket, &hdesc->mesg) < 1) {
+            hdesc->errstr = "Error retrieving Harmony message from server.";
+            errno = ECOMM;
+            return -1;
+        }
+
+        /* If the httpinfo layer is enabled during a stand-alone session,
+         * it will generate extraneous messages where dest == -1.
+         * Make sure to ignore these messages.
+         */
+    } while (hdesc->mesg.dest == -1);
 
     if (hdesc->mesg.type != msg_type) {
         hdesc->mesg.status = HMESG_STATUS_FAIL;

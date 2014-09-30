@@ -15,7 +15,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
- */
+*/
 
 #include "hserver.h"
 #include "httpsvr.h"
@@ -54,6 +54,7 @@ int handle_client_socket(int fd);
 int handle_session_socket(int idx);
 int available_index(int **list, int *cap);
 void client_close(int fd);
+int append_http_log(session_state_t *sess, const hpoint_t *pt, double perf);
 
 /*
  * Main variables
@@ -72,7 +73,6 @@ char *session_bin;
 hmesg_t mesg_in, mesg_out; /* Maintain two message structures
                             * to avoid overwriting buffers.
                             */
-
 session_state_t *slist;
 int slist_cap;
 
@@ -462,6 +462,11 @@ int handle_client_socket(int fd)
     if (retval < 0)
         goto error;
 
+    if (mesg_in.dest == -1) {
+        /* Message was intended to be ignored. */
+        return 0;
+    }
+
     /* Sanity check input */
     if (mesg_in.type != HMESG_SESSION && mesg_in.type != HMESG_JOIN) {
         idx = mesg_in.dest;
@@ -473,6 +478,13 @@ int handle_client_socket(int fd)
     }
 
     switch (mesg_in.type) {
+    case HMESG_GETCFG:
+    case HMESG_SETCFG:
+    case HMESG_BEST:
+    case HMESG_FETCH:
+    case HMESG_RESTART:
+        break;
+
     case HMESG_SESSION:
         sess = session_open(&mesg_in);
         if (!sess) {
@@ -499,66 +511,54 @@ int handle_client_socket(int fd)
             perror("Could not grow session client list");
             goto error;
         }
+
         sess->client[idx] = fd;
         ++sess->client_len;
         break;
 
-    case HMESG_FETCH:
-    case HMESG_GETCFG:
-    case HMESG_SETCFG:
-        break;
-
     case HMESG_REPORT:
-        /* Before we forward this report to the session-core process,
-         * add it to our HTTP log.
-         */
-        if (mesg_in.data.report.cand_id == -1)
-            break;
+        perf = hperf_unify(mesg_in.data.report.perf);
 
         for (i = 0; i < sess->fetched_len; ++i) {
             if (sess->fetched[i].id == mesg_in.data.report.cand_id)
                 break;
         }
-        if (i == sess->fetched_len)
-            break;
+        if (i < sess->fetched_len) {
+            const hpoint_t *pt = &sess->fetched[i];
 
-        if (sess->log_len == sess->log_cap) {
-            if (array_grow(&sess->log, &sess->log_cap,
-                           sizeof(http_log_t)) < 0)
-            {
-                perror("Could not grow HTTP log");
+            /* Copy point from fetched list to HTTP log. */
+            if (append_http_log(sess, pt, perf) != 0) {
+                perror("Internal error copying fetched point to HTTP log");
+                goto error;
+            }
+
+            /* Also update our best point data, if necessary. */
+            if (sess->best_perf > perf && sess->best.id != pt->id) {
+                sess->best_perf = perf;
+                if (hpoint_copy(&sess->best, pt) != 0) {
+                    perror("Internal error copying hpoint to best");
+                    goto error;
+                }
+            }
+
+            /* Remove point from fetched list. */
+            --sess->fetched_len;
+            if (i < sess->fetched_len) {
+                if (hpoint_copy(&sess->fetched[i],
+                                &sess->fetched[sess->fetched_len]) != 0)
+                {
+                    perror("Internal error copying hpoint within fetch log");
+                    goto error;
+                }
+            }
+        }
+        else {
+            /* Copy point from fetched list to HTTP log. */
+            if (append_http_log(sess, &sess->best, perf) != 0) {
+                perror("Internal error copying best point to HTTP log");
                 goto error;
             }
         }
-        if (gettimeofday(&sess->log[sess->log_len].stamp, NULL) != 0)
-            goto error;
-
-        if (hpoint_copy(&sess->log[sess->log_len].pt,
-                        &sess->fetched[i]) != 0)
-        {
-            perror("Internal error copying hpoint to HTTP log");
-            goto error;
-        }
-
-        perf = hperf_unify(mesg_in.data.report.perf);
-        sess->log[sess->log_len].perf = perf;
-
-        /* Also update our best point data, if necessary. */
-        if (sess->best_perf > perf) {
-            sess->best_perf = perf;
-            sess->best = &sess->log[sess->log_len].pt;
-        }
-        ++sess->log_len;
-
-        /* Remove point from fetched list. */
-        if (hpoint_copy(&sess->fetched[i],
-                        &sess->fetched[sess->fetched_len]) != 0)
-        {
-            perror("Internal error copying hpoint within fetch log");
-            goto error;
-        }
-        --sess->fetched_len;
-
         break;
 
     default:
@@ -601,11 +601,23 @@ int handle_session_socket(int idx)
     if (mesg_recv(sess->fd, &mesg_in) < 1)
         goto error;
 
+    if (mesg_in.dest == -1) {
+        if (mesg_in.status == HMESG_STATUS_REQ) {
+            if (handle_http_info(sess, (char *)mesg_in.data.string) != 0) {
+                perror("Error handling http info message");
+                goto error;
+            }
+        }
+        return 0;
+    }
+
     switch (mesg_in.type) {
     case HMESG_SESSION:
     case HMESG_JOIN:
     case HMESG_SETCFG:
     case HMESG_GETCFG:
+    case HMESG_BEST:
+    case HMESG_RESTART:
         break;
 
     case HMESG_FETCH:
@@ -667,6 +679,7 @@ session_state_t *session_open(hmesg_t *mesg)
     const char *cfgstr;
 
     idx = -1;
+    /* check if session already exists, and return if it does */
     for (i = 0; i < slist_cap; ++i) {
         if (!slist[i].name) {
             if (idx < 0)
@@ -678,6 +691,8 @@ session_state_t *session_open(hmesg_t *mesg)
             return NULL;
         }
     }
+    /* expand session list arr if necessary, and add
+       the new session to the session list arr */
     if (idx == -1) {
         idx = slist_cap;
         if (array_grow(&slist, &slist_cap, sizeof(session_state_t)) < 0)
@@ -690,12 +705,24 @@ session_state_t *session_open(hmesg_t *mesg)
         return NULL;
 
     sess->client_len = 0;
-    sess->best = NULL;
+    hpoint_fini(&sess->best);
     sess->best_perf = INFINITY;
 
     if (hcfg_merge(mesg->data.session.cfg, cfg) < 0) {
         mesg_out.data.string = "Internal error merging config structures";
         goto error;
+    }
+
+    /* Force sessions to load the httpinfo plugin layer. */
+    #define HTTPINFO "httpinfo.so"
+    cfgstr = hcfg_get(mesg->data.session.cfg, CFGKEY_SESSION_LAYERS);
+    if (!cfgstr || *cfgstr == '\0') {
+        hcfg_set(mesg->data.session.cfg, CFGKEY_SESSION_LAYERS, HTTPINFO);
+    }
+    else if (strstr(cfgstr, HTTPINFO) == NULL) {
+        char *buf = sprintf_alloc(HTTPINFO ";%s", cfgstr);
+        hcfg_set(mesg->data.session.cfg, CFGKEY_SESSION_LAYERS, buf);
+        free(buf);
     }
 
     /* Make sure we have at least 1 expected client. */
@@ -722,12 +749,17 @@ session_state_t *session_open(hmesg_t *mesg)
     if (hsignature_copy(&sess->sig, &mesg->data.session.sig) != 0)
         goto error;
 
-    sess->reported = 0;
-
     if (gettimeofday(&sess->start, NULL) < 0)
         goto error;
 
+    cfgstr = hcfg_get(mesg->data.session.cfg, CFGKEY_SESSION_STRATEGY);
+    if (!cfgstr)
+        cfgstr = DEFAULT_STRATEGY;
+
+    sess->strategy = stralloc(cfgstr);
+    sess->status = 0x0;
     sess->log_len = 0;
+    sess->reported = 0;
 
     FD_SET(sess->fd, &listen_fds);
     if (highest_socket < sess->fd)
@@ -745,6 +777,7 @@ void session_close(session_state_t *sess)
 {
     int i;
 
+    free(sess->strategy);
     free(sess->name);
     sess->name = NULL;
 
@@ -777,7 +810,7 @@ void client_close(int fd)
         }
     }
 
-    if (close(fd) < 0)
+    if (shutdown(fd, SHUT_RDWR) != 0 || close(fd) != 0)
         perror("Error closing client connection post error");
 
     FD_CLR(fd, &listen_fds);
@@ -797,4 +830,65 @@ int available_index(int **list, int *cap)
     memset((*list) + orig_cap, -1, (*cap - orig_cap) * sizeof(int));
 
     return orig_cap;
+}
+
+int append_http_log(session_state_t *sess, const hpoint_t *pt, double perf)
+{
+    http_log_t *entry;
+
+    /* Extend HTTP log if necessary. */
+    if (sess->log_len == sess->log_cap) {
+        if (array_grow(&sess->log, &sess->log_cap, sizeof(http_log_t)) != 0) {
+            perror("Could not grow HTTP log");
+            return -1;
+        }
+    }
+    entry = &sess->log[sess->log_len];
+
+    if (hpoint_copy(&entry->pt, pt) != 0) {
+        perror("Internal error copying point into HTTP log");
+        return -1;
+    }
+
+    entry->perf = perf;
+    if (gettimeofday(&entry->stamp, NULL) != 0)
+        return -1;
+
+    ++sess->log_len;
+    return 0;
+}
+
+int session_setcfg(session_state_t *sess, const char *key, const char *val)
+{
+    hmesg_t mesg = HMESG_INITIALIZER;
+    char *buf = sprintf_alloc("%s=%s", key, val ? val : "");
+    int retval = 0;
+
+    mesg.dest = -1;
+    mesg.type = HMESG_SETCFG;
+    mesg.status = HMESG_STATUS_REQ;
+    mesg.data.string = buf;
+
+    if (mesg_send(sess->fd, &mesg) < 1)
+        retval = -1;
+
+    free(buf);
+    hmesg_fini(&mesg);
+    return retval;
+}
+
+int session_restart(session_state_t *sess)
+{
+    hmesg_t mesg = HMESG_INITIALIZER;
+    int retval = 0;
+
+    mesg.dest = -1;
+    mesg.type = HMESG_RESTART;
+    mesg.status = HMESG_STATUS_REQ;
+
+    if (mesg_send(sess->fd, &mesg) < 1)
+        retval = -1;
+
+    hmesg_fini(&mesg);
+    return retval;
 }

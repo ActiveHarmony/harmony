@@ -101,6 +101,7 @@ int hmesg_serialize(hmesg_t *mesg)
     case HMESG_BEST:    type_str = "BST"; break;
     case HMESG_FETCH:   type_str = "FET"; break;
     case HMESG_REPORT:  type_str = "REP"; break;
+    case HMESG_RESTART: type_str = "RES"; break;
     default: goto invalid;
     }
 
@@ -173,6 +174,9 @@ int hmesg_serialize(hmesg_t *mesg)
             }
             break;
 
+        case HMESG_RESTART:
+            break;
+
         default:
             goto invalid;
         }
@@ -238,6 +242,7 @@ int hmesg_deserialize(hmesg_t *mesg)
     else if (strcmp(type_str, "BST") == 0) mesg->type = HMESG_BEST;
     else if (strcmp(type_str, "FET") == 0) mesg->type = HMESG_FETCH;
     else if (strcmp(type_str, "REP") == 0) mesg->type = HMESG_REPORT;
+    else if (strcmp(type_str, "RES") == 0) mesg->type = HMESG_RESTART;
     else goto invalid;
 
     if      (strcmp(status_str, "REQ") == 0) mesg->status = HMESG_STATUS_REQ;
@@ -300,6 +305,9 @@ int hmesg_deserialize(hmesg_t *mesg)
                 if (count < 0) goto error;
                 total += count;
             }
+            break;
+
+        case HMESG_RESTART:
             break;
 
         default:

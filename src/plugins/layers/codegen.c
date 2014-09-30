@@ -120,6 +120,8 @@ int codegen_init(hsignature_t *sig)
         return -1;
     }
 
+    buf = NULL;
+    buflen = 0;
     sockfd = url_connect(url);
     if (sockfd == -1) {
         session_error("Invalid codegen server URL");
@@ -143,12 +145,15 @@ int codegen_init(hsignature_t *sig)
 
     mesg.type = HMESG_SESSION;
     mesg.status = HMESG_STATUS_REQ;
+
+    /* Memory allocated for mesg is freed after mesg_send(). */
     if (mesg_send(sockfd, &mesg) < 1)
         return -1;
 
     if (mesg_recv(sockfd, &mesg) < 1)
         return -1;
 
+    /* TODO: Need a way to unregister a callback for reinitialization. */
     if (callback_generate(sockfd, codegen_callback) != 0) {
         session_error("Could not register callback for codegen plugin");
         return -1;
@@ -205,6 +210,7 @@ int codegen_generate(hflow_t *flow, htrial_t *trial)
  */
 void codegen_fini(void)
 {
+    close(sockfd);
     free(buf);
 }
 

@@ -116,6 +116,7 @@ int handle_best(hmesg_t *mesg);
 int handle_fetch(hmesg_t *mesg);
 int handle_report(hmesg_t *mesg);
 int handle_reject(int trial_idx);
+int handle_restart(hmesg_t *mesg);
 int handle_wait(int trial_idx);
 int load_strategy(const char *file);
 int load_layers(const char *list);
@@ -128,6 +129,7 @@ void reverse_array(void *ptr, int head, int tail);
 const char *errmsg;
 int curr_layer = 0;
 hflow_t flow;
+int paused_id;
 
 /* List of all points generated, but not yet returned to the strategy. */
 htrial_t *pending = NULL;
@@ -177,6 +179,7 @@ int main(int argc, char **argv)
 
     /* Receive the initial session message. */
     mesg.type = HMESG_SESSION;
+    printf("Receiving initial session message on fd %d\n", STDIN_FILENO);
     if (mesg_recv(STDIN_FILENO, &session_mesg) < 1) {
         mesg.data.string = "Socket or deserialization error";
         goto error;
@@ -227,12 +230,13 @@ int main(int argc, char **argv)
 
             hcfg_set(sess->cfg, CFGKEY_CURRENT_CLIENT, mesg.src_id);
             switch (mesg.type) {
-            case HMESG_JOIN:   retval = handle_join(&mesg); break;
-            case HMESG_GETCFG: retval = handle_getcfg(&mesg); break;
-            case HMESG_SETCFG: retval = handle_setcfg(&mesg); break;
-            case HMESG_BEST:   retval = handle_best(&mesg); break;
-            case HMESG_FETCH:  retval = handle_fetch(&mesg); break;
-            case HMESG_REPORT: retval = handle_report(&mesg); break;
+            case HMESG_JOIN:    retval = handle_join(&mesg); break;
+            case HMESG_GETCFG:  retval = handle_getcfg(&mesg); break;
+            case HMESG_SETCFG:  retval = handle_setcfg(&mesg); break;
+            case HMESG_BEST:    retval = handle_best(&mesg); break;
+            case HMESG_FETCH:   retval = handle_fetch(&mesg); break;
+            case HMESG_REPORT:  retval = handle_report(&mesg); break;
+            case HMESG_RESTART: retval = handle_restart(&mesg); break;
             default:
                 errmsg = "Internal error: Unknown message type.";
                 goto error;
@@ -652,7 +656,6 @@ int handle_setcfg(hmesg_t *mesg)
     static char *buf = NULL;
     static int buflen = 0;
 
-    int i;
     char *key, *val;
     const char *oldval;
 
@@ -662,15 +665,6 @@ int handle_setcfg(hmesg_t *mesg)
         return -1;
     }
 
-    /* Launch all setcfg hooks defined in the plug-in stack. */
-    if (strategy_setcfg && strategy_setcfg(key, val) != 0)
-        return -1;
-
-    for (i = 0; i < lstack_len; ++i) {
-        if (lstack[i].setcfg && lstack[i].setcfg(key, val) != 0)
-            return -1;
-    }
-
     /* Store the original value, possibly allocating memory for it. */
     oldval = hcfg_get(sess->cfg, key);
     if (oldval) {
@@ -678,9 +672,8 @@ int handle_setcfg(hmesg_t *mesg)
         oldval = buf;
     }
 
-    /* Finally, update the configuration system. */
-    if (hcfg_set(sess->cfg, key, val) != 0) {
-        errmsg = "Internal error: Could not modify configuration.";
+    if (session_setcfg(key, val) != 0) {
+        errmsg = "Error setting session configuration variable";
         return -1;
     }
 
@@ -702,10 +695,15 @@ int handle_best(hmesg_t *mesg)
 
 int handle_fetch(hmesg_t *mesg)
 {
-    int idx = ready[ready_head];
+    int idx = ready[ready_head], paused;
+    const char *cfgval;
     htrial_t *next;
 
-    if (idx >= 0) {
+    /* Check if the session is paused. */
+    cfgval = hcfg_get(sess->cfg, CFGKEY_SESSION_PAUSED);
+    paused = (cfgval && *cfgval == '1');
+
+    if (!paused && idx >= 0) {
         /* Send the next point on the ready queue. */
         next = &pending[idx];
 
@@ -722,10 +720,13 @@ int handle_fetch(hmesg_t *mesg)
         mesg->status = HMESG_STATUS_OK;
     }
     else {
-        /* Ready queue is empty.  Send the best known point. */
+        /* Ready queue is empty, or session is paused.
+         * Send the best known point. */
+        mesg->data.point = HPOINT_INITIALIZER;
         if (strategy_best(&mesg->data.point) != 0)
             return -1;
 
+        paused_id = mesg->data.point.id;
         mesg->status = HMESG_STATUS_BUSY;
     }
     return 0;
@@ -743,9 +744,17 @@ int handle_report(hmesg_t *mesg)
             break;
     }
     if (idx == pending_cap) {
-        errmsg = "Rouge point support not yet implemented.";
-        return -1;
+        if (mesg->data.report.cand_id == paused_id) {
+            hperf_fini(mesg->data.report.perf);
+            mesg->status = HMESG_STATUS_OK;
+            return 0;
+        }
+        else {
+            errmsg = "Rouge point support not yet implemented.";
+            return -1;
+        }
     }
+    paused_id = 0;
 
     /* Update performance in our local records. */
     hperf_copy(trial->perf, mesg->data.report.perf);
@@ -760,6 +769,13 @@ int handle_report(hmesg_t *mesg)
     return 0;
 }
 
+int handle_restart(hmesg_t *mesg)
+{
+    session_restart();
+    mesg->status = HMESG_STATUS_OK;
+    return 0;
+}
+
 /* ISO C forbids conversion of object pointer to function pointer,
  * making it difficult to use dlsym() for functions.  We get around
  * this by first casting to a word-length integer.  (ILP32/LP64
@@ -767,6 +783,10 @@ int handle_report(hmesg_t *mesg)
  */
 #define dlfptr(x, y) ((void (*)(void))(long)(dlsym((x), (y))))
 
+/* Loads strategy given name of library file.
+ * Checks that strategy defines required functions,
+ * and then calls the strategy's init function (if defined)
+ */
 int load_strategy(const char *file)
 {
     const char *root;
@@ -1035,7 +1055,47 @@ const char *session_getcfg(const char *key)
 
 int session_setcfg(const char *key, const char *val)
 {
-    return hcfg_set(sess->cfg, key, val);
+    int i;
+
+    if (hcfg_set(sess->cfg, key, val) != 0)
+        return -1;
+
+    /* Make sure setcfg callbacks are triggered after the
+     * configuration has been set.  Otherwise, any subsequent
+     * calls to setcfg further down the stack will be nullified
+     * when we return to this frame.
+     */
+    if (strategy_setcfg && strategy_setcfg(key, val) != 0)
+        return -1;
+
+    for (i = 0; i < lstack_len; ++i)
+        if (lstack[i].setcfg && lstack[i].setcfg(key, val) != 0)
+            return -1;
+
+    return 0;
+}
+
+int session_best(hpoint_t *pt)
+{
+    return strategy_best(pt);
+}
+
+int session_restart(void)
+{
+    int i;
+
+    for (i = lstack_len - 1; i >= 0; --i)
+        if (lstack[i].fini && lstack[i].fini() != 0)
+            return -1;
+
+    if (strategy_init && strategy_init(&sess->sig) != 0)
+        return -1;
+
+    for (i = 0; i < lstack_len; ++i)
+        if (lstack[i].init && lstack[i].init(&sess->sig) != 0)
+            return -1;
+
+    return 0;
 }
 
 void session_error(const char *msg)

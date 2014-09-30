@@ -26,34 +26,45 @@ along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
     <!--[if lte IE 8]>
     <script type="text/javascript" src="excanvas.min.js"></script>
     <![endif]-->
+    <script type="text/javascript" src="common.js"></script>
     <script type="text/javascript" src="overview.js"></script>
     <link rel="stylesheet" type="text/css" href="activeharmony.css" />
   </head>
 
   <body>
-    <table id="data_table">
-      <thead>
-        <tr>
-          <td>Session Name</td>
-          <td>Time Launched</td>
-          <td>Connected Clients</td>
-          <td>Tested Configurations</td>
-          <td>Best Point</td>
-          <td>Controls</td>
-        </tr>
-      </thead>
+    <div style="clear:both">
+      <table id="data_table">
+        <thead>
+          <tr>
+            <th id="refresh_row" colspan="6">
+              Refresh Interval:
+              <select id="interval" onchange="updateInterval()">
+                <option value="1000">1</option>
+                <option value="5000" selected>5</option>
+                <option value="10000">10</option>
+                <option value="30000">30</option>
+                <option value="60000">60</option>
+              </select>
+              <span id="svr_time"></span>
+            </th>
+          </tr>
+        </thead>
 
-      <tbody>
-        <tr>
-          <td></td>
-          <td></td>
-          <td></td>
-          <td></td>
-          <td></td>
-          <td></td>
-        </tr>
-      </tbody>
-    </table>
+        <thead>
+          <tr>
+            <th>Session Name</th>
+            <th>Time Launched</th>
+            <th>Clients</th>
+            <th>Trials</th>
+            <th>Best Trial</th>
+            <th>Controls</th>
+          </tr>
+        </thead>
+
+        <tbody id="table_body">
+        </tbody>
+      </table>
+    </div>
+
   </body>
-
 </html>

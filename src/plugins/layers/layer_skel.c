@@ -28,7 +28,7 @@
 const char harmony_layer_name[] = "<plugin>";
 
 /*
- * Invoked once on module load.
+ * Invoked once on module load, and during subsequent session restarts.
  *
  * Param:
  *   sig - Details of the parameter space (dimensions, bounds, etc.).
@@ -93,15 +93,15 @@ int <plugin>_setcfg(const char *key, const char *val)
  * that point is returned to the client.
  *
  * Params:
- *   flow - Controls how the plug-in manager will process the point.
- *   pt   - New candidate point to be sent to a client.
+ *   flow  - Controls how the plug-in manager will process the point.
+ *   trial - Candidate point, value, and other auxiliary trial information.
  *
  * Upon error, this function should call session_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, this routine should return 0, and the contents of the
  * "flow" variable should be set appropriately.
  */
-int <plugin>_generate(hflow_t *flow, hpoint_t *pt)
+int <plugin>_generate(hflow_t *flow, htrial_t *trial)
 {
     flow->status = HFLOW_ACCEPT;
     return 0;
@@ -112,16 +112,15 @@ int <plugin>_generate(hflow_t *flow, hpoint_t *pt)
  * is processed by the search strategy.
  *
  * Params:
- *   flow - Controls how the plug-in manager will process the point.
- *   pt   - Candidate point tested by the client.
- *   perf - Performance value associated with the point.
+ *   flow  - Controls how the plug-in manager will process the point.
+ *   trial - Candidate point, value, and other auxiliary trial information.
  *
  * Upon error, this function should call session_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, this routine should return 0, and the contents of the
  * "flow" variable should be set appropriately.
  */
-int <plugin>_analyze(hflow_t *flow, hpoint_t *pt, double perf)
+int <plugin>_analyze(hflow_t *flow, htrial_t *trial)
 {
     flow->status = HFLOW_ACCEPT;
     return 0;

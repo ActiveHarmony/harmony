@@ -18,101 +18,75 @@
  */
 
 /* Global Variables */
-var xmlhttp;
+var intervalHandle;
+
+function shutdown_comm(xhr, status, error)
+{
+    if (intervalHandle)
+        clearInterval(intervalHandle);
+    $("#data_table :input").attr("disabled", true);
+    $("#svr_time").html(status);
+}
 
 // Effectively, the main() routine for this program.
 $(document).ready(function() {
-    if (window.XMLHttpRequest)
-        xmlhttp = new XMLHttpRequest(); // IE7+, Firefox, Chrome, Opera, Safari
-    else
-        xmlhttp = new ActiveXObject("Microsoft.XMLHTTP"); // IE6, IE5
-
+    ajaxSetup(shutdown_comm);
+    updateInterval();
     refresh();
 });
 
-function date2Str(milliseconds) {
-    if (typeof d == "undefined")
-        d = new Date();
+function updateInterval()
+{
+    var delay = $("#interval").val();
 
-    d.setTime(milliseconds);
-    var retval = d.getFullYear() + "/";
-    if (d.getMonth() < 9)
-        retval += "0";
-    retval += (d.getMonth() + 1) + "/";
-    if (d.getDate() < 10)
-        retval += "0";
-    retval += d.getDate() + " ";
+    if (intervalHandle)
+        clearInterval(intervalHandle);
 
-    if (d.getHours() < 10)
-        retval += "0";
-    retval += d.getHours() + ":";
-    if (d.getMinutes() < 10)
-        retval += "0";
-    retval += d.getMinutes() + ":";
-    if (d.getSeconds() < 10)
-        retval += "0";
-    retval += d.getSeconds();
+    intervalHandle = setInterval(refresh, delay);
+}
 
-    return retval;
+function handleRefreshData(data)
+{
+    var sessions = data.split("|");
+    var tblHtml = "";
+
+    for (var i = 0; i < sessions.length; ++i) {
+        if (!sessions[i])
+            continue;
+
+        var fields = sessions[i].split(":");
+        tblHtml += "<tr>";
+
+        tblHtml += "<td><a href='/session-view.cgi?" + fields[0] + "'>";
+        tblHtml += fields[0] + "</a></td>";
+
+        tblHtml += "<td>" + fullDate(fields[1]) + "</td>";
+        tblHtml += "<td>" + fields[2] + "</td>";
+        tblHtml += "<td>" + fields[3] + "</td>";
+        tblHtml += "<td>" + fields[4] + "</td>";
+
+        tblHtml += "<td>";
+        tblHtml += "<input type='button' value='Restart'";
+        tblHtml += " onclick='requestRestart(\"" + fields[0] + "\")'>";
+
+        tblHtml += "<input type='button' value='Pause'";
+        tblHtml += " onclick='requestPause(\"" + fields[0] + "\")'>";
+
+        tblHtml += "<input type='button' value='Resume'";
+        tblHtml += " onclick='requestResume(\"" + fields[0] + "\")'>";
+
+        tblHtml += "<input type='button' value='Kill'";
+        tblHtml += " onclick='requestKill(\"" + fields[0] + "\");";
+        tblHtml += " setTimeout(refresh, 250)'>";
+        tblHtml += "</td>";
+
+        tblHtml += "</tr>";
+    }
+    $("#table_body").html(tblHtml);
+    $("#svr_time").html(fullDate());
 }
 
 function refresh()
 {
-    xmlhttp.open("GET", "session-list", false);
-    xmlhttp.send();
-    var list = xmlhttp.responseText.split("|");
-    var sessions = new Array();
-    for (var i = 0; i < list.length; ++i) {
-        if (list[i].length > 0)
-            sessions.push(list[i]);
-    }
-
-    var body = document.getElementById("data_table").tBodies[0];
-    tableDimension(body, sessions.length, 6);
-
-    for (var i = 0; i < sessions.length; ++i) {
-        var field = sessions[i].split(":");
-        body.rows[i].cells[0].innerHTML = "<a href='/session-view.cgi?" + field[0] + "'>" + field[0] + "</a>";
-        body.rows[i].cells[1].innerHTML = date2Str( field[1] );
-        body.rows[i].cells[2].innerHTML = field[2];
-        body.rows[i].cells[3].innerHTML = field[3];
-        body.rows[i].cells[4].innerHTML = field[4];
-        body.rows[i].cells[5].innerHTML = "Pause Restart <a href='#' onclick='sessionKill(\"" + field[0] + "\"); return false;'>Kill</a>";
-    }
-}
-
-function sessionKill(name)
-{
-    xmlhttp.open("GET", "kill?"+name, false);
-    xmlhttp.send();
-    refresh();
-}
-
-function tableDimension(body, numRows, numCols)
-{
-    if (body.rows.length == numRows &&
-        body.rows[0].cells.length == numCols) {
-        return;
-    }
-
-    for (var i = 0; i < numRows; ++i) {
-        if (body.rows.length <= i)
-            body.appendChild( document.createElement("tr") );
-        var row = body.rows[i];
-        if (row.cells.length > numCols)
-            row.cells.length = numCols;
-        while (row.cells.length < numCols)
-            row.appendChild( document.createElement("td") );
-        while (row.cells.length > numCols)
-            row.removeChild( row.lastChild );
-    }
-    while (body.rows.length > numRows)
-        body.removeChild( body.lastChild );
-
-    // Zero is a special case.
-    if (numRows == 0) {
-        body.appendChild( document.createElement("tr") );
-        while (body.rows[0].cells.length < numCols)
-            body.rows[0].appendChild( document.createElement("td") );
-    }
+    requestOverview(handleRefreshData);
 }

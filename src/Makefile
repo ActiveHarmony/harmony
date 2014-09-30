@@ -18,7 +18,8 @@ LIB_SRCS=hclient.c
 BIN_SRCS=hserver.c \
          httpsvr.c \
          session-core.c \
-         tuna.c
+         tuna.c \
+         hinfo.c
 SRCS=$(SHR_SRCS) $(LIB_SRCS) $(BIN_SRCS)
 
 SHR_OBJS=$(SHR_SRCS:.c=.o)
@@ -40,7 +41,8 @@ HTTP_FILES=http/overview.cgi \
            http/excanvas.min.js
 
 BIN_TARGETS=hserver \
-            tuna
+            tuna \
+            hinfo
 LIB_TARGETS=libharmony.a
 LIBEXEC_TARGETS=session-core
 TARGETS=$(BIN_TARGETS) $(LIB_TARGETS) $(LIBEXEC_TARGETS)
@@ -93,6 +95,10 @@ hserver: httpsvr.o $(SHR_OBJS)
 session-core: override LDFLAGS+=-Wl,--export-dynamic
 session-core: override LDLIBS+=-ldl
 session-core: $(SHR_OBJS)
+
+hinfo: override LDFLAGS+=-Wl,--export-dynamic
+hinfo: override LDLIBS+=-ldl
+hinfo: $(SHR_OBJS)
 
 tuna.o: override CFLAGS+=-D_BSD_SOURCE
 tuna: libharmony.a

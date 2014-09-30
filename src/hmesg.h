@@ -60,6 +60,7 @@ typedef enum {
     HMESG_BEST,    /* Retrieve best known point             */
     HMESG_FETCH,   /* Retrieve search space point to test   */
     HMESG_REPORT,  /* Report search space point performance */
+    HMESG_RESTART, /* Restart the search                    */
 
     HMESG_TYPE_MAX
 } hmesg_type;

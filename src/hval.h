@@ -47,6 +47,7 @@ typedef struct hval {
 
 extern const hval_t HVAL_INITIALIZER;
 
+int hval_parse(hval_t *val, const char *buf);
 int hval_serialize(char **buf, int *buflen, const hval_t *val);
 int hval_deserialize(hval_t *val, char *buf);
 

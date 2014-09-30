@@ -40,7 +40,7 @@
  * Key           | Type    | Default | Description
  * --------------| ------- | ------- | -----------
  * SIMPLEX_SIZE  | Integer | N+1     | Number of vertices in the simplex.  Defaults to the number of tuning variables + 1.
- * INIT_METHOD   | String  | point   | Initial simplex generation method.  Valid values are "point", "point_fast", and "random" (without quotes).
+ * INIT_METHOD   | String  | point   | Initial simplex generation method.  Valid values are "point", and "random" (without quotes).
  * INIT_PERCENT  | Real    | 0.35    | Initial simplex size as a percentage of the total search space.  Only for "point" and "point_fast" initial simplex methods.
  * REJECT_METHOD | String  | penalty | How to choose a replacement when dealing with rejected points:<br> **Penalty** - Use this method if the chance of point rejection is relatively low.  It applies an infinite penalty factor for invalid points, allowing the Nelder-Mead algorithm to select a sensible next point.  However, if the entire simplex is comprised of invalid points, an infinite loop of invalid points may occur.<br> **Random** - Use this method if the chance of point rejection is high.  It reduces the risk of infinitely selecting invalid points at the cost of increasing the risk of deforming the simplex.
  * REFLECT       | Real    | 1.0     | Multiplicative coefficient for simplex reflection step.
@@ -69,8 +69,6 @@
 
 hpoint_t best;
 double   best_perf;
-
-hpoint_t curr;
 
 typedef enum simplex_init {
     SIMPLEX_INIT_UNKNOWN = 0,
@@ -106,6 +104,7 @@ int  strategy_cfg(hsignature_t *sig);
 int  init_by_random(void);
 int  init_by_maxval(void);
 int  init_by_point(int fast);
+int  init_by_specified_point(const char *str);
 void simplex_update_index(void);
 void simplex_update_centroid(void);
 int  nm_algorithm(void);
@@ -114,7 +113,7 @@ int  nm_next_vertex(void);
 void check_convergence(void);
 
 /* Variables to control search properties. */
-simplex_init_t  init_method  = SIMPLEX_INIT_CENTER;
+simplex_init_t  init_method;
 vertex_t *      init_point;
 double          init_percent = 0.35;
 reject_method_t reject_type  = REJECT_METHOD_PENALTY;
@@ -138,6 +137,7 @@ int index_best;
 int index_worst;
 int index_curr; /* for INIT or SHRINK */
 int next_id;
+int coords; /* number of coordinates for each vertex, from sig->range */
 
 /*
  * Invoked once on strategy load.
@@ -149,58 +149,78 @@ int strategy_init(hsignature_t *sig)
         return -1;
     }
 
-    init_point = vertex_alloc();
-    if (!init_point) {
-        session_error("Could not allocate memory for initial point.");
-        return -1;
+    if (!base) {
+        const char *cfgval;
+        /* One time memory allocation and/or initialization. */
+
+        cfgval = session_getcfg(CFGKEY_SIMPLEX_SIZE);
+        if (cfgval)
+            simplex_size = atoi(cfgval);
+
+        /* Make sure the simplex size is N+1 or greater. */
+        if (simplex_size < sig->range_len + 1)
+            simplex_size = sig->range_len + 1;
+
+        init_point = vertex_alloc();
+        if (!init_point) {
+            session_error("Could not allocate memory for initial point.");
+            return -1;
+        }
+
+        centroid = vertex_alloc();
+        if (!centroid) {
+            session_error("Could not allocate memory for centroid vertex.");
+            return -1;
+        }
+
+        test = vertex_alloc();
+        if (!test) {
+            session_error("Could not allocate memory for testing vertex.");
+            return -1;
+        }
+
+        base = simplex_alloc(simplex_size);
+        if (!base) {
+            session_error("Could not allocate memory for base simplex.");
+            return -1;
+        }
+
+        /* The best point and trial counter should only be initialized once,
+         * and thus be retained across a restart.
+         */
+        best = HPOINT_INITIALIZER;
+        best_perf = INFINITY;
+        next_id = 1;
     }
+
+    /* Initialization for subsequent calls to strategy_init(). */
+    vertex_reset(init_point);
+    vertex_reset(centroid);
+    vertex_reset(test);
+    simplex_reset(base);
+    coords = sig->range_len;
 
     if (strategy_cfg(sig) != 0)
         return -1;
 
-    best = HPOINT_INITIALIZER;
-    best_perf = INFINITY;
-
-    if (hpoint_init(&curr, simplex_size) != 0) {
-        session_error("Could not initialize point structure.");
-        return -1;
-    }
-
-    centroid = vertex_alloc();
-    if (!centroid) {
-        session_error("Could not allocate memory for centroid vertex.");
-        return -1;
-    }
-
-    test = vertex_alloc();
-    if (!test) {
-        session_error("Could not allocate memory for testing vertex.");
-        return -1;
-    }
-
-    /* Default stopping criteria: 0.5% of dist(vertex_min, vertex_max). */
-    if (size_tol == 0)
-        size_tol = vertex_dist(vertex_min(), vertex_max()) * 0.005;
-
-    base = simplex_alloc(simplex_size);
-    if (!base) {
-        session_error("Could not allocate memory for base simplex.");
-        return -1;
-    }
-
     switch (init_method) {
-    case SIMPLEX_INIT_CENTER: vertex_center(init_point); break;
-    case SIMPLEX_INIT_RANDOM: vertex_rand_trim(init_point,
-                                               init_percent); break;
-    case SIMPLEX_INIT_POINT:  assert(0 && "Not yet implemented."); break;
+    case SIMPLEX_INIT_CENTER:
+        vertex_center(init_point);
+        break;
+
+    case SIMPLEX_INIT_RANDOM:
+        vertex_rand_trim(init_point, init_percent);
+        break;
+
+    case SIMPLEX_INIT_POINT:
+        vertex_from_string(session_getcfg(CFGKEY_INIT_POINT), sig, init_point);
+        break;
+
     default:
         session_error("Invalid initial search method.");
         return -1;
     }
     simplex_from_vertex(init_point, init_percent, base);
-
-    next_id = 1;
-    state = SIMPLEX_STATE_INIT;
 
     if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
         session_error("Could not set "
@@ -208,6 +228,8 @@ int strategy_init(hsignature_t *sig)
         return -1;
     }
 
+    index_curr = 0;
+    state = SIMPLEX_STATE_INIT;
     if (nm_next_vertex() != 0) {
         session_error("Could not initiate test vertex.");
         return -1;
@@ -221,14 +243,7 @@ int strategy_cfg(hsignature_t *sig)
     const char *cfgval;
     char *endp;
 
-    /* Make sure the simplex size is N+1 or greater. */
-    cfgval = session_getcfg(CFGKEY_SIMPLEX_SIZE);
-    if (cfgval)
-        simplex_size = atoi(cfgval);
-
-    if (simplex_size < sig->range_len + 1)
-        simplex_size = sig->range_len + 1;
-
+    init_method = SIMPLEX_INIT_CENTER; /* Default value. */
     cfgval = session_getcfg(CFGKEY_INIT_METHOD);
     if (cfgval) {
         if (strcasecmp(cfgval, "center") == 0) {
@@ -245,6 +260,12 @@ int strategy_cfg(hsignature_t *sig)
                           CFGKEY_INIT_METHOD " configuration key.");
             return -1;
         }
+    }
+
+    /* CFGKEY_INIT_POINT will override CFGKEY_INIT_METHOD is necessary. */
+    cfgval = session_getcfg(CFGKEY_INIT_POINT);
+    if (cfgval) {
+        init_method = SIMPLEX_INIT_POINT;
     }
 
     cfgval = session_getcfg(CFGKEY_INIT_PERCENT);
@@ -356,6 +377,10 @@ int strategy_cfg(hsignature_t *sig)
             return -1;
         }
     }
+    else {
+        /* Default stopping criteria: 0.5% of dist(vertex_min, vertex_max). */
+        size_tol = vertex_dist(vertex_min(), vertex_max()) * 0.005;
+    }
     return 0;
 }
 
@@ -443,8 +468,7 @@ int strategy_analyze(htrial_t *trial)
     double perf = hperf_unify(trial->perf);
 
     if (trial->point.id != next->id) {
-        session_error("Rouge points not supported.");
-        return -1;
+        return 0;
     }
     hperf_copy(next->perf, trial->perf);
 

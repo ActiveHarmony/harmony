@@ -76,12 +76,15 @@ Active Harmony is distributed with a set of search strategies and processing lay
 \page app Harmony Applications
 
 \latexonly \begin{comment} \endlatexonly
+- \subpage app_hinfo
 - \subpage app_hserver
 - \subpage app_tuna
 - \subpage app_example
 
 \latexonly \end{comment}
 \endlatexonly
+
+
 
 \page app_hserver Harmony Server
 For some advanced uses of auto-tuning, multiple clients need to communicate to a single tuning session.  For instance, if an MPI program is being tuned, all the constituent ranks may participate in parallel to expedite the search.  In this case, the Active Harmony Server must be used as a central multiplexing unit.
@@ -251,6 +254,7 @@ See the [Tuning Session](\ref intro_session) section for an overview of the proc
 - \subpage agg
 - \subpage cache
 - \subpage codesvr
+- \subpage group
 - \subpage logger
 - \subpage omega
 - \subpage TAUdb

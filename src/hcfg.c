@@ -319,14 +319,19 @@ char *hcfg_parse(char *buf, char **key, char **val)
     while (ptr < buf)
         *(ptr++) = '\0';
 
+    /* Check for empty value, used for deleting a key/value pair. */
+    if (*buf == '\n' || *buf == '\0')
+        goto endline;
+
     /* Unquote the value string. */
     *val = buf;
-    ptr = buf;
     while (*buf && *buf != '\n') {
         if (*buf ==  '#') goto endline;
         if (*buf == '\\') ++buf;
         *(ptr++) = *(buf++);
     }
+    if (**val == '\\')
+        ++(*val);
 
   endline:
     buf += strcspn(buf, "\n");
@@ -562,14 +567,16 @@ int hash_delete(hcfg_t *cfg, const char *key)
     keyval_t *entry;
 
     entry = hash_find(cfg, key);
-    if (entry == NULL || entry->key == NULL)
+    if (!entry)
         return -1;
 
-    free(entry->key);
-    free(entry->val);
-    entry->key = NULL;
-    entry->val = NULL;
-    --cfg->count;
+    if (entry->key) {
+        free(entry->key);
+        free(entry->val);
+        entry->key = NULL;
+        entry->val = NULL;
+        --cfg->count;
+    }
     return 0;
 }
 

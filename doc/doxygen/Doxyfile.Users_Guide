@@ -7,6 +7,7 @@ HTML_OUTPUT  = Users_Guide.html
 INPUT = doxygen/Users_Guide.dox \
         ../README \
         ../example/synth/README \
+        ../src/hinfo.c \
         ../src/plugins/strategies/exhaustive.c \
         ../src/plugins/strategies/random.c \
         ../src/plugins/strategies/nm.c \
@@ -15,6 +16,7 @@ INPUT = doxygen/Users_Guide.dox \
         ../src/plugins/layers/cache.c \
         ../src/plugins/layers/codegen.c \
         ../src/plugins/layers/constraint.c \
+        ../src/plugins/layers/group.c \
         ../src/plugins/layers/log.c \
         ../src/plugins/layers/TAUdb.c \
         ../src/plugins/layers/xmlWriter.c \
