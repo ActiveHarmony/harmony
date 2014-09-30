@@ -35,6 +35,15 @@
 #include <math.h>
 #include <assert.h>
 
+/*
+ * Local configuration strings.
+ */
+#define CFGKEY_NEMO_LOOSE       "NEMO_LOOSE"
+#define CFGKEY_NEMO_MULT        "NEMO_MULT"
+#define CFGKEY_NEMO_ANCHOR      "NEMO_ANCHOR"
+#define CFGKEY_NEMO_SAMESIMPLEX "NEMO_SAMESIMPLEX"
+#define CFGKEY_NEMO_LEEWAY      "NEMO_LEEWAY"
+
 hpoint_t best;
 hperf_t *best_perf;
 
@@ -272,7 +281,7 @@ int strategy_cfg(hsignature_t *sig)
     const char *cfgval;
     char *endp;
 
-    cfgval = session_getcfg("NEMO_LOOSE");
+    cfgval = session_getcfg(CFGKEY_NEMO_LOOSE);
     if (cfgval) {
         loose = (*cfgval == '1' || *cfgval == 'y' || *cfgval == 'Y');
     }
@@ -280,7 +289,7 @@ int strategy_cfg(hsignature_t *sig)
         loose = 0;
     }
 
-    cfgval = session_getcfg("NEMO_MULT");
+    cfgval = session_getcfg(CFGKEY_NEMO_MULT);
     if (cfgval) {
         mult = strtod(cfgval, &endp);
         if (*endp != '\0') {
@@ -292,7 +301,7 @@ int strategy_cfg(hsignature_t *sig)
         mult = 1.0;
     }
 
-    cfgval = session_getcfg("NEMO_ANCHOR");
+    cfgval = session_getcfg(CFGKEY_NEMO_ANCHOR);
     if (cfgval) {
         anchor = (*cfgval == '1' || *cfgval == 'y' || *cfgval == 'Y');
     }
@@ -300,7 +309,7 @@ int strategy_cfg(hsignature_t *sig)
         anchor = 1;
     }
 
-    cfgval = session_getcfg("NEMO_SAMESIMPLEX");
+    cfgval = session_getcfg(CFGKEY_NEMO_SAMESIMPLEX);
     if (cfgval) {
         samesimplex = (*cfgval == '1' || *cfgval == 'y' || *cfgval == 'Y');
     }
@@ -462,7 +471,7 @@ int strategy_cfg(hsignature_t *sig)
         session_error("Could not allocate memory for leeway vector.");
         return -1;
     }
-    cfgval = session_getcfg("NEMO_LEEWAY");
+    cfgval = session_getcfg(CFGKEY_NEMO_LEEWAY);
     if (cfgval) {
         endp = (char *)cfgval;
         for (i = 0; *endp && i < perf_n - 1; ++i) {
