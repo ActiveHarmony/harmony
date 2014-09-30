@@ -43,6 +43,10 @@
 #define CFGKEY_NEMO_ANCHOR      "NEMO_ANCHOR"
 #define CFGKEY_NEMO_SAMESIMPLEX "NEMO_SAMESIMPLEX"
 #define CFGKEY_NEMO_LEEWAY      "NEMO_LEEWAY"
+#define CFGKEY_NEMO_DIST_TOL    "NEMO_DIST_TOL"
+#define CFGKEY_NEMO_UP_MUL      "NEMO_UP_MUL"
+#define CFGKEY_NEMO_DN_MUL      "NEMO_DN_MUL"
+#define CFGKEY_NEMO_TOL_CNT     "NEMO_TOL_CNT"
 
 hpoint_t best;
 hperf_t *best_perf;
@@ -107,7 +111,12 @@ double contract = 0.5;
 double shrink   = 0.5;
 double fval_tol = 1e-8;
 double size_tol;
+double dist_tol = NAN;
+double up_mul = NAN;
+double dn_mul = NAN;
+double move_len;
 int simplex_size;
+int tol_cnt;
 
 /* Variables to track current search state. */
 simplex_state_t state;
@@ -513,6 +522,21 @@ int strategy_cfg(hsignature_t *sig)
         return -1;
     }
 
+    cfgval = session_getcfg(CFGKEY_NEMO_DIST_TOL);
+    if (cfgval)
+        dist_tol = atof(cfgval);
+
+    cfgval = session_getcfg(CFGKEY_NEMO_UP_MUL);
+    if (cfgval)
+        up_mul = atof(cfgval);
+
+    cfgval = session_getcfg(CFGKEY_NEMO_DN_MUL);
+    if (cfgval)
+        dn_mul = atof(cfgval);
+
+    cfgval = session_getcfg(CFGKEY_NEMO_TOL_CNT);
+    if (cfgval)
+        tol_cnt = atoi(cfgval);
     return 0;
 }
 
@@ -681,11 +705,11 @@ int nm_algorithm(void)
         if (nm_state_transition() != 0)
             return -1;
 
-        if (state == SIMPLEX_STATE_REFLECT)
-            check_convergence();
-
         if (nm_next_vertex() != 0)
             return -1;
+
+        if (state == SIMPLEX_STATE_REFLECT)
+            check_convergence();
 
     } while (vertex_outofbounds(next));
 
@@ -794,6 +818,8 @@ int nm_next_vertex(void)
          * through the centroid point. */
         vertex_transform(simplex_worst, centroid, -reflect, test);
         next = test;
+        move_len = 100 * (vertex_dist(simplex_worst, next) /
+                          vertex_dist(vertex_min(), vertex_max()));
         break;
 
     case SIMPLEX_STATE_EXPAND:
@@ -865,30 +891,60 @@ void simplex_update_centroid(void)
 
 void check_convergence(void)
 {
-    int i;
-    double fval_err, size_max, dist, base_val;
+    static int cnt;
 
     if (simplex_collapsed(base) == 1)
         goto converged;
 
-    fval_err = 0;
-    base_val = centroid->perf->p[phase];
-    for (i = 0; i < simplex_size; ++i) {
-        fval_err += ((base->vertex[i]->perf->p[phase] - base_val) *
-                     (base->vertex[i]->perf->p[phase] - base_val));
+    if (!isnan(dist_tol)) {
+        if (move_len < dist_tol) {
+            if (++cnt >= tol_cnt) {
+                cnt = 0;
+                goto converged;
+            }
+        }
+        else cnt = 0;
     }
-    fval_err /= simplex_size;
-
-    size_max = 0;
-    for (i = 0; i < simplex_size; ++i) {
-        dist = vertex_dist(base->vertex[i], centroid);
-        if (size_max < dist)
-            size_max = dist;
+    else if (!isnan(up_mul)) {
+        if (move_len < ((phase + 1) * (1.0 + (up_mul/10)))) {
+            if (++cnt >= tol_cnt) {
+                cnt = 0;
+                goto converged;
+            }
+        }
+        else cnt = 0;
     }
+    else if (!isnan(dn_mul)) {
+        if (move_len < ((perf_n - phase) * (1.0 + (dn_mul/10)))) {
+            if (++cnt >= tol_cnt) {
+                cnt = 0;
+                goto converged;
+            }
+        }
+        else cnt = 0;
+    }
+    else {
+        int i;
+        double fval_err, size_max, base_val;
 
-    if (fval_err < fval_tol && size_max < size_tol)
-        goto converged;
+        fval_err = 0;
+        base_val = centroid->perf->p[phase];
+        for (i = 0; i < simplex_size; ++i) {
+            fval_err += ((base->vertex[i]->perf->p[phase] - base_val) *
+                         (base->vertex[i]->perf->p[phase] - base_val));
+        }
+        fval_err /= simplex_size;
 
+        size_max = 0;
+        for (i = 0; i < simplex_size; ++i) {
+            double dist = vertex_dist(base->vertex[i], centroid);
+            if (size_max < dist)
+                size_max = dist;
+        }
+
+        if (fval_err < fval_tol && size_max < size_tol)
+            goto converged;
+    }
     return;
 
   converged:
