@@ -37,40 +37,16 @@ int tcp_connect(const char *host, int port)
 {
     struct sockaddr_in addr;
     struct hostent *h_name;
-    char *portenv;
     int sockfd;
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0)
         return -1;
 
-    /* Look up the address associated with the supplied hostname
-     * string.  If no hostname is provided, use the HARMONY_S_HOST
-     * environment variable, if defined.  Otherwise, resort to
-     * default.
-     */
-    if (host == NULL) {
-        host = getenv("HARMONY_S_HOST");
-        if (host == NULL)
-            host = DEFAULT_HOST;
-    }
-
     h_name = gethostbyname(host);
     if (!h_name)
         return -1;
     memcpy(&addr.sin_addr, h_name->h_addr_list[0], sizeof(struct in_addr));
-
-    /* Prepare the port of connection.  If the supplied port is 0, use
-     * the HARMONY_S_PORT environment variable, if defined.
-     * Otherwise, resort to default.
-     */
-    if (port == 0) {
-        portenv = getenv("HARMONY_S_PORT");
-        if (portenv)
-            port = atoi(portenv);
-        else
-            port = DEFAULT_PORT;
-    }
     addr.sin_port = htons(port);
 
     /* try to connect to the server */

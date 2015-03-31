@@ -209,9 +209,17 @@ int harmony_launch(hdesc_t *hdesc, const char *host, int port)
         return -1;
     }
 
-    if (!host && !getenv("HARMONY_S_HOST")) {
-        char *path;
-        const char *home;
+    if (!host) {
+        host = hcfg_get(&hdesc->sess.cfg, CFGKEY_HARMONY_HOST);
+    }
+
+    if (port == 0) {
+        port = hcfg_int(&hdesc->sess.cfg, CFGKEY_HARMONY_PORT);
+    }
+
+    if (!host) {
+        char* path;
+        const char* home;
 
         /* Provide a default name, if one isn't defined. */
         if (!hdesc->sess.sig.name) {
@@ -368,6 +376,16 @@ int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *name)
     }
 
     if (hdesc->state == HARMONY_STATE_INIT) {
+        if (!host) {
+            host = hcfg_get(&hdesc->sess.cfg, CFGKEY_HARMONY_HOST);
+            hdesc->errstr = "Invalid value for " CFGKEY_HARMONY_HOST
+                            " configuration variable."
+                }
+
+        if (port == 0) {
+            port = hcfg_int(&hdesc->sess.cfg, CFGKEY_HARMONY_PORT);
+        }
+
         hdesc->socket = tcp_connect(host, port);
         if (hdesc->socket < 0) {
             hdesc->errstr = "Error establishing TCP connection with server";

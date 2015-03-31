@@ -23,6 +23,7 @@
 #include "hpoint.h"
 #include "hperf.h"
 #include "hsignature.h"
+#include "hcfg.h"
 
 #ifdef __cplusplus
 extern "C" {

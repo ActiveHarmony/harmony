@@ -28,6 +28,15 @@
 const char harmony_layer_name[] = "<plugin>";
 
 /*
+ * Configuration variables used in this plugin.
+ * These will automatically be registered by session-core upon load.
+ */
+hcfg_info_t plugin_keyinfo[] = {
+    { "VARNAME", "Default Value", "Text description." },
+    { NULL }
+};
+
+/*
  * Invoked once on module load, and during subsequent session restarts.
  *
  * Param:

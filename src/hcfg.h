@@ -19,31 +19,49 @@
 #ifndef __HCFG_H__
 #define __HCFG_H__
 
-#include <stdio.h>
+#include "defaults.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct hcfg;
-typedef struct hcfg hcfg_t;
+typedef struct hcfg_info {
+    const char* key;
+    const char* val;
+    const char* help;
+} hcfg_info_t;
+extern const hcfg_info_t hcfg_global_keys[];
 
-hcfg_t *hcfg_alloc(void);
-hcfg_t *hcfg_copy(const hcfg_t *);
-void hcfg_free(hcfg_t *cfg);
+typedef struct hcfg {
+    char** env;
+    int    len;
+    int    cap;
+} hcfg_t;
+extern const hcfg_t HCFG_INITIALIZER;
 
-const char *hcfg_get(hcfg_t *cfg, const char *key);
-int hcfg_set(hcfg_t *cfg, const char *key, const char *val);
-int hcfg_unset(hcfg_t *cfg, const char *key);
-int hcfg_load(hcfg_t *cfg, const char *filename);
-int hcfg_merge(hcfg_t *dst, const hcfg_t *src);
-int hcfg_write(hcfg_t *cfg, const char *filename);
+int    hcfg_init(hcfg_t* cfg);
+int    hcfg_reginfo(hcfg_t* cfg, const hcfg_info_t* info);
+int    hcfg_copy(hcfg_t* dst, const hcfg_t* src);
+void   hcfg_fini(hcfg_t* cfg);
 
-char *hcfg_parse(char *buf, char **key, char **val);
-int hcfg_is_cmd(const char *buf);
+char*  hcfg_get(const hcfg_t* cfg, const char* key);
+int    hcfg_bool(const hcfg_t* cfg, const char* key);
+long   hcfg_int(const hcfg_t* cfg, const char* key);
+double hcfg_real(const hcfg_t* cfg, const char* key);
 
-int hcfg_serialize(char **buf, int *buflen, const hcfg_t *cfg);
-int hcfg_deserialize(hcfg_t *cfg, char *buf);
+int    hcfg_arr_len(const hcfg_t* cfg, const char* key);
+int    hcfg_arr_get(const hcfg_t* cfg, const char* key, int idx,
+                    char* buf, int len);
+int    hcfg_arr_bool(const hcfg_t* cfg, const char* key, int idx);
+long   hcfg_arr_int(const hcfg_t* cfg, const char* key, int idx);
+double hcfg_arr_real(const hcfg_t* cfg, const char* key, int idx);
+
+int    hcfg_set(hcfg_t* cfg, const char* key, const char* val);
+int    hcfg_loadfile(hcfg_t* cfg, const char* filename);
+int    hcfg_write(const hcfg_t* cfg, const char* filename);
+
+int    hcfg_serialize(char** buf, int* buflen, const hcfg_t* cfg);
+int    hcfg_deserialize(hcfg_t* cfg, char* buf);
 
 #ifdef __cplusplus
 }

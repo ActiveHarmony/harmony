@@ -19,32 +19,39 @@
 #ifndef __DEFAULTS_H__
 #define __DEFAULTS_H__
 
+#define SESSION_CORE_EXECFILE "session-core"
+#define SESSION_LAYER_SEP     ':'
 #define DEFAULT_HOST "localhost"
 #define DEFAULT_PORT 1979
-#define DEFAULT_CONFIG_FILENAME "harmony.cfg"
-#define DEFAULT_STRATEGY "pro.so"
-#define DEFAULT_PERF_COUNT 1
-#define DEFAULT_CLIENT_COUNT 1
-#define DEFAULT_PER_CLIENT 1
 
+/*
+ * The following definitions allow the compiler to find typos for us.
+ * Plug-in developers need not augment this file until their strategy
+ * or layer is incorporated into the Active Harmony codebase.
+ */
+
+/* Session-wide configuration variables. */
 #define CFGKEY_HARMONY_HOME       "HARMONY_HOME"
-#define CFGKEY_SERVER_PORT        "SERVER_PORT"
-#define CFGKEY_SESSION_STRATEGY   "SESSION_STRATEGY"
-#define CFGKEY_SESSION_LAYERS     "SESSION_LAYER_LIST"
-#define CFGKEY_SESSION_PAUSED     "SESSION_PAUSED"
+#define CFGKEY_HARMONY_HOST       "HARMONY_HOST"
+#define CFGKEY_HARMONY_PORT       "HARMONY_PORT"
+#define CFGKEY_RANDOM_SEED        "RANDOM_SEED"
 #define CFGKEY_PERF_COUNT         "PERF_COUNT"
+#define CFGKEY_GEN_COUNT          "GEN_COUNT"
 #define CFGKEY_CLIENT_COUNT       "CLIENT_COUNT"
-#define CFGKEY_PER_CLIENT_STORAGE "PER_CLIENT_STORAGE"
-#define CFGKEY_STRATEGY_CONVERGED "STRATEGY_CONVERGED"
+#define CFGKEY_STRATEGY           "STRATEGY"
+#define CFGKEY_LAYERS             "LAYERS"
+
+/* Session state configuration variables. */
+#define CFGKEY_PAUSED             "PAUSED"
+#define CFGKEY_CONVERGED          "CONVERGED"
 #define CFGKEY_CURRENT_CLIENT     "CURRENT_CLIENT"
 
+/* Plug-in strategy configuration variables. */
 #define CFGKEY_PASSES             "PASSES"
-#define CFGKEY_RANDOM_SEED        "RANDOM_SEED"
-
-#define CFGKEY_SIMPLEX_SIZE       "SIMPLEX_SIZE"
 #define CFGKEY_INIT_METHOD        "INIT_METHOD"
 #define CFGKEY_INIT_PERCENT       "INIT_PERCENT"
 #define CFGKEY_INIT_POINT         "INIT_POINT"
+#define CFGKEY_SIMPLEX_SIZE       "SIMPLEX_SIZE"
 #define CFGKEY_REFLECT            "REFLECT"
 #define CFGKEY_EXPAND             "EXPAND"
 #define CFGKEY_CONTRACT           "CONTRACT"
@@ -52,10 +59,30 @@
 #define CFGKEY_FVAL_TOL           "FVAL_TOL"
 #define CFGKEY_SIZE_TOL           "SIZE_TOL"
 #define CFGKEY_REJECT_METHOD      "REJECT_METHOD"
+#define CFGKEY_NEMO_LOOSE         "NEMO_LOOSE"
+#define CFGKEY_NEMO_MULT          "NEMO_MULT"
+#define CFGKEY_NEMO_ANCHOR        "NEMO_ANCHOR"
+#define CFGKEY_NEMO_SAMESIMPLEX   "NEMO_SAMESIMPLEX"
+#define CFGKEY_NEMO_LEEWAY        "NEMO_LEEWAY"
+#define CFGKEY_NEMO_PHASE         "NEMO_PHASE"
 
-/* For specifying a different initial simplex */
-#define CFGKEY_POINT_DATA         "POINT_DATA"
+/* Plug-in layer configuration variables. */
+#define CFGKEY_AGG_FUNC           "AGG_FUNC"
+#define CFGKEY_AGG_TIMES          "AGG_TIMES"
+#define CFGKEY_CACHE_FILE         "CACHE_FILE"
+#define CFGKEY_GROUP_LIST         "GROUP_LIST"
+#define CFGKEY_LOG_FILE           "LOG_FILE"
+#define CFGKEY_LOG_MODE           "LOG_MODE"
+#define CFGKEY_OC_BIN             "OC_BIN"
+#define CFGKEY_OC_CONSTRAINTS     "OC_CONSTRAINTS"
+#define CFGKEY_OC_FILE            "OC_FILE"
+#define CFGKEY_OC_QUIET           "OC_QUIET"
+#define CFGKEY_TAUDB_NAME         "TAUDB_NAME"
+#define CFGKEY_TAUDB_STORE_METHOD "TAUDB_STORE_METHOD"
+#define CFGKEY_TAUDB_STORE_NUM    "TAUDB_STORE_NUM"
+#define CFGKEY_XML_FILE           "XML_FILE"
 
+/* Codegen server configuration variables. */
 #define CFGKEY_SERVER_URL         "SERVER_URL"
 #define CFGKEY_TARGET_URL         "TARGET_URL"
 #define CFGKEY_REPLY_URL          "REPLY_URL"
