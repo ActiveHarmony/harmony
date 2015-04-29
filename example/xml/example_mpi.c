@@ -96,16 +96,16 @@ int main(int argc, char **argv)
     MPI_Comm_size(MPI_COMM_WORLD, &node_count);
 
     if (rank == 0) {
-        snprintf(numbuf, sizeof(numbuf), "%d", node_count);
-
         /* Process the program arguments. */
         if (argc > 1)
             name = argv[1];
 
         errno = 0;
         harmony_session_name(hdesc, name);
-        harmony_setcfg(hdesc, CFGKEY_SESSION_LAYERS, "xmlWriter.so");
-        harmony_setcfg(hdesc, CFGKEY_SESSION_STRATEGY, "pro.so");
+        harmony_strategy(hdesc, "pro.so");
+        harmony_layers(hdesc, "xmlWriter.so");
+
+        snprintf(numbuf, sizeof(numbuf), "%d", node_count);
         harmony_setcfg(hdesc, CFGKEY_CLIENT_COUNT, numbuf);
         if (errno) {
             fprintf(stderr, "Error during session configuration.\n");

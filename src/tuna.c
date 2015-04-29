@@ -141,7 +141,7 @@ int main(int argc, char **argv)
     harmony_session_name(hdesc, client_bin);
 
     /* Use the Nelder-Mead search strategy by default. */
-    harmony_setcfg(hdesc, CFGKEY_SESSION_STRATEGY, "nm.so");
+    harmony_strategy(hdesc, "nm.so");
 
     /* Sanity check before we attempt to connect to the server. */
     if (bcount < 1) {

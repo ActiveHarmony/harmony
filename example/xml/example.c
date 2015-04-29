@@ -90,7 +90,7 @@ int main(int argc, char **argv)
 
     errno = 0;
     harmony_session_name(hdesc, name);
-    harmony_setcfg(hdesc, CFGKEY_SESSION_LAYERS, "xmlWriter.so");
+    harmony_layers(hdesc, "xmlWriter.so");
     if (errno) {
         fprintf(stderr, "Error during session configuration.\n");
         return -1;

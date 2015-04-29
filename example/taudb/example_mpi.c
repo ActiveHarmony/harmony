@@ -96,16 +96,16 @@ int main(int argc, char **argv)
     argc -= harmony_parse_args(hdesc, argc - 1, &argv[1]);
 
     if (rank == 0) {
-        snprintf(numbuf, sizeof(numbuf), "%d", node_count);
-
         /* Process the program arguments. */
         if (argc > 1)
             name = argv[1];
 
         errno = 0;
         harmony_session_name(hdesc, name);
-        harmony_setcfg(hdesc, CFGKEY_SESSION_LAYERS, "tauDB.so");
-        harmony_setcfg(hdesc, CFGKEY_SESSION_STRATEGY, "pro.so");
+        harmony_strategy(hdesc, "pro.so");
+        harmony_layers(hdesc, "tauDB.so");
+
+        snprintf(numbuf, sizeof(numbuf), "%d", node_count);
         harmony_setcfg(hdesc, CFGKEY_CLIENT_COUNT, numbuf);
         harmony_setcfg(hdesc, "TAUDB_STORE_METHOD", "one_time");
         harmony_setcfg(hdesc, "TAUDB_STORE_NUM", "150");

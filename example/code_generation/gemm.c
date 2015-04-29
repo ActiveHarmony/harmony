@@ -136,13 +136,12 @@ int main(int argc, char *argv[])
 
     if (rank == 0) {
         /* We are the master rank.  Establish a new Harmony tuning session. */
-        snprintf(numbuf, sizeof(numbuf), "%d", node_count);
-
         errno = 0;
         harmony_session_name(hdesc, SESSION_NAME);
+        harmony_strategy(hdesc, "pro.so");
+        harmony_layers(hdesc, "codegen.so");
+        snprintf(numbuf, sizeof(numbuf), "%d", node_count);
         harmony_setcfg(hdesc, CFGKEY_CLIENT_COUNT, numbuf);
-        harmony_setcfg(hdesc, CFGKEY_SESSION_STRATEGY, "pro.so");
-        harmony_setcfg(hdesc, CFGKEY_SESSION_LAYERS, "codegen.so");
         if (errno) {
             errprint("Error during session configuration.\n");
             MPI_Abort(MPI_COMM_WORLD, -1);

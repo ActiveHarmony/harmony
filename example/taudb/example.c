@@ -206,7 +206,8 @@ int main(int argc, char **argv)
      */
     errno = 0;
     harmony_session_name(hdesc, name);
-    harmony_setcfg(hdesc, CFGKEY_SESSION_LAYERS, "TAUdb.so");
+    harmony_layers(hdesc, "TAUdb.so");
+
     harmony_setcfg(hdesc, CFGKEY_CLIENT_COUNT, "1");
     harmony_setcfg(hdesc, "TAUDB_STORE_METHOD", "one_time");
     harmony_setcfg(hdesc, "TAUDB_STORE_NUM", "150");
