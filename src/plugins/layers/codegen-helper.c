@@ -37,7 +37,6 @@
 #include "hutil.h"
 #include "hsockutil.h"
 #include "hcfg.h"
-#include "defaults.h"
 
 #define POLL_TIME 250000
 

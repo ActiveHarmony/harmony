@@ -58,7 +58,7 @@
 #include "hsignature.h"
 #include "hpoint.h"
 #include "hutil.h"
-#include "defaults.h"
+#include "hcfg.h"
 
 #include <stdio.h>
 #include <stdlib.h>

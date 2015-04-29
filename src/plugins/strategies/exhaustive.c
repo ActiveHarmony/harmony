@@ -41,7 +41,6 @@
 #include "hperf.h"
 #include "hutil.h"
 #include "hcfg.h"
-#include "defaults.h"
 
 #include <stdlib.h>
 #include <string.h>

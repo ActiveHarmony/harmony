@@ -21,7 +21,6 @@
 #include "hutil.h"
 #include "hsockutil.h"
 #include "hcfg.h"
-#include "defaults.h" /* needed for looking cfg params up */
 
 #include <stdio.h>
 #include <stdlib.h>

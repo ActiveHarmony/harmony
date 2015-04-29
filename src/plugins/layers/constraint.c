@@ -74,7 +74,7 @@
 #include "hpoint.h"
 #include "hutil.h"
 #include "hsockutil.h"
-#include "defaults.h"
+#include "hcfg.h"
 
 #define MAX_CMD_LEN  4096
 #define MAX_TEXT_LEN 1024

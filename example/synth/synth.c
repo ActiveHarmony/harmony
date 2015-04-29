@@ -29,6 +29,7 @@
 
 #include "testfunc.h"
 #include "hclient.h"
+#include "defaults.h"
 
 #define MAX_ACCURACY 17
 #define MAX_IN       16

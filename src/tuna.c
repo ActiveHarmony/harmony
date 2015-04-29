@@ -38,7 +38,7 @@
 #include "hclient.h"
 #include "hutil.h"
 #include "hval.h"
-#include "defaults.h"
+#include "hcfg.h"
 
 typedef enum method_t {
     METHOD_WALL,

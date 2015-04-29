@@ -20,6 +20,7 @@
 #include "session-core.h"
 #include "hsignature.h"
 #include "hpoint.h"
+#include "hcfg.h"
 
 /*
  * Name used to identify this plugin.  All Harmony plugins must define

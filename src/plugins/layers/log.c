@@ -34,7 +34,7 @@
 #include "hsignature.h"
 #include "hpoint.h"
 #include "hperf.h"
-#include "defaults.h"
+#include "hcfg.h"
 
 #include <stdio.h>
 #include <time.h>

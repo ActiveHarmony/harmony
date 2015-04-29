@@ -23,7 +23,6 @@
 #include "hperf.h"
 #include "hutil.h"
 #include "hcfg.h"
-#include "defaults.h"
 #include "libvertex.h"
 
 #include <stdio.h>

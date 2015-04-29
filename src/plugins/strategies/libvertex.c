@@ -22,7 +22,7 @@
 #include "hperf.h"
 #include "hsession.h"
 #include "session-core.h"
-#include "defaults.h"
+#include "hcfg.h"
 
 #include <stdlib.h>
 #include <string.h>

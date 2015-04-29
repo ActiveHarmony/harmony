@@ -58,7 +58,6 @@
 #include "hutil.h"
 #include "hcfg.h"
 #include "hsockutil.h"
-#include "defaults.h"
 
 #include <stdlib.h>
 #include <string.h>

@@ -24,7 +24,6 @@
 #include "hperf.h"
 #include "hsockutil.h"
 #include "hcfg.h"
-#include "defaults.h"
 
 #include <stdio.h>
 #include <stdlib.h>

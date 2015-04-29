@@ -47,7 +47,6 @@
 #include "hpoint.h"
 #include "hsockutil.h"
 #include "hutil.h"
-#include "defaults.h"
 
 /*
  * Session and configuration information from the Harmony Server.

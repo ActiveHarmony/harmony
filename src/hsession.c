@@ -22,7 +22,6 @@
 #include "hmesg.h"
 #include "hutil.h"
 #include "hsockutil.h"
-#include "defaults.h"
 
 #include <stdlib.h>
 #include <string.h>

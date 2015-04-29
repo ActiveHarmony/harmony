@@ -59,7 +59,7 @@
 #include "hsignature.h"
 #include "hpoint.h"
 #include "hutil.h"
-#include "defaults.h"
+#include "hcfg.h"
 
 #define MY_ENCODING "ISO-8859-1"
 

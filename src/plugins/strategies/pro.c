@@ -46,7 +46,6 @@
 #include "hsession.h"
 #include "hutil.h"
 #include "hcfg.h"
-#include "defaults.h"
 #include "libvertex.h"
 
 #include <stdlib.h>

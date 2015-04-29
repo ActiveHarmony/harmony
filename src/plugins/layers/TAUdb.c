@@ -48,7 +48,7 @@
 #include "hsignature.h"
 #include "hpoint.h"
 #include "hutil.h"
-#include "defaults.h"
+#include "hcfg.h"
 
 #include "taudb_api.h"
 

@@ -113,7 +113,6 @@
 #include "session-core.h"
 #include "hsession.h"
 #include "hcfg.h"
-#include "defaults.h"
 #include "hmesg.h"
 #include "hsockutil.h"
 #include "hutil.h"

@@ -24,7 +24,6 @@
 #include <math.h>
 
 #include "hclient.h"
-#include "defaults.h"
 
 /* For illustration purposes, the performance here is defined by following
  * simple definition:

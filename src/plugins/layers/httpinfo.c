@@ -20,8 +20,8 @@
 #include "session-core.h"
 #include "hmesg.h"
 #include "hutil.h"
+#include "hcfg.h"
 #include "hsockutil.h"
-#include "defaults.h"
 
 #include <unistd.h>
 #include <string.h>

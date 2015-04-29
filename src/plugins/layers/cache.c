@@ -41,7 +41,7 @@
 #include "hpoint.h"
 #include "hperf.h"
 #include "hutil.h"
-#include "defaults.h"
+#include "hcfg.h"
 
 #include <stdlib.h>
 #include <stdio.h>
