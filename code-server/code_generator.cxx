@@ -51,8 +51,7 @@
 /*
  * Session and configuration information from the Harmony Server.
  */
-hmesg_t session_mesg = HMESG_INITIALIZER;
-hsession_t *sess;
+hsession_t sess;
 
 using namespace std;
 
@@ -216,7 +215,7 @@ int main(int argc, char **argv)
     local_url.path = argv[1];
     local_url.host.clear();
 
-    sess = &session_mesg.data.session;
+    sess = HSESSION_INITIALIZER;
 
     // main loop starts here
     // update the log file
@@ -308,15 +307,17 @@ int main(int argc, char **argv)
         timestep++;
     } // mainloop
 
+    hsession_fini(&sess);
     return 0;
 }
 
 int codeserver_init(string &filename)
 {
     const char *cfgval;
+    hmesg_t init_mesg;
     stringstream ss;
 
-    if (mesg_read(filename.c_str(), &session_mesg) < 0) {
+    if (mesg_read(filename.c_str(), &init_mesg) < 0) {
         fprintf(stderr, "Could not parse initial message.\n");
         return -1;
     }
@@ -327,9 +328,10 @@ int codeserver_init(string &filename)
         return -1;
     }
 
-    appname = sess->sig.name;
+    hsession_copy(&sess, &init_mesg.data.session);
+    appname = sess.sig.name;
 
-    cfgval = hcfg_get(sess->cfg, CFGKEY_SERVER_URL);
+    cfgval = hcfg_get(&sess.cfg, CFGKEY_SERVER_URL);
     if (!cfgval) {
         cerr << "Session does not define local URL.\n";
         return -1;
@@ -339,7 +341,7 @@ int codeserver_init(string &filename)
         return -1;
     }
 
-    cfgval = hcfg_get(sess->cfg, CFGKEY_TARGET_URL);
+    cfgval = hcfg_get(&sess.cfg, CFGKEY_TARGET_URL);
     if (!cfgval) {
         cerr << "Session does not define target URL.\n";
         return -1;
@@ -349,7 +351,7 @@ int codeserver_init(string &filename)
         return -1;
     }
 
-    cfgval = hcfg_get(sess->cfg, CFGKEY_REPLY_URL);
+    cfgval = hcfg_get(&sess.cfg, CFGKEY_REPLY_URL);
     if (!cfgval) {
         cerr << "Session does not define reply URL.\n";
         return -1;
@@ -359,7 +361,7 @@ int codeserver_init(string &filename)
         return -1;
     }
 
-    cfgval = hcfg_get(sess->cfg, CFGKEY_SLAVE_LIST);
+    cfgval = hcfg_get(&sess.cfg, CFGKEY_SLAVE_LIST);
     if (!cfgval) {
         cerr << "Session does not define slave list.\n";
         return -1;
@@ -370,7 +372,7 @@ int codeserver_init(string &filename)
         return -1;
     }
 
-    cfgval = hcfg_get(sess->cfg, CFGKEY_SLAVE_PATH);
+    cfgval = hcfg_get(&sess.cfg, CFGKEY_SLAVE_PATH);
     if (!cfgval) {
         cerr << "Session does not define slave directory.\n";
         return -1;
@@ -411,8 +413,8 @@ int codeserver_init(string &filename)
     }
 
     /* Respond to the harmony server. */
-    session_mesg.status = HMESG_STATUS_OK;
-    if (mesg_write(session_mesg, -1) < 0) {
+    init_mesg.status = HMESG_STATUS_OK;
+    if (mesg_write(init_mesg, -1) < 0) {
         cerr << "Could not write/send initial reply message.\n";
         return -1;
     }

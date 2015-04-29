@@ -32,18 +32,13 @@
 extern "C" {
 #endif
 
-/*
- * Defined configuration key convention
- */
 #ifndef DOXYGEN_SKIP
-
-#define SESSION_CORE_EXECFILE "session-core"
-#define SESSION_LAYER_SEP     ':'
 
 typedef struct hsession {
     hsignature_t sig;
-    hcfg_t *cfg;
+    hcfg_t cfg;
 } hsession_t;
+extern hsession_t HSESSION_INITIALIZER;
 
 #endif
 

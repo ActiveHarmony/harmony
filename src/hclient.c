@@ -18,6 +18,7 @@
  */
 
 #include "hclient.h"
+#include "hsession.h"
 #include "hutil.h"
 #include "hmesg.h"
 #include "hpoint.h"
@@ -89,10 +90,9 @@ hdesc_t *harmony_init(int *argc, char ***argv)
     if (!hdesc)
         return NULL;
 
-    if (hsession_init(&hdesc->sess) != 0) {
-        free(hdesc);
+    hdesc->sess = HSESSION_INITIALIZER;
+    if (hcfg_init(&hdesc->sess.cfg) != 0)
         return NULL;
-    }
 
     hdesc->mesg = HMESG_INITIALIZER;
     hdesc->state = HARMONY_STATE_INIT;
@@ -275,7 +275,7 @@ int harmony_launch(hdesc_t *hdesc, const char *host, int port)
 
     /* Prepare a Harmony message. */
     hmesg_scrub(&hdesc->mesg);
-    hsession_init(&hdesc->mesg.data.session);
+    hdesc->mesg.data.session = HSESSION_INITIALIZER;
     hsession_copy(&hdesc->mesg.data.session, &hdesc->sess);
 
     return send_request(hdesc, HMESG_SESSION);
@@ -315,9 +315,8 @@ int harmony_bind_enum(hdesc_t *hdesc, const char *name, const char **ptr)
 int ptr_bind(hdesc_t *hdesc, const char *name, hval_type type, void *ptr)
 {
     int i;
-    hsignature_t *sig;
+    hsignature_t* sig = &hdesc->sess.sig;
 
-    sig = &hdesc->sess.sig;
     for (i = 0; i < sig->range_len; ++i) {
         if (strcmp(sig->range[i].name, name) == 0)
             break;
@@ -480,11 +479,7 @@ int harmony_leave(hdesc_t *hdesc)
         perror("Error closing socket during harmony_leave()");
 
     /* Reset the hsession_t to prepare for hdesc reuse. */
-    hsession_fini(&hdesc->sess);
-    if (hsession_init(&hdesc->sess) != 0) {
-        hdesc->errstr = "Internal memory allocation error.";
-        return -1;
-    }
+    hsignature_fini(&hdesc->sess.sig);
     hdesc->ptr_len = 0;
     hdesc->best.id = -1;
 

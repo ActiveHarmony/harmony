@@ -260,7 +260,7 @@ int hmesg_deserialize(hmesg_t *mesg)
         switch (mesg->type) {
         case HMESG_SESSION:
             if (mesg->status == HMESG_STATUS_REQ) {
-                hsession_init(&mesg->data.session);
+                mesg->data.session = HSESSION_INITIALIZER;
                 count = hsession_deserialize(&mesg->data.session, buf + total);
                 if (count < 0) goto error;
                 total += count;
