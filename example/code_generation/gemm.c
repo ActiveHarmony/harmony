@@ -127,11 +127,12 @@ int main(int argc, char *argv[])
     harmony_connected = 0;
 
     /* Initialize Harmony API. */
-    hdesc = harmony_init(&argc, &argv);
+    hdesc = harmony_init();
     if (hdesc == NULL) {
         errprint("Failed to initialize a Harmony session.\n");
         goto cleanup;
     }
+    argc -= harmony_parse_args(hdesc, argc - 1, &argv[1]);
 
     if (rank == 0) {
         /* We are the master rank.  Establish a new Harmony tuning session. */

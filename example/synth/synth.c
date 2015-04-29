@@ -129,13 +129,14 @@ int main(int argc, char *argv[])
     double best_val = INFINITY;
     hdesc_t *hdesc;
 
-    hdesc = harmony_init(&argc, &argv);
+    parse_opts(argc, argv);
+
+    hdesc = harmony_init();
     if (!hdesc) {
         perror("Error allocating/initializing a Harmony descriptor");
         return -1;
     }
-
-    parse_opts(argc, argv);
+    harmony_parse_args(hdesc, argc - optind, &argv[optind]);
 
     if (perturb)
         fprintf(stdout, "Seed value: %ld\n", seed);

@@ -174,11 +174,12 @@ int main(int argc, char **argv)
     }
 
     /* Initialize a Harmony client. */
-    hdesc = harmony_init(&argc, &argv);
+    hdesc = harmony_init();
     if (hdesc == NULL) {
         fprintf(stderr, "Failed to initialize a harmony session.\n");
         return -1;
     }
+    argc -= harmony_parse_args(hdesc, argc - 1, &argv[1]);
 
     /* Set a unique id for ourselves */
     metadata = get_metadata();

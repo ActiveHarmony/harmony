@@ -84,11 +84,12 @@ int main(int argc, char **argv)
     }
 
     /* Initialize a Harmony client. */
-    hdesc = harmony_init(&argc, &argv);
+    hdesc = harmony_init();
     if (hdesc == NULL) {
         fprintf(stderr, "Failed to initialize a harmony session.\n");
         return -1;
     }
+    argc -= harmony_parse_args(hdesc, argc - 1, &argv[1]);
 
     /*Get rank and size of this MPI application*/
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);

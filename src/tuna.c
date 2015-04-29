@@ -128,7 +128,7 @@ int main(int argc, char **argv)
     }
 
     /* Initialize the Harmony descriptor */
-    hdesc = harmony_init(&argc, &argv);
+    hdesc = harmony_init();
     if (hdesc == NULL) {
         fprintf(stderr, "Failed to initialize a Harmony descriptor.\n");
         return -1;

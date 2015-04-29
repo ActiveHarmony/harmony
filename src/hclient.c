@@ -57,10 +57,6 @@ struct hdesc_t {
     hsession_t sess;
     hmesg_t mesg;
 
-    char **cmd;
-    int cmd_len;
-    int cmd_cap;
-
     void **ptr;
     int ptr_len;
     int ptr_cap;
@@ -84,7 +80,7 @@ static int debug_mode = 0;
 /* -------------------------------------------------------------------
  * Public Client API Implementations
  */
-hdesc_t *harmony_init(int *argc, char ***argv)
+hdesc_t* harmony_init()
 {
     hdesc_t *hdesc = (hdesc_t *) malloc(sizeof(hdesc_t));
     if (!hdesc)
@@ -97,9 +93,6 @@ hdesc_t *harmony_init(int *argc, char ***argv)
     hdesc->mesg = HMESG_INITIALIZER;
     hdesc->state = HARMONY_STATE_INIT;
 
-    hdesc->cmd = NULL;
-    hdesc->cmd_len = hdesc->cmd_cap = 0;
-
     hdesc->ptr = NULL;
     hdesc->ptr_len = hdesc->ptr_cap = 0;
 
@@ -109,39 +102,32 @@ hdesc_t *harmony_init(int *argc, char ***argv)
 
     hdesc->id = NULL;
 
-    if (argc && argv) {
-        int i, j = 1;
-        int stop = 0;
+    return hdesc;
+}
 
-        for (i = 1; i < *argc; ++i) {
-            /* Stop looking for configuration directives upon "--" token. */
-            if (strcmp((*argv)[i], "--") == 0)
-                stop = 1;
+int harmony_parse_args(hdesc_t* hdesc, int argc, char** argv)
+{
+    int skip = 0;
+    int tail = 0;
 
-            if (!stop && hcfg_is_cmd((*argv)[i])) {
-                if (hdesc->cmd_len == hdesc->cmd_cap) {
-                    if (array_grow(&hdesc->cmd, &hdesc->cmd_cap,
-                                   sizeof(char *)) != 0)
-                    {
-                        hsession_fini(&hdesc->sess);
-                        free(hdesc);
-                        return NULL;
-                    }
-                }
-                hdesc->cmd[hdesc->cmd_len++] = (*argv)[i];
-            }
-            else {
-                (*argv)[j++] = (*argv)[i];
+    for (int i = 0; i < argc; ++i) {
+        if (strcmp(argv[i], "--") == 0)
+            skip = 1;
+
+        char* sep = strchr(argv[i], '=');
+        if (!skip && sep) {
+            *sep = '\0';
+            if (hcfg_set(&hdesc->sess.cfg, argv[i], sep + 1) != 0) {
+                *sep = '=';
+                sep = NULL;
             }
         }
 
-        if (j != *argc) {
-            *argc = j;
-            (*argv)[j] = NULL;
+        if (!sep) {
+            argv[tail++] = argv[i];
         }
     }
-
-    return hdesc;
+    return argc - tail;
 }
 
 void harmony_fini(hdesc_t *hdesc)
@@ -156,7 +142,6 @@ void harmony_fini(hdesc_t *hdesc)
         if (hdesc->id && hdesc->id != default_id_buf)
             free(hdesc->id);
 
-        free(hdesc->cmd);
         free(hdesc->ptr);
         free(hdesc);
     }
@@ -199,8 +184,6 @@ int harmony_layer_list(hdesc_t *hdesc, const char *list)
 
 int harmony_launch(hdesc_t *hdesc, const char *host, int port)
 {
-    int i;
-
     /* Sanity check input */
     if (hdesc->sess.sig.range_len < 1) {
         hdesc->errstr = "No tuning variables defined";
@@ -256,22 +239,6 @@ int harmony_launch(hdesc_t *hdesc, const char *host, int port)
     if (hdesc->id == NULL)
         hdesc->id = default_id(hdesc->socket);
     hdesc->state = HARMONY_STATE_CONNECTED;
-
-    /* Apply argv configuration directives now, if necessary. */
-    for (i = 0; i < hdesc->cmd_len; ++i) {
-        char *key, *val, *cpy;
-        cpy = stralloc(hdesc->cmd[i]);
-        if (hcfg_parse(cpy, &key, &val) == NULL) {
-            /* This should never fail, but just in case. */
-            hdesc->errstr = "Internal error parsing argv config directive.";
-            return -1;
-        }
-        if (hcfg_set(hdesc->sess.cfg, key, val) != 0) {
-            hdesc->errstr = "Internal error applying argv config directive.";
-            return -1;
-        }
-        free(cpy);
-    }
 
     /* Prepare a Harmony message. */
     hmesg_scrub(&hdesc->mesg);
@@ -353,8 +320,7 @@ int ptr_bind(hdesc_t *hdesc, const char *name, hval_type type, void *ptr)
 
 int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *name)
 {
-    int i, perf_len;
-    int apply_argv = (hdesc->state < HARMONY_STATE_CONNECTED);
+    int perf_len;
     char *cfgval;
 
     /* Verify that we have *at least* one variable bound, and that
@@ -423,24 +389,6 @@ int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *name)
     if (hsignature_copy(&hdesc->sess.sig, &hdesc->mesg.data.join) < 0) {
         hdesc->errstr = "Error copying received signature structure";
         return -1;
-    }
-
-    /* Apply argv configuration directives now, if necessary. */
-    if (apply_argv) {
-        for (i = 0; i < hdesc->cmd_len; ++i) {
-            char *key, *val, *cpy;
-            cpy = stralloc(hdesc->cmd[i]);
-            if (hcfg_parse(cpy, &key, &val)) {
-                /* This should never fail, but just in case. */
-                hdesc->errstr = "Error parsing argv config directive.";
-                return -1;
-            }
-            if (hcfg_set(hdesc->sess.cfg, key, val)) {
-                hdesc->errstr = "Error applying argv config directive.";
-                return -1;
-            }
-            free(cpy);
-        }
     }
 
     cfgval = harmony_getcfg(hdesc, CFGKEY_PERF_COUNT);
