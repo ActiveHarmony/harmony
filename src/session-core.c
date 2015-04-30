@@ -148,6 +148,12 @@ struct timeval polltime, *pollstate;
 fd_set fds;
 int maxfd;
 
+/* -------------------------------------------
+ * Static buffers used for dynamic allocation.
+ */
+static char* setcfg_buf = NULL;
+static int setcfg_len = 0;
+
 /* =================================
  * Core session routines begin here.
  */
@@ -274,6 +280,8 @@ int main(int argc, char **argv)
 
     hmesg_fini(&session_mesg);
     hmesg_fini(&mesg);
+    free(setcfg_buf);
+
     return retval;
 }
 
@@ -599,8 +607,6 @@ int handle_getcfg(hmesg_t *mesg)
 
 int handle_setcfg(hmesg_t *mesg)
 {
-    static char *buf = NULL;
-    static int buflen = 0;
     char* sep = (char*) strchr(mesg->data.string, '=');
     const char* oldval;
 
@@ -612,8 +618,8 @@ int handle_setcfg(hmesg_t *mesg)
     /* Store the original value, possibly allocating memory for it. */
     oldval = hcfg_get(&sess->cfg, mesg->data.string);
     if (oldval) {
-        snprintf_grow(&buf, &buflen, "%s", oldval);
-        oldval = buf;
+        snprintf_grow(&setcfg_buf, &setcfg_len, "%s", oldval);
+        oldval = setcfg_buf;
     }
 
     if (session_setcfg(mesg->data.string, sep + 1) != 0) {

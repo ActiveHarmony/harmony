@@ -348,11 +348,7 @@ int harmony_leave(hdesc_t *hdesc);
  * \brief Get a key value from the session's configuration.
  *
  * Searches the server's configuration system for key, and returns
- * the string value associated with it if found. Heap memory is
- * allocated for the result string.
- *
- * \warning This function allocates memory for the return value.  It
- *          is the user's responsibility to free this memory.
+ * the string value associated with it if found.
  *
  * \param hdesc Harmony descriptor returned from harmony_init().
  * \param key   Config key to search for on the server.
@@ -370,17 +366,13 @@ char *harmony_getcfg(hdesc_t *hdesc, const char *key);
  * from the database.  These key/value pairs exist only in memory, and
  * will not be written back to the server's configuration file.
  *
- * \warning This function allocates memory for the return value.  It
- *          is the user's responsibility to free this memory.
- *
  * \param hdesc Harmony descriptor returned from harmony_init().
  * \param key   Config key to modify on the server.
  * \param val   Config value to associate with the key.
  *
- * \return Returns the original key value string on success and `NULL`
- *         otherwise, setting errno if appropriate.  Since this
- *         function may legitimately return `NULL`, errno must be
- *         cleared pre-call, and checked post-call.
+ * \return Returns the original key value on success.  If the key did not
+ *         exist prior to this call, an empty string ("") is returned.
+ *         Otherwise, `NULL` is returned on error.
  */
 char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val);
 

@@ -63,6 +63,9 @@ struct hdesc_t {
 
     hperf_t *perf;
     hpoint_t curr, best;
+
+    char* buf;
+    int buflen;
     const char *errstr;
 };
 
@@ -98,6 +101,9 @@ hdesc_t* harmony_init()
 
     hdesc->curr = HPOINT_INITIALIZER;
     hdesc->best = HPOINT_INITIALIZER;
+
+    hdesc->buf = NULL;
+    hdesc->buflen = 0;
     hdesc->errstr = NULL;
 
     hdesc->id = NULL;
@@ -142,6 +148,7 @@ void harmony_fini(hdesc_t *hdesc)
         if (hdesc->id && hdesc->id != default_id_buf)
             free(hdesc->id);
 
+        free(hdesc->buf);
         free(hdesc->ptr);
         free(hdesc);
     }
@@ -449,8 +456,8 @@ char *harmony_getcfg(hdesc_t *hdesc, const char *key)
         return NULL;
     }
 
-    /* It is the user's responsibility to free this memory. */
-    return stralloc(hdesc->mesg.data.string);
+    snprintf_grow(&hdesc->buf, &hdesc->buflen, "%s", hdesc->mesg.data.string);
+    return hdesc->buf;
 }
 
 char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val)
@@ -462,9 +469,15 @@ char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val)
         /* User must be preparing for a new session since we're not
          * connected yet.  Store the key/value pair in a local cache.
          */
-        buf = stralloc( hcfg_get(hdesc->sess.cfg, key) );
-        hcfg_set(hdesc->sess.cfg, key, val);
-        return buf;
+        const char* cfgval = hcfg_get(&hdesc->sess.cfg, key);
+        if (!cfgval) cfgval = "";
+        snprintf_grow(&hdesc->buf, &hdesc->buflen, "%s", cfgval);
+
+        if (hcfg_set(&hdesc->sess.cfg, key, val) != 0) {
+            hdesc->errstr = "Error setting local environment variable.";
+            return NULL;
+        }
+        return hdesc->buf;
     }
 
     if (!key) {
@@ -495,8 +508,8 @@ char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val)
         return NULL;
     }
 
-    /* It is the user's responsibility to free this memory. */
-    return stralloc(hdesc->mesg.data.string);
+    snprintf_grow(&hdesc->buf, &hdesc->buflen, "%s", hdesc->mesg.data.string);
+    return hdesc->buf;
 }
 
 int harmony_fetch(hdesc_t *hdesc)
@@ -670,7 +683,6 @@ int harmony_converged(hdesc_t *hdesc)
         hdesc->state = HARMONY_STATE_CONVERGED;
         retval = 1;
     }
-    free(str);
     return retval;
 }
 
