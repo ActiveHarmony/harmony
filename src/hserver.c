@@ -42,6 +42,9 @@
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
 
+#define dprintf(fmt, ...) \
+    do { if (verbose) fprintf(stderr, fmt, ## __VA_ARGS__); } while (0)
+
 /*
  * Function prototypes
  */
@@ -78,7 +81,7 @@ int slist_cap;
 /*
  * Local variables
  */
-static int debug_mode = 1;
+int verbose;
 
 int main(int argc, char *argv[])
 {
@@ -195,7 +198,7 @@ int vars_init(int argc, char *argv[])
 
     if ( (tmppath = getenv(CFGKEY_HARMONY_HOME))) {
         harmony_dir = stralloc(tmppath);
-        printf(CFGKEY_HARMONY_HOME " is %s\n", harmony_dir);
+        dprintf(CFGKEY_HARMONY_HOME " is %s\n", harmony_dir);
     }
     else {
         if (strchr(argv[0], '/'))
@@ -210,7 +213,7 @@ int vars_init(int argc, char *argv[])
             harmony_dir = stralloc(dirname(harmony_dir));
         free(tmppath);
 
-        printf("Detected %s/ as " CFGKEY_HARMONY_HOME "\n", harmony_dir);
+        dprintf("Detected %s/ as HARMONY_HOME\n", harmony_dir);
     }
     free(binfile);
 
@@ -329,6 +332,7 @@ int network_init(void)
     }
 
     /* create a listening socket */
+    dprintf("Listening on TCP port: %d\n", listen_port);
     listen_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (listen_socket < 0) {
         perror("Could not create listening socket");
@@ -394,8 +398,8 @@ int handle_new_connection(int fd)
     }
 
     unk_fds[idx] = newfd;
-    if (debug_mode) printf("Accepted connection from %s as socket %d\n",
-                           inet_ntoa(addr.sin_addr), newfd);
+    dprintf("Accepted connection from %s as socket %d\n",
+            inet_ntoa(addr.sin_addr), newfd);
     return newfd;
 }
 
