@@ -177,7 +177,7 @@ int harmony_strategy(hdesc_t *hdesc, const char *strategy)
     return hcfg_set(hdesc->sess.cfg, CFGKEY_SESSION_STRATEGY, strategy);
 }
 
-int harmony_layer_list(hdesc_t *hdesc, const char *list)
+int harmony_layers(hdesc_t *hdesc, const char *list)
 {
     return hcfg_set(hdesc->sess.cfg, CFGKEY_SESSION_LAYERS, list);
 }

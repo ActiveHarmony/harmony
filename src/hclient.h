@@ -177,7 +177,7 @@ int harmony_strategy(hdesc_t *hdesc, const char *strategy);
  *
  * \return Returns 0 on success, and -1 otherwise.
  */
-int harmony_layer_list(hdesc_t *hdesc, const char *list);
+int harmony_layers(hdesc_t *hdesc, const char *list);
 
 /**
  * \brief Instantiate a new Harmony tuning session.
