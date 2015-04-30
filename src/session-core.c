@@ -43,6 +43,8 @@
  * Session configuration variables.
  */
 hsession_t *sess;
+const hcfg_t *session_cfg;
+
 int perf_count = DEFAULT_PERF_COUNT;
 int per_client = DEFAULT_PER_CLIENT;
 int num_clients = 0;
@@ -70,7 +72,6 @@ strategy_best_t     strategy_best;
 
 hook_init_t         strategy_init;
 hook_join_t         strategy_join;
-hook_getcfg_t       strategy_getcfg;
 hook_setcfg_t       strategy_setcfg;
 hook_fini_t         strategy_fini;
 
@@ -82,7 +83,6 @@ typedef struct layer {
 
     hook_init_t      init;
     hook_join_t      join;
-    hook_getcfg_t    getcfg;
     hook_setcfg_t    setcfg;
     hook_fini_t      fini;
 
@@ -193,6 +193,7 @@ int main(int argc, char **argv)
 
     /* Initialize the session. */
     sess = &session_mesg.data.session;
+    session_cfg = &session_mesg.data.session.cfg;
     if (init_session() != 0)
         goto error;
 
@@ -630,22 +631,8 @@ int handle_join(hmesg_t *mesg)
 
 int handle_getcfg(hmesg_t *mesg)
 {
-    int i;
-    const char *key;
-
-    key = mesg->data.string;
-
-    /* Launch all getcfg hooks defined in the plug-in stack. */
-    if (strategy_getcfg && strategy_getcfg(key) != 0)
-        return -1;
-
-    for (i = 0; i < lstack_len; ++i) {
-        if (lstack[i].getcfg && lstack[i].getcfg(key) != 0)
-            return -1;
-    }
-
     /* Prepare getcfg response message for client. */
-    mesg->data.string = hcfg_get(sess->cfg, key);
+    mesg->data.string = hcfg_get(&sess->cfg, mesg->data.string);
     mesg->status = HMESG_STATUS_OK;
     return 0;
 }
@@ -812,7 +799,6 @@ int load_strategy(const char *file)
 
     strategy_init     =         (hook_init_t) dlfptr(lib, "strategy_init");
     strategy_join     =         (hook_join_t) dlfptr(lib, "strategy_join");
-    strategy_getcfg   =       (hook_getcfg_t) dlfptr(lib, "strategy_getcfg");
     strategy_setcfg   =       (hook_setcfg_t) dlfptr(lib, "strategy_setcfg");
     strategy_fini     =         (hook_fini_t) dlfptr(lib, "strategy_fini");
 
@@ -909,12 +895,6 @@ int load_layers(const char *list)
             goto cleanup;
         }
         lstack[lstack_len].analyze = (layer_analyze_t) dlfptr(lib, path);
-
-        if (snprintf_grow(&path, &path_len, "%s_getcfg", prefix) < 0) {
-            retval = -1;
-            goto cleanup;
-        }
-        lstack[lstack_len].getcfg = (hook_getcfg_t) dlfptr(lib, path);
 
         if (snprintf_grow(&path, &path_len, "%s_setcfg", prefix) < 0) {
             retval = -1;
@@ -1047,11 +1027,7 @@ int callback_analyze(int fd, cb_func_t func)
     return 0;
 }
 
-const char *session_getcfg(const char *key)
-{
-    return hcfg_get(sess->cfg, key);
-}
-
+/* Central interface for shared configuration between pluggable modules. */
 int session_setcfg(const char *key, const char *val)
 {
     int i;

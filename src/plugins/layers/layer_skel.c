@@ -68,21 +68,6 @@ int <plugin>_join(const char *id)
 }
 
 /*
- * Invoked when a client reads from the configuration system.
- *
- * Params:
- *   key - Configuration key requested.
- *
- * Upon error, this function should call session_error() with a
- * human-readable string explaining the problem and return -1.
- * Otherwise, returning 0 indicates success.
- */
-int <plugin>_getcfg(const char *key)
-{
-    return 0;
-}
-
-/*
  * Invoked when a client writes to the configuration system.
  *
  * Params:
