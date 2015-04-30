@@ -16,6 +16,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
 */
+#define _GNU_SOURCE
 
 #include "hserver.h"
 #include "httpsvr.h"
@@ -33,6 +34,7 @@
 #include <libgen.h>
 #include <signal.h>
 #include <math.h>
+#include <getopt.h> /* For getopt_long(). Requires _GNU_SOURCE */
 
 #include <sys/types.h>
 #include <sys/select.h>
@@ -48,6 +50,7 @@
 /*
  * Function prototypes
  */
+int parse_opts(int argc, char *argv[]);
 int vars_init(int argc, char *argv[]);
 int network_init(void);
 int handle_new_connection(int fd);
@@ -61,6 +64,7 @@ int append_http_log(session_state_t *sess, const hpoint_t *pt, double perf);
 /*
  * Main variables
  */
+int listen_port = DEFAULT_PORT;
 int listen_socket;
 fd_set listen_fds;
 int highest_socket;
@@ -83,10 +87,23 @@ int slist_cap;
  */
 int verbose;
 
+void usage(const char* prog)
+{
+    fprintf(stderr, "Usage: %s [options]\n", prog);
+    fprintf(stderr, "OPTIONS:\n"
+"  -p, --port=PORT   Port to listen to on the local host. (Default: %d)\n"
+"  -v, --verbose     Print additional information during operation.\n\n",
+            listen_port);
+}
+
 int main(int argc, char *argv[])
 {
     int i, fd_count, retval;
     fd_set ready_fds;
+
+    /* Parse user options. */
+    if (parse_opts(argc, argv) != 0)
+        return -1;
 
     /* Initialize global variable state. */
     if (vars_init(argc, argv) < 0)
@@ -174,9 +191,43 @@ int main(int argc, char *argv[])
     return 0;
 }
 
+int parse_opts(int argc, char *argv[])
+{
+    int c;
+    static struct option long_options[] = {
+        {"port",    required_argument, NULL, 'p'},
+        {"verbose", no_argument,       NULL, 'v'},
+        {NULL, 0, NULL, 0}
+    };
+
+    while (1) {
+        c = getopt_long(argc, argv, "p:v", long_options, NULL);
+        if (c == -1)
+            break;
+
+        switch(c) {
+        case 'p': listen_port = atoi(optarg); break;
+        case 'v': verbose = 1; break;
+
+        case ':':
+            usage(argv[0]);
+            fprintf(stderr, "\nOption ('%c') requires an argument.\n", optopt);
+            break;
+
+        case '?':
+        default:
+            usage(argv[0]);
+            fprintf(stderr, "\nInvalid argument ('%c').\n", optopt);
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
 int vars_init(int argc, char *argv[])
 {
-    char *tmppath, *binfile, *cfgpath;
+    char *tmppath, *binfile;
 
     /*
      * Install proper signal handling.
@@ -232,47 +283,6 @@ int vars_init(int argc, char *argv[])
         return -1;
     }
 
-    /*
-     * Config file search
-     */
-    if (argc > 1) {
-        /* Option #1: Command-line parameter. */
-        cfgpath = stralloc(argv[1]);
-    }
-    else {
-        /* Option #2: Environment variable. */
-        if ( (tmppath = getenv("HARMONY_CONFIG"))) {
-            cfgpath = stralloc(tmppath);
-        }
-        else {
-            /* Option #3: Check if default filename exists. */
-            cfgpath = sprintf_alloc("%s/bin/" DEFAULT_CONFIG_FILENAME,
-                                    harmony_dir);
-            if (!file_exists(cfgpath)) {
-                free(cfgpath);
-                cfgpath = NULL;
-            }
-        }
-    }
-
-    /*
-     * Load config file, if found.
-     */
-    if (cfgpath) {
-        if (strcmp(cfgpath, "-") == 0)
-            printf("Reading config values from <stdin>\n");
-        else
-            printf("Reading config values from %s\n", cfgpath);
-
-        if (hcfg_load(cfg, cfgpath) != 0)
-            return -1;
-
-        free(cfgpath);
-    }
-    else {
-        printf("No config file found.  Proceeding with default values.\n");
-    }
-
     mesg_in = HMESG_INITIALIZER;
     mesg_out = HMESG_INITIALIZER;
 
@@ -315,21 +325,8 @@ int vars_init(int argc, char *argv[])
 
 int network_init(void)
 {
-    const char *cfgval;
-    int listen_port, optval;
+    int optval;
     struct sockaddr_in addr;
-
-    /* try to get the port info from the environment */
-    if (getenv("HARMONY_S_PORT") != NULL) {
-        listen_port = atoi(getenv("HARMONY_S_PORT"));
-    }
-    else if ( (cfgval = hcfg_get(cfg, CFGKEY_SERVER_PORT))) {
-        listen_port = atoi(cfgval);
-    }
-    else {
-        printf("Using default TCP port: %d\n", DEFAULT_PORT);
-        listen_port = DEFAULT_PORT;
-    }
 
     /* create a listening socket */
     dprintf("Listening on TCP port: %d\n", listen_port);
