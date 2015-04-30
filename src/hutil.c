@@ -20,18 +20,77 @@
 #include "hutil.h"
 
 #include <stdio.h>
+#include <fcntl.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <unistd.h>
 #include <limits.h>
 #include <errno.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
 
 int file_exists(const char *filename)
 {
     struct stat sb;
     return (stat(filename, &sb) == 0 && S_ISREG(sb.st_mode));
+}
+
+void *file_map(const char *filename, size_t *size)
+{
+    int fd = open(filename, O_RDONLY);
+    if (fd == -1) {
+        fprintf(stderr, "Error on open(%s): %s\n", filename, strerror(errno));
+        return NULL;
+    }
+
+    /* Obtain file size */
+    struct stat sb;
+    void *retval = NULL;
+    if (fstat(fd, &sb) != 0) {
+        fprintf(stderr, "Error on fstat(%s): %s\n", filename, strerror(errno));
+    }
+    else {
+        retval = mmap(NULL, sb.st_size + 1, PROT_READ | PROT_WRITE,
+                      MAP_PRIVATE, fd, 0);
+        if (retval == MAP_FAILED) {
+            fprintf(stderr, "Error on mmap(%s): %s\n",
+                    filename, strerror(errno));
+        }
+    }
+
+    if (close(fd) != 0) {
+        fprintf(stderr, "Warning: Ignoring error on close(%s): %s\n",
+                filename, strerror(errno));
+    }
+
+    *size = sb.st_size + 1;
+    return retval;
+}
+
+void file_unmap(void *buf, size_t size)
+{
+    if (munmap(buf, size) != 0)
+        fprintf(stderr, "Ignoring error on munmap(): %s\n", strerror(errno));
+}
+
+int array_grow(void *buf, int *capacity, int elem_size)
+{
+    void *new_buf;
+    int new_capacity = 8;
+
+    if (*capacity >= new_capacity)
+        new_capacity = *capacity << 1;
+
+    new_buf = realloc(*(void **)buf, new_capacity * elem_size);
+    if (new_buf == NULL)
+        return -1;
+
+    memset(((char *)new_buf) + (*capacity * elem_size), 0,
+           (new_capacity - *capacity) * elem_size);
+    *(void **)buf = new_buf;
+    *capacity = new_capacity;
+    return 0;
 }
 
 char *search_path(const char *filename)
@@ -71,25 +130,6 @@ char *search_path(const char *filename)
         path = pend + 1;
     }
     return NULL;
-}
-
-int array_grow(void *buf, int *capacity, int elem_size)
-{
-    void *new_buf;
-    int new_capacity = 8;
-
-    if (*capacity >= new_capacity)
-        new_capacity = *capacity << 1;
-
-    new_buf = realloc(*(void **)buf, new_capacity * elem_size);
-    if (new_buf == NULL)
-        return -1;
-
-    memset(((char *)new_buf) + (*capacity * elem_size), 0,
-           (new_capacity - *capacity) * elem_size);
-    *(void **)buf = new_buf;
-    *capacity = new_capacity;
-    return 0;
 }
 
 char *stralloc(const char *in)

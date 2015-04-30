@@ -63,7 +63,7 @@ typedef struct {
     const char *filename;
     content_t type;
     char *buf;
-    unsigned buflen;
+    size_t buflen;
 } memfile_t;
 
 static memfile_t html_file[] = {
@@ -119,13 +119,12 @@ int report_append(char **buf, int *buflen, session_state_t *sess,
 
 int http_init(const char *basedir)
 {
-    int fd, i;
+    int i;
     char *filename;
-    struct stat sb;
 
     for (i = 0; html_file[i].filename != NULL; ++i) {
         if (html_file[i].buf != NULL)
-            munmap(html_file[i].buf, html_file[i].buflen);
+            file_unmap(html_file[i].buf, html_file[i].buflen);
 
         filename = sprintf_alloc("%s/libexec/html/%s", basedir,
                                  html_file[i].filename);
@@ -134,33 +133,11 @@ int http_init(const char *basedir)
             goto error;
         }
 
-        fd = open(filename, O_RDONLY);
-        if (fd == -1) {
-            fprintf(stderr, "Error on open(%s): %s\n",
-                    filename, strerror(errno));
+        html_file[i].buf = file_map(filename, &html_file[i].buflen);
+        if (!html_file[i].buf) {
+            perror("Error mapping HTML server support file");
             goto error;
         }
-
-        /* Obtain file size */
-        if (fstat(fd, &sb) == -1) {
-            fprintf(stderr, "Error on fstat(%s): %s",
-                    filename, strerror(errno));
-            goto error;
-        }
-        html_file[i].buflen = sb.st_size;
-
-        html_file[i].buf = (char *)mmap(NULL, html_file[i].buflen,
-                                        PROT_READ, MAP_PRIVATE, fd, 0);
-        if (html_file[i].buf == (char *)-1) {
-            fprintf(stderr, "Error on mmap(%s): %s",
-                    filename, strerror(errno));
-            goto error;
-        }
-
-        if (close(fd) != 0)
-            fprintf(stderr, "Ignoring error on close(%s): %s",
-                    filename, strerror(errno));
-
         free(filename);
     }
     return 0;
