@@ -62,6 +62,7 @@ hpoint_t curr;
 unsigned long *idx;
 int remaining_passes = 1;
 int final_id = 0;
+int outstanding_points = 0, final_point_received = 0;
 
 /*
  * Invoked once on strategy load.
@@ -187,6 +188,12 @@ int strategy_generate(hflow_t *flow, hpoint_t *point)
             return -1;
         }
     }
+    
+    /* every time we send out a point that's before 
+       the final point, increment the numebr of points
+       we're waiting for results from */
+    if(! final_id || curr.id <= final_id)
+      outstanding_points++; 
 
     flow->status = HFLOW_ACCEPT;
     return 0;
@@ -242,6 +249,24 @@ int strategy_analyze(htrial_t *trial)
             return -1;
         }
     }
+    
+    /* decrement the number of points we're waiting for
+       when we get a point back that was generated before
+       the final point */
+    if(! final_id || trial->point.id <= final_id)
+        outstanding_points--;  
+
+    if (trial->point.id == final_id) 
+        final_point_received = 1;
+
+    /* converged when the final point has been received, 
+       and there are no outstanding points */
+    if(outstanding_points <= 0 && final_point_received) {
+        if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "1") != 0) {
+            session_error("Internal error: Could not set convergence status.");
+            return -1;
+        }
+    }
 
     return 0;
 }
@@ -260,7 +285,8 @@ int strategy_best(hpoint_t *point)
 
 int increment(void)
 {
-    int i;
+    int i, n_overflows, next_i;
+    double next_r; 
 
     if (remaining_passes <= 0)
         return 0;
@@ -304,7 +330,33 @@ int increment(void)
             return -1;
         }
 
-        // No overflow detected.  Leave the function.
+        // No overflow detected. Look ahead one point,
+        // to figure out the final point id before it's generated
+        for(i = 0, n_overflows = 0;i < N;i++) {
+          switch (range[i].type) {
+            case HVAL_INT:
+              next_i = curr.val[i].value.i + range[i].bounds.i.step;
+              if(next_i > range[i].bounds.i.max) 
+                n_overflows++; 
+              break;
+            case HVAL_REAL:
+              next_r = (range[i].bounds.r.step > 0.0)
+                ? range[i].bounds.r.min + (idx[i] * range[i].bounds.r.step)
+                : nextafter(curr.val[i].value.r, INFINITY); 
+              if(next_r > range[i].bounds.r.max) 
+                n_overflows++; 
+              break;
+            case HVAL_STR:
+              if(idx[i] + 1 >= range[i].bounds.s.set_len)
+                n_overflows++; 
+              break;
+            default:
+              return -1;
+          }
+        }
+        if(remaining_passes - 1 <= 0 && n_overflows >= N) {
+          final_id = curr.id;
+        }
         return 0;
     }
 
