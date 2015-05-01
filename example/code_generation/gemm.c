@@ -225,8 +225,9 @@ int main(int argc, char *argv[])
         }
 
         if (!harmonized) {
+            // check_convergence returns 0 if not converged, 1 if converged
             harmonized = check_convergence(hdesc);
-            if (harmonized != 0) {
+            if (harmonized != 0 && harmonized != 1) {
                 errprint("Error checking harmony convergence status.\n");
                 goto cleanup;
             }
