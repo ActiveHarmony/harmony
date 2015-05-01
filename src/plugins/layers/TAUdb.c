@@ -137,10 +137,10 @@ int TAUdb_init(hsignature_t *sig)
 
     tmpstr = (char *) session_getcfg("TAUDB_STORE_METHOD");
     if (strcmp(tmpstr, "real_time") == 0) {
-        taudb_store_type = 1;
+        taudb_store_type = 0;
     }
     else if (strcmp(tmpstr, "one_time") == 0) {
-        taudb_store_type = 0;
+        taudb_store_type = 1;
     }
     else {
         session_error("Invalid TAUDB_STORE_METHOD");
