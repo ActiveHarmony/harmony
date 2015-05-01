@@ -720,7 +720,7 @@ session_state_t *session_open(hmesg_t *mesg)
         hcfg_set(mesg->data.session.cfg, CFGKEY_SESSION_LAYERS, HTTPINFO);
     }
     else if (strstr(cfgstr, HTTPINFO) == NULL) {
-        char *buf = sprintf_alloc(HTTPINFO ";%s", cfgstr);
+        char *buf = sprintf_alloc(HTTPINFO ":%s", cfgstr);
         hcfg_set(mesg->data.session.cfg, CFGKEY_SESSION_LAYERS, buf);
         free(buf);
     }
