@@ -45,9 +45,9 @@
 hsession_t *sess;
 const hcfg_t *session_cfg;
 
-int perf_count = DEFAULT_PERF_COUNT;
-int per_client = DEFAULT_PER_CLIENT;
-int num_clients = 0;
+int perf_count;
+int per_client;
+int num_clients;
 
 /* --------------------------------
  * Callback registration variables.
@@ -228,7 +228,7 @@ int main(int argc, char **argv)
             if (retval == 0) goto cleanup;
             if (retval <  0) goto error;
 
-            hcfg_set(sess->cfg, CFGKEY_CURRENT_CLIENT, mesg.src_id);
+            hcfg_set(&sess->cfg, CFGKEY_CURRENT_CLIENT, mesg.src_id);
             switch (mesg.type) {
             case HMESG_JOIN:    retval = handle_join(&mesg); break;
             case HMESG_GETCFG:  retval = handle_getcfg(&mesg); break;
@@ -244,7 +244,7 @@ int main(int argc, char **argv)
             if (retval != 0)
                 goto error;
 
-            hcfg_set(sess->cfg, CFGKEY_CURRENT_CLIENT, NULL);
+            hcfg_set(&sess->cfg, CFGKEY_CURRENT_CLIENT, NULL);
             mesg.src_id = NULL;
 
             if (mesg_send(STDIN_FILENO, &mesg) < 1)
@@ -280,12 +280,13 @@ int main(int argc, char **argv)
 int init_session(void)
 {
     const char *ptr;
-    int count = DEFAULT_CLIENT_COUNT;
     long seed;
+    int clients;
 
     /* Before anything else, control the random seeds. */
-    ptr = hcfg_get(sess->cfg, CFGKEY_RANDOM_SEED);
-    seed = (ptr && *ptr) ? atol(ptr) : time(NULL);
+    seed = hcfg_int(&sess->cfg, CFGKEY_RANDOM_SEED);
+    if (seed < 0)
+        seed = time(NULL);
     srand((int) seed);
     srand48(seed);
 
@@ -305,62 +306,21 @@ int init_session(void)
         return -1;
     }
 
-    /* Insure the output dimensionality exists in the config system. */
-    ptr = hcfg_get(sess->cfg, CFGKEY_PERF_COUNT);
-    if (ptr) {
-        perf_count = atoi(ptr);
-        if (count < 1) {
-            errmsg = "Invalid config value for " CFGKEY_PERF_COUNT ".";
-            return -1;
-        }
-    }
-    else {
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%d", DEFAULT_PERF_COUNT);
-        hcfg_set(sess->cfg, CFGKEY_PERF_COUNT, buf);
-    }
-
-    /* Determine the number of trials to prepare per-client. */
-    ptr = hcfg_get(sess->cfg, CFGKEY_PER_CLIENT_STORAGE);
-    if (ptr) {
-        per_client = atoi(ptr);
-        if (per_client < 1) {
-            errmsg = "Invalid config value for " CFGKEY_PER_CLIENT_STORAGE ".";
-            return -1;
-        }
-    }
-
-    /* Determine the number of clients to expect. */
-    ptr = hcfg_get(sess->cfg, CFGKEY_CLIENT_COUNT);
-    if (ptr) {
-        count = atoi(ptr);
-        if (count < 1) {
-            errmsg = "Invalid config value for " CFGKEY_CLIENT_COUNT ".";
-            return -1;
-        }
-    }
-    else {
-        /* Otherwise, make sure this key exists. */
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%d", DEFAULT_CLIENT_COUNT);
-        if (hcfg_set(sess->cfg, CFGKEY_CLIENT_COUNT, buf) != 0) {
-            errmsg = "Error setting default client count.";
-            return -1;
-        }
-    }
-    count *= per_client;
+    perf_count = hcfg_int(&sess->cfg, CFGKEY_PERF_COUNT);
+    per_client = hcfg_int(&sess->cfg, CFGKEY_GEN_COUNT);
+    clients    = hcfg_int(&sess->cfg, CFGKEY_CLIENT_COUNT);
 
     /* Load and initialize the strategy code object. */
-    ptr = hcfg_get(sess->cfg, CFGKEY_SESSION_STRATEGY);
+    ptr = hcfg_get(&sess->cfg, CFGKEY_STRATEGY);
     if (load_strategy(ptr) < 0)
         return -1;
 
     /* Load and initialize requested layer's. */
-    ptr = hcfg_get(sess->cfg, CFGKEY_SESSION_LAYERS);
+    ptr = hcfg_get(&sess->cfg, CFGKEY_LAYERS);
     if (ptr && load_layers(ptr) < 0)
         return -1;
 
-    if (extend_lists(count) != 0)
+    if (extend_lists(clients * per_client) != 0)
         return -1;
 
     return 0;
@@ -641,24 +601,22 @@ int handle_setcfg(hmesg_t *mesg)
 {
     static char *buf = NULL;
     static int buflen = 0;
+    char* sep = (char*) strchr(mesg->data.string, '=');
+    const char* oldval;
 
-    char *key, *val;
-    const char *oldval;
-
-    hcfg_parse((char *)mesg->data.string, &key, &val);
-    if (!key) {
+    if (!sep) {
         errmsg = strerror(EINVAL);
         return -1;
     }
 
     /* Store the original value, possibly allocating memory for it. */
-    oldval = hcfg_get(sess->cfg, key);
+    oldval = hcfg_get(&sess->cfg, mesg->data.string);
     if (oldval) {
         snprintf_grow(&buf, &buflen, "%s", oldval);
         oldval = buf;
     }
 
-    if (session_setcfg(key, val) != 0) {
+    if (session_setcfg(mesg->data.string, sep + 1) != 0) {
         errmsg = "Error setting session configuration variable";
         return -1;
     }
@@ -682,12 +640,10 @@ int handle_best(hmesg_t *mesg)
 int handle_fetch(hmesg_t *mesg)
 {
     int idx = ready[ready_head], paused;
-    const char *cfgval;
     htrial_t *next;
 
     /* Check if the session is paused. */
-    cfgval = hcfg_get(sess->cfg, CFGKEY_SESSION_PAUSED);
-    paused = (cfgval && *cfgval == '1');
+    paused = hcfg_bool(&sess->cfg, CFGKEY_PAUSED);
 
     if (!paused && idx >= 0) {
         /* Send the next point on the ready queue. */
@@ -778,11 +734,12 @@ int load_strategy(const char *file)
     const char *root;
     char *path;
     void *lib;
+    hcfg_info_t *keyinfo;
 
     if (!file)
-        file = DEFAULT_STRATEGY;
+        return -1;
 
-    root = hcfg_get(sess->cfg, CFGKEY_HARMONY_HOME);
+    root = hcfg_get(&sess->cfg, CFGKEY_HARMONY_HOME);
     path = sprintf_alloc("%s/libexec/%s", root, file);
 
     lib = dlopen(path, RTLD_LAZY | RTLD_LOCAL);
@@ -822,34 +779,41 @@ int load_strategy(const char *file)
         return -1;
     }
 
+    keyinfo = dlsym(lib, "plugin_keyinfo");
+    if (keyinfo) {
+        if (hcfg_reginfo(&sess->cfg, keyinfo) != 0) {
+            errmsg = "Error registering strategy configuration keys.";
+            return -1;
+        }
+    }
+
     if (strategy_init)
         return strategy_init(&sess->sig);
 
     return 0;
 }
 
-int load_layers(const char *list)
+int load_layers(const char* list)
 {
-    const char *prefix, *end;
-    char *path;
-    int path_len, retval;
-    void *lib;
+    const char* prefix = hcfg_get(&sess->cfg, CFGKEY_HARMONY_HOME);
+    char* path = NULL;
+    int path_len = 0;
+    int retval = 0;
 
-    path = NULL;
-    path_len = 0;
-    retval = 0;
     while (list && *list) {
+        void* lib;
+        hcfg_info_t* keyinfo;
+        const char* end = strchr(list, SESSION_LAYER_SEP);
+        if (!end)
+            end = list + strlen(list);
+
         if (lstack_len == lstack_cap) {
             if (array_grow(&lstack, &lstack_cap, sizeof(layer_t)) < 0) {
                 retval = -1;
                 goto cleanup;
             }
         }
-        end = strchr(list, SESSION_LAYER_SEP);
-        if (!end)
-            end = list + strlen(list);
 
-        prefix = hcfg_get(sess->cfg, CFGKEY_HARMONY_HOME);
         if (snprintf_grow(&path, &path_len, "%s/libexec/%.*s",
                           prefix, end - list, list) < 0)
         {
@@ -907,6 +871,14 @@ int load_layers(const char *list)
             goto cleanup;
         }
         lstack[lstack_len].fini = (hook_fini_t) dlfptr(lib, path);
+
+        keyinfo = dlsym(lib, "plugin_keyinfo");
+        if (keyinfo) {
+            if (hcfg_reginfo(&sess->cfg, keyinfo) != 0) {
+                errmsg = "Error registering strategy configuration keys.";
+                return -1;
+            }
+        }
 
         if (lstack[lstack_len].init) {
             curr_layer = lstack_len + 1;
@@ -1028,11 +1000,11 @@ int callback_analyze(int fd, cb_func_t func)
 }
 
 /* Central interface for shared configuration between pluggable modules. */
-int session_setcfg(const char *key, const char *val)
+int session_setcfg(const char* key, const char* val)
 {
     int i;
 
-    if (hcfg_set(sess->cfg, key, val) != 0)
+    if (hcfg_set(&sess->cfg, key, val) != 0)
         return -1;
 
     /* Make sure setcfg callbacks are triggered after the

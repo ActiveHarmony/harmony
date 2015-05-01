@@ -18,9 +18,9 @@
  */
 
 #include "libvertex.h"
+#include "hsignature.h"
 #include "hpoint.h"
 #include "hperf.h"
-#include "hsession.h"
 #include "session-core.h"
 #include "hcfg.h"
 
@@ -52,7 +52,7 @@ int libvertex_init(hsignature_t *sig)
     if (range != sig->range) {
         range = sig->range;
         N = sig->range_len;
-        P = atoi( session_getcfg(CFGKEY_PERF_COUNT) );
+        P = hcfg_int(session_cfg, CFGKEY_PERF_COUNT);
         sizeof_vertex = sizeof(vertex_t) + N * sizeof(double);
 
         free(vmin);

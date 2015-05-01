@@ -28,12 +28,6 @@
  *
  * It is mainly used as a basis of comparison for more intelligent
  * search strategies.
- *
- *
- * **Configuration Variables**
- * Key    | Type       | Default | Description
- * ------ | ---------- | ------- | -----------
- * PASSES | Integer    | 1       | Number of passes through the search space before the search is considered converged.
  */
 
 #include "strategy.h"
@@ -46,6 +40,19 @@
 #include <string.h>
 #include <errno.h>
 #include <math.h>
+
+/*
+ * Configuration variables used in this plugin.
+ * These will automatically be registered by session-core upon load.
+ */
+hcfg_info_t plugin_keyinfo[] = {
+    { CFGKEY_PASSES, "1",
+      "Number of passes through the search space before the search "
+      "is considered converged." },
+    { CFGKEY_INIT_POINT, NULL,
+      "Initial point begin testing from." },
+    { NULL }
+};
 
 hpoint_t best;
 double   best_perf;
@@ -95,9 +102,8 @@ int strategy_init(hsignature_t *sig)
     if (strategy_cfg(sig) != 0)
         return -1;
 
-    if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
-        session_error("Could not set "
-                      CFGKEY_STRATEGY_CONVERGED " config variable.");
+    if (session_setcfg(CFGKEY_CONVERGED, "0") != 0) {
+        session_error("Could not set " CFGKEY_CONVERGED " config variable.");
         return -1;
     }
     return 0;
@@ -108,11 +114,13 @@ int strategy_cfg(hsignature_t *sig)
     const char *cfgstr;
     int i;
 
-    cfgstr = session_getcfg(CFGKEY_PASSES);
-    if (cfgstr)
-        remaining_passes = atoi(cfgstr);
+    remaining_passes = hcfg_int(session_cfg, CFGKEY_PASSES);
+    if (remaining_passes < 0) {
+        session_error("Invalid value for " CFGKEY_PASSES ".");
+        return -1;
+    }
 
-    cfgstr = session_getcfg(CFGKEY_INIT_POINT);
+    cfgstr = hcfg_get(session_cfg, CFGKEY_INIT_POINT);
     if (cfgstr) {
         if (hpoint_parse(&curr, sig, cfgstr) != 0) {
             session_error("Error parsing point from " CFGKEY_INIT_POINT ".");
@@ -236,7 +244,7 @@ int strategy_analyze(htrial_t *trial)
     }
 
     if (trial->point.id == final_id) {
-        if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "1") != 0) {
+        if (session_setcfg(CFGKEY_CONVERGED, "1") != 0) {
             session_error("Internal error: Could not set convergence status.");
             return -1;
         }

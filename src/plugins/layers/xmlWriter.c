@@ -34,11 +34,6 @@
  * And `LIBXML2` should point wherever libxml2 has been installed.
  * For Linux distributions that include libxml2 as a package, using
  * `/usr` may be sufficient.
- *
- * **Configuration Variables**
- * Key                | Type    | Default | Description
- * ------------------ | ------- | ------- | -----------
- * XML_FILENAME       | String  | [none]  | XML output file.
  */
 
 #include <stdlib.h>
@@ -61,9 +56,22 @@
 #include "hutil.h"
 #include "hcfg.h"
 
-#define MY_ENCODING "ISO-8859-1"
+/*
+ * Name used to identify this plugin layer.
+ * All Harmony plugins must define this variable.
+ */
+const char harmony_layer_name[] = "xmlWriter";
 
-char harmony_layer_name[] = "xmlWriter";
+/*
+ * Configuration variables used in this plugin.
+ * These will automatically be registered by session-core upon load.
+ */
+hcfg_info_t plugin_keyinfo[] = {
+    { CFGKEY_XML_FILE, NULL, "XML output file." },
+    { NULL }
+};
+
+#define MY_ENCODING "ISO-8859-1"
 
 hsignature_t sess_sig;
 /* clock_t file_create_time; */
@@ -91,7 +99,7 @@ int xmlWriter_init(hsignature_t *sig)
     snprintf(create_time, 64, "%d%d%d", (int)current->tm_hour,
              (int)current->tm_min, (int)current->tm_sec);
 
-    tmpstr = session_getcfg("XML_FILENAME");
+    tmpstr = hcfg_get(session_cfg, CFGKEY_XML_FILE);
     if (tmpstr)
         strncpy(filename, tmpstr, sizeof(filename));
     else
@@ -260,7 +268,8 @@ int xmlWriter_generate(hflow_t *flow, htrial_t *trial)
             xmlNewTextChild(dataNode, NULL, (xmlChar *)"Time",
                             (xmlChar *)timestr);
             xmlNewTextChild(dataNode, NULL, (xmlChar *)"Client",
-                            (xmlChar *)session_getcfg(CFGKEY_CURRENT_CLIENT));
+                            (xmlChar *)hcfg_get(session_cfg,
+                                                CFGKEY_CURRENT_CLIENT));
             xmlSaveFileEnc(filename, doc, MY_ENCODING);
             break;
         }

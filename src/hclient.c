@@ -174,12 +174,12 @@ int harmony_enum(hdesc_t *hdesc, const char *name, const char *value)
 
 int harmony_strategy(hdesc_t *hdesc, const char *strategy)
 {
-    return hcfg_set(hdesc->sess.cfg, CFGKEY_SESSION_STRATEGY, strategy);
+    return hcfg_set(&hdesc->sess.cfg, CFGKEY_STRATEGY, strategy);
 }
 
 int harmony_layers(hdesc_t *hdesc, const char *list)
 {
-    return hcfg_set(hdesc->sess.cfg, CFGKEY_SESSION_LAYERS, list);
+    return hcfg_set(&hdesc->sess.cfg, CFGKEY_LAYERS, list);
 }
 
 int harmony_launch(hdesc_t *hdesc, const char *host, int port)
@@ -210,19 +210,14 @@ int harmony_launch(hdesc_t *hdesc, const char *host, int port)
         }
 
         /* Find the Active Harmony installation. */
-        home = getenv("HARMONY_HOME");
+        home = hcfg_get(&hdesc->sess.cfg, CFGKEY_HARMONY_HOME);
         if (!home) {
-            hdesc->errstr = "No host or HARMONY_HOME specified";
-            return -1;
-        }
-
-        if (hcfg_set(hdesc->sess.cfg, CFGKEY_HARMONY_HOME, home) != 0) {
-            hdesc->errstr = "Could not set " CFGKEY_HARMONY_HOME;
+            hdesc->errstr = "No host or " CFGKEY_HARMONY_HOME " specified";
             return -1;
         }
 
         /* Fork a local tuning session. */
-        path = sprintf_alloc("%s/libexec/session-core", home);
+        path = sprintf_alloc("%s/libexec/" SESSION_CORE_EXECFILE, home);
         hdesc->socket = socket_launch(path, NULL, NULL);
         free(path);
     }
@@ -392,16 +387,15 @@ int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *name)
     }
 
     cfgval = harmony_getcfg(hdesc, CFGKEY_PERF_COUNT);
-    if (cfgval) {
-        perf_len = atoi(cfgval);
-        if (perf_len < 1) {
-            hdesc->errstr = "Invalid value for " CFGKEY_PERF_COUNT;
-            return -1;
-        }
-        free(cfgval);
+    if (!cfgval) {
+        hdesc->errstr = "Error retrieving performance count.";
+        return -1;
     }
-    else {
-        perf_len = DEFAULT_PERF_COUNT;
+
+    perf_len = atoi(cfgval);
+    if (perf_len < 1) {
+        hdesc->errstr = "Invalid value for" CFGKEY_PERF_COUNT;
+        return -1;
     }
 
     hdesc->perf = hperf_alloc(perf_len);
@@ -671,7 +665,7 @@ int harmony_converged(hdesc_t *hdesc)
     char *str;
 
     retval = 0;
-    str = harmony_getcfg(hdesc, CFGKEY_STRATEGY_CONVERGED);
+    str = harmony_getcfg(hdesc, CFGKEY_CONVERGED);
     if (str && str[0] == '1') {
         hdesc->state = HARMONY_STATE_CONVERGED;
         retval = 1;

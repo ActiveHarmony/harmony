@@ -25,12 +25,6 @@
  * [feedback loop](\ref intro_feedback).  When the requisite number of
  * evaluations has been reached, an aggregating function is applied to
  * consolidate the set performance values.
- *
- * **Configuration Variables**
- * Key       | Type    | Default | Description
- * --------- | ------- | ------- | -----------
- * AGG_FUNC  | String  | [none]  | Aggregation function to use.  Valid values are "min", "max", "mean", and "median" (without quotes).
- * AGG_TIMES | Integer | [none]  | Number of performance values to collect before performing the aggregation function.
  */
 
 #include "session-core.h"
@@ -48,6 +42,20 @@
  * this variable.
  */
 const char harmony_layer_name[] = "agg";
+
+/*
+ * Configuration variables used in this plugin.
+ * These will automatically be registered by session-core upon load.
+ */
+hcfg_info_t plugin_keyinfo[] = {
+    { CFGKEY_AGG_FUNC, NULL,
+      "Aggregation function to use.  Valid values are min, max, mean, "
+      "and median." },
+    { CFGKEY_AGG_TIMES, NULL,
+      "Number of performance values to collect before performing the "
+      "aggregation function." },
+    { NULL }
+};
 
 void perf_mean(hperf_t *dst, hperf_t *src[], int count);
 int  perf_sort(const void *_a, const void *_b);
@@ -76,9 +84,9 @@ int agg_init(hsignature_t *sig)
 {
     const char *val;
 
-    val = session_getcfg("AGG_FUNC");
+    val = hcfg_get(session_cfg, CFGKEY_AGG_FUNC);
     if (!val) {
-        session_error("AGG_FUNC configuration key empty");
+        session_error(CFGKEY_AGG_FUNC " configuration key empty.");
         return -1;
     }
     if      (strcasecmp(val, "MIN") == 0)    agg_type = AGG_MIN;
@@ -86,19 +94,13 @@ int agg_init(hsignature_t *sig)
     else if (strcasecmp(val, "MEAN") == 0)   agg_type = AGG_MEAN;
     else if (strcasecmp(val, "MEDIAN") == 0) agg_type = AGG_MEDIAN;
     else {
-        session_error("Invalide AGG_FUNC configuration value");
+        session_error("Invalid " CFGKEY_AGG_FUNC " configuration value.");
         return -1;
     }
 
-    val = session_getcfg("AGG_TIMES");
-    if (!val) {
-        session_error("AGG_TIMES configuration key empty");
-        return -1;
-    }
-
-    trial_per_point = atoi(val);
-    if (!trial_per_point) {
-        session_error("Invalid AGG_TIMES configuration value");
+    trial_per_point = hcfg_int(session_cfg, CFGKEY_AGG_TIMES);
+    if (trial_per_point < 2) {
+        session_error("Invalid " CFGKEY_AGG_TIMES " configuration value.");
         return -1;
     }
 

@@ -22,12 +22,6 @@
  *
  * This processing layer writes a log of point/performance pairs to disk as
  * they flow through the auto-tuning [feedback loop](\ref intro_feedback).
- *
- * **Configuration Variables**
- * Key          | Type   | Default | Description
- * ------------ | ------ | ------- | -----------
- * LOGFILE      | String | (none)  | Name of point/performance log file.
- * LOGFILE_MODE | String | a       | Mode to use with `fopen()`.  Valid values are "a" and "w" (without quotes).
  */
 
 #include "session-core.h"
@@ -47,23 +41,31 @@
  */
 const char harmony_layer_name[] = "logger";
 
+/*
+ * Configuration variables used in this plugin.
+ * These will automatically be registered by session-core upon load.
+ */
+hcfg_info_t plugin_keyinfo[] = {
+    { CFGKEY_LOG_FILE, NULL,
+      "Name of point/performance log file." },
+    { CFGKEY_LOG_MODE, "a",
+      "Mode to use with 'fopen()'.  Valid values are a for append, "
+      "and w for overwrite." },
+    { NULL }
+};
+
 FILE *fd;
 
 int logger_init(hsignature_t *sig)
 {
-    const char *filename;
-    const char *mode;
+    const char *filename = hcfg_get(session_cfg, CFGKEY_LOG_FILE);
+    const char *mode     = hcfg_get(session_cfg, CFGKEY_LOG_MODE);
     time_t tm;
 
-    filename = session_getcfg("LOGFILE");
     if (!filename) {
-        session_error("LOGFILE config key empty");
+        session_error(CFGKEY_LOG_FILE " config key empty.");
         return -1;
     }
-
-    mode = session_getcfg("LOGFILE_MODE");
-    if (!mode)
-        mode = "a";
 
     fd = fopen(filename, mode);
     if (!fd) {

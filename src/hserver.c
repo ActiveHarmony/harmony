@@ -73,7 +73,6 @@ int *unk_fds, unk_cap;
 int *client_fds, client_cap;
 int *http_fds, http_len, http_cap;
 
-hcfg_t *cfg;
 char *harmony_dir;
 char *session_bin;
 hmesg_t mesg_in, mesg_out; /* Maintain two message structures
@@ -241,12 +240,6 @@ int vars_init(int argc, char *argv[])
     binfile = stralloc(basename(tmppath));
     free(tmppath);
 
-    cfg = hcfg_alloc();
-    if (!cfg) {
-        perror("Could not initialize the global configuration structure");
-        return -1;
-    }
-
     if ( (tmppath = getenv(CFGKEY_HARMONY_HOME))) {
         harmony_dir = stralloc(tmppath);
         dprintf(CFGKEY_HARMONY_HOME " is %s\n", harmony_dir);
@@ -268,7 +261,7 @@ int vars_init(int argc, char *argv[])
     }
     free(binfile);
 
-    if (hcfg_set(cfg, CFGKEY_HARMONY_HOME, harmony_dir) < 0) {
+    if (setenv(CFGKEY_HARMONY_HOME, harmony_dir, 1) != 0) {
         perror("Could not set " CFGKEY_HARMONY_HOME " in global config");
         return -1;
     }
@@ -279,7 +272,8 @@ int vars_init(int argc, char *argv[])
     session_bin = sprintf_alloc("%s/libexec/" SESSION_CORE_EXECFILE,
                                 harmony_dir);
     if (!file_exists(session_bin)) {
-        fprintf(stderr, "Could not find support files in HARMONY_HOME\n");
+        fprintf(stderr, "Could not find support files in "
+                CFGKEY_HARMONY_HOME "\n");
         return -1;
     }
 
@@ -673,12 +667,11 @@ int handle_session_socket(int idx)
 
 session_state_t *session_open(hmesg_t *mesg)
 {
-    int i, idx, clients_expected;
+    int i, idx = -1;
     session_state_t *sess;
     char *child_argv[2];
     const char *cfgstr;
 
-    idx = -1;
     /* check if session already exists, and return if it does */
     for (i = 0; i < slist_cap; ++i) {
         if (!slist[i].name) {
@@ -708,42 +701,17 @@ session_state_t *session_open(hmesg_t *mesg)
     hpoint_fini(&sess->best);
     sess->best_perf = INFINITY;
 
-    if (hcfg_merge(mesg->data.session.cfg, cfg) < 0) {
-        mesg_out.data.string = "Internal error merging config structures";
-        goto error;
-    }
-
     /* Force sessions to load the httpinfo plugin layer. */
     #define HTTPINFO "httpinfo.so"
-    cfgstr = hcfg_get(mesg->data.session.cfg, CFGKEY_SESSION_LAYERS);
-    if (!cfgstr || *cfgstr == '\0') {
-        hcfg_set(mesg->data.session.cfg, CFGKEY_SESSION_LAYERS, HTTPINFO);
+    cfgstr = hcfg_get(&mesg->data.session.cfg, CFGKEY_LAYERS);
+    if (!cfgstr) {
+        hcfg_set(&mesg->data.session.cfg, CFGKEY_LAYERS, HTTPINFO);
     }
     else if (strstr(cfgstr, HTTPINFO) == NULL) {
         char *buf = sprintf_alloc(HTTPINFO ";%s", cfgstr);
-        hcfg_set(mesg->data.session.cfg, CFGKEY_SESSION_LAYERS, buf);
+        hcfg_set(&mesg->data.session.cfg, CFGKEY_LAYERS, buf);
         free(buf);
     }
-
-    /* Make sure we have at least 1 expected client. */
-    cfgstr = hcfg_get(mesg->data.session.cfg, CFGKEY_CLIENT_COUNT);
-    if (!cfgstr) {
-        clients_expected = DEFAULT_CLIENT_COUNT;
-    }
-    else {
-        clients_expected = atoi(cfgstr);
-    }
-    if (clients_expected < 1) {
-        mesg_out.data.string = "Invalid config value for " CFGKEY_CLIENT_COUNT;
-        goto error;
-    }
-
-    /* Fork and exec a session handler. */
-    child_argv[0] = sess->name;
-    child_argv[1] = NULL;
-    sess->fd = socket_launch(session_bin, child_argv, NULL);
-    if (sess->fd < 0)
-        goto error;
 
     /* Initialize HTTP server fields. */
     if (hsignature_copy(&sess->sig, &mesg->data.session.sig) != 0)
@@ -752,14 +720,18 @@ session_state_t *session_open(hmesg_t *mesg)
     if (gettimeofday(&sess->start, NULL) < 0)
         goto error;
 
-    cfgstr = hcfg_get(mesg->data.session.cfg, CFGKEY_SESSION_STRATEGY);
-    if (!cfgstr)
-        cfgstr = DEFAULT_STRATEGY;
-
-    sess->strategy = stralloc(cfgstr);
+    cfgstr = hcfg_get(&mesg->data.session.cfg, CFGKEY_STRATEGY);
+    sess->strategy = stralloc( cfgstr );
     sess->status = 0x0;
     sess->log_len = 0;
     sess->reported = 0;
+
+    /* Fork and exec a session handler. */
+    child_argv[0] = sess->name;
+    child_argv[1] = NULL;
+    sess->fd = socket_launch(session_bin, child_argv, NULL);
+    if (sess->fd < 0)
+        goto error;
 
     FD_SET(sess->fd, &listen_fds);
     if (highest_socket < sess->fd)

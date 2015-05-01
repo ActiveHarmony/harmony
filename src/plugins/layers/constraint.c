@@ -46,14 +46,6 @@
  * available at:<br>
  * <https://github.com/davewathaverford/the-omega-project/>.
  *
- * **Configuration Variables**
- * Key             | Type      | Default | Description
- * --------------- | --------- | ------- | -----------
- * OC_BIN          | Filename  | oc      | Location of the Omega Calculator binary.  The `PATH` environment variable will be searched if not found initially.
- * CONSTRAINTS     | String    | [none]  | Constraint statements to be used during this session.  This variable has precedence over `CONSTRAINT_FILE`.
- * CONSTRAINT_FILE | Filename  | [none]  | If the `CONSTRAINTS` variable is not specified, they will be loaded from this file.
- * QUIET           | Boolean   | 0       | Bounds suggestion and rejection messages can be suppressed by setting this variable to 1.
- *
  * \note Some search strategies provide a `REJECT_METHOD`
  * configuration variable that can be used to specify how to deal with
  * rejected points.  This can have great affect on the productivity of
@@ -76,18 +68,36 @@
 #include "hsockutil.h"
 #include "hcfg.h"
 
+/*
+ * Name used to identify this plugin layer.
+ * All Harmony plugin layers must define this variable.
+ */
+const char harmony_layer_name[] = "constraint";
+
+/*
+ * Configuration variables used in this plugin.
+ * These will automatically be registered by session-core upon load.
+ */
+hcfg_info_t plugin_keyinfo[] = {
+    { CFGKEY_OC_BIN, "oc",
+      "Location of the Omega Calculator binary. The PATH environment "
+      "variable will be searched if not found initially." },
+    { CFGKEY_OC_CONSTRAINTS, NULL,
+      "Constraint statements to be used during this session. "
+      "This variable has precedence over " CFGKEY_OC_FILE "." },
+    { CFGKEY_OC_FILE, NULL,
+      "If the " CFGKEY_OC_CONSTRAINTS " variable is not specified, "
+      "constraints will be loaded from this file." },
+    { CFGKEY_OC_QUIET, "False",
+      "Bounds suggestion and rejection messages can be suppressed "
+      "by setting this variable to true." },
+    { NULL }
+};
+
 #define MAX_CMD_LEN  4096
 #define MAX_TEXT_LEN 1024
 #define REG_TEXT_LEN 128
 #define SHORT_TEXT_LEN 32
-
-const char harmony_layer_name[] = "constraint";
-
-/* Configuration Keys Used. */
-#define CFGKEY_OC_BIN          "OC_BIN"
-#define CFGKEY_CONSTRAINTS     "CONSTRAINTS"
-#define CFGKEY_CONSTRAINT_FILE "CONSTRAINT_FILE"
-#define CFGKEY_QUIET           "QUIET"
 
 /* Forward function declarations. */
 int strategy_cfg(hsignature_t *sig);
@@ -142,10 +152,7 @@ int strategy_cfg(hsignature_t *sig)
 {
     const char *cfgval;
 
-    cfgval = session_getcfg(CFGKEY_OC_BIN);
-    if (cfgval)
-        omega_bin = cfgval;
-
+    omega_bin = hcfg_get(session_cfg, CFGKEY_OC_BIN);
     if (!file_exists(omega_bin)) {
         omega_bin = search_path(omega_bin);
         if (!omega_bin) {
@@ -155,14 +162,9 @@ int strategy_cfg(hsignature_t *sig)
         }
     }
 
-    cfgval = session_getcfg(CFGKEY_QUIET);
-    if (cfgval) {
-        quiet = (*cfgval == '1' ||
-                 *cfgval == 't' || *cfgval == 'T' ||
-                 *cfgval == 'y' || *cfgval == 'Y');
-    }
+    quiet = hcfg_bool(session_cfg, CFGKEY_OC_QUIET);
 
-    cfgval = session_getcfg(CFGKEY_CONSTRAINTS);
+    cfgval = hcfg_get(session_cfg, CFGKEY_OC_CONSTRAINTS);
     if (cfgval) {
         if (strlen(cfgval) >= sizeof(constraints)) {
             session_error("Constraint string too long");
@@ -173,10 +175,10 @@ int strategy_cfg(hsignature_t *sig)
     else {
         FILE *fp;
 
-        cfgval = session_getcfg(CFGKEY_CONSTRAINT_FILE);
+        cfgval = hcfg_get(session_cfg, CFGKEY_OC_FILE);
         if (!cfgval) {
             session_error("No constraints specified.  Either "
-                          CFGKEY_CONSTRAINTS " or " CFGKEY_CONSTRAINT_FILE
+                          CFGKEY_OC_CONSTRAINTS " or " CFGKEY_OC_FILE
                           " must be defined.");
             return -1;
         }

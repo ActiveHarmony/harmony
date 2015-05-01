@@ -209,8 +209,8 @@ int main(int argc, char **argv)
     harmony_layers(hdesc, "TAUdb.so");
 
     harmony_setcfg(hdesc, CFGKEY_CLIENT_COUNT, "1");
-    harmony_setcfg(hdesc, "TAUDB_STORE_METHOD", "one_time");
-    harmony_setcfg(hdesc, "TAUDB_STORE_NUM", "150");
+    harmony_setcfg(hdesc, CFGKEY_TAUDB_STORE_METHOD, "one_time");
+    harmony_setcfg(hdesc, CFGKEY_TAUDB_STORE_NUM, "150");
     if (errno) {
         perror("Error during session setup");
         return -1;

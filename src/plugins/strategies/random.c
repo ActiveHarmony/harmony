@@ -27,11 +27,6 @@
  *
  * It is mainly used as a basis of comparison for more intelligent
  * search strategies.
- *
- * **Configuration Variables**
- * Key          | Type       | Default | Description
- * ------------ | ---------- | ------- | -----------
- * RANDOM_SEED  | Integer    | time()  | Value to seed the pseudo-random number generator.  Default is to seed the random generator by time.
  */
 
 #include "strategy.h"
@@ -47,6 +42,15 @@
 #include <errno.h>
 #include <time.h>
 #include <math.h>
+
+/*
+ * Configuration variables used in this plugin.
+ * These will automatically be registered by session-core upon load.
+ */
+hcfg_info_t plugin_keyinfo[] = {
+    { CFGKEY_INIT_POINT, NULL, "Initial point begin testing from." },
+    { NULL }
+};
 
 hpoint_t best;
 double   best_perf;
@@ -87,9 +91,8 @@ int strategy_init(hsignature_t *sig)
     if (strategy_cfg(sig) != 0)
         return -1;
 
-    if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
-        session_error("Could not set "
-                      CFGKEY_STRATEGY_CONVERGED " config variable.");
+    if (session_setcfg(CFGKEY_CONVERGED, "0") != 0) {
+        session_error("Could not set " CFGKEY_CONVERGED " config variable.");
         return -1;
     }
     return 0;
@@ -97,9 +100,8 @@ int strategy_init(hsignature_t *sig)
 
 int strategy_cfg(hsignature_t *sig)
 {
-    const char *cfgval;
+    const char *cfgval = hcfg_get(session_cfg, CFGKEY_INIT_POINT);
 
-    cfgval = session_getcfg(CFGKEY_INIT_POINT);
     if (cfgval) {
         if (vertex_from_string(cfgval, sig, curr) != 0)
             return -1;

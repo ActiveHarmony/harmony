@@ -239,26 +239,31 @@ int handle_http_socket(int fd)
 
 int handle_http_info(session_state_t *sess, char *buf)
 {
-    char *key, *val;
+    int val = 0;
 
-    if (hcfg_parse(buf, &key, &val) == NULL)
-        return -1;
-
-    if (strcmp(key, CFGKEY_SESSION_STRATEGY) == 0) {
+    sscanf(buf, CFGKEY_STRATEGY "=%n", &val);
+    if (val) {
         free(sess->strategy);
-        sess->strategy = stralloc(val);
+        sess->strategy = stralloc(&buf[val]);
+        return 0;
     }
-    else if (strcmp(key, CFGKEY_STRATEGY_CONVERGED) == 0) {
-        if (*val == '1')
+
+    sscanf(buf, CFGKEY_CONVERGED "=%n", &val);
+    if (val) {
+        if (buf[val] == '1')
             sess->status |= HTTP_STATUS_CONVERGED;
         else
             sess->status &= ~HTTP_STATUS_CONVERGED;
+        return 0;
     }
-    else if (strcmp(key, CFGKEY_SESSION_PAUSED) == 0) {
-        if (*val == '1')
+
+    sscanf(buf, CFGKEY_PAUSED "=%n", &val);
+    if (val) {
+        if (buf[val] == '1')
             sess->status |= HTTP_STATUS_PAUSED;
         else
             sess->status &= ~HTTP_STATUS_PAUSED;
+        return 0;
     }
 
     return 0;
@@ -401,7 +406,7 @@ int http_request_handle(int fd, char *req)
         opt_sock_write(fd, HTTP_ENDL);
 
         if (sess) {
-            session_setcfg(sess, CFGKEY_SESSION_PAUSED, "1");
+            session_setcfg(sess, CFGKEY_PAUSED, "1");
             opt_http_write(fd, "OK");
             opt_http_write(fd, "");
             return 0;
@@ -417,7 +422,7 @@ int http_request_handle(int fd, char *req)
         opt_sock_write(fd, HTTP_ENDL);
 
         if (sess) {
-            session_setcfg(sess, CFGKEY_SESSION_PAUSED, "0");
+            session_setcfg(sess, CFGKEY_PAUSED, "0");
             opt_http_write(fd, "OK");
             opt_http_write(fd, "");
             return 0;

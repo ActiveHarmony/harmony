@@ -550,10 +550,10 @@ int start_harmony(hdesc_t *hdesc)
     }
 
     snprintf(intbuf, sizeof(intbuf), "%d", o_cnt);
-    harmony_setcfg(hdesc, "PERF_COUNT", intbuf);
+    harmony_setcfg(hdesc, CFGKEY_PERF_COUNT, intbuf);
 
     snprintf(intbuf, sizeof(intbuf), "%ld", seed);
-    harmony_setcfg(hdesc, "RANDOM_SEED", intbuf);
+    harmony_setcfg(hdesc, CFGKEY_RANDOM_SEED, intbuf);
 
     if (harmony_launch(hdesc, NULL, 0) != 0) {
         fprintf(stderr, "Error launching tuning session: %s\n",

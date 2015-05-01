@@ -34,14 +34,6 @@
  *
  * And `LIBTAUDB` should point to the `tools/src/taudb_c_api`
  * directory within that distribution.
- *
- * **Configuration Variables**
- * Key                | Type    | Default  | Description
- * ------------------ | ------- | -------- | -----------
- * TAUDB_NAME         | String  | [none]   | Name of the PostgreSQL database.
- * TAUDB_STORE_METHOD | String  | one_time | Determines when statistics are computed:<br> **one_time** - With each database write.<br> **real_time** - At session cleanup time.
- * TAUDB_STORE_NUM    | Integer | 0        | Number of reports to cache before writing to database.
- * CLIENT_COUNT       | Integer | 1        | Number of participating tuning clients.
  */
 
 #include "session-core.h"
@@ -58,13 +50,32 @@
 #include <string.h>
 #include <sys/types.h>
 
+/*
+ * Name used to identify this plugin layer.
+ * All Harmony plugin layers must define this variable.
+ */
+const char harmony_layer_name[] = "TAUdb";
+
+/*
+ * Configuration variables used in this plugin.
+ * These will automatically be registered by session-core upon load.
+ */
+hcfg_info_t plugin_keyinfo[] = {
+    { CFGKEY_TAUDB_NAME, NULL,
+      "Name of the PostgreSQL database." },
+    { CFGKEY_TAUDB_STORE_METHOD, "one_time",
+      "Determines when statistics are computed: real_time: With each "
+      "database write. one_time: At session cleanup time." },
+    { CFGKEY_TAUDB_STORE_NUM, "0",
+      "Number of reports to cache before writing to database." },
+    { NULL }
+};
+
 #define CLIENTID_INIT 16
 #define SECONDARY_METADATA_NUM 10
 #define REG_STR_LEN 32
 #define MAX_STR_LEN 1024
 #define POINTS_PER_SAVE 20
-
-char harmony_layer_name[] = "TAUdb";
 
 TAUDB_METRIC      *metric;
 TAUDB_TRIAL       *taudb_trial;
@@ -104,7 +115,7 @@ int TAUdb_init(hsignature_t *sig)
     char *tmpstr;
 
     /*Connecting to TAUdb*/
-    tmpstr = (char *) session_getcfg("TAUDB_NAME");
+    tmpstr = hcfg_get(session_cfg, CFGKEY_TAUDB_NAME);
     if (!tmpstr) {
         session_error("TAUdb connection failed: config file not found");
         return -1;
@@ -132,10 +143,10 @@ int TAUdb_init(hsignature_t *sig)
     taudb_add_timer_group_to_trial(taudb_trial, timer_group);
 
     param_max = sig->range_len;
-    client_max = atoi( session_getcfg(CFGKEY_CLIENT_COUNT) );
+    client_max = hcfg_int(session_cfg, CFGKEY_CLIENT_COUNT);
     taudb_trial->node_count = client_max;
 
-    tmpstr = (char *) session_getcfg("TAUDB_STORE_METHOD");
+    tmpstr = hcfg_get(session_cfg, CFGKEY_TAUDB_STORE_METHOD);
     if (strcmp(tmpstr, "real_time") == 0) {
         taudb_store_type = 0;
     }
@@ -143,10 +154,11 @@ int TAUdb_init(hsignature_t *sig)
         taudb_store_type = 1;
     }
     else {
-        session_error("Invalid TAUDB_STORE_METHOD");
+        session_error("Invalid value for " CFGKEY_TAUDB_STORE_METHOD
+                      " configuration key.");
         return -1;
     }
-    total_record_num = atoi( session_getcfg("TAUDB_STORE_NUM") );
+    total_record_num = hcfg_int(session_cfg, CFGKEY_TAUDB_STORE_NUM);
 
     thread = harmony_taudb_create_thread(client_max);
 
@@ -294,7 +306,7 @@ int client_idx(void)
     int i;
     const char *curr_id;
 
-    curr_id = session_getcfg(CFGKEY_CURRENT_CLIENT);
+    curr_id = hcfg_get(session_cfg, CFGKEY_CURRENT_CLIENT);
     if (!curr_id) {
         session_error("Request detected from invalid client");
         return -1;

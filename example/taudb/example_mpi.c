@@ -107,8 +107,8 @@ int main(int argc, char **argv)
 
         snprintf(numbuf, sizeof(numbuf), "%d", node_count);
         harmony_setcfg(hdesc, CFGKEY_CLIENT_COUNT, numbuf);
-        harmony_setcfg(hdesc, "TAUDB_STORE_METHOD", "one_time");
-        harmony_setcfg(hdesc, "TAUDB_STORE_NUM", "150");
+        harmony_setcfg(hdesc, CFGKEY_TAUDB_STORE_METHOD, "one_time");
+        harmony_setcfg(hdesc, CFGKEY_TAUDB_STORE_NUM, "150");
         if (errno)
         {
             perror("Error during session setup");

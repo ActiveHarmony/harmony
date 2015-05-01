@@ -47,11 +47,6 @@
  * Grouping should be beneficial for search spaces whose input
  * variables are relatively independent with respect to the reported
  * performance.
- *
- * **Configuration Variables**
- * Key          | Type   | Default | Description
- * ------------ | ------ | ------- | -----------
- * GROUP_LIST   | String | (none)  | List of input parameter indexes.
  */
 
 #include "session-core.h"
@@ -71,6 +66,15 @@
  * this variable.
  */
 const char harmony_layer_name[] = "group";
+
+/*
+ * Configuration variables used in this plugin.
+ * These will automatically be registered by session-core upon load.
+ */
+hcfg_info_t plugin_keyinfo[] = {
+    { CFGKEY_GROUP_LIST, NULL, "List of input parameter indexes." },
+    { NULL }
+};
 
 int parse_group(const char *buf);
 
@@ -96,9 +100,10 @@ int group_init(hsignature_t *sig)
         return 0;
     }
 
-    ptr = session_getcfg("GROUP_LIST");
+    ptr = hcfg_get(session_cfg, CFGKEY_GROUP_LIST);
     if (!ptr) {
-        session_error("GROUP_LIST configuration variable must be defined.");
+        session_error(CFGKEY_GROUP_LIST
+                      " configuration variable must be defined.");
         return -1;
     }
 
@@ -131,7 +136,7 @@ int group_setcfg(const char *key, const char *val)
 {
     int i, retval = 0;
 
-    if (strcmp(key, CFGKEY_STRATEGY_CONVERGED) == 0 && val && *val == '1') {
+    if (strcmp(key, CFGKEY_CONVERGED) == 0 && val && *val == '1') {
         session_best(&best);
 
         /* Update locked values with converged group. */

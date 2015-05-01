@@ -32,14 +32,14 @@
  */
 const char harmony_layer_name[] = "httpinfo";
 
+static char *buf = NULL;
+static int buflen = 0;
+
 int httpinfo_setcfg(const char *key, const char *val)
 {
-    static char *buf = NULL;
-    static int buflen = 0;
-
-    if (strcmp(key, CFGKEY_STRATEGY_CONVERGED) == 0 ||
-        strcmp(key, CFGKEY_SESSION_STRATEGY)   == 0 ||
-        strcmp(key, CFGKEY_SESSION_PAUSED)     == 0)
+    if (strcmp(key, CFGKEY_CONVERGED) == 0 ||
+        strcmp(key, CFGKEY_STRATEGY)  == 0 ||
+        strcmp(key, CFGKEY_PAUSED)    == 0)
     {
         hmesg_t mesg = HMESG_INITIALIZER;
 
@@ -60,5 +60,12 @@ int httpinfo_setcfg(const char *key, const char *val)
         hmesg_fini(&mesg);
     }
 
+    return 0;
+}
+
+int httpinfo_fini(void)
+{
+    free(buf);
+    buflen = 0;
     return 0;
 }
