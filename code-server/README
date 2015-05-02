@@ -158,8 +158,8 @@ Additional Details
 
    11) Define the following environment variables:
 
-        HARMONY_S_HOST=brood00
-        HARMONY_S_PORT=1979
+        HARMONY_HOST=brood00
+        HARMONY_PORT=1979
 
    12) Do the following:
 

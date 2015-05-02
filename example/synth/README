@@ -129,11 +129,11 @@ To test DeJong's first function in six dimensions:
 
 To test 1000 iterations of the Random search strategy:
 
-    $ ./synth -i1000 dejong 6 SESSION_STRATEGY=random.so
+    $ ./synth -i1000 dejong 6 STRATEGY=random.so
 
 To perturb the function by at most 8, and compensate by using the minimum of 5 tests per point:
 
-    $ ./synth -p8.0 dejong 6 SESSION_LAYER_LIST=agg.so \
+    $ ./synth -p8.0 dejong 6 LAYERS=agg.so \
               AGG_FUNC=min AGG_TIMES=5
 
 To run as a client of tuna:

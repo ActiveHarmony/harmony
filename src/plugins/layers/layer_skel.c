@@ -17,6 +17,13 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/**
+ * \page refname Layer Name (sharedobject.so)
+ *
+ * Documentation written in this comment block will automatically be
+ * processed by Doxygen and combined into the user document.
+ */
+
 #include "session-core.h"
 #include "hsignature.h"
 #include "hpoint.h"

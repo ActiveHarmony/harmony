@@ -94,24 +94,17 @@ For some advanced uses of auto-tuning, multiple clients need to communicate to a
 
 ## Usage Syntax ##
 
-    hserver [config_file_name]
+    hserver [-p PORT] [-v]
 
-The server has no mandatory parameters, and can be started with a plain invocation.  A configuration file may optionally be provided as a parameter, otherwise `harmony.cfg` will be used (if it exists).  The configuration system provides a unified key/value store that may be queried by all members of the Active Harmony framework.  See the [Configuration](\ref cfg) section for more details.
-
-**Harmony Server Configuration Variables**
-Key                | Type    | Default | Description
--------------------| ------- | ------- | -----------
-SERVER_PORT        | Integer | 1979    | The port that the Harmony Server will bind and listen to.  Read only once when the Harmony Server is loaded.
-
-Any configuration directives loaded by the server will be automatically merged with the sessions that it manages.  If there is a key conflict between the server and session configuration environment, the session's key takes precedence.
+The server has no mandatory parameters, and can be started with a plain invocation.  This will launch a Harmony Server and bind it to port 1979.  An alternate port may be supplied on the command-line.
 
 ## Client Modification ##
 Using the Active Harmony server is functionally equivalent to the stand-alone case.  Users need only change two environment variables on the client machines.
 
 Environment Variable | Description
 -------------------- | -----------
-HARMONY_S_HOST       | Hostname of the machine running the Harmony Server.
-HARMONY_S_PORT       | TCP/IP port allocated by Harmony Server.
+HARMONY_HOST         | Hostname of the machine running the Harmony Server.
+HARMONY_PORT         | TCP/IP port allocated by Harmony Server.
 
 When defined, these environment variables instruct clients to connect to the specified hostname:port pair instead of spawning a local tuning session.  Multiple clients may then work together on a single search problem.
 
@@ -201,12 +194,12 @@ Description | Textual description of the directive's function.
 Additionally, there are several session-related configuration variables that are used to control sessions and how they are initialized.
 
 **Session-related Configuration Variables**
-Key                | Type    | Default | Description
--------------------| ------- | ------- | -----------
-SESSION_STRATEGY   | String  | pro.so  | The search strategy to use for a particular session.
-SESSION_LAYER_LIST | String  | [none]  | The processing layers to use for a particular session.
-CLIENT_COUNT       | Integer | 1       | The number of expected clients.
-PER_CLIENT_STORAGE | Integer | 1       | The number of testing points to prepare for each expected client.
+Key          | Type    | Default | Description
+-------------| ------- | ------- | -----------
+STRATEGY     | String  | pro.so  | The search strategy to use for a particular session.
+LAYERS       | String  | [none]  | The processing layers to use for a particular session.
+CLIENT_COUNT | Integer | 1       | The number of expected clients.
+GEN_COUNT    | Integer | 1       | The number of testing points to prepare for each expected client.
 
 \section cfg_env Environment Variables
 Certain subsystems of the Active Harmony Framework may require additional information before it can connect to a session and, by extension, the session-wide configuration system.  When necessary, this information may be retrieved through the subsystem's environment.
@@ -216,8 +209,8 @@ Here are a list of environment variables commonly used:
 Environment Variable | Description
 -------------------- | -----------
 HARMONY_HOME         | File path of the directory containing an Active Harmony installation.  This is effectively the value of PREFIX when Harmony was built from source.
-HARMONY_S_HOST       | If defined, tuning clients (using harmony_join()) will attempt to connect to a [Harmony Server](\ref app_hserver) on this host.
-HARMONY_S_PORT       | If defined (along with HARMONY_S_HOST), tuning clients will used this variable as the port when connecting to a running Harmony Server.
+HARMONY_HOST         | If defined, tuning clients (using harmony_join()) will attempt to connect to a [Harmony Server](\ref app_hserver) on this host.
+HARMONY_PORT         | If defined (along with HARMONY_HOST), tuning clients will used this variable as the port when connecting to a running Harmony Server.
 
 \page plugin Plug-ins
 As described in the [Tuning Session](\ref intro_session) section, Active Harmony provides a modular interface for flexible functionality.  The session API functions harmony_strategy() and harmony_layer_list() specify which plug-in's will be loaded by the tuning session.  See their individual documentation page for details on their use.

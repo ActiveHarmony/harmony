@@ -27,13 +27,15 @@ done
 
 # Fix &ndash; (--) and &#35; (#) characters.
 for i in $LATEX_DIR/*.tex $HTML_DIR/*.html; do
-    perl \
-        -e '@a = <>;' \
-        -e '$a = join("", @a);' \
-        -e '$a =~ s/&ndash;/--/g;' \
-        -e '$a =~ s/&amp;ndash;/--/g;' \
-        -e '$a =~ s/&#35;/#/g;' \
-        -e '$a =~ s/&amp;#35;/#/g;' \
-        -e 'print $a;' $i > $i.tmp
-    mv -f $i.tmp $i
+    sed -i 's/&ndash;/--/g;
+            s/&amp;ndash;/--/g;
+            s/&#35;/#/g;
+            s/&amp;#35;/#/g' $i
+done
+
+# Workaround fix for Doxygen 1.8.9 distributed with Fedora 21 (through 23)?
+# https://bugzilla.gnome.org/show_bug.cgi?id=742427
+# https://bugzilla.redhat.com/show_bug.cgi?id=1198355
+for i in $LATEX_DIR/*.tex; do
+    sed -i '/^\\backmatter$/d' $i
 done
