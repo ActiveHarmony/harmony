@@ -98,39 +98,39 @@ typedef struct codegen_log {
     hpoint_t point;
 } codegen_log_t;
 
-codegen_log_t *cglog;
+codegen_log_t* cglog;
 int cglog_len, cglog_cap;
 
 hmesg_t mesg;
 int sockfd;
 
-char *buf;
+char* buf;
 int buflen;
 
-int codegen_callback(int fd, hflow_t *flow, int n, htrial_t **trial);
-int url_connect(const char *url);
-int cglog_insert(const hpoint_t *pt);
-int cglog_find(const hpoint_t *pt);
+int codegen_callback(int fd, hflow_t* flow, int n, htrial_t** trial);
+int url_connect(const char* url);
+int cglog_insert(const hpoint_t* pt);
+int cglog_find(const hpoint_t* pt);
 
 /*
  * Invoked once on module load.
  *
  * This routine should return 0 on success, and -1 otherwise.
  */
-int codegen_init(hsignature_t *sig)
+int codegen_init(hsignature_t* sig)
 {
-    const char *url;
+    const char* url;
 
     url = hcfg_get(session_cfg, CFGKEY_TARGET_URL);
     if (!url || url[0] == '\0') {
         session_error("Destination URL for"
-                      " generated code objects not specified");
+                      " generated code objects not specified.");
         return -1;
     }
 
     url = hcfg_get(session_cfg, CFGKEY_SERVER_URL);
     if (!url || url[0] == '\0') {
-        session_error("Codegen server URL not specified");
+        session_error("Codegen server URL not specified.");
         return -1;
     }
 
@@ -177,7 +177,7 @@ int codegen_init(hsignature_t *sig)
  * 0 upon success.  Otherwise, it should call session_error() with a
  * human-readable error message and return -1.
  */
-int codegen_generate(hflow_t *flow, htrial_t *trial)
+int codegen_generate(hflow_t* flow, htrial_t* trial)
 {
     int i;
 
@@ -221,7 +221,7 @@ void codegen_fini(void)
     free(buf);
 }
 
-int codegen_callback(int fd, hflow_t *flow, int n, htrial_t **trial)
+int codegen_callback(int fd, hflow_t* flow, int n, htrial_t** trial)
 {
     int i;
 
@@ -247,10 +247,10 @@ int codegen_callback(int fd, hflow_t *flow, int n, htrial_t **trial)
     return -1;
 }
 
-int url_connect(const char *url)
+int url_connect(const char* url)
 {
-    const char *ptr;
-    char *helper_argv[2];
+    const char* ptr;
+    char* helper_argv[2];
     int count;
 
     ptr = strstr(url, "//");
@@ -278,7 +278,7 @@ int url_connect(const char *url)
     return -1;
 }
 
-int cglog_insert(const hpoint_t *point)
+int cglog_insert(const hpoint_t* point)
 {
     if (cglog_len == cglog_cap)
         if (array_grow(&cglog, &cglog_cap, sizeof(codegen_log_t)) < 0)
@@ -292,7 +292,7 @@ int cglog_insert(const hpoint_t *point)
     return 0;
 }
 
-int cglog_find(const hpoint_t *point)
+int cglog_find(const hpoint_t* point)
 {
     int i;
     int len = point->n * sizeof(hval_t);

@@ -30,13 +30,13 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 
-int file_exists(const char *filename)
+int file_exists(const char* filename)
 {
     struct stat sb;
     return (stat(filename, &sb) == 0 && S_ISREG(sb.st_mode));
 }
 
-void *file_map(const char *filename, size_t *size)
+void* file_map(const char* filename, size_t* size)
 {
     int fd = open(filename, O_RDONLY);
     if (fd == -1) {
@@ -46,7 +46,7 @@ void *file_map(const char *filename, size_t *size)
 
     /* Obtain file size */
     struct stat sb;
-    void *retval = NULL;
+    void* retval = NULL;
     if (fstat(fd, &sb) != 0) {
         fprintf(stderr, "Error on fstat(%s): %s\n", filename, strerror(errno));
     }
@@ -68,38 +68,40 @@ void *file_map(const char *filename, size_t *size)
     return retval;
 }
 
-void file_unmap(void *buf, size_t size)
+void file_unmap(void* buf, size_t size)
 {
     if (munmap(buf, size) != 0)
         fprintf(stderr, "Ignoring error on munmap(): %s\n", strerror(errno));
 }
 
-int array_grow(void *buf, int *capacity, int elem_size)
+int array_grow(void* buf, int* capacity, int elem_size)
 {
-    void *new_buf;
+    void* new_buf;
     int new_capacity = 8;
 
     if (*capacity >= new_capacity)
         new_capacity = *capacity << 1;
 
-    new_buf = realloc(*(void **)buf, new_capacity * elem_size);
+    new_buf = realloc(*(void**)buf, new_capacity * elem_size);
     if (new_buf == NULL)
         return -1;
 
-    memset(((char *)new_buf) + (*capacity * elem_size), 0,
+    memset(((char*)new_buf) + (*capacity * elem_size), 0,
            (new_capacity - *capacity) * elem_size);
-    *(void **)buf = new_buf;
+    *(void**)buf = new_buf;
     *capacity = new_capacity;
     return 0;
 }
 
-char *search_path(const char *filename)
+char* search_path(const char* filename)
 {
     /* XXX - Not re-entrant. */
-    static char *fullpath = NULL;
+    static char* fullpath = NULL;
     static int pathlen = 0;
 
-    char *path, *pend, *newbuf;
+    char* path;
+    char* pend;
+    char* newbuf;
     int count;
 
     path = getenv("PATH");
@@ -132,31 +134,31 @@ char *search_path(const char *filename)
     return NULL;
 }
 
-char *stralloc(const char *in)
+char* stralloc(const char* in)
 {
-    char *out;
+    char* out;
     if (!in)
         return NULL;
 
-    out = (char *)malloc(sizeof(char) * (strlen(in) + 1));
+    out = malloc(sizeof(char) * (strlen(in) + 1));
     if (out != NULL)
         strcpy(out, in);
 
     return out;
 }
 
-char *sprintf_alloc(const char *fmt, ...)
+char* sprintf_alloc(const char* fmt, ...)
 {
     va_list ap;
     int count;
-    char *retval;
+    char* retval;
 
     va_start(ap, fmt);
     count = vsnprintf(NULL, 0, fmt, ap);
     va_end(ap);
 
     if (count < 0) return NULL;
-    retval = (char *) malloc(count + 1);
+    retval = malloc(count + 1);
     if (!retval) return NULL;
 
     va_start(ap, fmt);
@@ -166,11 +168,11 @@ char *sprintf_alloc(const char *fmt, ...)
     return retval;
 }
 
-int snprintf_grow(char **buf, int *buflen, const char *fmt, ...)
+int snprintf_grow(char** buf, int* buflen, const char* fmt, ...)
 {
     va_list ap;
     int count;
-    char *newbuf;
+    char* newbuf;
 
   retry:
     va_start(ap, fmt);
@@ -181,7 +183,7 @@ int snprintf_grow(char **buf, int *buflen, const char *fmt, ...)
         return -1;
 
     if (*buflen <= count) {
-        newbuf = (char *) realloc(*buf, count + 1);
+        newbuf = realloc(*buf, count + 1);
         if (!newbuf)
             return -1;
         *buf = newbuf;
@@ -192,7 +194,7 @@ int snprintf_grow(char **buf, int *buflen, const char *fmt, ...)
     return count;
 }
 
-int snprintf_serial(char **buf, int *buflen, const char *fmt, ...)
+int snprintf_serial(char** buf, int* buflen, const char* fmt, ...)
 {
     va_list ap;
     int count;
@@ -213,13 +215,13 @@ int snprintf_serial(char **buf, int *buflen, const char *fmt, ...)
     return count;
 }
 
-int printstr_serial(char **buf, int *buflen, const char *str)
+int printstr_serial(char** buf, int* buflen, const char* str)
 {
     if (!str) return snprintf_serial(buf, buflen, "0\"0\" ");
     return snprintf_serial(buf, buflen, "%u\"%s\" ", strlen(str), str);
 }
 
-int scanstr_serial(const char **str, char *buf)
+int scanstr_serial(const char** str, char* buf)
 {
     int count;
     unsigned int len;

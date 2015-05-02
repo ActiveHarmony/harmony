@@ -55,10 +55,10 @@ long application(long p1, long p2, long p3, long p4, long p5, long p6)
     return perf;
 }
 
-int get_cpu_info(char *cpu_vendor, char *cpu_model,
-                 char *cpu_freq, char *cache_size)
+int get_cpu_info(char* cpu_vendor, char* cpu_model,
+                 char* cpu_freq, char* cache_size)
 {
-    FILE *cpuinfo;
+    FILE* cpuinfo;
     int core_num;
     bool recorded_vendor;
     bool recorded_model;
@@ -115,7 +115,7 @@ int get_cpu_info(char *cpu_vendor, char *cpu_model,
     return core_num;
 }
 
-char *get_metadata(void)
+char* get_metadata(void)
 {
     struct utsname uts; //os info
 
@@ -125,9 +125,9 @@ char *get_metadata(void)
     char cpu_freq[32];
     char cache_size[32];
 
-    char *retval;
+    char* retval;
 
-    retval = (char*)malloc(sizeof(char)*MAX_STR_LEN);
+    retval = malloc(sizeof(char) * MAX_STR_LEN);
     if (uname(&uts) < 0)
         perror("uname() error\n");
 
@@ -145,13 +145,13 @@ char *get_metadata(void)
     return retval;
 }
 
-int main(int argc, char **argv)
+int main(int argc, char* argv[])
 {
-    const char *name;
-    hdesc_t *hdesc;
+    const char* name;
+    hdesc_t* hdesc;
     int i, retval, loop = 200;
     double perf = -INFINITY;
-    char *metadata;
+    char* metadata;
 
     /* Variables to hold the application's runtime tunable parameters.
      * Once bound to a Harmony tuning session, these variables will be

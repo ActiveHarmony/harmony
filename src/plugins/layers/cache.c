@@ -42,6 +42,10 @@
 #include <stdio.h>
 #include <string.h>
 
+/*
+ * Name used to identify this plugin layer.
+ * All Harmony plugin layers must define this variable.
+ */
 const char harmony_layer_name[] = "cache";
 
 /*
@@ -55,29 +59,29 @@ hcfg_info_t plugin_keyinfo[] = {
 
 typedef struct {
     hpoint_t point;
-    hperf_t *perf;
+    hperf_t* perf;
 } cache_t;
 
 int find_max_strlen(void);
-int load_logger_file(const char *logger);
-int safe_scanstr(FILE *fd, int bounds_idx, const char **match);
-int pt_equiv(const hpoint_t *a, const hpoint_t *b);
+int load_logger_file(const char* logger);
+int safe_scanstr(FILE* fd, int bounds_idx, const char** match);
+int pt_equiv(const hpoint_t* a, const hpoint_t* b);
 
-static hrange_t *range;
-static cache_t *cache;
+static hrange_t* range;
+static cache_t* cache;
 static int cache_len, cache_cap;
 static int skip;
 static int i_cnt;
 static int o_cnt;
-static char *buf;
+static char* buf;
 static int buflen;
 
 /* Initialize global variables.  Also loads data into cache from a log
  * file if configuration variable CACHE_FILE is defined.
  */
-int cache_init(hsignature_t *sig)
+int cache_init(hsignature_t* sig)
 {
-    const char *filename;
+    const char* filename;
 
     i_cnt = sig->range_len;
     o_cnt = hcfg_int(session_cfg, CFGKEY_PERF_COUNT);
@@ -114,7 +118,7 @@ int cache_init(hsignature_t *sig)
  * if the point is found.
  * Otherwise, sets status to HFLOW_ACCEPT (pass point on in plugin workflow)
  */
-int cache_generate(hflow_t *flow, htrial_t *trial)
+int cache_generate(hflow_t* flow, htrial_t* trial)
 {
     int i;
 
@@ -136,7 +140,7 @@ int cache_generate(hflow_t *flow, htrial_t *trial)
  * observed point/performance pair to the cache unless it was a result
  * of a cache hit.
  */
-int cache_analyze(hflow_t *flow, htrial_t *trial)
+int cache_analyze(hflow_t* flow, htrial_t* trial)
 {
     if (!skip) {
         if (cache_len == cache_cap) {
@@ -195,11 +199,11 @@ int find_max_strlen(void)
  * Note: This function must be kept in sync with the output routines
  *       of the logger layer.
  */
-int load_logger_file(const char *filename)
+int load_logger_file(const char* filename)
 {
     char c;
     int i, ret;
-    FILE *fp;
+    FILE* fp;
 
     fp = fopen(filename, "r");
     if (!fp) {
@@ -231,7 +235,7 @@ int load_logger_file(const char *filename)
 
         /* Parse point data. */
         for (i = 0; i < i_cnt; ++i) {
-            hval_t *v = &cache[cache_len].point.val[i];
+            hval_t* v = &cache[cache_len].point.val[i];
 
             if (i > 0) fscanf(fp, " ,");
 
@@ -277,10 +281,10 @@ int load_logger_file(const char *filename)
  *
  * Return values designed to match scanf family.
  */
-int safe_scanstr(FILE *fp, int bounds_idx, const char **match)
+int safe_scanstr(FILE* fp, int bounds_idx, const char** match)
 {
     int i;
-    str_bounds_t *str_bounds = &range[bounds_idx].bounds.s;
+    str_bounds_t* str_bounds = &range[bounds_idx].bounds.s;
 
     fscanf(fp, " \"");
     for (i = 0; i < buflen; ++i) {
@@ -312,7 +316,7 @@ int safe_scanstr(FILE *fp, int bounds_idx, const char **match)
     return 1;
 }
 
-int pt_equiv(const hpoint_t *a, const hpoint_t *b)
+int pt_equiv(const hpoint_t* a, const hpoint_t* b)
 {
     int i;
 

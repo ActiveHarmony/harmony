@@ -44,27 +44,28 @@ void graceful_exit(int signum);
 
 int init_signals(void);
 int init_comm(void);
-int url_parse(const char *url);
+int url_parse(const char* url);
 int reply_url_build(void);
 int mesg_write(int id);
 int mesg_read(int id);
-int read_loop(int fd, char *buf, int len);
-int write_loop(int fd, char *buf, int len);
+int read_loop(int fd, char* buf, int len);
+int write_loop(int fd, char* buf, int len);
 
-hsession_t *sess;
+hsession_t* sess;
 hmesg_t session_mesg, mesg;
-char *reply_dir;
+char* reply_dir;
 int reply_dir_created, signal_caught;
-char *scp_cmd, *scp_dst;
+char* scp_cmd;
+char* scp_dst;
 
-char *buf;
+char* buf;
 int buflen;
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
     struct stat sb;
-    struct dirent *dent;
-    DIR *dirfd;
+    struct dirent* dent;
+    DIR* dirfd;
     int next_id, curr_id, count, retval;
     fd_set fds, ready_fds;
     struct timeval polltime;
@@ -91,7 +92,7 @@ int main(int argc, char *argv[])
     FD_SET(STDIN_FILENO, &fds);
 
     buflen = 4096;
-    buf = (char *) malloc(buflen);
+    buf = malloc(buflen);
     if (!buf) {
         mesg.data.string = "Could not allocate temporary memory buffer";
         goto error;
@@ -188,7 +189,7 @@ int init_signals(void)
 
 int init_comm(void)
 {
-    const char *cfgval;
+    const char* cfgval;
 
     mesg = HMESG_INITIALIZER;
     session_mesg = HMESG_INITIALIZER;
@@ -222,13 +223,13 @@ int init_comm(void)
         if (reply_url_build() < 0)
             return -1;
 
-        if (hcfg_set(&sess->cfg, CFGKEY_REPLY_URL, buf) < 0) {
+        if (hcfg_set(&sess->cfg, CFGKEY_REPLY_URL, buf) != 0) {
             mesg.data.string = "Could not set reply URL config val";
             return -1;
         }
     }
     else if (!scp_cmd) {
-        if (hcfg_set(&sess->cfg, CFGKEY_REPLY_URL, reply_dir) < 0) {
+        if (hcfg_set(&sess->cfg, CFGKEY_REPLY_URL, reply_dir) != 0) {
             mesg.data.string = "Could not set reply URL config val";
             return -1;
         }
@@ -249,11 +250,14 @@ int init_comm(void)
     return 0;
 }
 
-int url_parse(const char *url)
+int url_parse(const char* url)
 {
     struct stat sb;
-    const char *ptr, *cfgval;
-    const char *ssh_host, *ssh_port, *ssh_path;
+    const char* ptr;
+    const char* cfgval;
+    const char* ssh_host;
+    const char* ssh_port;
+    const char* ssh_path;
     int host_len, port_len;
 
     ptr = strstr(url, "//");
@@ -347,7 +351,8 @@ int url_parse(const char *url)
 
 int reply_url_build(void)
 {
-    struct addrinfo hints, *info;
+    struct addrinfo  hints;
+    struct addrinfo* info;
     char host[1024];
     int retval;
 
@@ -381,10 +386,11 @@ int mesg_read(int id)
     static const char in_filename[] = "code_complete";
 
     int msglen, fd, retries, retval;
-    char *fullpath, *newbuf;
+    char* fullpath;
+    char* newbuf;
     struct stat sb;
     struct timeval polltime;
-    const char *errmsg;
+    const char* errmsg;
 
     fullpath = sprintf_alloc("%s/%s.%d", reply_dir, in_filename, id);
     if (!fullpath) {
@@ -413,7 +419,7 @@ int mesg_read(int id)
 
     msglen = sb.st_size + 1;
     if (buflen < msglen) {
-        newbuf = (char *) realloc(buf, msglen);
+        newbuf = realloc(buf, msglen);
         if (!newbuf) {
             mesg.data.string = "Could not allocate memory for message data.";
             retval = -1;
@@ -425,7 +431,7 @@ int mesg_read(int id)
     buf[sb.st_size] = '\0';
 
     if (mesg.buflen < msglen) {
-        newbuf = (char *) realloc(mesg.buf, msglen);
+        newbuf = realloc(mesg.buf, msglen);
         if (!newbuf) {
             mesg.data.string = "Could not allocate memory for message data.";
             retval = -1;
@@ -437,25 +443,25 @@ int mesg_read(int id)
     mesg.buf[sb.st_size] = '\0';
 
     if (read_loop(fd, buf, sb.st_size) != 0) {
-        errmsg = "Error reading message file";
+        errmsg = "Error reading message file.";
         goto retry;
     }
     memcpy(mesg.buf, buf, sb.st_size);
 
     if (close(fd) < 0) {
-        mesg.data.string = "Error closing code completion message file";
+        mesg.data.string = "Error closing code completion message file.";
         retval = -1;
         goto cleanup;
     }
     fd = -1;
 
     if (hmesg_deserialize(&mesg) < 0) {
-        errmsg = "Error decoding message file";
+        errmsg = "Error decoding message file.";
         goto retry;
     }
 
     if (socket_write(STDIN_FILENO, buf, sb.st_size) < 0) {
-        mesg.data.string = "Error sending code completion message to session";
+        mesg.data.string = "Error sending code completion message to session.";
         retval = -1;
         goto cleanup;
     }
@@ -501,7 +507,7 @@ int mesg_write(int id)
     count = snprintf_grow(&buf, &buflen, "%s/%s.%d",
                           reply_dir, out_filename, id);
     if (count < 0) {
-        mesg.data.string = "Internal snprintf_grow error for msg filename";
+        mesg.data.string = "Internal snprintf_grow error for msg filename.";
         return -1;
     }
 
@@ -527,7 +533,7 @@ int mesg_write(int id)
         count = snprintf_grow(&buf, &buflen, "%s %s/%s.%d %s",
                               scp_cmd, reply_dir, out_filename, id, scp_dst);
         if (count < 0) {
-            mesg.data.string = "Internal snprintf_grow error for scp command";
+            mesg.data.string = "Internal snprintf_grow error for scp command.";
             return -1;
         }
 
@@ -540,7 +546,7 @@ int mesg_write(int id)
         count = snprintf_grow(&buf, &buflen, "%s/%s.%d",
                               reply_dir, out_filename, id);
         if (count < 0) {
-            mesg.data.string = "Internal snprintf_grow error for scp command";
+            mesg.data.string = "Internal snprintf_grow error for scp command.";
             return -1;
         }
         if (remove(buf) < 0) {
@@ -551,7 +557,7 @@ int mesg_write(int id)
     return 0;
 }
 
-int read_loop(int fd, char *buf, int len)
+int read_loop(int fd, char* buf, int len)
 {
     int count;
 
@@ -571,7 +577,7 @@ int read_loop(int fd, char *buf, int len)
     return 0;
 }
 
-int write_loop(int fd, char *buf, int len)
+int write_loop(int fd, char* buf, int len)
 {
     int count;
 

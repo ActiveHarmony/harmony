@@ -115,18 +115,18 @@ typedef enum simplex_state {
 } simplex_state_t;
 
 /* Forward function definitions. */
-int  strategy_cfg(hsignature_t *sig);
+int  strategy_cfg(hsignature_t* sig);
 int  init_by_random(void);
 int  init_by_point(int fast);
-int  init_by_specified_point(const char *str);
+int  init_by_specified_point(const char* str);
 int  pro_algorithm(void);
-int  pro_next_state(const simplex_t *input, int best_in);
-int  pro_next_simplex(simplex_t *output);
+int  pro_next_state(const simplex_t* input, int best_in);
+int  pro_next_simplex(simplex_t* output);
 void check_convergence(void);
 
 /* Variables to control search properties. */
 simplex_init_t  init_method;
-vertex_t *      init_point;
+vertex_t*       init_point;
 double          init_percent = 0.35;
 reject_method_t reject_type  = REJECT_METHOD_PENALTY;
 
@@ -139,8 +139,8 @@ int simplex_size;
 
 /* Variables to track current search state. */
 simplex_state_t state;
-simplex_t *base;
-simplex_t *test;
+simplex_t* base;
+simplex_t* test;
 
 int best_base;
 int best_test;
@@ -153,7 +153,7 @@ int coords;    /* number of coordinates per vertex */
 /*
  * Invoked once on strategy load.
  */
-int strategy_init(hsignature_t *sig)
+int strategy_init(hsignature_t* sig)
 {
     if (libvertex_init(sig) != 0) {
         session_error("Could not initialize vertex library.");
@@ -239,9 +239,9 @@ int strategy_init(hsignature_t *sig)
     return 0;
 }
 
-int strategy_cfg(hsignature_t *sig)
+int strategy_cfg(hsignature_t* sig)
 {
-    const char *cfgval;
+    const char* cfgval;
 
     cfgval = hcfg_get(session_cfg, CFGKEY_INIT_METHOD);
     if (cfgval) {
@@ -333,7 +333,7 @@ int strategy_cfg(hsignature_t *sig)
 /*
  * Generate a new candidate configuration point.
  */
-int strategy_generate(hflow_t *flow, hpoint_t *point)
+int strategy_generate(hflow_t* flow, hpoint_t* point)
 {
     if (send_idx == simplex_size || state == SIMPLEX_STATE_CONVERGED) {
         flow->status = HFLOW_WAIT;
@@ -355,10 +355,10 @@ int strategy_generate(hflow_t *flow, hpoint_t *point)
 /*
  * Regenerate a point deemed invalid by a later plug-in.
  */
-int strategy_rejected(hflow_t *flow, hpoint_t *point)
+int strategy_rejected(hflow_t* flow, hpoint_t* point)
 {
     int i;
-    hpoint_t *hint = &flow->point;
+    hpoint_t* hint = &flow->point;
 
     /* Find the rejected vertex. */
     for (i = 0; i < simplex_size; ++i) {
@@ -434,7 +434,7 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
 /*
  * Analyze the observed performance for this configuration point.
  */
-int strategy_analyze(htrial_t *trial)
+int strategy_analyze(htrial_t* trial)
 {
     int i;
     double perf = hperf_unify(trial->perf);
@@ -476,7 +476,7 @@ int strategy_analyze(htrial_t *trial)
 /*
  * Return the best performing point thus far in the search.
  */
-int strategy_best(hpoint_t *point)
+int strategy_best(hpoint_t* point)
 {
     if (hpoint_copy(point, &best) != 0) {
         session_error("Internal error: Could not copy point.");
@@ -505,7 +505,7 @@ int pro_algorithm(void)
     return 0;
 }
 
-int pro_next_state(const simplex_t *input, int best_in)
+int pro_next_state(const simplex_t* input, int best_in)
 {
     switch (state) {
     case SIMPLEX_STATE_INIT:
@@ -577,7 +577,7 @@ int pro_next_state(const simplex_t *input, int best_in)
     return 0;
 }
 
-int pro_next_simplex(simplex_t *output)
+int pro_next_simplex(simplex_t* output)
 {
     int i;
 
@@ -631,7 +631,7 @@ void check_convergence(void)
 {
     int i;
     double fval_err, size_max, avg_perf;
-    static vertex_t *centroid;
+    static vertex_t* centroid;
 
     if (!centroid)
         centroid = vertex_alloc();

@@ -60,9 +60,9 @@ typedef enum {
 } content_t;
 
 typedef struct {
-    const char *filename;
+    const char* filename;
     content_t type;
-    char *buf;
+    char* buf;
     size_t buflen;
 } memfile_t;
 
@@ -105,22 +105,22 @@ char sendbuf[8192];  /* Static buffer used for outgoing HTTP data. */
 char recvbuf[10240]; /* Static buffer used for incoming HTTP data. */
 
 /* Internal helper function declarations */
-const char *status_string(session_state_t *sess);
-char *uri_decode(char *buf);
-session_state_t *find_session(const char *name);
-int http_request_handle(int fd, char *req);
-char *http_request_recv(int fd, char *buf, int buflen, char **data);
-int http_chunk_send(int fd, const char *data, int datalen);
+const char* status_string(session_state_t* sess);
+char* uri_decode(char* buf);
+session_state_t* find_session(const char* name);
+int http_request_handle(int fd, char* req);
+char* http_request_recv(int fd, char* buf, int buflen, char** data);
+int http_chunk_send(int fd, const char* data, int datalen);
 int http_send_overview(int fd);
-int http_send_init(int fd, session_state_t *sess);
-int http_send_refresh(int fd, session_state_t *sess, const char *arg);
-int report_append(char **buf, int *buflen, session_state_t *sess,
-                  struct timeval *tv, const hpoint_t *pt, const double perf);
+int http_send_init(int fd, session_state_t* sess);
+int http_send_refresh(int fd, session_state_t* sess, const char* arg);
+int report_append(char** buf, int* buflen, session_state_t* sess,
+                  struct timeval* tv, const hpoint_t* pt, const double perf);
 
-int http_init(const char *basedir)
+int http_init(const char* basedir)
 {
     int i;
-    char *filename;
+    char* filename;
 
     for (i = 0; html_file[i].filename != NULL; ++i) {
         if (html_file[i].buf != NULL)
@@ -147,10 +147,10 @@ int http_init(const char *basedir)
     return -1;
 }
 
-void http_send_error(int fd, int status, const char *arg)
+void http_send_error(int fd, int status, const char* arg)
 {
-    const char *status_line;
-    const char *message = NULL;
+    const char* status_line;
+    const char* message = NULL;
 
     if (status == 400) {
         status_line = status_400;
@@ -193,7 +193,9 @@ void http_send_error(int fd, int status, const char *arg)
 int handle_http_socket(int fd)
 {
     static char buf[4096];
-    char *ptr = NULL, *req, *endp;
+    char* ptr = NULL;
+    char* req;
+    char* endp;
 
     errno = 0;
     req = http_request_recv(fd, buf, sizeof(buf), &ptr);
@@ -237,7 +239,7 @@ int handle_http_socket(int fd)
     return 0;
 }
 
-int handle_http_info(session_state_t *sess, char *buf)
+int handle_http_info(session_state_t* sess, char* buf)
 {
     int val = 0;
 
@@ -269,7 +271,7 @@ int handle_http_info(session_state_t *sess, char *buf)
     return 0;
 }
 
-const char *status_string(session_state_t *sess)
+const char* status_string(session_state_t* sess)
 {
     if (sess->status & HTTP_STATUS_PAUSED)
         return "Paused";
@@ -283,10 +285,10 @@ const char *status_string(session_state_t *sess)
 /**************************************
  * Internal helper function definitions
  */
-char *uri_decode(char *buf)
+char* uri_decode(char* buf)
 {
-    char *head = buf;
-    char *tail = buf;
+    char* head = buf;
+    char* tail = buf;
 
     while (*head != '\0') {
         if (*head == '%') {
@@ -305,7 +307,7 @@ char *uri_decode(char *buf)
     return buf;
 }
 
-session_state_t *find_session(const char *name)
+session_state_t* find_session(const char* name)
 {
     int i;
 
@@ -316,10 +318,11 @@ session_state_t *find_session(const char *name)
     return NULL;
 }
 
-int http_request_handle(int fd, char *req)
+int http_request_handle(int fd, char* req)
 {
-    session_state_t *sess = NULL;
-    char *sess_name, *arg;
+    session_state_t* sess = NULL;
+    char* sess_name;
+    char* arg;
     int i;
 
     sess_name = strchr(req, '?');
@@ -478,7 +481,7 @@ int http_request_handle(int fd, char *req)
     return -1;
 }
 
-int http_chunk_send(int fd, const char *data, int datalen)
+int http_chunk_send(int fd, const char* data, int datalen)
 {
     int n;
     char buf[11];
@@ -492,10 +495,11 @@ int http_chunk_send(int fd, const char *data, int datalen)
     return n + opt_sock_write(fd, HTTP_ENDL);
 }
 
-char *http_request_recv(int fd, char *buf, int buflen, char **data)
+char* http_request_recv(int fd, char* buf, int buflen, char** data)
 {
     const char delim[] = HTTP_ENDL HTTP_ENDL;
-    char *retval, *split;
+    char* retval;
+    char* split;
     int len, recvlen;
 
     if (!*data) {
@@ -558,7 +562,8 @@ char *http_request_recv(int fd, char *buf, int buflen, char **data)
 
 int http_send_overview(int fd)
 {
-    char *buf, *ptr;
+    char* buf;
+    char* ptr;
     int i, j, buflen, count, total;
 
     sendbuf[0] = '\0';
@@ -653,9 +658,9 @@ int http_send_overview(int fd)
     return 0;
 }
 
-int http_send_init(int fd, session_state_t *sess)
+int http_send_init(int fd, session_state_t* sess)
 {
-    char *buf = sendbuf;
+    char* buf = sendbuf;
     int buflen = sizeof(sendbuf), total = 0;
     int i, j, count;
 
@@ -666,7 +671,7 @@ int http_send_init(int fd, session_state_t *sess)
 
     for (i = 0; i < sess->sig.range_len; ++i) {
         char type;
-        hrange_t *range = &sess->sig.range[i];
+        hrange_t* range = &sess->sig.range[i];
 
         if (i > 0) {
             count = snprintf_serial(&buf, &buflen, ",");
@@ -714,9 +719,10 @@ int http_send_init(int fd, session_state_t *sess)
     return -1;
 }
 
-int http_send_refresh(int fd, session_state_t *sess, const char *arg)
+int http_send_refresh(int fd, session_state_t* sess, const char* arg)
 {
-    char *ptr, *buf = sendbuf;
+    char* ptr;
+    char* buf = sendbuf;
     int idx = 0, buflen = sizeof(sendbuf), total = 0;
     int i, count;
     struct timeval tv;
@@ -787,8 +793,8 @@ int http_send_refresh(int fd, session_state_t *sess, const char *arg)
     return -1;
 }
 
-int report_append(char **buf, int *buflen, session_state_t *sess,
-                  struct timeval *tv, const hpoint_t *pt, const double perf)
+int report_append(char** buf, int* buflen, session_state_t* sess,
+                  struct timeval* tv, const hpoint_t* pt, const double perf)
 {
     int i, count, total = 0;
 
@@ -810,7 +816,7 @@ int report_append(char **buf, int *buflen, session_state_t *sess,
     }
     else {
         for (i = 0; i < sess->sig.range_len; ++i) {
-            hval_t *val;
+            hval_t* val;
 
             val = &pt->val[i];
             switch (val->type) {
@@ -821,7 +827,7 @@ int report_append(char **buf, int *buflen, session_state_t *sess,
                 count = snprintf_serial(buf, buflen, "%.17lf,", val->value.r);
                 break;
             case HVAL_STR: {
-                str_bounds_t *bounds = &sess->sig.range[i].bounds.s;
+                str_bounds_t* bounds = &sess->sig.range[i].bounds.s;
                 unsigned long index = hrange_str_index(bounds, val->value.s);
                 count = snprintf_serial(buf, buflen, "%ld,", index);
                 break;

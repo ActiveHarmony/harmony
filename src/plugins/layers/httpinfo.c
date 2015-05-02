@@ -27,15 +27,15 @@
 #include <string.h>
 
 /*
- * Name used to identify this plugin.  All Harmony plugins must define
- * this variable.
+ * Name used to identify this plugin layer.
+ * All Harmony plugin layers must define this variable.
  */
 const char harmony_layer_name[] = "httpinfo";
 
-static char *buf = NULL;
+static char* buf = NULL;
 static int buflen = 0;
 
-int httpinfo_setcfg(const char *key, const char *val)
+int httpinfo_setcfg(const char* key, const char* val)
 {
     if (strcmp(key, CFGKEY_CONVERGED) == 0 ||
         strcmp(key, CFGKEY_STRATEGY)  == 0 ||
@@ -44,7 +44,7 @@ int httpinfo_setcfg(const char *key, const char *val)
         hmesg_t mesg = HMESG_INITIALIZER;
 
         if (snprintf_grow(&buf, &buflen, "%s=%s", key, val ? val : "") == -1) {
-            session_error("Error allocating memory for http info string");
+            session_error("Error allocating memory for http info string.");
             return -1;
         }
 

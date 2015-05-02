@@ -52,40 +52,40 @@ char default_id_buf[MAX_HOSTNAME_STRLEN + 32] = {0};
 struct hdesc_t {
     harmony_state_t state;
     int socket;
-    char *id;
+    char* id;
 
     hsession_t sess;
     hmesg_t mesg;
 
-    void **ptr;
+    void** ptr;
     int ptr_len;
     int ptr_cap;
 
-    hperf_t *perf;
+    hperf_t* perf;
     hpoint_t curr, best;
 
     char* buf;
     int buflen;
-    const char *errstr;
+    const char* errstr;
 };
 
-/* -------------------------------------------------------------------
- * Forward declarations for internal helper functions
+/* ---------------------------------------------------
+ * Forward declarations for internal helper functions.
  */
-char *default_id(int n);
-int   ptr_bind(hdesc_t *hdesc, const char *name, hval_type type, void *ptr);
-int   send_request(hdesc_t *hdesc, hmesg_type msg_type);
-int   update_best(hdesc_t *hdesc, const hpoint_t *pt);
-int   set_values(hdesc_t *hdesc, const hpoint_t *pt);
+char* default_id(int n);
+int   ptr_bind(hdesc_t* hdesc, const char* name, hval_type type, void* ptr);
+int   send_request(hdesc_t* hdesc, hmesg_type msg_type);
+int   update_best(hdesc_t* hdesc, const hpoint_t* pt);
+int   set_values(hdesc_t* hdesc, const hpoint_t* pt);
 
 static int debug_mode = 0;
 
-/* -------------------------------------------------------------------
- * Public Client API Implementations
+/* ----------------------------------
+ * Public Client API Implementations.
  */
 hdesc_t* harmony_init()
 {
-    hdesc_t *hdesc = (hdesc_t *) malloc(sizeof(hdesc_t));
+    hdesc_t* hdesc = malloc( sizeof(*hdesc) );
     if (!hdesc)
         return NULL;
 
@@ -136,7 +136,7 @@ int harmony_parse_args(hdesc_t* hdesc, int argc, char** argv)
     return argc - tail;
 }
 
-void harmony_fini(hdesc_t *hdesc)
+void harmony_fini(hdesc_t* hdesc)
 {
     if (hdesc) {
         hmesg_fini(&hdesc->mesg);
@@ -157,39 +157,39 @@ void harmony_fini(hdesc_t *hdesc)
 /* -------------------------------------------------------------------
  * Session Establishment API Implementations
  */
-int harmony_session_name(hdesc_t *hdesc, const char *name)
+int harmony_session_name(hdesc_t* hdesc, const char* name)
 {
     return hsignature_name(&hdesc->sess.sig, name);
 }
 
-int harmony_int(hdesc_t *hdesc, const char *name,
+int harmony_int(hdesc_t* hdesc, const char* name,
                 long min, long max, long step)
 {
     return hsignature_int(&hdesc->sess.sig, name, min, max, step);
 }
 
-int harmony_real(hdesc_t *hdesc, const char *name,
+int harmony_real(hdesc_t* hdesc, const char* name,
                  double min, double max, double step)
 {
     return hsignature_real(&hdesc->sess.sig, name, min, max, step);
 }
 
-int harmony_enum(hdesc_t *hdesc, const char *name, const char *value)
+int harmony_enum(hdesc_t* hdesc, const char* name, const char* value)
 {
     return hsignature_enum(&hdesc->sess.sig, name, value);
 }
 
-int harmony_strategy(hdesc_t *hdesc, const char *strategy)
+int harmony_strategy(hdesc_t* hdesc, const char* strategy)
 {
     return hcfg_set(&hdesc->sess.cfg, CFGKEY_STRATEGY, strategy);
 }
 
-int harmony_layers(hdesc_t *hdesc, const char *list)
+int harmony_layers(hdesc_t* hdesc, const char* list)
 {
     return hcfg_set(&hdesc->sess.cfg, CFGKEY_LAYERS, list);
 }
 
-int harmony_launch(hdesc_t *hdesc, const char *host, int port)
+int harmony_launch(hdesc_t* hdesc, const char* host, int port)
 {
     /* Sanity check input */
     if (hdesc->sess.sig.range_len < 1) {
@@ -253,7 +253,7 @@ int harmony_launch(hdesc_t *hdesc, const char *host, int port)
 /* -------------------------------------------------------------------
  * Tuning Client Establishment API Implementations
  */
-int harmony_id(hdesc_t *hdesc, const char *id)
+int harmony_id(hdesc_t* hdesc, const char* id)
 {
     if (hdesc->id && hdesc->id != default_id_buf)
         free(hdesc->id);
@@ -266,22 +266,22 @@ int harmony_id(hdesc_t *hdesc, const char *id)
     return 0;
 }
 
-int harmony_bind_int(hdesc_t *hdesc, const char *name, long *ptr)
+int harmony_bind_int(hdesc_t* hdesc, const char* name, long* ptr)
 {
     return ptr_bind(hdesc, name, HVAL_INT, ptr);
 }
 
-int harmony_bind_real(hdesc_t *hdesc, const char *name, double *ptr)
+int harmony_bind_real(hdesc_t* hdesc, const char* name, double* ptr)
 {
     return ptr_bind(hdesc, name, HVAL_REAL, ptr);
 }
 
-int harmony_bind_enum(hdesc_t *hdesc, const char *name, const char **ptr)
+int harmony_bind_enum(hdesc_t* hdesc, const char* name, const char** ptr)
 {
-    return ptr_bind(hdesc, name, HVAL_STR, (void *)ptr);
+    return ptr_bind(hdesc, name, HVAL_STR, (void*)ptr);
 }
 
-int ptr_bind(hdesc_t *hdesc, const char *name, hval_type type, void *ptr)
+int ptr_bind(hdesc_t* hdesc, const char* name, hval_type type, void* ptr)
 {
     int i;
     hsignature_t* sig = &hdesc->sess.sig;
@@ -305,8 +305,7 @@ int ptr_bind(hdesc_t *hdesc, const char *name, hval_type type, void *ptr)
     }
 
     if (hdesc->ptr_cap < sig->range_cap) {
-        void **tmpbuf = (void **) realloc(hdesc->ptr,
-                                          sig->range_cap * sizeof(void *));
+        void** tmpbuf = realloc(hdesc->ptr, sig->range_cap * sizeof(void*));
         if (!tmpbuf)
             return -1;
 
@@ -320,10 +319,10 @@ int ptr_bind(hdesc_t *hdesc, const char *name, hval_type type, void *ptr)
     return 0;
 }
 
-int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *name)
+int harmony_join(hdesc_t* hdesc, const char* host, int port, const char* name)
 {
     int perf_len;
-    char *cfgval;
+    char* cfgval;
 
     /* Verify that we have *at least* one variable bound, and that
      * this descriptor isn't already associated with a tuning
@@ -345,8 +344,8 @@ int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *name)
         if (!host) {
             host = hcfg_get(&hdesc->sess.cfg, CFGKEY_HARMONY_HOST);
             hdesc->errstr = "Invalid value for " CFGKEY_HARMONY_HOST
-                            " configuration variable."
-                }
+                            " configuration variable.";
+        }
 
         if (port == 0) {
             port = hcfg_int(&hdesc->sess.cfg, CFGKEY_HARMONY_PORT);
@@ -372,7 +371,7 @@ int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *name)
     /* Prepare a Harmony message. */
     hmesg_scrub(&hdesc->mesg);
     hdesc->mesg.data.join = HSIGNATURE_INITIALIZER;
-    if (hsignature_copy(&hdesc->mesg.data.join, &hdesc->sess.sig) < 0) {
+    if (hsignature_copy(&hdesc->mesg.data.join, &hdesc->sess.sig) != 0) {
         hdesc->errstr = "Internal error copying signature data";
         return -1;
     }
@@ -388,7 +387,7 @@ int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *name)
     }
 
     hsignature_fini(&hdesc->sess.sig);
-    if (hsignature_copy(&hdesc->sess.sig, &hdesc->mesg.data.join) < 0) {
+    if (hsignature_copy(&hdesc->sess.sig, &hdesc->mesg.data.join) != 0) {
         hdesc->errstr = "Error copying received signature structure";
         return -1;
     }
@@ -401,7 +400,7 @@ int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *name)
 
     perf_len = atoi(cfgval);
     if (perf_len < 1) {
-        hdesc->errstr = "Invalid value for" CFGKEY_PERF_COUNT;
+        hdesc->errstr = "Invalid value for " CFGKEY_PERF_COUNT;
         return -1;
     }
 
@@ -415,7 +414,7 @@ int harmony_join(hdesc_t *hdesc, const char *host, int port, const char *name)
     return 0;
 }
 
-int harmony_leave(hdesc_t *hdesc)
+int harmony_leave(hdesc_t* hdesc)
 {
     if (hdesc->state <= HARMONY_STATE_INIT) {
         hdesc->errstr = "Descriptor not currently joined to any session.";
@@ -424,7 +423,7 @@ int harmony_leave(hdesc_t *hdesc)
     }
 
     hdesc->state = HARMONY_STATE_INIT;
-    if (close(hdesc->socket) < 0 && debug_mode)
+    if (close(hdesc->socket) != 0 && debug_mode)
         perror("Error closing socket during harmony_leave()");
 
     /* Reset the hsession_t to prepare for hdesc reuse. */
@@ -435,7 +434,7 @@ int harmony_leave(hdesc_t *hdesc)
     return 0;
 }
 
-char *harmony_getcfg(hdesc_t *hdesc, const char *key)
+char* harmony_getcfg(hdesc_t* hdesc, const char* key)
 {
     if (hdesc->state < HARMONY_STATE_CONNECTED) {
         hdesc->errstr = "Descriptor not currently joined to any session.";
@@ -460,9 +459,9 @@ char *harmony_getcfg(hdesc_t *hdesc, const char *key)
     return hdesc->buf;
 }
 
-char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val)
+char* harmony_setcfg(hdesc_t* hdesc, const char* key, const char* val)
 {
-    char *buf;
+    char* buf;
     int retval;
 
     if (hdesc->state < HARMONY_STATE_CONNECTED) {
@@ -499,7 +498,7 @@ char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val)
     retval = send_request(hdesc, HMESG_SETCFG);
     free(buf);
 
-    if (retval < 0)
+    if (retval != 0)
         return NULL;
 
     if (hdesc->mesg.status != HMESG_STATUS_OK) {
@@ -512,7 +511,7 @@ char *harmony_setcfg(hdesc_t *hdesc, const char *key, const char *val)
     return hdesc->buf;
 }
 
-int harmony_fetch(hdesc_t *hdesc)
+int harmony_fetch(hdesc_t* hdesc)
 {
     int i;
 
@@ -570,7 +569,7 @@ int harmony_fetch(hdesc_t *hdesc)
     return 1;
 }
 
-int harmony_report(hdesc_t *hdesc, double *perf)
+int harmony_report(hdesc_t* hdesc, double* perf)
 {
     int i;
 
@@ -616,7 +615,7 @@ int harmony_report(hdesc_t *hdesc, double *perf)
     return 0;
 }
 
-int harmony_report_one(hdesc_t *hdesc, int index, double value)
+int harmony_report_one(hdesc_t* hdesc, int index, double value)
 {
     if (hdesc->state < HARMONY_STATE_CONNECTED) {
         hdesc->errstr = "Descriptor not currently joined to any session.";
@@ -624,7 +623,7 @@ int harmony_report_one(hdesc_t *hdesc, int index, double value)
         return -1;
     }
 
-    if (index < 0 || index >= hdesc->perf->n) {
+    if (index != 0 || index >= hdesc->perf->n) {
         hdesc->errstr = "Invalid performance index.";
         errno = EINVAL;
         return -1;
@@ -636,7 +635,7 @@ int harmony_report_one(hdesc_t *hdesc, int index, double value)
     return 0;
 }
 
-int harmony_best(hdesc_t *hdesc)
+int harmony_best(hdesc_t* hdesc)
 {
     int retval = 0;
 
@@ -672,10 +671,10 @@ int harmony_best(hdesc_t *hdesc)
     return retval;
 }
 
-int harmony_converged(hdesc_t *hdesc)
+int harmony_converged(hdesc_t* hdesc)
 {
     int retval;
-    char *str;
+    char* str;
 
     retval = 0;
     str = harmony_getcfg(hdesc, CFGKEY_CONVERGED);
@@ -686,17 +685,17 @@ int harmony_converged(hdesc_t *hdesc)
     return retval;
 }
 
-const char *harmony_error_string(hdesc_t *hdesc)
+const char* harmony_error_string(hdesc_t* hdesc)
 {
     return hdesc->errstr;
 }
 
-void harmony_error_clear(hdesc_t *hdesc)
+void harmony_error_clear(hdesc_t* hdesc)
 {
     hdesc->errstr = NULL;
 }
 
-char *default_id(int n)
+char* default_id(int n)
 {
     gethostname(default_id_buf, MAX_HOSTNAME_STRLEN);
     default_id_buf[MAX_HOSTNAME_STRLEN] = '\0';
@@ -705,7 +704,7 @@ char *default_id(int n)
     return default_id_buf;
 }
 
-int send_request(hdesc_t *hdesc, hmesg_type msg_type)
+int send_request(hdesc_t* hdesc, hmesg_type msg_type)
 {
     hdesc->mesg.type = msg_type;
     hdesc->mesg.status = HMESG_STATUS_REQ;
@@ -743,7 +742,7 @@ int send_request(hdesc_t *hdesc, hmesg_type msg_type)
     return 0;
 }
 
-int update_best(hdesc_t *hdesc, const hpoint_t *pt)
+int update_best(hdesc_t* hdesc, const hpoint_t* pt)
 {
     if (hdesc->best.id >= pt->id)
         return 0;
@@ -756,7 +755,7 @@ int update_best(hdesc_t *hdesc, const hpoint_t *pt)
     return 0;
 }
 
-int set_values(hdesc_t *hdesc, const hpoint_t *pt)
+int set_values(hdesc_t* hdesc, const hpoint_t* pt)
 {
     int i;
 
@@ -769,11 +768,11 @@ int set_values(hdesc_t *hdesc, const hpoint_t *pt)
     for (i = 0; i < pt->n; ++i) {
         switch (pt->val[i].type) {
         case HVAL_INT:
-            (*((       long *)hdesc->ptr[i])) = pt->val[i].value.i; break;
+            (*((       long*)hdesc->ptr[i])) = pt->val[i].value.i; break;
         case HVAL_REAL:
-            (*((     double *)hdesc->ptr[i])) = pt->val[i].value.r; break;
+            (*((     double*)hdesc->ptr[i])) = pt->val[i].value.r; break;
         case HVAL_STR:
-            (*((const char **)hdesc->ptr[i])) = pt->val[i].value.s; break;
+            (*((const char**)hdesc->ptr[i])) = pt->val[i].value.s; break;
         default:
             hdesc->errstr = "Internal error: Invalid signature value type.";
             errno = EINVAL;

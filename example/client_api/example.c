@@ -52,10 +52,10 @@ long application(long p1, long p2, long p3, long p4, long p5, long p6)
     return perf;
 }
 
-int main(int argc, char **argv)
+int main(int argc, char* argv[])
 {
     char name[1024];
-    hdesc_t *hdesc;
+    hdesc_t* hdesc;
     int i, retval;
     double perf;
 

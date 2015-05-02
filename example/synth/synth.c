@@ -36,17 +36,17 @@
 #define MAX_OUT      16
 
 /* Function Prototypes */
-void   parse_opts(int argc, char *argv[]);
-void   parse_params(int idx, int argc, char *argv[]);
-void   parse_dim(char *dim);
-void   parse_funcs(char *list);
-int    parse_fopts(int idx, char **opts);
-int    start_harmony(hdesc_t *hdesc);
+void   parse_opts(int argc, char* argv[]);
+void   parse_params(int idx, int argc, char* argv[]);
+void   parse_dim(char* dim);
+void   parse_funcs(char* list);
+int    parse_fopts(int idx, char** opts);
+int    start_harmony(hdesc_t* hdesc);
 void   eval_func(void);
 double quantize_value(double perf);
 double random_value(double min, double max);
-void   fprint_darr(FILE *fp, const char *head,
-                   double *arr, int len, const char *tail);
+void   fprint_darr(FILE* fp, const char* head,
+                   double* arr, int len, const char* tail);
 void   use_resources(void);
 
 /* Option Variables (and their associated defaults). */
@@ -61,15 +61,15 @@ double perturb;
 char tuna_mode;
 
 /* Global Variables */
-finfo_t *finfo[MAX_OUT];
-double *fopts[MAX_OUT];
+finfo_t* finfo[MAX_OUT];
+double* fopts[MAX_OUT];
 double bound_min, bound_max;
 double point[MAX_IN];
 double perf[MAX_OUT];
 double best[MAX_OUT];
 int single_eval;
 
-void usage(const char *prog)
+void usage(const char* prog)
 {
     fprintf(stdout,
 "Usage: %s [OPTIONS] <N> <fname1>[,<fname2>,...] [x1..xN] [KEY=VAL ..]\n"
@@ -122,12 +122,12 @@ void usage(const char *prog)
 "\n", prog, accuracy);
 }
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
     int i, j, hresult, report, retval = 0;
     int width, maxwidth;
     double best_val = INFINITY;
-    hdesc_t *hdesc;
+    hdesc_t* hdesc;
 
     parse_opts(argc, argv);
 
@@ -242,10 +242,10 @@ int main(int argc, char *argv[])
     return retval;
 }
 
-void parse_opts(int argc, char *argv[])
+void parse_opts(int argc, char* argv[])
 {
     int c, list_funcs = 0;
-    char *end;
+    char* end;
 
     static struct option longopts[] = {
         {"accuracy",   required_argument, NULL, 'a'},
@@ -350,10 +350,10 @@ void parse_opts(int argc, char *argv[])
     parse_params(optind, argc, argv);
 }
 
-void parse_params(int idx, int argc, char *argv[])
+void parse_params(int idx, int argc, char* argv[])
 {
     int i;
-    char *end;
+    char* end;
 
     parse_dim(argv[idx++]);
     parse_funcs(argv[idx++]);
@@ -379,9 +379,9 @@ void parse_params(int idx, int argc, char *argv[])
     }
 }
 
-void parse_dim(char *dim)
+void parse_dim(char* dim)
 {
-    char *end;
+    char* end;
 
     if (!dim || *dim == '\0') {
         fprintf(stderr, "Search space dimensionality not specified.\n"
@@ -407,9 +407,9 @@ void parse_dim(char *dim)
     }
 }
 
-void parse_funcs(char *list)
+void parse_funcs(char* list)
 {
-    char *end;
+    char* end;
 
     bound_min =  INFINITY;
     bound_max = -INFINITY;
@@ -466,10 +466,10 @@ void parse_funcs(char *list)
     }
 }
 
-int parse_fopts(int idx, char **opts)
+int parse_fopts(int idx, char** opts)
 {
     int i, cnt;
-    char *list = *opts;
+    char* list = *opts;
 
     cnt = 1;
     for (i = 0; list[i]; ++i) {
@@ -483,7 +483,7 @@ int parse_fopts(int idx, char **opts)
         return -1;
     }
 
-    fopts[idx] = (double *) malloc(cnt * sizeof(double));
+    fopts[idx] = malloc(cnt * sizeof(double));
     if (!fopts[idx]) {
         fprintf(stderr, "Error allocating memory for options array.\n");
         return -1;
@@ -513,7 +513,7 @@ int parse_fopts(int idx, char **opts)
     return 0;
 }
 
-int start_harmony(hdesc_t *hdesc)
+int start_harmony(hdesc_t* hdesc)
 {
     char session_name[64], intbuf[16];
     double step;
@@ -628,8 +628,8 @@ double random_value(double min, double max)
     return min + ((double)rand()/(double)RAND_MAX) * (max - min);
 }
 
-void fprint_darr(FILE *fp, const char *head,
-                 double *arr, int len, const char *tail)
+void fprint_darr(FILE* fp, const char* head,
+                 double* arr, int len, const char* tail)
 {
     int i;
 

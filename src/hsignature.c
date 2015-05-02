@@ -32,7 +32,7 @@ const hsignature_t HSIGNATURE_INITIALIZER = {0};
 /*
  * Harmony range related function definitions.
  */
-unsigned long hrange_max_idx(hrange_t *range)
+unsigned long hrange_max_idx(hrange_t* range)
 {
     switch (range->type) {
     case HVAL_INT:  return hrange_int_max_idx(&range->bounds.i);
@@ -44,12 +44,12 @@ unsigned long hrange_max_idx(hrange_t *range)
     return 0;
 }
 
-unsigned long hrange_int_max_idx(int_bounds_t *bound)
+unsigned long hrange_int_max_idx(int_bounds_t* bound)
 {
     return (bound->max - bound->min) / bound->step;
 }
 
-unsigned long hrange_int_index(int_bounds_t *bound, long val)
+unsigned long hrange_int_index(int_bounds_t* bound, long val)
 {
     unsigned long max_idx = hrange_int_max_idx(bound);
     double idx;
@@ -66,7 +66,7 @@ unsigned long hrange_int_index(int_bounds_t *bound, long val)
     return idx;
 }
 
-long hrange_int_value(int_bounds_t *bound, unsigned long idx)
+long hrange_int_value(int_bounds_t* bound, unsigned long idx)
 {
     unsigned long max_idx = hrange_int_max_idx(bound);
 
@@ -78,19 +78,19 @@ long hrange_int_value(int_bounds_t *bound, unsigned long idx)
     return bound->min + idx * bound->step;
 }
 
-long hrange_int_nearest(int_bounds_t *bound, long val)
+long hrange_int_nearest(int_bounds_t* bound, long val)
 {
     return bound->min + hrange_int_index(bound, val) * bound->step;
 }
 
-unsigned long hrange_real_max_idx(real_bounds_t *bound)
+unsigned long hrange_real_max_idx(real_bounds_t* bound)
 {
     if (bound->step > 0.0)
         return (bound->max - bound->min) / bound->step;
     return 0;
 }
 
-unsigned long hrange_real_index(real_bounds_t *bound, double val)
+unsigned long hrange_real_index(real_bounds_t* bound, double val)
 {
     unsigned long max_idx = hrange_real_max_idx(bound);
     double idx;
@@ -107,7 +107,7 @@ unsigned long hrange_real_index(real_bounds_t *bound, double val)
     return idx;
 }
 
-double hrange_real_value(real_bounds_t *bound, unsigned long idx)
+double hrange_real_value(real_bounds_t* bound, unsigned long idx)
 {
     unsigned long max_idx = hrange_real_max_idx(bound);
 
@@ -119,7 +119,7 @@ double hrange_real_value(real_bounds_t *bound, unsigned long idx)
     return bound->min + idx * bound->step;
 }
 
-double hrange_real_nearest(real_bounds_t *bound, double val)
+double hrange_real_nearest(real_bounds_t* bound, double val)
 {
     if (bound->step > 0.0) {
         val = bound->min + hrange_real_index(bound, val) * bound->step;
@@ -133,12 +133,12 @@ double hrange_real_nearest(real_bounds_t *bound, double val)
     return val;
 }
 
-unsigned long hrange_str_max_idx(str_bounds_t *bound)
+unsigned long hrange_str_max_idx(str_bounds_t* bound)
 {
     return bound->set_len - 1;
 }
 
-unsigned long hrange_str_index(str_bounds_t *bound, const char *val)
+unsigned long hrange_str_index(str_bounds_t* bound, const char* val)
 {
     unsigned long idx;
 
@@ -152,7 +152,7 @@ unsigned long hrange_str_index(str_bounds_t *bound, const char *val)
     return idx;
 }
 
-const char *hrange_str_value(str_bounds_t *bound, unsigned long idx)
+const char* hrange_str_value(str_bounds_t* bound, unsigned long idx)
 {
     if (idx < 0)
         idx = 0;
@@ -162,7 +162,7 @@ const char *hrange_str_value(str_bounds_t *bound, unsigned long idx)
     return bound->set[idx];
 }
 
-hrange_t *hrange_find(hsignature_t *sig, const char *name)
+hrange_t* hrange_find(hsignature_t* sig, const char* name)
 {
     int i;
     for (i = 0; i < sig->range_len; ++i)
@@ -172,9 +172,9 @@ hrange_t *hrange_find(hsignature_t *sig, const char *name)
     return NULL;
 }
 
-hrange_t *hrange_add(hsignature_t *sig, const char *name)
+hrange_t* hrange_add(hsignature_t* sig, const char* name)
 {
-    hrange_t *range;
+    hrange_t* range;
 
     if (hrange_find(sig, name) != NULL) {
         errno = EINVAL;
@@ -196,7 +196,7 @@ hrange_t *hrange_add(hsignature_t *sig, const char *name)
     return range;
 }
 
-void hrange_fini(hrange_t *range)
+void hrange_fini(hrange_t* range)
 {
     int i;
 
@@ -211,7 +211,7 @@ void hrange_fini(hrange_t *range)
     *range = HRANGE_INITIALIZER;
 }
 
-int hrange_copy(hrange_t *dst, const hrange_t *src)
+int hrange_copy(hrange_t* dst, const hrange_t* src)
 {
     int i;
 
@@ -228,8 +228,7 @@ int hrange_copy(hrange_t *dst, const hrange_t *src)
     case HVAL_REAL: memcpy(&dst->bounds.r, &src->bounds.r,
                            sizeof(real_bounds_t)); break;
     case HVAL_STR:
-        dst->bounds.s.set = (char **) malloc(src->bounds.s.set_len *
-                                             sizeof(char *));
+        dst->bounds.s.set = malloc(src->bounds.s.set_len * sizeof(char*));
         if (!dst->bounds.s.set)
             return -1;
 
@@ -249,10 +248,10 @@ int hrange_copy(hrange_t *dst, const hrange_t *src)
     return 0;
 }
 
-int hrange_serialize(char **buf, int *buflen, const hrange_t *range)
+int hrange_serialize(char** buf, int* buflen, const hrange_t* range)
 {
     int i, count, total;
-    const char *type_str;
+    const char* type_str;
 
     count = snprintf_serial(buf, buflen, "range: ");
     if (count < 0) goto error;
@@ -315,11 +314,11 @@ int hrange_serialize(char **buf, int *buflen, const hrange_t *range)
     return -1;
 }
 
-int hrange_deserialize(hrange_t *range, char *buf)
+int hrange_deserialize(hrange_t* range, char* buf)
 {
     int i, count, total;
-    char **newbuf;
-    char *strptr;
+    char** newbuf;
+    char* strptr;
     char type_str[4];
 
     for (i = 0; isspace(buf[i]); ++i);
@@ -327,7 +326,7 @@ int hrange_deserialize(hrange_t *range, char *buf)
         goto invalid;
     total = i + 6;
 
-    count = scanstr_serial((const char **)&strptr, buf + total);
+    count = scanstr_serial((const char**)&strptr, buf + total);
     if (count < 0) goto invalid;
     total += count;
 
@@ -371,16 +370,15 @@ int hrange_deserialize(hrange_t *range, char *buf)
         total += count;
 
         if (range->bounds.s.set_cap < range->bounds.s.set_len) {
-            newbuf = (char **) realloc(range->bounds.s.set,
-                                       sizeof(char *) *
-                                       range->bounds.s.set_len);
+            newbuf = realloc(range->bounds.s.set,
+                             sizeof(char*) * range->bounds.s.set_len);
             if (!newbuf) goto error;
             range->bounds.s.set = newbuf;
             range->bounds.s.set_cap = range->bounds.s.set_len;
         }
 
         for (i = 0; i < range->bounds.s.set_len; ++i) {
-            count = scanstr_serial((const char **)&strptr, buf + total);
+            count = scanstr_serial((const char**)&strptr, buf + total);
             if (count < 0) goto invalid;
             total += count;
 
@@ -403,13 +401,13 @@ int hrange_deserialize(hrange_t *range, char *buf)
 /*
  * Signature-related function definitions.
  */
-int hsignature_copy(hsignature_t *dst, const hsignature_t *src)
+int hsignature_copy(hsignature_t* dst, const hsignature_t* src)
 {
     int i;
 
     hsignature_fini(dst);
 
-    dst->range = (hrange_t *) malloc(sizeof(hrange_t) * src->range_len);
+    dst->range = malloc(sizeof(hrange_t) * src->range_len);
     if (!dst->range)
         return -1;
 
@@ -428,7 +426,7 @@ int hsignature_copy(hsignature_t *dst, const hsignature_t *src)
     return 0;
 }
 
-void hsignature_fini(hsignature_t *sig)
+void hsignature_fini(hsignature_t* sig)
 {
     int i;
 
@@ -440,7 +438,7 @@ void hsignature_fini(hsignature_t *sig)
     *sig = HSIGNATURE_INITIALIZER;
 }
 
-int hsignature_equal(const hsignature_t *sig_a, const hsignature_t *sig_b)
+int hsignature_equal(const hsignature_t* sig_a, const hsignature_t* sig_b)
 {
     int i, j;
 
@@ -451,8 +449,8 @@ int hsignature_equal(const hsignature_t *sig_a, const hsignature_t *sig_b)
         return 0;
 
     for (i = 0; i < sig_a->range_len; ++i) {
-        hrange_t *range_a = &sig_a->range[i];
-        hrange_t *range_b = &sig_b->range[i];
+        hrange_t* range_a = &sig_a->range[i];
+        hrange_t* range_b = &sig_b->range[i];
 
         if (strcmp(range_a->name, range_b->name) != 0)
             return 0;
@@ -488,7 +486,7 @@ int hsignature_equal(const hsignature_t *sig_a, const hsignature_t *sig_b)
     return 1;
 }
 
-int hsignature_match(const hsignature_t *sig_a, const hsignature_t *sig_b)
+int hsignature_match(const hsignature_t* sig_a, const hsignature_t* sig_b)
 {
     int i;
 
@@ -507,7 +505,7 @@ int hsignature_match(const hsignature_t *sig_a, const hsignature_t *sig_b)
     return 1;
 }
 
-int hsignature_name(hsignature_t *sig, const char *name)
+int hsignature_name(hsignature_t* sig, const char* name)
 {
     if (sig->name)
         free(sig->name);
@@ -519,10 +517,10 @@ int hsignature_name(hsignature_t *sig, const char *name)
     return 0;
 }
 
-int hsignature_int(hsignature_t *sig, const char *name,
+int hsignature_int(hsignature_t* sig, const char* name,
                    long min, long max, long step)
 {
-    hrange_t *range;
+    hrange_t* range;
 
     if (max < min) {
         errno = EINVAL;
@@ -541,10 +539,10 @@ int hsignature_int(hsignature_t *sig, const char *name,
     return 0;
 }
 
-int hsignature_real(hsignature_t *sig, const char *name,
+int hsignature_real(hsignature_t* sig, const char* name,
                     double min, double max, double step)
 {
-    hrange_t *range;
+    hrange_t* range;
 
     if (max < min) {
         errno = EINVAL;
@@ -563,10 +561,10 @@ int hsignature_real(hsignature_t *sig, const char *name,
     return 0;
 }
 
-int hsignature_enum(hsignature_t *sig, const char *name, const char *value)
+int hsignature_enum(hsignature_t* sig, const char* name, const char* value)
 {
     int i;
-    hrange_t *range;
+    hrange_t* range;
 
     range = hrange_find(sig, name);
     if (range && range->type != HVAL_STR) {
@@ -591,7 +589,7 @@ int hsignature_enum(hsignature_t *sig, const char *name, const char *value)
 
     if (range->bounds.s.set_len == range->bounds.s.set_cap) {
         if (array_grow(&range->bounds.s.set,
-                       &range->bounds.s.set_cap, sizeof(char *)) < 0)
+                       &range->bounds.s.set_cap, sizeof(char*)) < 0)
             return -1;
     }
 
@@ -603,7 +601,7 @@ int hsignature_enum(hsignature_t *sig, const char *name, const char *value)
     return 0;
 }
 
-int hsignature_serialize(char **buf, int *buflen, const hsignature_t *sig)
+int hsignature_serialize(char** buf, int* buflen, const hsignature_t* sig)
 {
     int i, count, total;
 
@@ -632,18 +630,18 @@ int hsignature_serialize(char **buf, int *buflen, const hsignature_t *sig)
     return -1;
 }
 
-int hsignature_deserialize(hsignature_t *sig, char *buf)
+int hsignature_deserialize(hsignature_t* sig, char* buf)
 {
     int i, count, total;
-    char *strptr;
-    hrange_t *newbuf;
+    char* strptr;
+    hrange_t* newbuf;
 
     for (i = 0; isspace(buf[i]); ++i);
     if (strncmp("sig:", buf + i, 4) != 0)
         goto invalid;
     total = i + 4;
 
-    count = scanstr_serial((const char **)&strptr, buf + total);
+    count = scanstr_serial((const char**)&strptr, buf + total);
     if (count < 0) goto invalid;
     total += count;
 
@@ -655,8 +653,7 @@ int hsignature_deserialize(hsignature_t *sig, char *buf)
     total += count;
 
     if (sig->range_cap < sig->range_len) {
-        newbuf = (hrange_t *) realloc(sig->range,
-                                      sizeof(hrange_t) * sig->range_len);
+        newbuf = realloc(sig->range, sizeof(hrange_t) * sig->range_len);
         if (!newbuf) goto error;
         sig->range = newbuf;
         sig->range_cap = sig->range_len;

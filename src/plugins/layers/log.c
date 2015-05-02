@@ -36,8 +36,8 @@
 #include <errno.h>
 
 /*
- * Name used to identify this plugin.  All Harmony plugins must define
- * this variable.
+ * Name used to identify this plugin layer.
+ * All Harmony plugin layers must define this variable.
  */
 const char harmony_layer_name[] = "logger";
 
@@ -54,12 +54,12 @@ hcfg_info_t plugin_keyinfo[] = {
     { NULL }
 };
 
-FILE *fd;
+FILE* fd;
 
-int logger_init(hsignature_t *sig)
+int logger_init(hsignature_t* sig)
 {
-    const char *filename = hcfg_get(session_cfg, CFGKEY_LOG_FILE);
-    const char *mode     = hcfg_get(session_cfg, CFGKEY_LOG_MODE);
+    const char* filename = hcfg_get(session_cfg, CFGKEY_LOG_FILE);
+    const char* mode     = hcfg_get(session_cfg, CFGKEY_LOG_MODE);
     time_t tm;
 
     if (!filename) {
@@ -80,19 +80,19 @@ int logger_init(hsignature_t *sig)
     return 0;
 }
 
-int logger_join(const char *id)
+int logger_join(const char* id)
 {
     fprintf(fd, "Client \"%s\" joined the tuning session.\n", id);
     return 0;
 }
 
-int logger_analyze(hflow_t *flow, htrial_t *trial)
+int logger_analyze(hflow_t* flow, htrial_t* trial)
 {
     int i;
 
     fprintf(fd, "Point #%d: (", trial->point.id);
     for (i = 0; i < trial->point.n; ++i) {
-        hval_t *v = &trial->point.val[i];
+        hval_t* v = &trial->point.val[i];
         if (i > 0) fprintf(fd, ",");
 
         switch (v->type) {

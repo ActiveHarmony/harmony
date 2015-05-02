@@ -31,7 +31,7 @@
 
 const hmesg_t HMESG_INITIALIZER = {0};
 
-void hmesg_scrub(hmesg_t *mesg)
+void hmesg_scrub(hmesg_t* mesg)
 {
     switch (mesg->type) {
     case HMESG_SESSION:
@@ -68,17 +68,18 @@ void hmesg_scrub(hmesg_t *mesg)
     mesg->type = HMESG_UNKNOWN;
 }
 
-void hmesg_fini(hmesg_t *mesg)
+void hmesg_fini(hmesg_t* mesg)
 {
     hmesg_scrub(mesg);
     free(mesg->buf);
 }
 
-int hmesg_serialize(hmesg_t *mesg)
+int hmesg_serialize(hmesg_t* mesg)
 {
-    const char *type_str, *status_str;
+    const char* type_str;
+    const char* status_str;
     char hdr[HMESG_HDRLEN + 1];
-    char *buf;
+    char* buf;
     int buflen, count, total;
 
   top:
@@ -183,7 +184,7 @@ int hmesg_serialize(hmesg_t *mesg)
     }
 
     if (total >= mesg->buflen) {
-        buf = (char *) realloc(mesg->buf, total + 1);
+        buf = realloc(mesg->buf, total + 1);
         if (!buf)
             goto error;
 
@@ -193,7 +194,7 @@ int hmesg_serialize(hmesg_t *mesg)
     }
 
     snprintf(hdr, sizeof(hdr), "XXXX%04d%02x", total, HMESG_VERSION);
-    *(unsigned int *)(hdr) = htonl(HMESG_MAGIC);
+    *(unsigned int*)(hdr) = htonl(HMESG_MAGIC);
     memcpy(mesg->buf, hdr, HMESG_HDRLEN);
 
     return total;
@@ -204,15 +205,15 @@ int hmesg_serialize(hmesg_t *mesg)
     return -1;
 }
 
-int hmesg_deserialize(hmesg_t *mesg)
+int hmesg_deserialize(hmesg_t* mesg)
 {
     char type_str[4], status_str[4];
     int count, total;
     unsigned int msgver;
-    char *buf = mesg->buf;
+    char* buf = mesg->buf;
 
     /* Verify HMESG_MAGIC and HMESG_VERSION */
-    if (ntohl(*(unsigned int *)buf) != HMESG_MAGIC)
+    if (ntohl(*(unsigned int*)buf) != HMESG_MAGIC)
         goto invalid;
 
     if (sscanf(buf + sizeof(unsigned int), "%*4d%2x", &msgver) < 1)

@@ -39,7 +39,7 @@
  *
  */
 
-hdesc_t *hdesc = NULL;
+hdesc_t* hdesc = NULL;
 int rank = -1;
 /* Variables to hold the application's runtime tunable parameters.
  * Once bound to a Harmony tuning session, these variables will be
@@ -64,9 +64,9 @@ long application(long p1, long p2, long p3, long p4, long p5, long p6)
     return perf;
 }
 
-int main(int argc, char **argv)
+int main(int argc, char* argv[])
 {
-    const char *name = "xmlWriter_MPI_example";
+    const char* name = "xmlWriter_MPI_example";
     int i, retval, loop = 200;
     double perf = -INFINITY;
     int node_count;

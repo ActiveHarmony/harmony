@@ -38,8 +38,8 @@
 #include <strings.h>
 
 /*
- * Name used to identify this plugin.  All Harmony plugins must define
- * this variable.
+ * Name used to identify this plugin layer.
+ * All Harmony plugin layers must define this variable.
  */
 const char harmony_layer_name[] = "agg";
 
@@ -57,14 +57,14 @@ hcfg_info_t plugin_keyinfo[] = {
     { NULL }
 };
 
-void perf_mean(hperf_t *dst, hperf_t *src[], int count);
-int  perf_sort(const void *_a, const void *_b);
+void perf_mean(hperf_t* dst, hperf_t* src[], int count);
+int  perf_sort(const void* _a, const void* _b);
 int  add_storage(void);
 
 typedef struct store {
     int id;
     int count;
-    hperf_t **trial;
+    hperf_t** trial;
 } store_t;
 
 typedef enum aggfunc {
@@ -77,12 +77,12 @@ typedef enum aggfunc {
 
 aggfunc_t agg_type;
 int trial_per_point;
-store_t *slist;
+store_t* slist;
 int slist_len;
 
-int agg_init(hsignature_t *sig)
+int agg_init(hsignature_t* sig)
 {
-    const char *val;
+    const char* val;
 
     val = hcfg_get(session_cfg, CFGKEY_AGG_FUNC);
     if (!val) {
@@ -109,10 +109,10 @@ int agg_init(hsignature_t *sig)
     return add_storage();
 }
 
-int agg_analyze(hflow_t *flow, htrial_t *trial)
+int agg_analyze(hflow_t* flow, htrial_t* trial)
 {
     int i;
-    store_t *store;
+    store_t* store;
 
     for (i = 0; i < slist_len; ++i) {
         if (slist[i].id == trial->point.id || slist[i].id == -1)
@@ -156,7 +156,7 @@ int agg_analyze(hflow_t *flow, htrial_t *trial)
         break;
 
     case AGG_MEDIAN:
-        qsort(store->trial, trial_per_point, sizeof(hperf_t *), perf_sort);
+        qsort(store->trial, trial_per_point, sizeof(hperf_t*), perf_sort);
 
         i = (trial_per_point - 1) / 2;
         if (i % 2)
@@ -182,7 +182,7 @@ int agg_fini(void)
     return 0;
 }
 
-void perf_mean(hperf_t *dst, hperf_t *src[], int count)
+void perf_mean(hperf_t* dst, hperf_t* src[], int count)
 {
     int i, j;
 
@@ -199,10 +199,10 @@ void perf_mean(hperf_t *dst, hperf_t *src[], int count)
         dst->p[i] /= trial_per_point;
 }
 
-int perf_sort(const void *_a, const void *_b)
+int perf_sort(const void* _a, const void* _b)
 {
-    double a = hperf_unify(* ((const hperf_t **)_a));
-    double b = hperf_unify(* ((const hperf_t **)_b));
+    double a = hperf_unify(* ((const hperf_t**)_a));
+    double b = hperf_unify(* ((const hperf_t**)_b));
 
     return (a > b) - (a < b);
 }
@@ -218,8 +218,7 @@ int add_storage(void)
 
     while (prev_len < slist_len) {
         slist[prev_len].id = -1;
-        slist[prev_len].trial = (hperf_t **) calloc(trial_per_point,
-                                                    sizeof(hperf_t *));
+        slist[prev_len].trial = calloc(trial_per_point, sizeof(hperf_t*));
         if (!slist[prev_len].trial) {
             session_error("Could not allocate memory for trial list");
             return -1;

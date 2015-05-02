@@ -58,21 +58,21 @@ hpoint_t best;
 double   best_perf;
 
 /* Forward function definitions. */
-int strategy_cfg(hsignature_t *sig);
+int strategy_cfg(hsignature_t* sig);
 int increment(void);
 
 /* Variables to track current search state. */
 int N;
-hrange_t *range;
+hrange_t* range;
 hpoint_t curr;
-unsigned long *idx;
+unsigned long* idx;
 int remaining_passes = 1;
 int final_id = 0;
 
 /*
  * Invoked once on strategy load.
  */
-int strategy_init(hsignature_t *sig)
+int strategy_init(hsignature_t* sig)
 {
     N = sig->range_len;
     range = sig->range;
@@ -109,9 +109,9 @@ int strategy_init(hsignature_t *sig)
     return 0;
 }
 
-int strategy_cfg(hsignature_t *sig)
+int strategy_cfg(hsignature_t* sig)
 {
-    const char *cfgstr;
+    const char* cfgstr;
     int i;
 
     remaining_passes = hcfg_int(session_cfg, CFGKEY_PASSES);
@@ -155,7 +155,7 @@ int strategy_cfg(hsignature_t *sig)
     }
     else {
         for (i = 0; i < N; ++i) {
-            hval_t *v = &curr.val[i];
+            hval_t* v = &curr.val[i];
 
             v->type = range[i].type;
             switch (range[i].type) {
@@ -176,7 +176,7 @@ int strategy_cfg(hsignature_t *sig)
 /*
  * Generate a new candidate configuration.
  */
-int strategy_generate(hflow_t *flow, hpoint_t *point)
+int strategy_generate(hflow_t* flow, hpoint_t* point)
 {
     if (remaining_passes > 0) {
         if (hpoint_copy(point, &curr) != 0) {
@@ -202,9 +202,9 @@ int strategy_generate(hflow_t *flow, hpoint_t *point)
 /*
  * Regenerate a point deemed invalid by a later plug-in.
  */
-int strategy_rejected(hflow_t *flow, hpoint_t *point)
+int strategy_rejected(hflow_t* flow, hpoint_t* point)
 {
-    hpoint_t *hint = &flow->point;
+    hpoint_t* hint = &flow->point;
     int orig_id = point->id;
 
     if (hint && hint->id != -1) {
@@ -231,7 +231,7 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
 /*
  * Analyze the observed performance for this configuration point.
  */
-int strategy_analyze(htrial_t *trial)
+int strategy_analyze(htrial_t* trial)
 {
     double perf = hperf_unify(trial->perf);
 
@@ -256,7 +256,7 @@ int strategy_analyze(htrial_t *trial)
 /*
  * Return the best performing point thus far in the search.
  */
-int strategy_best(hpoint_t *point)
+int strategy_best(hpoint_t* point)
 {
     if (hpoint_copy(point, &best) != 0) {
         session_error("Could not copy best point during request for best.");

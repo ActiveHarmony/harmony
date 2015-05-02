@@ -29,25 +29,25 @@
 #include <math.h>
 
 /* Forward definitions of internal helper functions. */
-int    internal_vertex_min(vertex_t *v);
-int    internal_vertex_max(vertex_t *v);
-long   max_int(int_bounds_t *b);
-double max_real(real_bounds_t *b);
-int    max_str(str_bounds_t *b);
-int    simplex_fit(simplex_t *s);
-void   unit_simplex(simplex_t *s);
-int    rotate_simplex(simplex_t *s);
-int    rotate(simplex_t *s);
-int    rparam_sort(const void *_a, const void *_b);
+int    internal_vertex_min(vertex_t* v);
+int    internal_vertex_max(vertex_t* v);
+long   max_int(int_bounds_t* b);
+double max_real(real_bounds_t* b);
+int    max_str(str_bounds_t* b);
+int    simplex_fit(simplex_t* s);
+void   unit_simplex(simplex_t* s);
+int    rotate_simplex(simplex_t* s);
+int    rotate(simplex_t* s);
+int    rparam_sort(const void* _a, const void* _b);
 
 /* Global variables which must be set via libvertex_init(). */
 static int N, P;
-static hrange_t *range;
-static vertex_t *vmin;
-static vertex_t *vmax;
+static hrange_t* range;
+static vertex_t* vmin;
+static vertex_t* vmax;
 static long sizeof_vertex;
 
-int libvertex_init(hsignature_t *sig)
+int libvertex_init(hsignature_t* sig)
 {
     if (range != sig->range) {
         range = sig->range;
@@ -70,11 +70,11 @@ int libvertex_init(hsignature_t *sig)
     return 0;
 }
 
-vertex_t *vertex_alloc()
+vertex_t* vertex_alloc()
 {
-    vertex_t *v;
+    vertex_t* v;
 
-    v = (vertex_t *) malloc(sizeof_vertex);
+    v = malloc(sizeof_vertex);
     if (!v)
         return NULL;
     v->id = 0;
@@ -86,13 +86,13 @@ vertex_t *vertex_alloc()
     return v;
 }
 
-void vertex_reset(vertex_t *v)
+void vertex_reset(vertex_t* v)
 {
     v->id = 0;
     hperf_reset(v->perf);
 }
 
-int vertex_copy(vertex_t *dst, const vertex_t *src)
+int vertex_copy(vertex_t* dst, const vertex_t* src)
 {
     if (dst != src) {
         dst->id = src->id;
@@ -102,18 +102,18 @@ int vertex_copy(vertex_t *dst, const vertex_t *src)
     return 0;
 }
 
-void vertex_free(vertex_t *v)
+void vertex_free(vertex_t* v)
 {
     hperf_fini(v->perf);
     free(v);
 }
 
-const vertex_t *vertex_min(void)
+const vertex_t* vertex_min(void)
 {
     return vmin;
 }
 
-int internal_vertex_min(vertex_t *v)
+int internal_vertex_min(vertex_t* v)
 {
     int i;
 
@@ -129,12 +129,12 @@ int internal_vertex_min(vertex_t *v)
     return 0;
 }
 
-const vertex_t *vertex_max(void)
+const vertex_t* vertex_max(void)
 {
     return vmax;
 }
 
-int internal_vertex_max(vertex_t *v)
+int internal_vertex_max(vertex_t* v)
 {
     int i;
 
@@ -165,7 +165,7 @@ int internal_vertex_max(vertex_t *v)
     return 0;
 }
 
-int vertex_center(vertex_t *v)
+int vertex_center(vertex_t* v)
 {
     int i;
 
@@ -177,7 +177,7 @@ int vertex_center(vertex_t *v)
     return 0;
 }
 
-int vertex_percent(vertex_t *v, double percent)
+int vertex_percent(vertex_t* v, double percent)
 {
     int i;
     for (i = 0; i < N; ++i)
@@ -187,12 +187,12 @@ int vertex_percent(vertex_t *v, double percent)
     return 0;
 }
 
-int vertex_rand(vertex_t *v)
+int vertex_rand(vertex_t* v)
 {
     return vertex_rand_trim(v, 0.0);
 }
 
-int vertex_rand_trim(vertex_t *v, double trim_percentage)
+int vertex_rand_trim(vertex_t* v, double trim_percentage)
 {
     int i;
     double rval;
@@ -203,21 +203,21 @@ int vertex_rand_trim(vertex_t *v, double trim_percentage)
     for (i = 0; i < N; ++i) {
         switch (range[i].type) {
         case HVAL_INT: {
-            int_bounds_t *b = &range[i].bounds.i;
+            int_bounds_t* b = &range[i].bounds.i;
             rval = (b->max - b->min - v->term[i]) * drand48();
             rval += b->min + (v->term[i] / 2);
             v->term[i] = hrange_int_nearest(b, rval);
             break;
         }
         case HVAL_REAL: {
-            real_bounds_t *b = &range[i].bounds.r;
+            real_bounds_t* b = &range[i].bounds.r;
             rval = (b->max - b->min - v->term[i]) * drand48();
             rval += b->min + (v->term[i] / 2);
             v->term[i] = hrange_real_nearest(b, rval);
             break;
         }
         case HVAL_STR: {
-            str_bounds_t *b = &range[i].bounds.s;
+            str_bounds_t* b = &range[i].bounds.s;
             rval = (b->set_len - 1 - v->term[i]) * drand48();
             rval += v->term[i] / 2;
             v->term[i] = rval;
@@ -231,7 +231,7 @@ int vertex_rand_trim(vertex_t *v, double trim_percentage)
     return 0;
 }
 
-double vertex_dist(const vertex_t *v1, const vertex_t *v2)
+double vertex_dist(const vertex_t* v1, const vertex_t* v2)
 {
     int i;
     double dist;
@@ -243,8 +243,8 @@ double vertex_dist(const vertex_t *v1, const vertex_t *v2)
     return sqrt(dist);
 }
 
-void vertex_transform(const vertex_t *src, const vertex_t *wrt,
-                      double coefficient, vertex_t *result)
+void vertex_transform(const vertex_t* src, const vertex_t* wrt,
+                      double coefficient, vertex_t* result)
 {
     int i;
 
@@ -254,7 +254,7 @@ void vertex_transform(const vertex_t *src, const vertex_t *wrt,
     hperf_reset(result->perf);
 }
 
-int vertex_outofbounds(const vertex_t *v)
+int vertex_outofbounds(const vertex_t* v)
 {
     int i, out;
 
@@ -271,7 +271,7 @@ int vertex_outofbounds(const vertex_t *v)
     return 0;
 }
 
-int vertex_regrid(vertex_t *v)
+int vertex_regrid(vertex_t* v)
 {
     int i;
 
@@ -305,13 +305,13 @@ int vertex_regrid(vertex_t *v)
     return 0;
 }
 
-int vertex_to_hpoint(const vertex_t *v, hpoint_t *result)
+int vertex_to_hpoint(const vertex_t* v, hpoint_t* result)
 {
     int i;
 
     hpoint_init(result, N);
     for (i = 0; i < N; ++i) {
-        hval_t *val = &result->val[i];
+        hval_t* val = &result->val[i];
 
         val->type = range[i].type;
         switch (range[i].type) {
@@ -342,7 +342,7 @@ int vertex_to_hpoint(const vertex_t *v, hpoint_t *result)
     return 0;
 }
 
-int vertex_from_hpoint(const hpoint_t *pt, vertex_t *result)
+int vertex_from_hpoint(const hpoint_t* pt, vertex_t* result)
 {
     int i, j;
 
@@ -364,7 +364,7 @@ int vertex_from_hpoint(const hpoint_t *pt, vertex_t *result)
     return 0;
 }
 
-int vertex_from_string(const char *str, hsignature_t *sig, vertex_t *result)
+int vertex_from_string(const char* str, hsignature_t* sig, vertex_t* result)
 {
     int retval = 0;
     hpoint_t pt = HPOINT_INITIALIZER;
@@ -401,23 +401,23 @@ int vertex_from_string(const char *str, hsignature_t *sig, vertex_t *result)
     return retval;
 }
 
-simplex_t *simplex_alloc(int m)
+simplex_t* simplex_alloc(int m)
 {
     int i;
-    simplex_t *s;
-    unsigned char *buf;
+    simplex_t* s;
+    unsigned char* buf;
 
     if (m <= N)
         return NULL;
 
-    s = (simplex_t *) malloc(sizeof(simplex_t) + m * sizeof(vertex_t *));
+    s = malloc(sizeof(simplex_t) + m * sizeof(vertex_t*));
     if (!s)
         return NULL;
     s->len = m;
 
-    buf = (unsigned char *) malloc(m * sizeof_vertex);
+    buf = malloc(m * sizeof_vertex);
     for (i = 0; i < m; ++i) {
-        s->vertex[i] = (vertex_t *)(buf + i * sizeof_vertex);
+        s->vertex[i] = (vertex_t*)(buf + i * sizeof_vertex);
         s->vertex[i]->perf = hperf_alloc(P);
         if (!s->vertex[i]->perf)
             return NULL;
@@ -428,14 +428,14 @@ simplex_t *simplex_alloc(int m)
     return s;
 }
 
-void simplex_reset(simplex_t *s)
+void simplex_reset(simplex_t* s)
 {
     int i;
     for (i = 0; i < s->len; ++i)
         vertex_reset(s->vertex[i]);
 }
 
-int simplex_copy(simplex_t *dst, const simplex_t *src)
+int simplex_copy(simplex_t* dst, const simplex_t* src)
 {
     int i;
 
@@ -451,7 +451,7 @@ int simplex_copy(simplex_t *dst, const simplex_t *src)
     return 0;
 }
 
-void simplex_free(simplex_t *s)
+void simplex_free(simplex_t* s)
 {
     if (s) {
         free(s->vertex);
@@ -466,7 +466,7 @@ void simplex_free(simplex_t *s)
  *
  * This function will ignore any vertices with id < 0.
  */
-void simplex_centroid(const simplex_t *s, vertex_t *v)
+void simplex_centroid(const simplex_t* s, vertex_t* v)
 {
     int i, j, count;
 
@@ -494,8 +494,8 @@ void simplex_centroid(const simplex_t *s, vertex_t *v)
         v->perf->p[j] /= count;
 }
 
-void simplex_transform(const simplex_t *src, const vertex_t *wrt,
-                       double coefficient, simplex_t *result)
+void simplex_transform(const simplex_t* src, const vertex_t* wrt,
+                       double coefficient, simplex_t* result)
 {
     int i;
 
@@ -508,7 +508,7 @@ void simplex_transform(const simplex_t *src, const vertex_t *wrt,
     }
 }
 
-int simplex_outofbounds(const simplex_t *s)
+int simplex_outofbounds(const simplex_t* s)
 {
     int i;
 
@@ -519,7 +519,7 @@ int simplex_outofbounds(const simplex_t *s)
     return 0;
 }
 
-int simplex_regrid(simplex_t *s)
+int simplex_regrid(simplex_t* s)
 {
     int i;
 
@@ -530,10 +530,10 @@ int simplex_regrid(simplex_t *s)
     return 0;
 }
 
-int simplex_from_vertex(const vertex_t *v, double percent, simplex_t *s)
+int simplex_from_vertex(const vertex_t* v, double percent, simplex_t* s)
 {
     int i, j;
-    vertex_t *size = vertex_alloc();
+    vertex_t* size = vertex_alloc();
 
     if (!size)
         return -1;
@@ -570,7 +570,7 @@ int simplex_from_vertex(const vertex_t *v, double percent, simplex_t *s)
     return 0;
 }
 
-int simplex_fit(simplex_t *s)
+int simplex_fit(simplex_t* s)
 {
     int i, j;
     double lo, hi;
@@ -608,9 +608,10 @@ int simplex_fit(simplex_t *s)
     return 0;
 }
 
-int simplex_collapsed(const simplex_t *s)
+int simplex_collapsed(const simplex_t* s)
 {
-    static vertex_t *a, *b;
+    static vertex_t* a;
+    static vertex_t* b;
     int i, j;
 
     if (!a || !b || a->id != N) {
@@ -639,7 +640,7 @@ int simplex_collapsed(const simplex_t *s)
 /*
  * Calculate a unit-length simplex about the origin.
  */
-void unit_simplex(simplex_t *s)
+void unit_simplex(simplex_t* s)
 {
     int i, j, k;
     double sum;
@@ -680,12 +681,12 @@ typedef struct {
 /*
  * Rotates a simplex about the origin.
  */
-int rotate(simplex_t *s)
+int rotate(simplex_t* s)
 {
     int i, j, k, combos = (N * (N - 1)) / 2;
-    rparam_t *rp;
+    rparam_t* rp;
 
-    rp = (rparam_t *) malloc(combos * sizeof(rparam_t));
+    rp = malloc(combos * sizeof(rparam_t));
     if (!rp)
         return -1;
 
@@ -720,10 +721,10 @@ int rotate(simplex_t *s)
     return 0;
 }
 
-int rparam_sort(const void *_a, const void *_b)
+int rparam_sort(const void* _a, const void* _b)
 {
-    const rparam_t *a = (rparam_t *)_a;
-    const rparam_t *b = (rparam_t *)_b;
+    const rparam_t* a = _a;
+    const rparam_t* b = _b;
 
     return (a->order - b->order);
 }

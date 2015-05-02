@@ -50,39 +50,39 @@ typedef enum method_t {
 } method_t;
 
 struct strlist {
-    char *str;
-    struct strlist *next;
+    char* str;
+    struct strlist* next;
 };
 typedef struct strlist strlist_t;
 
 typedef struct bundle_info {
     hval_type type;
-    char *name;
-    void *data;
+    char* name;
+    void* data;
     int used;
 } bundle_info_t;
 
-void usage(const char *);
-void parseArgs(int, char **);
-int handle_int(char *);
-int handle_real(char *);
-int handle_enum(char *);
-int handle_method(char *);
-int handle_chapel(char *);
+void usage(const char*);
+void parseArgs(int, char**);
+int handle_int(char*);
+int handle_real(char*);
+int handle_enum(char*);
+int handle_method(char*);
+int handle_chapel(char*);
 int prepare_client_argv();
-FILE *tuna_popen(const char *, char **, pid_t *);
-double tv_to_double(struct timeval *);
-int argv_add(char *);
-bundle_info_t *tuna_bundle_add(hval_type, char *);
-bundle_info_t *tuna_bundle_get(char **);
-int is_exec(const char *filename);
-char *find_exec(const char *);
+FILE* tuna_popen(const char*, char**, pid_t*);
+double tv_to_double(struct timeval*);
+int argv_add(char*);
+bundle_info_t* tuna_bundle_add(hval_type, char*);
+bundle_info_t* tuna_bundle_get(char**);
+int is_exec(const char* filename);
+char* find_exec(const char*);
 
 char prog_env[FILENAME_MAX];
 char prog_hsvr[FILENAME_MAX];
 
 method_t method = METHOD_WALL;
-hdesc_t *hdesc = NULL;
+hdesc_t* hdesc = NULL;
 unsigned int max_loop = 50;
 unsigned int quiet = 0;
 unsigned int verbose = 0;
@@ -91,18 +91,19 @@ unsigned int verbose = 0;
 unsigned int bcount = 0;
 bundle_info_t binfo[MAX_BUNDLE];
 
-strlist_t *argv_template = NULL;
-char *client_bin;
+strlist_t* argv_template = NULL;
+char* client_bin;
 int client_argc = 0;
-char **client_argv;
-char *argv_buf = NULL;
+char** client_argv;
+char* argv_buf = NULL;
 int argv_buflen = 0;
 
-int main(int argc, char **argv)
+int main(int argc, char* argv[])
 {
     int i, hresult, line_start, count;
-    char readbuf[4096], *path;
-    FILE *fptr;
+    char readbuf[4096];
+    char* path;
+    FILE* fptr;
     double perf = 0.0;
 
     struct timeval wall_start, wall_end, wall_time;
@@ -235,9 +236,9 @@ int main(int argc, char **argv)
         for (i = 0; i < bcount; ++i) {
             printf("\t%s: ", binfo[i].name);
             switch (binfo[i].type) {
-            case HVAL_INT:  printf("%ld\n", *(long *)binfo[i].data); break;
-            case HVAL_REAL: printf("%lf\n", *(double *)binfo[i].data); break;
-            case HVAL_STR:  printf("\"%s\"\n", *(char **)binfo[i].data); break;
+            case HVAL_INT:  printf("%ld\n", *(long*)binfo[i].data); break;
+            case HVAL_REAL: printf("%lf\n", *(double*)binfo[i].data); break;
+            case HVAL_STR:  printf("\"%s\"\n", *(char**)binfo[i].data); break;
             default:        assert(0 && "Invalid parameter type.");
             }
         }
@@ -259,7 +260,7 @@ int main(int argc, char **argv)
     return 0;
 }
 
-void usage(const char *me)
+void usage(const char* me)
 {
     fprintf(stderr, "Usage: %s tunable_vars [options] prog [prog_args]\n", me);
     fprintf(stderr, "\n"
@@ -307,11 +308,11 @@ void usage(const char *me)
 "        ./matrix_mult -t %%tile -u %%unroll`\n\n", me);
 }
 
-void parseArgs(int argc, char **argv)
+void parseArgs(int argc, char* argv[])
 {
     int i, stop = 0, chapel = 0;
-    char *arg;
-    bundle_info_t *bun;
+    char* arg;
+    bundle_info_t* bun;
 
     for (i = 1; i < argc && *argv[i] == '-' && !stop; ++i) {
         arg = argv[i] + 1;
@@ -335,7 +336,7 @@ void parseArgs(int argc, char **argv)
                     }
                 }
                 else {
-                    char *ptr = argv[++i];
+                    char* ptr = argv[++i];
                     max_loop = strtoul(ptr, &ptr, 0);
                     if (*ptr != '\0') {
                         fprintf(stderr, "Trailing characters after n value\n");
@@ -401,7 +402,7 @@ void parseArgs(int argc, char **argv)
                 fprintf(stdout, "Warning: Appending unused bundle \"%s\""
                         " to target argv.\n", binfo[i].name);
 
-            arg = (char *) malloc(strlen(binfo[i].name) + 2);
+            arg = malloc(strlen(binfo[i].name) + 2);
             if (arg == NULL) {
                 perror("Malloc error");
                 exit(-1);
@@ -412,18 +413,19 @@ void parseArgs(int argc, char **argv)
         }
     }
 
-    client_argv = (char **) malloc(sizeof(char *) * (client_argc + 1));
+    client_argv = malloc(sizeof(char*) * (client_argc + 1));
     if (client_argv == NULL) {
         perror("Malloc error");
         exit(-1);
     }
 }
 
-int handle_int(char *arg)
+int handle_int(char* arg)
 {
-    char *arg_orig, *name;
+    char* arg_orig;
+    char* name;
     long min, max, step;
-    bundle_info_t *bun;
+    bundle_info_t* bun;
 
     assert(*arg == 'i');
     arg_orig = arg;
@@ -462,11 +464,12 @@ int handle_int(char *arg)
     return 0;
 }
 
-int handle_real(char *arg)
+int handle_real(char* arg)
 {
-    char *arg_orig, *name;
+    char* arg_orig;
+    char* name;
     double min, max, step;
-    bundle_info_t *bun;
+    bundle_info_t* bun;
 
     assert(*arg == 'r');
     arg_orig = arg;
@@ -505,10 +508,12 @@ int handle_real(char *arg)
     return 0;
 }
 
-int handle_enum(char *arg)
+int handle_enum(char* arg)
 {
-    char *arg_orig, *name, *val;
-    bundle_info_t *bun;
+    char* arg_orig;
+    char* name;
+    char* val;
+    bundle_info_t* bun;
 
     assert(*arg == 'e');
     arg_orig = arg;
@@ -549,7 +554,7 @@ int handle_enum(char *arg)
     return 0;
 }
 
-int handle_method(char *arg)
+int handle_method(char* arg)
 {
     assert(*arg == 'm');
     ++arg;
@@ -568,17 +573,18 @@ int handle_method(char *arg)
     return 0;
 }
 
-int handle_chapel(char *prog)
+int handle_chapel(char* prog)
 {
-    char buf[4096], *arg;
+    char buf[4096];
+    char* arg;
     int chpl_flag = 0;
 
-    char *name;
+    char* name;
     long min, max, step;
-    bundle_info_t *bun;
+    bundle_info_t* bun;
 
-    FILE *fd;
-    char *help_argv[3];
+    FILE* fd;
+    char* help_argv[3];
 
     help_argv[0] = prog;
     help_argv[1] = "--help";
@@ -657,7 +663,7 @@ int handle_chapel(char *prog)
         }
         *strchr(name, ':') = '\0';
 
-        arg = (char *)malloc((strlen(name) * 2) + 4);
+        arg = malloc((strlen(name) * 2) + 4);
         if (arg == NULL) {
             perror("Malloc error");
             return -1;
@@ -676,7 +682,7 @@ int handle_chapel(char *prog)
             return -1;
         }
 
-        arg = (char *)malloc((strlen(name) * 2) + 4);
+        arg = malloc((strlen(name) * 2) + 4);
         if (arg == NULL) {
             perror("Malloc error");
             return -1;
@@ -695,9 +701,9 @@ int prepare_client_argv()
 {
     unsigned int i = 0;
     int count = 0, len, remainder;
-    char *arg;
-    strlist_t *arglist;
-    bundle_info_t *bun;
+    char* arg;
+    strlist_t* arglist;
+    bundle_info_t* bun;
 
     for (arglist = argv_template; arglist != NULL; arglist = arglist->next) {
         client_argv[i++] = argv_buf + count;
@@ -714,13 +720,13 @@ int prepare_client_argv()
 
                 switch (bun->type) {
                 case HVAL_INT:  len = snprintf(argv_buf + count, remainder,
-                                               "%ld", *(long *)bun->data);
+                                               "%ld", *(long*)bun->data);
                     break;
                 case HVAL_REAL: len = snprintf(argv_buf + count, remainder,
-                                               "%lf", *(double *)bun->data);
+                                               "%lf", *(double*)bun->data);
                     break;
                 case HVAL_STR:  len = snprintf(argv_buf + count, remainder,
-                                               "%s", *(char **)bun->data);
+                                               "%s", *(char**)bun->data);
                     break;
                 default:        assert(0 && "Invalid parameter type.");
                 }
@@ -741,7 +747,7 @@ int prepare_client_argv()
     client_argv[i] = NULL;
 
     if (count > argv_buflen) {
-        argv_buf = (char *)realloc(argv_buf, count);
+        argv_buf = realloc(argv_buf, count);
         if (argv_buf == NULL) {
             perror("Realloc error");
             return -1;
@@ -752,10 +758,10 @@ int prepare_client_argv()
     return 0;
 }
 
-FILE *tuna_popen(const char *prog, char **argv, pid_t *ret_pid)
+FILE* tuna_popen(const char* prog, char** argv, pid_t* ret_pid)
 {
     int i, pipefd[2];
-    FILE *fptr;
+    FILE* fptr;
     pid_t pid;
 
     if (pipe(pipefd) != 0) {
@@ -805,21 +811,21 @@ FILE *tuna_popen(const char *prog, char **argv, pid_t *ret_pid)
     return fptr;
 }
 
-double tv_to_double(struct timeval *tv)
+double tv_to_double(struct timeval* tv)
 {
     double retval = tv->tv_usec;
     retval /= 1000000;
     return retval + tv->tv_sec;
 }
 
-int argv_add(char *str)
+int argv_add(char* str)
 {
-    static strlist_t **tail;
+    static strlist_t** tail;
 
     if (argv_template == NULL)
         tail = &argv_template;
 
-    *tail = (strlist_t *)malloc(sizeof(strlist_t));
+    *tail = malloc(sizeof(*tail));
     if (*tail == NULL) {
         perror("Malloc error");
         return -1;
@@ -832,9 +838,9 @@ int argv_add(char *str)
     return 0;
 }
 
-bundle_info_t *tuna_bundle_add(hval_type type, char *name)
+bundle_info_t* tuna_bundle_add(hval_type type, char* name)
 {
-    void *data;
+    void* data;
 
     if (bcount >= MAX_BUNDLE) {
         fprintf(stderr, "Maximum number of tunable parameters"
@@ -845,7 +851,7 @@ bundle_info_t *tuna_bundle_add(hval_type type, char *name)
     switch (type) {
     case HVAL_INT:  data = malloc(sizeof(long)); break;
     case HVAL_REAL: data = malloc(sizeof(double)); break;
-    case HVAL_STR:  data = malloc(sizeof(char *)); break;
+    case HVAL_STR:  data = malloc(sizeof(char*)); break;
     default: assert(0 && "Invalid parameter type.");
     }
 
@@ -861,11 +867,11 @@ bundle_info_t *tuna_bundle_add(hval_type type, char *name)
     return &binfo[bcount++];
 }
 
-bundle_info_t *tuna_bundle_get(char **name)
+bundle_info_t* tuna_bundle_get(char** name)
 {
     int i;
-    char *end = NULL;
-    bundle_info_t *retval = NULL;
+    char* end = NULL;
+    bundle_info_t* retval = NULL;
 
     if (**name == '%') {
         ++(*name);
@@ -900,10 +906,11 @@ bundle_info_t *tuna_bundle_get(char **name)
     return retval;
 }
 
-char *find_exec(const char *filename)
+char* find_exec(const char* filename)
 {
     static char fullpath[FILENAME_MAX];
-    char *path, *ptr;
+    char* path;
+    char* ptr;
 
     path = getenv("PATH");
     if (path == NULL)
@@ -928,7 +935,7 @@ char *find_exec(const char *filename)
     return NULL;
 }
 
-int is_exec(const char *filename)
+int is_exec(const char* filename)
 {
     uid_t uid, euid;
     gid_t gid, egid;

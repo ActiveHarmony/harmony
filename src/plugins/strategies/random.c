@@ -56,15 +56,15 @@ hpoint_t best;
 double   best_perf;
 
 /* Forward function definitions. */
-int strategy_cfg(hsignature_t *sig);
+int strategy_cfg(hsignature_t* sig);
 
 /* Variables to track current search state. */
-vertex_t *curr;
+vertex_t* curr;
 
 /*
  * Invoked once on strategy load.
  */
-int strategy_init(hsignature_t *sig)
+int strategy_init(hsignature_t* sig)
 {
     if (libvertex_init(sig) != 0) {
         session_error("Could not initialize vertex library.");
@@ -98,9 +98,9 @@ int strategy_init(hsignature_t *sig)
     return 0;
 }
 
-int strategy_cfg(hsignature_t *sig)
+int strategy_cfg(hsignature_t* sig)
 {
-    const char *cfgval = hcfg_get(session_cfg, CFGKEY_INIT_POINT);
+    const char* cfgval = hcfg_get(session_cfg, CFGKEY_INIT_POINT);
 
     if (cfgval) {
         if (vertex_from_string(cfgval, sig, curr) != 0)
@@ -115,7 +115,7 @@ int strategy_cfg(hsignature_t *sig)
 /*
  * Generate a new candidate configuration.
  */
-int strategy_generate(hflow_t *flow, hpoint_t *point)
+int strategy_generate(hflow_t* flow, hpoint_t* point)
 {
     if (vertex_to_hpoint(curr, point) != 0) {
         session_error("Internal error: Could not make point from vertex.");
@@ -133,9 +133,9 @@ int strategy_generate(hflow_t *flow, hpoint_t *point)
 /*
  * Regenerate a point deemed invalid by a later plug-in.
  */
-int strategy_rejected(hflow_t *flow, hpoint_t *point)
+int strategy_rejected(hflow_t* flow, hpoint_t* point)
 {
-    hpoint_t *hint = &flow->point;
+    hpoint_t* hint = &flow->point;
 
     if (hint && hint->id != -1) {
         int orig_id = point->id;
@@ -161,7 +161,7 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
 /*
  * Analyze the observed performance for this configuration point.
  */
-int strategy_analyze(htrial_t *trial)
+int strategy_analyze(htrial_t* trial)
 {
     double perf = hperf_unify(trial->perf);
 
@@ -178,7 +178,7 @@ int strategy_analyze(htrial_t *trial)
 /*
  * Return the best performing point thus far in the search.
  */
-int strategy_best(hpoint_t *point)
+int strategy_best(hpoint_t* point)
 {
     if (hpoint_copy(point, &best) != 0) {
         session_error("Internal error: Could not copy point.");

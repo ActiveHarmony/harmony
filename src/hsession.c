@@ -34,7 +34,7 @@ hsession_t HSESSION_INITIALIZER = {{0}};
 /*
  * Session API Implementation
  */
-int hsession_copy(hsession_t *dst, const hsession_t *src)
+int hsession_copy(hsession_t* dst, const hsession_t* src)
 {
     if (hsignature_copy(&dst->sig, &src->sig) != 0)
         return -1;
@@ -43,13 +43,13 @@ int hsession_copy(hsession_t *dst, const hsession_t *src)
     return 0;
 }
 
-void hsession_fini(hsession_t *sess)
+void hsession_fini(hsession_t* sess)
 {
     hsignature_fini(&sess->sig);
     hcfg_fini(&sess->cfg);
 }
 
-int hsession_serialize(char **buf, int *buflen, const hsession_t *sess)
+int hsession_serialize(char** buf, int* buflen, const hsession_t* sess)
 {
     int count, total;
 
@@ -73,7 +73,7 @@ int hsession_serialize(char **buf, int *buflen, const hsession_t *sess)
     return -1;
 }
 
-int hsession_deserialize(hsession_t *sess, char *buf)
+int hsession_deserialize(hsession_t* sess, char* buf)
 {
     int i, count, total;
 

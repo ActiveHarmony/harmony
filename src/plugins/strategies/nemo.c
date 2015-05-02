@@ -87,7 +87,7 @@ hcfg_info_t plugin_keyinfo[] = {
 };
 
 hpoint_t best;
-hperf_t *best_perf;
+hperf_t* best_perf;
 
 hpoint_t curr;
 
@@ -127,7 +127,7 @@ typedef enum simplex_state {
 
 /* Forward function definitions. */
 int nemo_init_simplex(void);
-int strategy_cfg(hsignature_t *sig);
+int strategy_cfg(hsignature_t* sig);
 int nemo_phase_incr(void);
 void simplex_update_index(void);
 void simplex_update_centroid(void);
@@ -135,11 +135,11 @@ int  nm_algorithm(void);
 int  nm_state_transition(void);
 int  nm_next_vertex(void);
 void check_convergence(void);
-double calc_perf(double *perf);
+double calc_perf(double* perf);
 
 /* Variables to control search properties. */
 simplex_init_t  init_method  = SIMPLEX_INIT_CENTER;
-vertex_t *      init_point;
+vertex_t*       init_point;
 double          init_percent = 0.35;
 reject_method_t reject_type  = REJECT_METHOD_PENALTY;
 
@@ -153,24 +153,24 @@ int simplex_size;
 
 /* Variables to track current search state. */
 simplex_state_t state;
-vertex_t *centroid;
-vertex_t *test;
-simplex_t *base;
-simplex_t *init;
-vertex_t *next;
+vertex_t* centroid;
+vertex_t* test;
+simplex_t* base;
+simplex_t* init;
+vertex_t* next;
 
 int phase = -1;
-vertex_t *simplex_best;
-vertex_t *simplex_worst;
+vertex_t* simplex_best;
+vertex_t* simplex_worst;
 int curr_idx; /* for INIT or SHRINK */
 int next_id;
 
 int perf_n;
-double *thresh;
-value_range_t *range;
+double* thresh;
+value_range_t* range;
 
 /* Option variables */
-double *leeway;
+double* leeway;
 double mult;
 int anchor;
 int loose;
@@ -242,7 +242,7 @@ int nemo_phase_incr(void)
 /*
  * Invoked once on strategy load.
  */
-int strategy_init(hsignature_t *sig)
+int strategy_init(hsignature_t* sig)
 {
     if (libvertex_init(sig) != 0) {
         session_error("Could not initialize vertex library.");
@@ -316,10 +316,10 @@ int strategy_init(hsignature_t *sig)
     return 0;
 }
 
-int strategy_cfg(hsignature_t *sig)
+int strategy_cfg(hsignature_t* sig)
 {
     int i;
-    const char *cfgval;
+    const char* cfgval;
 
     loose = hcfg_bool(session_cfg, CFGKEY_NEMO_LOOSE);
     mult = hcfg_real(session_cfg, CFGKEY_NEMO_MULT);
@@ -426,7 +426,7 @@ int strategy_cfg(hsignature_t *sig)
         return -1;
     }
 
-    leeway = (double *) malloc(sizeof(double) * (perf_n - 1));
+    leeway = malloc(sizeof(double) * (perf_n - 1));
     if (!leeway) {
         session_error("Could not allocate memory for leeway vector.");
         return -1;
@@ -453,7 +453,7 @@ int strategy_cfg(hsignature_t *sig)
             leeway[i] = 0.10;
     }
 
-    range = (value_range_t *) malloc(sizeof(value_range_t) * perf_n);
+    range = malloc(sizeof(value_range_t) * perf_n);
     if (!range) {
         session_error("Could not allocate memory for range container.");
         return -1;
@@ -463,7 +463,7 @@ int strategy_cfg(hsignature_t *sig)
         range[i].max = -INFINITY;
     }
 
-    thresh = (double *) malloc(sizeof(double) * (perf_n - 1));
+    thresh = malloc(sizeof(double) * (perf_n - 1));
     if (!thresh) {
         session_error("Could not allocate memory for threshold container.");
         return -1;
@@ -475,7 +475,7 @@ int strategy_cfg(hsignature_t *sig)
 /*
  * Generate a new candidate configuration point.
  */
-int strategy_generate(hflow_t *flow, hpoint_t *point)
+int strategy_generate(hflow_t* flow, hpoint_t* point)
 {
     if (next->id == next_id) {
         flow->status = HFLOW_WAIT;
@@ -496,9 +496,9 @@ int strategy_generate(hflow_t *flow, hpoint_t *point)
 /*
  * Regenerate a point deemed invalid by a later plug-in.
  */
-int strategy_rejected(hflow_t *flow, hpoint_t *point)
+int strategy_rejected(hflow_t* flow, hpoint_t* point)
 {
-    hpoint_t *hint = &flow->point;
+    hpoint_t* hint = &flow->point;
 
     if (hint && hint->id != -1) {
         int orig_id = point->id;
@@ -555,7 +555,7 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
 /*
  * Analyze the observed performance for this configuration point.
  */
-int strategy_analyze(htrial_t *trial)
+int strategy_analyze(htrial_t* trial)
 {
     int i;
     double penalty, base;
@@ -619,7 +619,7 @@ int strategy_analyze(htrial_t *trial)
 /*
  * Return the best performing point thus far in the search.
  */
-int strategy_best(hpoint_t *point)
+int strategy_best(hpoint_t* point)
 {
     if (hpoint_copy(point, &best) != 0) {
         session_error("Internal error: Could not copy point.");
@@ -676,7 +676,7 @@ int nm_state_transition(void)
              * known simplex vertex.  Replace the worst performing
              * simplex vertex with the reflected test vertex.
              */
-            vertex_t *prev_worst;
+            vertex_t* prev_worst;
             vertex_copy(simplex_worst, test);
 
             prev_worst = simplex_worst;

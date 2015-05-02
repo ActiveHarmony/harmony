@@ -15,7 +15,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ */
 #define _GNU_SOURCE
 
 #include "hserver.h"
@@ -50,16 +50,16 @@
 /*
  * Function prototypes
  */
-int parse_opts(int argc, char *argv[]);
-int vars_init(int argc, char *argv[]);
+int parse_opts(int argc, char* argv[]);
+int vars_init(int argc, char* argv[]);
 int network_init(void);
 int handle_new_connection(int fd);
 int handle_unknown_connection(int fd);
 int handle_client_socket(int fd);
 int handle_session_socket(int idx);
-int available_index(int **list, int *cap);
+int available_index(int** list, int* cap);
 void client_close(int fd);
-int append_http_log(session_state_t *sess, const hpoint_t *pt, double perf);
+int append_http_log(session_state_t* sess, const hpoint_t* pt, double perf);
 
 /*
  * Main variables
@@ -69,16 +69,16 @@ int listen_socket;
 fd_set listen_fds;
 int highest_socket;
 
-int *unk_fds, unk_cap;
-int *client_fds, client_cap;
-int *http_fds, http_len, http_cap;
+int* unk_fds, unk_cap;
+int* client_fds, client_cap;
+int* http_fds, http_len, http_cap;
 
-char *harmony_dir;
-char *session_bin;
+char* harmony_dir;
+char* session_bin;
 hmesg_t mesg_in, mesg_out; /* Maintain two message structures
                             * to avoid overwriting buffers.
                             */
-session_state_t *slist;
+session_state_t* slist;
 int slist_cap;
 
 /*
@@ -95,7 +95,7 @@ void usage(const char* prog)
             listen_port);
 }
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
     int i, fd_count, retval;
     fd_set ready_fds;
@@ -190,7 +190,7 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-int parse_opts(int argc, char *argv[])
+int parse_opts(int argc, char* argv[])
 {
     int c;
     static struct option long_options[] = {
@@ -224,9 +224,10 @@ int parse_opts(int argc, char *argv[])
     return 0;
 }
 
-int vars_init(int argc, char *argv[])
+int vars_init(int argc, char* argv[])
 {
-    char *tmppath, *binfile;
+    char* tmppath;
+    char* binfile;
 
     /*
      * Install proper signal handling.
@@ -347,7 +348,7 @@ int network_init(void)
     addr.sin_port        = htons(listen_port);
 
     /* Bind the socket to the desired port. */
-    if (bind(listen_socket, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+    if (bind(listen_socket, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         perror("Could not bind socket to listening address");
         return -1;
     }
@@ -373,7 +374,7 @@ int handle_new_connection(int fd)
     socklen_t addrlen = sizeof(addr);
     int idx, newfd;
 
-    newfd = accept(fd, (struct sockaddr *)&addr, &addrlen);
+    newfd = accept(fd, (struct sockaddr*)&addr, &addrlen);
     if (newfd < 0) {
         perror("Error accepting new connection");
         return -1;
@@ -447,7 +448,7 @@ int handle_client_socket(int fd)
 {
     int idx, i, retval;
     double perf;
-    session_state_t *sess;
+    session_state_t* sess;
 
     sess = NULL;
     retval = mesg_recv(fd, &mesg_in);
@@ -518,7 +519,7 @@ int handle_client_socket(int fd)
                 break;
         }
         if (i < sess->fetched_len) {
-            const hpoint_t *pt = &sess->fetched[i];
+            const hpoint_t* pt = &sess->fetched[i];
 
             /* Copy point from fetched list to HTTP log. */
             if (append_http_log(sess, pt, perf) != 0) {
@@ -589,7 +590,7 @@ int handle_client_socket(int fd)
 
 int handle_session_socket(int idx)
 {
-    session_state_t *sess;
+    session_state_t* sess;
 
     sess = &slist[idx];
     if (mesg_recv(sess->fd, &mesg_in) < 1)
@@ -597,7 +598,7 @@ int handle_session_socket(int idx)
 
     if (mesg_in.dest == -1) {
         if (mesg_in.status == HMESG_STATUS_REQ) {
-            if (handle_http_info(sess, (char *)mesg_in.data.string) != 0) {
+            if (handle_http_info(sess, (char*)mesg_in.data.string) != 0) {
                 perror("Error handling http info message");
                 goto error;
             }
@@ -619,7 +620,7 @@ int handle_session_socket(int idx)
             /* Log this point before we forward it to the client. */
             if (sess->fetched_len == sess->fetched_cap) {
                 if (array_grow(&sess->fetched, &sess->fetched_cap,
-                               sizeof(hpoint_t *)) != 0)
+                               sizeof(hpoint_t*)) != 0)
                 {
                     perror("Could not grow fetch log");
                     goto error;
@@ -665,12 +666,12 @@ int handle_session_socket(int idx)
     return -1;
 }
 
-session_state_t *session_open(hmesg_t *mesg)
+session_state_t* session_open(hmesg_t* mesg)
 {
     int i, idx = -1;
-    session_state_t *sess;
-    char *child_argv[2];
-    const char *cfgstr;
+    session_state_t* sess;
+    char* child_argv[2];
+    const char* cfgstr;
 
     /* check if session already exists, and return if it does */
     for (i = 0; i < slist_cap; ++i) {
@@ -708,7 +709,7 @@ session_state_t *session_open(hmesg_t *mesg)
         hcfg_set(&mesg->data.session.cfg, CFGKEY_LAYERS, HTTPINFO);
     }
     else if (strstr(cfgstr, HTTPINFO) == NULL) {
-        char *buf = sprintf_alloc(HTTPINFO ";%s", cfgstr);
+        char* buf = sprintf_alloc(HTTPINFO ";%s", cfgstr);
         hcfg_set(&mesg->data.session.cfg, CFGKEY_LAYERS, buf);
         free(buf);
     }
@@ -745,7 +746,7 @@ session_state_t *session_open(hmesg_t *mesg)
     return NULL;
 }
 
-void session_close(session_state_t *sess)
+void session_close(session_state_t* sess)
 {
     int i;
 
@@ -788,7 +789,7 @@ void client_close(int fd)
     FD_CLR(fd, &listen_fds);
 }
 
-int available_index(int **list, int *cap)
+int available_index(int** list, int* cap)
 {
     int i, orig_cap;
 
@@ -804,9 +805,9 @@ int available_index(int **list, int *cap)
     return orig_cap;
 }
 
-int append_http_log(session_state_t *sess, const hpoint_t *pt, double perf)
+int append_http_log(session_state_t* sess, const hpoint_t* pt, double perf)
 {
-    http_log_t *entry;
+    http_log_t* entry;
 
     /* Extend HTTP log if necessary. */
     if (sess->log_len == sess->log_cap) {
@@ -830,10 +831,10 @@ int append_http_log(session_state_t *sess, const hpoint_t *pt, double perf)
     return 0;
 }
 
-int session_setcfg(session_state_t *sess, const char *key, const char *val)
+int session_setcfg(session_state_t* sess, const char* key, const char* val)
 {
     hmesg_t mesg = HMESG_INITIALIZER;
-    char *buf = sprintf_alloc("%s=%s", key, val ? val : "");
+    char* buf = sprintf_alloc("%s=%s", key, val ? val : "");
     int retval = 0;
 
     mesg.dest = -1;
@@ -849,7 +850,7 @@ int session_setcfg(session_state_t *sess, const char *key, const char *val)
     return retval;
 }
 
-int session_restart(session_state_t *sess)
+int session_restart(session_state_t* sess)
 {
     hmesg_t mesg = HMESG_INITIALIZER;
     int retval = 0;

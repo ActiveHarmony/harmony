@@ -62,8 +62,8 @@
 #include <ctype.h>
 
 /*
- * Name used to identify this plugin.  All Harmony plugins must define
- * this variable.
+ * Name used to identify this plugin layer.
+ * All Harmony plugin layers must define this variable.
  */
 const char harmony_layer_name[] = "group";
 
@@ -76,24 +76,25 @@ hcfg_info_t plugin_keyinfo[] = {
     { NULL }
 };
 
-int parse_group(const char *buf);
+int parse_group(const char* buf);
 
 typedef struct group_def {
-    int *idx;
+    int* idx;
     int idx_len;
 } group_def_t;
 
 static char internal_restart_req;
 static int cap_max;
-static hval_t *locked_val, *hint_val;
-static group_def_t *glist;
+static hval_t* locked_val;
+static hval_t* hint_val;
+static group_def_t* glist;
 static int glist_len, glist_cap;
 static int glist_curr;
 static hpoint_t best;
 
-int group_init(hsignature_t *sig)
+int group_init(hsignature_t* sig)
 {
-    const char *ptr;
+    const char* ptr;
 
     if (internal_restart_req) {
         /* Ignore our own requests to re-initialize. */
@@ -110,13 +111,13 @@ int group_init(hsignature_t *sig)
     /* The maximum group size is the number of input ranges. */
     cap_max = sig->range_len;
 
-    locked_val = (hval_t *) calloc(cap_max, sizeof(hval_t));
+    locked_val = calloc(cap_max, sizeof(hval_t));
     if (!locked_val) {
         session_error("Could not allocate memory for locked value list.");
         return -1;
     }
 
-    hint_val = (hval_t *) calloc(cap_max, sizeof(hval_t));
+    hint_val = calloc(cap_max, sizeof(hval_t));
     if (!hint_val) {
         session_error("Could not allocate memory for hint value list.");
         return -1;
@@ -132,7 +133,7 @@ int group_init(hsignature_t *sig)
     return parse_group(ptr);
 }
 
-int group_setcfg(const char *key, const char *val)
+int group_setcfg(const char* key, const char* val)
 {
     int i, retval = 0;
 
@@ -154,12 +155,12 @@ int group_setcfg(const char *key, const char *val)
     return retval;
 }
 
-int group_generate(hflow_t *flow, htrial_t *trial)
+int group_generate(hflow_t* flow, htrial_t* trial)
 {
     int i;
 
     if (glist_curr < glist_len) {
-        hval_t *trial_val = trial->point.val;
+        hval_t* trial_val = trial->point.val;
 
         /* Initialize locked values, if needed. */
         for (i = 0; i < cap_max; ++i) {
@@ -202,12 +203,12 @@ int group_fini(void)
     return 0;
 }
 
-int parse_group(const char *buf)
+int parse_group(const char* buf)
 {
     int i, j, count, success;
 
-    int *list = (int *) malloc(cap_max * sizeof(int));
-    char *seen = (char *) calloc(cap_max, sizeof(char));
+    int* list = malloc(cap_max * sizeof(int));
+    char* seen = calloc(cap_max, sizeof(char));
 
     if (!list || !seen) {
         session_error("Error allocating memory for group parsing function");
@@ -247,7 +248,7 @@ int parse_group(const char *buf)
         ++buf;
 
         /* Allocate memory for the parsed index list. */
-        glist[i].idx = (int *) malloc(j * sizeof(int));
+        glist[i].idx = malloc(j * sizeof(int));
         if (!glist[i].idx) {
             session_error("Error allocating memory for group index list");
             goto cleanup;

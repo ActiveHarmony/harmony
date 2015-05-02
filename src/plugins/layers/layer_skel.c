@@ -23,8 +23,8 @@
 #include "hcfg.h"
 
 /*
- * Name used to identify this plugin.  All Harmony plugins must define
- * this variable.
+ * Name used to identify this plugin.
+ * All Harmony plugins must define this variable.
  */
 const char harmony_layer_name[] = "<plugin>";
 
@@ -47,7 +47,7 @@ hcfg_info_t plugin_keyinfo[] = {
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int <plugin>_init(hsignature_t *sig)
+int <plugin>_init(hsignature_t* sig)
 {
     return 0;
 }
@@ -62,7 +62,7 @@ int <plugin>_init(hsignature_t *sig)
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int <plugin>_join(const char *id)
+int <plugin>_join(const char* id)
 {
     return 0;
 }
@@ -78,7 +78,7 @@ int <plugin>_join(const char *id)
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int <plugin>_setcfg(const char *key, const char *val)
+int <plugin>_setcfg(const char* key, const char* val)
 {
     return 0;
 }
@@ -96,7 +96,7 @@ int <plugin>_setcfg(const char *key, const char *val)
  * Otherwise, this routine should return 0, and the contents of the
  * "flow" variable should be set appropriately.
  */
-int <plugin>_generate(hflow_t *flow, htrial_t *trial)
+int <plugin>_generate(hflow_t* flow, htrial_t* trial)
 {
     flow->status = HFLOW_ACCEPT;
     return 0;
@@ -115,7 +115,7 @@ int <plugin>_generate(hflow_t *flow, htrial_t *trial)
  * Otherwise, this routine should return 0, and the contents of the
  * "flow" variable should be set appropriately.
  */
-int <plugin>_analyze(hflow_t *flow, htrial_t *trial)
+int <plugin>_analyze(hflow_t* flow, htrial_t* trial)
 {
     flow->status = HFLOW_ACCEPT;
     return 0;

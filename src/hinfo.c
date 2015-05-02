@@ -128,7 +128,7 @@ typedef enum hinfo_cmd {
     HINFO_MAX
 } hinfo_cmd_t;
 
-static const char *strategy_required[] = {
+static const char* strategy_required[] = {
     "strategy_analyze",
     "strategy_generate",
     "strategy_rejected",
@@ -136,7 +136,7 @@ static const char *strategy_required[] = {
     NULL
 };
 
-static const char *strategy_valid[] = {
+static const char* strategy_valid[] = {
     "strategy_init",
     "strategy_fini",
     "strategy_join",
@@ -145,7 +145,7 @@ static const char *strategy_valid[] = {
     NULL
 };
 
-static const char *layer_suffix[] = {
+static const char* layer_suffix[] = {
     "join",
     "generate",
     "analyze",
@@ -157,33 +157,33 @@ static const char *layer_suffix[] = {
 };
 
 /* Function Prototypes */
-int   parse_opts(int argc, char *argv[]);
-char *find_harmony_home(const char *progname);
-int   is_valid_harmony_home(const char *dir);
+int   parse_opts(int argc, char* argv[]);
+char* find_harmony_home(const char* progname);
+int   is_valid_harmony_home(const char* dir);
 int   search_libexec(void);
-void *find_plugin(const char *name);
-void  print_details(void *handle);
-char *is_layer(void *handle);
-int   is_strategy(void *handle);
-int   qsort_strcmp(const void *a, const void *b);
+void* find_plugin(const char* name);
+void  print_details(void* handle);
+char* is_layer(void* handle);
+int   is_strategy(void* handle);
+int   qsort_strcmp(const void* a, const void* b);
 
 int   libexec_open(void);
-char *libexec_path(void);
+char* libexec_path(void);
 void  libexec_close(void);
 
 /* Global Variables */
 hinfo_cmd_t command;
-char *cmd_arg;
-char *curr_file;
+char* cmd_arg;
+char* curr_file;
 int verbose;
-char *home_dir;
+char* home_dir;
 
-char **layer;
+char** layer;
 int layer_len, layer_cap;
-char **strat;
+char** strat;
 int strat_len, strat_cap;
 
-void usage(const char *prog)
+void usage(const char* prog)
 {
     fprintf(stderr, "Usage: %s [options]\n", prog);
     fprintf(stderr, "OPTIONS:\n"
@@ -197,10 +197,10 @@ void usage(const char *prog)
 "  -v, --verbose     Print additional information during operation.\n");
 }
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
     int i, retval = 0;
-    void *handle;
+    void* handle;
 
     if (parse_opts(argc, argv) != 0)
         goto error;
@@ -279,7 +279,7 @@ int main(int argc, char *argv[])
     return retval;
 }
 
-int parse_opts(int argc, char *argv[])
+int parse_opts(int argc, char* argv[])
 {
     int c;
     static struct option long_options[] = {
@@ -320,9 +320,9 @@ int parse_opts(int argc, char *argv[])
 /*
  * Determine the location of the Active Harmony installation directory.
  */
-char *find_harmony_home(const char *argv0)
+char* find_harmony_home(const char* argv0)
 {
-    char *retval;
+    char* retval;
     int home_from_env = 0;
 
     /* First check HARMONY_HOME environment variable. */
@@ -351,8 +351,8 @@ char *find_harmony_home(const char *argv0)
     }
     /* As a last resort, search the PATH environment variable. */
     else {
-        char *dirpath;
-        char *tmpbuf = stralloc(argv0);
+        char* dirpath;
+        char* tmpbuf = stralloc(argv0);
 
         if (!tmpbuf) {
             perror("Could not allocate temporary memory for program name");
@@ -389,9 +389,9 @@ char *find_harmony_home(const char *argv0)
     return retval;
 }
 
-int is_valid_harmony_home(const char *dir)
+int is_valid_harmony_home(const char* dir)
 {
-    static const char *home_file[] = {
+    static const char* home_file[] = {
         /* Not a complete list.  Just enough to move forward confidently. */
         "bin/hinfo",
         "bin/tuna",
@@ -399,7 +399,7 @@ int is_valid_harmony_home(const char *dir)
         NULL
     };
     int i, valid = 1;
-    char *tmpbuf;
+    char* tmpbuf;
 
     for (i = 0; valid && home_file[i]; ++i) {
         tmpbuf = sprintf_alloc("%s/%s", dir, home_file[i]);
@@ -424,20 +424,20 @@ int search_libexec(void)
         return -1;
 
     while (1) {
-        void *handle;
-        char *fname = libexec_path();
+        void* handle;
+        char* fname = libexec_path();
         if (!fname)
             break;
 
         handle = dlopen(fname, RTLD_LAZY | RTLD_LOCAL);
         if (handle) {
-            char *base = basename(fname);
-            char *prefix;
+            char* base = basename(fname);
+            char* prefix;
 
             prefix = is_layer(handle);
             if (prefix) {
                 if (layer_len == layer_cap) {
-                    if (array_grow(&layer, &layer_cap, sizeof(char *)) != 0) {
+                    if (array_grow(&layer, &layer_cap, sizeof(char*)) != 0) {
                         perror("Could not grow layer list");
                         exit(-1);
                     }
@@ -452,7 +452,7 @@ int search_libexec(void)
 
             if (is_strategy(handle)) {
                 if (strat_len == strat_cap) {
-                    if (array_grow(&strat, &strat_cap, sizeof(char *)) != 0) {
+                    if (array_grow(&strat, &strat_cap, sizeof(char*)) != 0) {
                         perror("Could not grow strategy list");
                         exit(-1);
                     }
@@ -475,16 +475,16 @@ int search_libexec(void)
     }
     libexec_close();
 
-    qsort(layer, layer_len, sizeof(char *), qsort_strcmp);
-    qsort(strat, strat_len, sizeof(char *), qsort_strcmp);
+    qsort(layer, layer_len, sizeof(char*), qsort_strcmp);
+    qsort(strat, strat_len, sizeof(char*), qsort_strcmp);
     return retval;
 }
 
-void *find_plugin(const char *name)
+void* find_plugin(const char* name)
 {
-    char *tail;
+    char* tail;
     int by_filename;
-    void *handle = NULL;
+    void* handle = NULL;
 
     if (libexec_open() != 0)
         return NULL;
@@ -496,7 +496,7 @@ void *find_plugin(const char *name)
     by_filename = (tail && strcmp(tail, ".so") == 0);
 
     while (!handle) {
-        char *fname = libexec_path();
+        char* fname = libexec_path();
         if (!fname)
             break;
 
@@ -514,7 +514,7 @@ void *find_plugin(const char *name)
         else {
             handle = dlopen(fname, RTLD_LAZY | RTLD_LOCAL);
             if (handle) {
-                char *title = (char *) dlsym(handle, "harmony_layer_name");
+                char* title = dlsym(handle, "harmony_layer_name");
                 if (title && strcmp(title, name) == 0) {
                     curr_file = stralloc( basename(fname) );
                 }
@@ -534,10 +534,10 @@ void *find_plugin(const char *name)
     return handle;
 }
 
-void print_details(void *handle)
+void print_details(void* handle)
 {
     int i, some_defined;
-    const char *prefix;
+    const char* prefix;
 
     /*
      * Strategy plug-in analysis.
@@ -580,12 +580,12 @@ void print_details(void *handle)
 
     /* Processing layer plug-in analysis. */
     printf("Considering `%s' as a processing layer plug-in:\n", curr_file);
-    prefix = (const char *) dlsym(handle, "harmony_layer_name");
+    prefix = dlsym(handle, "harmony_layer_name");
     if (prefix) {
         if (is_layer(handle)) {
             printf("    Detected layer `%s'.  Callbacks defined:\n", prefix);
             for (i = 0; layer_suffix[i]; ++i) {
-                char *fname = sprintf_alloc("%s_%s", prefix, layer_suffix[i]);
+                char* fname = sprintf_alloc("%s_%s", prefix, layer_suffix[i]);
                 if (!fname) {
                     perror("Could not allocate layer function name");
                     exit(-1);
@@ -615,13 +615,14 @@ void print_details(void *handle)
  *
  * Returns the defined layer name.
  */
-char *is_layer(void *handle)
+char* is_layer(void* handle)
 {
     int valid = 0;
-    char *prefix, *fname;
+    char* prefix;
+    char* fname;
 
     /* Plugin layers must define a layer name. */
-    prefix = (char *) dlsym(handle, "harmony_layer_name");
+    prefix = dlsym(handle, "harmony_layer_name");
     if (!prefix)
         return NULL;
 
@@ -648,7 +649,7 @@ char *is_layer(void *handle)
 /* Quick check for required strategy plug-in
  * function symbols within shared library.
  */
-int is_strategy(void *handle)
+int is_strategy(void* handle)
 {
     int i;
 
@@ -659,18 +660,18 @@ int is_strategy(void *handle)
     return 1;
 }
 
-int qsort_strcmp(const void *a, const void *b)
+int qsort_strcmp(const void* a, const void* b)
 {
-    char * const *_a = a;
-    char * const *_b = b;
+    char* const* _a = a;
+    char* const* _b = b;
     return strcmp(*_a, *_b);
 }
 
 /* The following three utility functions are used to search the libexec
  * directory.
  */
-static DIR *dp;
-static char *path;
+static DIR* dp;
+static char* path;
 static int cap;
 
 int libexec_open(void)
@@ -706,11 +707,11 @@ int libexec_open(void)
     return 0;
 }
 
-char *libexec_path(void)
+char* libexec_path(void)
 {
     while (1) {
-        char *file;
-        struct dirent *entry;
+        char* file;
+        struct dirent* entry;
         struct stat finfo;
 
         errno = 0;

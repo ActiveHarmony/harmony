@@ -200,9 +200,9 @@ finfo_t flist[] = {
     {NULL, NULL, 0, 0.0, 0.0, 0.0, NULL, NULL}
 };
 
-void flist_print(FILE *fd, int verbose)
+void flist_print(FILE* fd, int verbose)
 {
-    finfo_t *ptr;
+    finfo_t* ptr;
     int len;
 
     len = 0;
@@ -226,9 +226,9 @@ void flist_print(FILE *fd, int verbose)
     }
 }
 
-finfo_t *flist_find(const char *name)
+finfo_t* flist_find(const char* name)
 {
-    finfo_t *ptr;
+    finfo_t* ptr;
 
     for (ptr = flist; ptr->name; ++ptr) {
         if (strcmp(ptr->name, name) == 0)

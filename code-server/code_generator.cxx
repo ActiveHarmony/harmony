@@ -69,23 +69,23 @@ typedef struct {
     string port;
 } url_t;
 
-void generator_main(generator_t &gen);
-int codeserver_init(string &filename);
-int dir_erase(string &dirname);
-int parse_slave_list(const char *hostlist);
+void generator_main(generator_t& gen);
+int codeserver_init(string& filename);
+int dir_erase(string& dirname);
+int parse_slave_list(const char* hostlist);
 int slave_complete(pid_t pid);
-vector<long> values_of(hpoint_t *pt);
-string vector_to_string(vector<long> &v);
-string vector_to_bash_array_local(vector<long> &v);
-string vector_to_bash_array_remote(vector<long> &v);
-int file_type(const char *fileName);
-void logger(const string &message);
+vector<long> values_of(hpoint_t* pt);
+string vector_to_string(vector<long>& v);
+string vector_to_bash_array_local(vector<long>& v);
+string vector_to_bash_array_remote(vector<long>& v);
+int file_type(const char* fileName);
+void logger(const string& message);
 double time_stamp(void);
-int url_parse(const char *buf, url_t &url);
-int mesg_write(hmesg_t &mesg, int step);
-int mesg_read(const char *filename, hmesg_t *msg);
-int read_loop(int fd, char *buf, int len);
-int write_loop(int fd, char *buf, int len);
+int url_parse(const char* buf, url_t& url);
+int mesg_write(hmesg_t& mesg, int step);
+int mesg_read(const char* filename, hmesg_t* msg);
+int read_loop(int fd, char* buf, int len);
+int write_loop(int fd, char* buf, int len);
 
 /*
  * Global Variable Declaration
@@ -109,7 +109,7 @@ url_t local_url, reply_url, target_url;
  *  generation is complete. We block all the signals because we do not want to
  *  interrupt any code generation activity.
  */
-pid_t generator_make(generator_t &gen)
+pid_t generator_make(generator_t& gen)
 {
     pid_t pid;
 
@@ -134,7 +134,7 @@ pid_t generator_make(generator_t &gen)
 //  Scripts for different code and different code-generation utility need to
 //   be provided by the user.
 
-void generator_main(generator_t &gen)
+void generator_main(generator_t& gen)
 {
     // this is where the code generation happens
     //  make a call to chill_script.appname.sh
@@ -193,7 +193,7 @@ void generator_main(generator_t &gen)
     exit(0);
 }
 
-int main(int argc, char **argv)
+int main(int argc, char* argv[])
 {
     stringstream ss;
     int status, num_ready;
@@ -311,9 +311,9 @@ int main(int argc, char **argv)
     return 0;
 }
 
-int codeserver_init(string &filename)
+int codeserver_init(string& filename)
 {
-    const char *cfgval;
+    const char* cfgval;
     hmesg_t init_mesg;
     stringstream ss;
 
@@ -440,9 +440,9 @@ double time_stamp(void)
  * sophisticated version will be required when the codeserver is
  * overhauled.
  */
-int url_parse(const char *str, url_t &url)
+int url_parse(const char* str, url_t& url)
 {
-    const char *ptr;
+    const char* ptr;
 
     ptr = strstr(str, "//");
     if (!ptr)
@@ -494,10 +494,10 @@ int url_parse(const char *str, url_t &url)
     return -1;
 }
 
-int dir_erase(string &dirname)
+int dir_erase(string& dirname)
 {
-    DIR *dirfd;
-    struct dirent *dent;
+    DIR* dirfd;
+    struct dirent* dent;
     stringstream initfile;
 
     dirfd = opendir(dirname.c_str());
@@ -521,7 +521,7 @@ int dir_erase(string &dirname)
     return 0;
 }
 
-void logger(const string &message)
+void logger(const string& message)
 {
     string line;
     ofstream out_file;
@@ -537,10 +537,13 @@ void logger(const string &message)
     out_file.close();
 }
 
-int parse_slave_list(const char *hostlist)
+int parse_slave_list(const char* hostlist)
 {
-    const char *end, *head, *tail, *host_ptr;
-    char *num_ptr;
+    const char* end;
+    const char* head;
+    const char* tail;
+    const char* host_ptr;
+    char* num_ptr;
     string host;
     long num;
     stringstream ss;
@@ -565,7 +568,7 @@ int parse_slave_list(const char *hostlist)
         num = -1;
 
         /* Find the entry boundary. */
-        tail = (char *)memchr(head, ',', end - head);
+        tail = (char*)memchr(head, ',', end - head);
         if (!tail) {
             tail = end;
         }
@@ -639,7 +642,7 @@ int slave_complete(pid_t pid)
     return -1;
 }
 
-vector<long> values_of(hpoint_t *pt)
+vector<long> values_of(hpoint_t* pt)
 {
     vector<long> retval;
 
@@ -654,7 +657,7 @@ vector<long> values_of(hpoint_t *pt)
     return retval;
 }
 
-string vector_to_string(vector<long> &v)
+string vector_to_string(vector<long>& v)
 {
     stringstream ss;
     ss << " ";
@@ -664,7 +667,7 @@ string vector_to_string(vector<long> &v)
     return ss.str();
 }
 
-string vector_to_bash_array_remote(vector<long> &v)
+string vector_to_bash_array_remote(vector<long>& v)
 {
     stringstream ss;
     ss << "\\\"";
@@ -676,7 +679,7 @@ string vector_to_bash_array_remote(vector<long> &v)
     return ss.str();
 }
 
-string vector_to_bash_array_local(vector<long> &v)
+string vector_to_bash_array_local(vector<long>& v)
 {
     stringstream ss;
     ss << "\"";
@@ -688,7 +691,7 @@ string vector_to_bash_array_local(vector<long> &v)
     return ss.str();
 }
 
-int file_type(const char *fileName)
+int file_type(const char* fileName)
 {
     struct stat buf;
     if (fileName == NULL) {
@@ -710,10 +713,10 @@ int file_type(const char *fileName)
 
 #define POLL_TIME 250000
 
-int mesg_read(const char *filename, hmesg_t *msg)
+int mesg_read(const char* filename, hmesg_t* msg)
 {
     int msglen, fd, retries, retval;
-    char *newbuf;
+    char* newbuf;
     struct stat sb;
     struct timeval polltime;
 
@@ -736,7 +739,7 @@ int mesg_read(const char *filename, hmesg_t *msg)
 
     msglen = sb.st_size + 1;
     if (msg->buflen < msglen) {
-        newbuf = (char *) realloc(msg->buf, msglen);
+        newbuf = (char*) realloc(msg->buf, msglen);
         if (!newbuf) {
             cerr << "Could not allocate memory for message data.\n";
             retval = -1;
@@ -788,7 +791,7 @@ int mesg_read(const char *filename, hmesg_t *msg)
     return -1;
 }
 
-int mesg_write(hmesg_t &mesg, int step)
+int mesg_write(hmesg_t& mesg, int step)
 {
     stringstream ss;
     string filename;
@@ -834,7 +837,7 @@ int mesg_write(hmesg_t &mesg, int step)
     return 0;
 }
 
-int read_loop(int fd, char *buf, int len)
+int read_loop(int fd, char* buf, int len)
 {
     int count;
 
@@ -852,7 +855,7 @@ int read_loop(int fd, char *buf, int len)
     return 0;
 }
 
-int write_loop(int fd, char *buf, int len)
+int write_loop(int fd, char* buf, int len)
 {
     int count;
 
