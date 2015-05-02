@@ -5,7 +5,7 @@ CC=gcc
 CFLAGS=-std=c99 -pedantic -Wall -Werror -g
 
 override CFLAGS+=-fPIC
-override CPPFLAGS+=-I$(TO_BASE)/src -D_ISOC99_SOURCE -D_XOPEN_SOURCE=500
+override CPPFLAGS+=-I$(TO_BASE)/src
 override LDFLAGS+=-L$(TO_BASE)/src
 override LDLIBS+=-lharmony
 

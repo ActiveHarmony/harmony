@@ -16,6 +16,9 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
+#define _BSD_SOURCE       // Deprecate at some point in the future.
+#define _DEFAULT_SOURCE   // Needed for timersub().
+#define _XOPEN_SOURCE 500 // Needed for wait3(), kill(), and fdopen().
 
 #include <stdio.h>
 #include <stdlib.h>

@@ -3,7 +3,6 @@ TO_BASE=../..
 CC=gcc
 MPICC=mpicc
 CFLAGS=-std=c99 -pedantic -Wall -Werror -g
-CPPFLAGS=-D_ISOC99_SOURCE -D_XOPEN_SOURCE=500
 
 override CFLAGS+=-I$(TO_BASE)/src
 override LDFLAGS+=-L$(TO_BASE)/src

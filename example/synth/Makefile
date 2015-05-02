@@ -2,7 +2,6 @@ TO_BASE=../..
 
 CC=gcc
 CFLAGS=-std=c99 -pedantic -Wall -Werror -g
-CPPFLAGS=-D_ISOC99_SOURCE -D_XOPEN_SOURCE=500
 
 SRCS=	synth.c \
 	testfunc.c

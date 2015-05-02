@@ -6,7 +6,7 @@ CC=gcc
 CFLAGS=-std=c99 -pedantic -Wall -Werror -g
 
 override CFLAGS+=-fPIC
-override CPPFLAGS+=-I$(TO_BASE)/src -D_ISOC99_SOURCE -D_XOPEN_SOURCE=500
+override CPPFLAGS+=-I$(TO_BASE)/src
 
 TCL_INCDIR?=/usr/include
 TCL_LIBDIR?=/usr/lib64
