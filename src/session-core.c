@@ -212,7 +212,7 @@ int main(int argc, char **argv)
         flow.point  = HPOINT_INITIALIZER;
 
         ready_fds = fds;
-        retval = select(maxfd + 1, &ready_fds, NULL, NULL, pollstate);
+        retval = select(maxfd + 1, &ready_fds, NULL, NULL, (pending_len == pending_cap)?NULL:pollstate);
         if (retval < 0)
             goto error;
 
