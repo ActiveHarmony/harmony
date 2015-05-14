@@ -47,6 +47,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <unistd.h>
+
 const char harmony_layer_name[] = "cache";
 
 typedef struct {
@@ -54,14 +56,23 @@ typedef struct {
     hperf_t *perf;
 } cache_t;
 
+typedef struct {
+    hpoint_t point;
+    unsigned int count;     // times visited = nth matching point to get
+    unsigned int total_num; // how many times this point appears in data
+} visited_t;
+
 int find_max_strlen(void);
 int load_logger_file(const char *logger);
 int safe_scanstr(FILE *fd, int bounds_idx, const char **match);
 int pt_equiv(const hpoint_t *a, const hpoint_t *b);
+visited_t *find_visited(const hpoint_t *a);
 
 static hrange_t *range;
 static cache_t *cache;
+static visited_t *visited;
 static int cache_len, cache_cap;
+static int visited_len, visited_cap;
 static int skip;
 static int i_cnt;
 static int o_cnt;
@@ -74,13 +85,17 @@ static int buflen;
 int cache_init(hsignature_t *sig)
 {
     const char *filename;
-
+    
+    
     i_cnt = sig->range_len;
     o_cnt = atoi( session_getcfg(CFGKEY_PERF_COUNT) );
     range = sig->range;
 
     cache = NULL;
     cache_len = cache_cap = 0;
+
+    visited = NULL;
+    visited_len = visited_cap = 0;
 
     filename = session_getcfg("CACHE_FILE");
     if (filename) {
@@ -107,19 +122,55 @@ int cache_init(hsignature_t *sig)
  */
 int cache_generate(hflow_t *flow, htrial_t *trial)
 {
-    int i;
+    int i, pt_num;
+    visited_t *visited_pt;
+    
+    // so the client gets a chance to do something when the search is converged 
+    // not really part of cache, but gemm example client will never terminate
+    // or do anything if this isn't present (it never knows when strat is converged)
+    if(strncmp(session_getcfg(CFGKEY_STRATEGY_CONVERGED), "1", 1) == 0) {
+      return HFLOW_ACCEPT;
+    } 
+
+    visited_pt = find_visited(&trial->point);
+
+    if(visited_pt != NULL) {
+        // wrapping around (i.e. if point occurs twice, and we're coming back for the third time
+        // we should give back the first point
+        if(visited_pt->total_num > 0 && visited_pt->count > visited_pt->total_num)
+            visited_pt->count = visited_pt->count % visited_pt->total_num + 1;
+    } 
+    
+    cache_lookup:
+    pt_num = 0;
 
     /* For now, we rely on a linear cache lookup. */
     for (i = 0; i < cache_len; ++i) {
         if (pt_equiv(&trial->point, &cache[i].point)) {
             hperf_copy(trial->perf, cache[i].perf);
-            flow->status = HFLOW_RETURN;
             skip = 1;
-            return 0;
+            flow->status = HFLOW_RETURN;
+            pt_num++;
+
+            if(visited_pt != NULL) {
+              if(pt_num == visited_pt->count || visited_pt->count == 0) {
+                return 0;      // pt found, is % nth point listed (where n = times visited)
+              }                
+            } else {
+                return 0;   // pt found, never visited
+            }
         }
     }
 
-    flow->status = HFLOW_ACCEPT;
+    if(visited_pt != NULL) {             // reached end of data = we know how many times this point appears
+        visited_pt->total_num = pt_num;
+        visited_pt->count = visited_pt->count % visited_pt->total_num;
+        goto cache_lookup;
+    }
+
+    if(! skip) 
+        flow->status = HFLOW_ACCEPT; // pt not found
+    
     return 0;
 }
 
@@ -129,6 +180,8 @@ int cache_generate(hflow_t *flow, htrial_t *trial)
  */
 int cache_analyze(hflow_t *flow, htrial_t *trial)
 {
+    visited_t *visited_pt;
+
     if (!skip) {
         if (cache_len == cache_cap) {
             if (array_grow(&cache, &cache_cap, sizeof(cache_t)) != 0) {
@@ -143,8 +196,25 @@ int cache_analyze(hflow_t *flow, htrial_t *trial)
         ++cache_len;
     }
     skip = 0;
-
+    session_error("cache_analyze");
     flow->status = HFLOW_ACCEPT;
+
+    visited_pt = find_visited(&trial->point);
+    /* add to list of visited points */
+    if(visited_pt == NULL) {
+      if(visited_cap == visited_len) {
+          visited_cap += 10;
+          visited = realloc(visited, sizeof(visited_t) * visited_cap);
+      }
+      memset(visited + visited_len, 0, sizeof(visited_t));
+      hpoint_init(&visited[visited_len].point, trial->point.n);
+      hpoint_copy(&visited[visited_len].point, &trial->point);
+      visited[visited_len].count = 2;  // looking for the 2nd occurance next time we get to generate
+      visited_len++;
+    } else {
+      visited_pt->count++;  // or update existing visited point info
+    }
+
     return 0;
 }
 
@@ -337,4 +407,16 @@ int pt_equiv(const hpoint_t *a, const hpoint_t *b)
         }
     }
     return 1;
+}
+
+visited_t *find_visited(const struct hpoint *a) 
+{
+    int i;
+
+    for(i = 0;i < visited_len;i++) {
+        if(pt_equiv(a, &visited[i].point))
+            return visited + i;
+    }
+
+    return 0;
 }
