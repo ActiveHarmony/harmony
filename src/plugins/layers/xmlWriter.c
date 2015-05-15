@@ -34,11 +34,6 @@
  * And `LIBXML2` should point wherever libxml2 has been installed.
  * For Linux distributions that include libxml2 as a package, using
  * `/usr` may be sufficient.
- *
- * **Configuration Variables**
- * Key                | Type    | Default | Description
- * ------------------ | ------- | ------- | -----------
- * XML_FILENAME       | String  | [none]  | XML output file.
  */
 
 #include <stdlib.h>
@@ -59,11 +54,24 @@
 #include "hsignature.h"
 #include "hpoint.h"
 #include "hutil.h"
-#include "defaults.h"
+#include "hcfg.h"
+
+/*
+ * Name used to identify this plugin layer.
+ * All Harmony plugins must define this variable.
+ */
+const char harmony_layer_name[] = "xmlWriter";
+
+/*
+ * Configuration variables used in this plugin.
+ * These will automatically be registered by session-core upon load.
+ */
+hcfg_info_t plugin_keyinfo[] = {
+    { CFGKEY_XML_FILE, NULL, "XML output file." },
+    { NULL }
+};
 
 #define MY_ENCODING "ISO-8859-1"
-
-char harmony_layer_name[] = "xmlWriter";
 
 hsignature_t sess_sig;
 /* clock_t file_create_time; */
@@ -71,27 +79,27 @@ char filename[128];
 char create_time[128];
 int paramNum;
 
-int harmony_xmlWriteAppName(const char *appName);
+int harmony_xmlWriteAppName(const char* appName);
 int harmony_xmlWriteParamInfo(void);
 
-int xmlWriter_init(hsignature_t *sig)
+int xmlWriter_init(hsignature_t* sig)
 {
     int rc;
-    const char *tmpstr;
+    const char* tmpstr;
     xmlTextWriterPtr writer;
-    /* xmlChar *tmp; */
+    /* xmlChar* tmp; */
     xmlDocPtr doc;
     xmlNodePtr node;
 
     /* Using create time to name xml file and initialize */
     time_t now;
-    struct tm *current;
+    struct tm* current;
     now = time(0);
     current = localtime(&now);
     snprintf(create_time, 64, "%d%d%d", (int)current->tm_hour,
              (int)current->tm_min, (int)current->tm_sec);
 
-    tmpstr = session_getcfg("XML_FILENAME");
+    tmpstr = hcfg_get(session_cfg, CFGKEY_XML_FILE);
     if (tmpstr)
         strncpy(filename, tmpstr, sizeof(filename));
     else
@@ -184,20 +192,20 @@ int xmlWriter_init(hsignature_t *sig)
     return 0;
 }
 
-int xmlWriter_generate(hflow_t *flow, htrial_t *trial)
+int xmlWriter_generate(hflow_t* flow, htrial_t* trial)
 {
     int i;
 
-    xmlDoc *doc;
-    xmlNode *curNode;
-    xmlNode *dataNode;
-    xmlNode *root_element = NULL;
+    xmlDoc* doc;
+    xmlNode* curNode;
+    xmlNode* dataNode;
+    xmlNode* root_element = NULL;
 
     char timestr[64];
     char temp[32];
     char confstr[32];
     time_t now;
-    struct tm *current;
+    struct tm* current;
 
     now = time(0);
     current = localtime(&now);
@@ -205,7 +213,7 @@ int xmlWriter_generate(hflow_t *flow, htrial_t *trial)
              current->tm_min, current->tm_sec);
 
     char performance[32];
-    sprintf(performance, "%lf", trial->perf);
+    sprintf(performance, "%lf", hperf_unify(trial->perf));
 
     doc = xmlReadFile(filename, NULL, 0);
     if (doc == NULL) {
@@ -217,7 +225,7 @@ int xmlWriter_generate(hflow_t *flow, htrial_t *trial)
     /* point to the first child under HarmonyData tag */
     curNode = root_element->xmlChildrenNode->xmlChildrenNode;
     while (curNode != NULL) {
-        if (xmlStrcmp(curNode->name, (const xmlChar *)"RawData") == 0) {
+        if (xmlStrcmp(curNode->name, (const xmlChar*)"RawData") == 0) {
             xmlNodePtr newNode;
 
             newNode = xmlNewNode(NULL, BAD_CAST"Data");
@@ -232,7 +240,7 @@ int xmlWriter_generate(hflow_t *flow, htrial_t *trial)
 
             /* Start adding param and corresponding config */
             for (i = 0; i < paramNum; i++) {
-                hval_t *val = &trial->point.val[i];
+                hval_t* val = &trial->point.val[i];
 
                 snprintf(temp, sizeof(temp), "%s", sess_sig.range[i].name);
                 switch (val->type) {
@@ -251,16 +259,17 @@ int xmlWriter_generate(hflow_t *flow, htrial_t *trial)
                 default:
                     break;
                 }
-                xmlNewTextChild(curNode, NULL, (xmlChar *)temp,
-                                (xmlChar *)confstr);
+                xmlNewTextChild(curNode, NULL, (xmlChar*)temp,
+                                (xmlChar*)confstr);
             }
 
-            xmlNewTextChild(dataNode, NULL, (xmlChar *)"Perf",
-                            (xmlChar *)performance);
-            xmlNewTextChild(dataNode, NULL, (xmlChar *)"Time",
-                            (xmlChar *)timestr);
-            xmlNewTextChild(dataNode, NULL, (xmlChar *)"Client",
-                            (xmlChar *)session_getcfg(CFGKEY_CURRENT_CLIENT));
+            xmlNewTextChild(dataNode, NULL, (xmlChar*)"Perf",
+                            (xmlChar*)performance);
+            xmlNewTextChild(dataNode, NULL, (xmlChar*)"Time",
+                            (xmlChar*)timestr);
+            xmlNewTextChild(dataNode, NULL, (xmlChar*)"Client",
+                            (xmlChar*)hcfg_get(session_cfg,
+                                               CFGKEY_CURRENT_CLIENT));
             xmlSaveFileEnc(filename, doc, MY_ENCODING);
             break;
         }
@@ -269,14 +278,14 @@ int xmlWriter_generate(hflow_t *flow, htrial_t *trial)
     return 0;
 }
 
-int harmony_xmlWriteNodeInfo(int clientID, char *nodeinfo, char *sysName,
-                             char *release, char *machine, int core_num,
-                             char *cpu_vendor, char *cpu_model,
-                             char *cpu_freq, char *cache_size)
+int harmony_xmlWriteNodeInfo(int clientID, char* nodeinfo, char* sysName,
+                             char* release, char* machine, int core_num,
+                             char* cpu_vendor, char* cpu_model,
+                             char* cpu_freq, char* cache_size)
 {
-    xmlDoc *doc;
-    xmlNode *curNode;
-    xmlNode *root_element = NULL;
+    xmlDoc* doc;
+    xmlNode* curNode;
+    xmlNode* root_element = NULL;
 
     char proc_num[2];
     char client[4];
@@ -295,30 +304,30 @@ int harmony_xmlWriteNodeInfo(int clientID, char *nodeinfo, char *sysName,
 
     curNode = root_element->xmlChildrenNode->xmlChildrenNode->xmlChildrenNode;
     while (curNode != NULL) {
-        if (!xmlStrcmp(curNode->name, (const xmlChar *)"Nodeinfo")) {
+        if (!xmlStrcmp(curNode->name, (const xmlChar*)"Nodeinfo")) {
             xmlNodePtr newNode = xmlNewNode(NULL, BAD_CAST"Node");
             xmlAddChild(curNode, newNode);
             curNode = newNode;
-            xmlNewTextChild(curNode, NULL, (xmlChar *)"HostName",
-                            (xmlChar *)nodeinfo);
-            xmlNewTextChild(curNode, NULL, (xmlChar *)"sysName",
-                            (xmlChar *)sysName);
-            xmlNewTextChild(curNode, NULL, (xmlChar *)"Release",
-                            (xmlChar *)release);
-            xmlNewTextChild(curNode, NULL, (xmlChar *)"Machine",
-                            (xmlChar *)machine);
-            xmlNewTextChild(curNode, NULL, (xmlChar *)"ProcessorNum",
-                            (xmlChar *)proc_num);
-            xmlNewTextChild(curNode, NULL, (xmlChar *)"CPUVendor",
-                            (xmlChar *)cpu_vendor);
-            xmlNewTextChild(curNode, NULL, (xmlChar *)"CPUModel",
-                            (xmlChar *)cpu_model);
-            xmlNewTextChild(curNode, NULL, (xmlChar *)"CPUFreq",
-                            (xmlChar *)cpu_freq);
-            xmlNewTextChild(curNode, NULL, (xmlChar *)"CacheSize",
-                            (xmlChar *)cache_size);
-            xmlNewTextChild(curNode, NULL, (xmlChar *)"ClientID",
-                            (xmlChar *)client);
+            xmlNewTextChild(curNode, NULL, (xmlChar*)"HostName",
+                            (xmlChar*)nodeinfo);
+            xmlNewTextChild(curNode, NULL, (xmlChar*)"sysName",
+                            (xmlChar*)sysName);
+            xmlNewTextChild(curNode, NULL, (xmlChar*)"Release",
+                            (xmlChar*)release);
+            xmlNewTextChild(curNode, NULL, (xmlChar*)"Machine",
+                            (xmlChar*)machine);
+            xmlNewTextChild(curNode, NULL, (xmlChar*)"ProcessorNum",
+                            (xmlChar*)proc_num);
+            xmlNewTextChild(curNode, NULL, (xmlChar*)"CPUVendor",
+                            (xmlChar*)cpu_vendor);
+            xmlNewTextChild(curNode, NULL, (xmlChar*)"CPUModel",
+                            (xmlChar*)cpu_model);
+            xmlNewTextChild(curNode, NULL, (xmlChar*)"CPUFreq",
+                            (xmlChar*)cpu_freq);
+            xmlNewTextChild(curNode, NULL, (xmlChar*)"CacheSize",
+                            (xmlChar*)cache_size);
+            xmlNewTextChild(curNode, NULL, (xmlChar*)"ClientID",
+                            (xmlChar*)client);
 
             xmlSaveFileEnc(filename, doc, MY_ENCODING);
             break;
@@ -328,11 +337,11 @@ int harmony_xmlWriteNodeInfo(int clientID, char *nodeinfo, char *sysName,
     return 0;
 }
 
-int harmony_xmlWriteAppName(const char *appName)
+int harmony_xmlWriteAppName(const char* appName)
 {
-    xmlDoc *doc;
-    xmlNode *curNode;
-    xmlNode *root_element = NULL;
+    xmlDoc* doc;
+    xmlNode* curNode;
+    xmlNode* root_element = NULL;
 
     doc = xmlReadFile(filename, NULL, 0);
     if (!doc) {
@@ -344,9 +353,9 @@ int harmony_xmlWriteAppName(const char *appName)
     //point to the first child under Metadata tag
     curNode = root_element->xmlChildrenNode->xmlChildrenNode->xmlChildrenNode;
     while (curNode) {
-        if (!xmlStrcmp(curNode->name, (const xmlChar *)"AppName")) {
-            xmlNewTextChild(curNode, NULL, (xmlChar *)"appName",
-                            (xmlChar *)appName);
+        if (!xmlStrcmp(curNode->name, (const xmlChar*)"AppName")) {
+            xmlNewTextChild(curNode, NULL, (xmlChar*)"appName",
+                            (xmlChar*)appName);
             xmlSaveFileEnc(filename, doc, MY_ENCODING);
             break;
         }
@@ -363,9 +372,9 @@ int harmony_xmlWriteParamInfo(void)
 {
     int i;
 
-    xmlDoc *doc;
-    xmlNode *curNode;
-    xmlNode *root_element = NULL;
+    xmlDoc* doc;
+    xmlNode* curNode;
+    xmlNode* root_element = NULL;
 
     char paramName[32];
     char paramMin[16];
@@ -383,7 +392,7 @@ int harmony_xmlWriteParamInfo(void)
     /* Point to the first child under Metadata tag */
     curNode = root_element->xmlChildrenNode->xmlChildrenNode->xmlChildrenNode;
     while (curNode != NULL) {
-        if (!xmlStrcmp(curNode->name, (const xmlChar *)"ParamList")) {
+        if (!xmlStrcmp(curNode->name, (const xmlChar*)"ParamList")) {
 
             for (i = 0; i < paramNum; i++) {
                 snprintf(paramName, sizeof(paramName), "%s",
@@ -418,14 +427,14 @@ int harmony_xmlWriteParamInfo(void)
                 xmlNodePtr newNode = xmlNewNode(NULL, BAD_CAST"Param");
                 xmlAddChild(curNode, newNode);
 
-                xmlNewTextChild(newNode, NULL, (xmlChar *)"paramName",
-                                (xmlChar *)paramName);
-                xmlNewTextChild(newNode, NULL, (xmlChar *)"paramMin",
-                                (xmlChar *)paramMin);
-                xmlNewTextChild(newNode, NULL, (xmlChar *)"paramMax",
-                                (xmlChar *)paramMax);
-                xmlNewTextChild(newNode, NULL, (xmlChar *)"paramStep",
-                                (xmlChar *)paramStep);
+                xmlNewTextChild(newNode, NULL, (xmlChar*)"paramName",
+                                (xmlChar*)paramName);
+                xmlNewTextChild(newNode, NULL, (xmlChar*)"paramMin",
+                                (xmlChar*)paramMin);
+                xmlNewTextChild(newNode, NULL, (xmlChar*)"paramMax",
+                                (xmlChar*)paramMax);
+                xmlNewTextChild(newNode, NULL, (xmlChar*)"paramStep",
+                                (xmlChar*)paramStep);
                 xmlSaveFileEnc(filename, doc, MY_ENCODING);
             }
 

@@ -34,9 +34,9 @@ typedef struct http_log {
 } http_log_t;
 
 typedef struct session_state {
-    char *name;
+    char* name;
     int fd, old_fd;
-    int *client;
+    int* client;
     int client_len, client_cap;
     hpoint_t best;
     double best_perf;
@@ -44,26 +44,26 @@ typedef struct session_state {
     /* Fields used by the HTTP server. */
     struct timeval start;
     hsignature_t sig;
-    char *strategy;
+    char* strategy;
     unsigned int status;
 
-    http_log_t *log;
+    http_log_t* log;
     int log_len, log_cap;
-    hpoint_t *fetched;
+    hpoint_t* fetched;
     int fetched_len, fetched_cap;
     int reported;
 } session_state_t;
 
-extern session_state_t *slist;
+extern session_state_t* slist;
 extern int slist_cap;
 
 extern hmesg_t mesg_in;
 
-session_state_t *session_open(hmesg_t *mesg);
-void session_close(session_state_t *sess);
-const char *session_getcfg(session_state_t *sess, const char *key);
-int session_setcfg(session_state_t *sess, const char *key, const char *val);
-int session_restart(session_state_t *sess);
+session_state_t* session_open(hmesg_t* mesg);
+void session_close(session_state_t* sess);
+const char* session_getcfg(session_state_t* sess, const char* key);
+int session_setcfg(session_state_t* sess, const char* key, const char* val);
+int session_restart(session_state_t* sess);
 
 #ifdef __cplusplus
 }

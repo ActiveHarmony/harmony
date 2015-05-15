@@ -16,6 +16,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
+#define _XOPEN_SOURCE 500 // Needed for drand48() and S_ISSOCK.
 
 #include "session-core.h"
 #include "hsession.h"
@@ -23,7 +24,6 @@
 #include "hmesg.h"
 #include "hutil.h"
 #include "hsockutil.h"
-#include "defaults.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -43,10 +43,12 @@
 /* --------------------------------
  * Session configuration variables.
  */
-hsession_t *sess;
-int perf_count = DEFAULT_PERF_COUNT;
-int per_client = DEFAULT_PER_CLIENT;
-int num_clients = 0;
+hsession_t* sess;
+const hcfg_t* session_cfg;
+
+int perf_count;
+int per_client;
+int num_clients;
 
 /* --------------------------------
  * Callback registration variables.
@@ -57,7 +59,7 @@ typedef struct callback {
     cb_func_t func;
 } callback_t;
 
-callback_t *cb = NULL;
+callback_t* cb = NULL;
 int cb_len = 0;
 int cb_cap = 0;
 
@@ -71,33 +73,31 @@ strategy_best_t     strategy_best;
 
 hook_init_t         strategy_init;
 hook_join_t         strategy_join;
-hook_getcfg_t       strategy_getcfg;
 hook_setcfg_t       strategy_setcfg;
 hook_fini_t         strategy_fini;
 
 typedef struct layer {
-    const char *name;
+    const char* name;
 
     layer_generate_t generate;
     layer_analyze_t  analyze;
 
     hook_init_t      init;
     hook_join_t      join;
-    hook_getcfg_t    getcfg;
     hook_setcfg_t    setcfg;
     hook_fini_t      fini;
 
-    int *wait_generate;
+    int* wait_generate;
     int wait_generate_len;
     int wait_generate_cap;
 
-    int *wait_analyze;
+    int* wait_analyze;
     int wait_analyze_len;
     int wait_analyze_cap;
 } layer_t;
 
 /* Stack of layer objects. */
-layer_t *lstack = NULL;
+layer_t* lstack = NULL;
 int lstack_len = 0;
 int lstack_cap = 0;
 
@@ -108,36 +108,36 @@ int init_session(void);
 int generate_trial(void);
 int plugin_workflow(int trial_idx);
 int workflow_transition(int trial_idx);
-int handle_callback(callback_t *cb);
-int handle_join(hmesg_t *mesg);
-int handle_getcfg(hmesg_t *mesg);
-int handle_setcfg(hmesg_t *mesg);
-int handle_best(hmesg_t *mesg);
-int handle_fetch(hmesg_t *mesg);
-int handle_report(hmesg_t *mesg);
+int handle_callback(callback_t* cb);
+int handle_join(hmesg_t* mesg);
+int handle_getcfg(hmesg_t* mesg);
+int handle_setcfg(hmesg_t* mesg);
+int handle_best(hmesg_t* mesg);
+int handle_fetch(hmesg_t* mesg);
+int handle_report(hmesg_t* mesg);
 int handle_reject(int trial_idx);
-int handle_restart(hmesg_t *mesg);
+int handle_restart(hmesg_t* mesg);
 int handle_wait(int trial_idx);
-int load_strategy(const char *file);
-int load_layers(const char *list);
+int load_strategy(const char* file);
+int load_layers(const char* list);
 int extend_lists(int target_cap);
-void reverse_array(void *ptr, int head, int tail);
+void reverse_array(void* ptr, int head, int tail);
 
 /* -------------------
  * Workflow variables.
  */
-const char *errmsg;
+const char* errmsg;
 int curr_layer = 0;
 hflow_t flow;
 int paused_id;
 
 /* List of all points generated, but not yet returned to the strategy. */
-htrial_t *pending = NULL;
+htrial_t* pending = NULL;
 int pending_cap = 0;
 int pending_len = 0;
 
 /* List of all trials (point/performance pairs) waiting for client fetch. */
-int *ready = NULL;
+int* ready = NULL;
 int ready_head = 0;
 int ready_tail = 0;
 int ready_cap = 0;
@@ -145,14 +145,21 @@ int ready_cap = 0;
 /* ----------------------------
  * Variables used for select().
  */
-struct timeval polltime, *pollstate;
+struct timeval  polltime;
+struct timeval* pollstate;
 fd_set fds;
 int maxfd;
+
+/* -------------------------------------------
+ * Static buffers used for dynamic allocation.
+ */
+static char* setcfg_buf = NULL;
+static int setcfg_len = 0;
 
 /* =================================
  * Core session routines begin here.
  */
-int main(int argc, char **argv)
+int main(int argc, char* argv[])
 {
     struct stat sb;
     int i, retval;
@@ -194,6 +201,7 @@ int main(int argc, char **argv)
 
     /* Initialize the session. */
     sess = &session_mesg.data.session;
+    session_cfg = &session_mesg.data.session.cfg;
     if (init_session() != 0)
         goto error;
 
@@ -228,7 +236,7 @@ int main(int argc, char **argv)
             if (retval == 0) goto cleanup;
             if (retval <  0) goto error;
 
-            hcfg_set(sess->cfg, CFGKEY_CURRENT_CLIENT, mesg.src_id);
+            hcfg_set(&sess->cfg, CFGKEY_CURRENT_CLIENT, mesg.src_id);
             switch (mesg.type) {
             case HMESG_JOIN:    retval = handle_join(&mesg); break;
             case HMESG_GETCFG:  retval = handle_getcfg(&mesg); break;
@@ -244,7 +252,7 @@ int main(int argc, char **argv)
             if (retval != 0)
                 goto error;
 
-            hcfg_set(sess->cfg, CFGKEY_CURRENT_CLIENT, NULL);
+            hcfg_set(&sess->cfg, CFGKEY_CURRENT_CLIENT, NULL);
             mesg.src_id = NULL;
 
             if (mesg_send(STDIN_FILENO, &mesg) < 1)
@@ -271,21 +279,23 @@ int main(int argc, char **argv)
         if (lstack[i].fini)
             lstack[i].fini();
     }
-
     hmesg_fini(&session_mesg);
     hmesg_fini(&mesg);
+    free(setcfg_buf);
+
     return retval;
 }
 
 int init_session(void)
 {
-    const char *ptr;
-    int count = DEFAULT_CLIENT_COUNT;
+    const char* ptr;
     long seed;
+    int clients;
 
     /* Before anything else, control the random seeds. */
-    ptr = hcfg_get(sess->cfg, CFGKEY_RANDOM_SEED);
-    seed = (ptr && *ptr) ? atol(ptr) : time(NULL);
+    seed = hcfg_int(&sess->cfg, CFGKEY_RANDOM_SEED);
+    if (seed < 0)
+        seed = time(NULL);
     srand((int) seed);
     srand48(seed);
 
@@ -305,62 +315,21 @@ int init_session(void)
         return -1;
     }
 
-    /* Insure the output dimensionality exists in the config system. */
-    ptr = hcfg_get(sess->cfg, CFGKEY_PERF_COUNT);
-    if (ptr) {
-        perf_count = atoi(ptr);
-        if (count < 1) {
-            errmsg = "Invalid config value for " CFGKEY_PERF_COUNT ".";
-            return -1;
-        }
-    }
-    else {
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%d", DEFAULT_PERF_COUNT);
-        hcfg_set(sess->cfg, CFGKEY_PERF_COUNT, buf);
-    }
-
-    /* Determine the number of trials to prepare per-client. */
-    ptr = hcfg_get(sess->cfg, CFGKEY_PER_CLIENT_STORAGE);
-    if (ptr) {
-        per_client = atoi(ptr);
-        if (per_client < 1) {
-            errmsg = "Invalid config value for " CFGKEY_PER_CLIENT_STORAGE ".";
-            return -1;
-        }
-    }
-
-    /* Determine the number of clients to expect. */
-    ptr = hcfg_get(sess->cfg, CFGKEY_CLIENT_COUNT);
-    if (ptr) {
-        count = atoi(ptr);
-        if (count < 1) {
-            errmsg = "Invalid config value for " CFGKEY_CLIENT_COUNT ".";
-            return -1;
-        }
-    }
-    else {
-        /* Otherwise, make sure this key exists. */
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%d", DEFAULT_CLIENT_COUNT);
-        if (hcfg_set(sess->cfg, CFGKEY_CLIENT_COUNT, buf) != 0) {
-            errmsg = "Error setting default client count.";
-            return -1;
-        }
-    }
-    count *= per_client;
+    perf_count = hcfg_int(&sess->cfg, CFGKEY_PERF_COUNT);
+    per_client = hcfg_int(&sess->cfg, CFGKEY_GEN_COUNT);
+    clients    = hcfg_int(&sess->cfg, CFGKEY_CLIENT_COUNT);
 
     /* Load and initialize the strategy code object. */
-    ptr = hcfg_get(sess->cfg, CFGKEY_SESSION_STRATEGY);
-    if (load_strategy(ptr) < 0)
+    ptr = hcfg_get(&sess->cfg, CFGKEY_STRATEGY);
+    if (load_strategy(ptr) != 0)
         return -1;
 
     /* Load and initialize requested layer's. */
-    ptr = hcfg_get(sess->cfg, CFGKEY_SESSION_LAYERS);
-    if (ptr && load_layers(ptr) < 0)
+    ptr = hcfg_get(&sess->cfg, CFGKEY_LAYERS);
+    if (ptr && load_layers(ptr) != 0)
         return -1;
 
-    if (extend_lists(count) != 0)
+    if (extend_lists(clients * per_client) != 0)
         return -1;
 
     return 0;
@@ -369,7 +338,7 @@ int init_session(void)
 int generate_trial(void)
 {
     int idx;
-    htrial_t *trial;
+    htrial_t* trial;
 
     /* Find a free point. */
     for (idx = 0; idx < pending_cap; ++idx) {
@@ -386,7 +355,7 @@ int generate_trial(void)
     hperf_reset(trial->perf);
 
     /* Call strategy generation routine. */
-    if (strategy_generate(&flow, (hpoint_t *)&trial->point) != 0)
+    if (strategy_generate(&flow, (hpoint_t*)&trial->point) != 0)
         return -1;
 
     if (flow.status == HFLOW_WAIT) {
@@ -403,7 +372,7 @@ int generate_trial(void)
 
 int plugin_workflow(int trial_idx)
 {
-    htrial_t *trial = &pending[trial_idx];
+    htrial_t* trial = &pending[trial_idx];
 
     while (curr_layer != 0 && curr_layer <= lstack_len)
     {
@@ -437,8 +406,8 @@ int plugin_workflow(int trial_idx)
             return -1;
 
         /* Remove point data from pending list. */
-        hpoint_fini( (hpoint_t *)&trial->point );
-        *(hpoint_t *)&trial->point = HPOINT_INITIALIZER;
+        hpoint_fini( (hpoint_t*)&trial->point );
+        *(hpoint_t*)&trial->point = HPOINT_INITIALIZER;
         --pending_len;
 
         /* Point generation attempts may begin again. */
@@ -500,7 +469,7 @@ int workflow_transition(int trial_idx)
 
 int handle_reject(int trial_idx)
 {
-    htrial_t *trial = &pending[trial_idx];
+    htrial_t* trial = &pending[trial_idx];
 
     if (curr_layer < 0) {
         errmsg = "Internal error: REJECT invalid for analysis workflow.";
@@ -508,7 +477,7 @@ int handle_reject(int trial_idx)
     }
 
     /* Regenerate this rejected point. */
-    if (strategy_rejected(&flow, (hpoint_t *) &trial->point) != 0)
+    if (strategy_rejected(&flow, (hpoint_t*) &trial->point) != 0)
         return -1;
 
     if (flow.status == HFLOW_WAIT)
@@ -519,9 +488,10 @@ int handle_reject(int trial_idx)
 
 int handle_wait(int trial_idx)
 {
-    int idx = abs(curr_layer) - 1;
-    int **list;
-    int *len, *cap;
+    int   idx = abs(curr_layer) - 1;
+    int** list;
+    int*  len;
+    int*  cap;
 
     if (curr_layer < 0) {
         list = &lstack[idx].wait_analyze;
@@ -552,11 +522,12 @@ int handle_wait(int trial_idx)
     return 0;
 }
 
-int handle_callback(callback_t *cb)
+int handle_callback(callback_t* cb)
 {
-    htrial_t **trial_list;
-    int *list, *len, trial_idx;
-    int i, idx, retval;
+    htrial_t** trial_list;
+    int* list;
+    int* len;
+    int  i, trial_idx, idx, retval;
 
     curr_layer = cb->index;
     idx = abs(curr_layer) - 1;
@@ -577,7 +548,7 @@ int handle_callback(callback_t *cb)
     }
 
     /* Prepare a list of htrial_t pointers. */
-    trial_list = (htrial_t **) malloc(*len * sizeof(htrial_t *));
+    trial_list = malloc(*len * sizeof(htrial_t*));
     for (i = 0; i < *len; ++i)
         trial_list[i] = &pending[ list[i] ];
 
@@ -596,7 +567,7 @@ int handle_callback(callback_t *cb)
     return plugin_workflow(trial_idx);
 }
 
-int handle_join(hmesg_t *mesg)
+int handle_join(hmesg_t* mesg)
 {
     int i;
 
@@ -629,50 +600,32 @@ int handle_join(hmesg_t *mesg)
     return 0;
 }
 
-int handle_getcfg(hmesg_t *mesg)
+int handle_getcfg(hmesg_t* mesg)
 {
-    int i;
-    const char *key;
-
-    key = mesg->data.string;
-
-    /* Launch all getcfg hooks defined in the plug-in stack. */
-    if (strategy_getcfg && strategy_getcfg(key) != 0)
-        return -1;
-
-    for (i = 0; i < lstack_len; ++i) {
-        if (lstack[i].getcfg && lstack[i].getcfg(key) != 0)
-            return -1;
-    }
-
     /* Prepare getcfg response message for client. */
-    mesg->data.string = hcfg_get(sess->cfg, key);
+    mesg->data.string = hcfg_get(&sess->cfg, mesg->data.string);
     mesg->status = HMESG_STATUS_OK;
     return 0;
 }
 
-int handle_setcfg(hmesg_t *mesg)
+int handle_setcfg(hmesg_t* mesg)
 {
-    static char *buf = NULL;
-    static int buflen = 0;
+    char* sep = (char*) strchr(mesg->data.string, '=');
+    const char* oldval;
 
-    char *key, *val;
-    const char *oldval;
-
-    hcfg_parse((char *)mesg->data.string, &key, &val);
-    if (!key) {
+    if (!sep) {
         errmsg = strerror(EINVAL);
         return -1;
     }
 
     /* Store the original value, possibly allocating memory for it. */
-    oldval = hcfg_get(sess->cfg, key);
+    oldval = hcfg_get(&sess->cfg, mesg->data.string);
     if (oldval) {
-        snprintf_grow(&buf, &buflen, "%s", oldval);
-        oldval = buf;
+        snprintf_grow(&setcfg_buf, &setcfg_len, "%s", oldval);
+        oldval = setcfg_buf;
     }
 
-    if (session_setcfg(key, val) != 0) {
+    if (session_setcfg(mesg->data.string, sep + 1) != 0) {
         errmsg = "Error setting session configuration variable";
         return -1;
     }
@@ -683,7 +636,7 @@ int handle_setcfg(hmesg_t *mesg)
     return 0;
 }
 
-int handle_best(hmesg_t *mesg)
+int handle_best(hmesg_t* mesg)
 {
     mesg->data.point = HPOINT_INITIALIZER;
     if (strategy_best(&mesg->data.point) != 0)
@@ -693,15 +646,13 @@ int handle_best(hmesg_t *mesg)
     return 0;
 }
 
-int handle_fetch(hmesg_t *mesg)
+int handle_fetch(hmesg_t* mesg)
 {
     int idx = ready[ready_head], paused;
-    const char *cfgval;
-    htrial_t *next;
+    htrial_t* next;
 
     /* Check if the session is paused. */
-    cfgval = hcfg_get(sess->cfg, CFGKEY_SESSION_PAUSED);
-    paused = (cfgval && *cfgval == '1');
+    paused = hcfg_bool(&sess->cfg, CFGKEY_PAUSED);
 
     if (!paused && idx >= 0) {
         /* Send the next point on the ready queue. */
@@ -732,10 +683,10 @@ int handle_fetch(hmesg_t *mesg)
     return 0;
 }
 
-int handle_report(hmesg_t *mesg)
+int handle_report(hmesg_t* mesg)
 {
     int idx;
-    htrial_t *trial;
+    htrial_t* trial;
 
     /* Find the associated trial in the pending list. */
     for (idx = 0; idx < pending_cap; ++idx) {
@@ -769,7 +720,7 @@ int handle_report(hmesg_t *mesg)
     return 0;
 }
 
-int handle_restart(hmesg_t *mesg)
+int handle_restart(hmesg_t* mesg)
 {
     session_restart();
     mesg->status = HMESG_STATUS_OK;
@@ -787,16 +738,17 @@ int handle_restart(hmesg_t *mesg)
  * Checks that strategy defines required functions,
  * and then calls the strategy's init function (if defined)
  */
-int load_strategy(const char *file)
+int load_strategy(const char* file)
 {
-    const char *root;
-    char *path;
-    void *lib;
+    const char* root;
+    char* path;
+    void* lib;
+    hcfg_info_t* keyinfo;
 
     if (!file)
-        file = DEFAULT_STRATEGY;
+        return -1;
 
-    root = hcfg_get(sess->cfg, CFGKEY_HARMONY_HOME);
+    root = hcfg_get(&sess->cfg, CFGKEY_HARMONY_HOME);
     path = sprintf_alloc("%s/libexec/%s", root, file);
 
     lib = dlopen(path, RTLD_LAZY | RTLD_LOCAL);
@@ -813,7 +765,6 @@ int load_strategy(const char *file)
 
     strategy_init     =         (hook_init_t) dlfptr(lib, "strategy_init");
     strategy_join     =         (hook_join_t) dlfptr(lib, "strategy_join");
-    strategy_getcfg   =       (hook_getcfg_t) dlfptr(lib, "strategy_getcfg");
     strategy_setcfg   =       (hook_setcfg_t) dlfptr(lib, "strategy_setcfg");
     strategy_fini     =         (hook_fini_t) dlfptr(lib, "strategy_fini");
 
@@ -837,34 +788,41 @@ int load_strategy(const char *file)
         return -1;
     }
 
+    keyinfo = dlsym(lib, "plugin_keyinfo");
+    if (keyinfo) {
+        if (hcfg_reginfo(&sess->cfg, keyinfo) != 0) {
+            errmsg = "Error registering strategy configuration keys.";
+            return -1;
+        }
+    }
+
     if (strategy_init)
         return strategy_init(&sess->sig);
 
     return 0;
 }
 
-int load_layers(const char *list)
+int load_layers(const char* list)
 {
-    const char *prefix, *end;
-    char *path;
-    int path_len, retval;
-    void *lib;
+    const char* prefix = hcfg_get(&sess->cfg, CFGKEY_HARMONY_HOME);
+    char* path = NULL;
+    int path_len = 0;
+    int retval = 0;
 
-    path = NULL;
-    path_len = 0;
-    retval = 0;
     while (list && *list) {
+        void* lib;
+        hcfg_info_t* keyinfo;
+        const char* end = strchr(list, SESSION_LAYER_SEP);
+        if (!end)
+            end = list + strlen(list);
+
         if (lstack_len == lstack_cap) {
             if (array_grow(&lstack, &lstack_cap, sizeof(layer_t)) < 0) {
                 retval = -1;
                 goto cleanup;
             }
         }
-        end = strchr(list, SESSION_LAYER_SEP);
-        if (!end)
-            end = list + strlen(list);
 
-        prefix = hcfg_get(sess->cfg, CFGKEY_HARMONY_HOME);
         if (snprintf_grow(&path, &path_len, "%s/libexec/%.*s",
                           prefix, end - list, list) < 0)
         {
@@ -879,7 +837,7 @@ int load_layers(const char *list)
             goto cleanup;
         }
 
-        prefix = (const char *) dlsym(lib, "harmony_layer_name");
+        prefix = dlsym(lib, "harmony_layer_name");
         if (!prefix) {
             errmsg = dlerror();
             retval = -1;
@@ -911,12 +869,6 @@ int load_layers(const char *list)
         }
         lstack[lstack_len].analyze = (layer_analyze_t) dlfptr(lib, path);
 
-        if (snprintf_grow(&path, &path_len, "%s_getcfg", prefix) < 0) {
-            retval = -1;
-            goto cleanup;
-        }
-        lstack[lstack_len].getcfg = (hook_getcfg_t) dlfptr(lib, path);
-
         if (snprintf_grow(&path, &path_len, "%s_setcfg", prefix) < 0) {
             retval = -1;
             goto cleanup;
@@ -928,6 +880,14 @@ int load_layers(const char *list)
             goto cleanup;
         }
         lstack[lstack_len].fini = (hook_fini_t) dlfptr(lib, path);
+
+        keyinfo = dlsym(lib, "plugin_keyinfo");
+        if (keyinfo) {
+            if (hcfg_reginfo(&sess->cfg, keyinfo) != 0) {
+                errmsg = "Error registering strategy configuration keys.";
+                return -1;
+            }
+        }
 
         if (lstack[lstack_len].init) {
             curr_layer = lstack_len + 1;
@@ -970,7 +930,7 @@ int extend_lists(int target_cap)
     }
 
     ready_cap = target_cap;
-    if (array_grow(&ready, &ready_cap, sizeof(htrial_t *)) != 0) {
+    if (array_grow(&ready, &ready_cap, sizeof(htrial_t*)) != 0) {
         errmsg = "Internal error: Could not extend ready array.";
         return -1;
     }
@@ -982,7 +942,7 @@ int extend_lists(int target_cap)
     }
 
     for (i = orig_cap; i < pending_cap; ++i) {
-        hpoint_t *point = (hpoint_t *) &pending[i].point;
+        hpoint_t* point = (hpoint_t*) &pending[i].point;
         *point = HPOINT_INITIALIZER;
         pending[i].perf = hperf_alloc(perf_count);
         if (!pending[i].perf) {
@@ -995,9 +955,9 @@ int extend_lists(int target_cap)
     return 0;
 }
 
-void reverse_array(void *ptr, int head, int tail)
+void reverse_array(void* ptr, int head, int tail)
 {
-    unsigned long *arr = (unsigned long *) ptr;
+    unsigned long* arr = (unsigned long*) ptr;
 
     while (head < --tail) {
         /* Swap head and tail entries. */
@@ -1048,16 +1008,12 @@ int callback_analyze(int fd, cb_func_t func)
     return 0;
 }
 
-const char *session_getcfg(const char *key)
-{
-    return hcfg_get(sess->cfg, key);
-}
-
-int session_setcfg(const char *key, const char *val)
+/* Central interface for shared configuration between pluggable modules. */
+int session_setcfg(const char* key, const char* val)
 {
     int i;
 
-    if (hcfg_set(sess->cfg, key, val) != 0)
+    if (hcfg_set(&sess->cfg, key, val) != 0)
         return -1;
 
     /* Make sure setcfg callbacks are triggered after the
@@ -1075,7 +1031,7 @@ int session_setcfg(const char *key, const char *val)
     return 0;
 }
 
-int session_best(hpoint_t *pt)
+int session_best(hpoint_t* pt)
 {
     return strategy_best(pt);
 }
@@ -1098,7 +1054,7 @@ int session_restart(void)
     return 0;
 }
 
-void session_error(const char *msg)
+void session_error(const char* msg)
 {
     errmsg = msg;
 }

@@ -39,7 +39,7 @@ typedef struct real_bounds {
 } real_bounds_t;
 
 typedef struct str_bounds {
-    char **set;
+    char** set;
     int set_len;
     int set_cap;
 } str_bounds_t;
@@ -49,7 +49,7 @@ typedef struct str_bounds {
  * in the client application.
  */
 typedef struct hrange {
-    char *name;
+    char* name;
     hval_type type;
     union {
         int_bounds_t  i;
@@ -64,47 +64,47 @@ extern const hrange_t HRANGE_INITIALIZER;
  * compatibility with the session they wish to join.
  */
 typedef struct hsignature {
-    char *name;
-    hrange_t *range;
+    char* name;
+    hrange_t* range;
     int range_len;
     int range_cap;
 } hsignature_t;
 extern const hsignature_t HSIGNATURE_INITIALIZER;
 
 /* Harmony range functions */
-unsigned long hrange_max_idx(hrange_t *range);
+unsigned long hrange_max_idx(hrange_t* range);
 
-unsigned long hrange_int_max_idx(int_bounds_t *bound);
-unsigned long hrange_int_index(int_bounds_t *bound, long val);
-long          hrange_int_value(int_bounds_t *bound, unsigned long idx);
-long          hrange_int_nearest(int_bounds_t *bound, long val);
+unsigned long hrange_int_max_idx(int_bounds_t* bound);
+unsigned long hrange_int_index(int_bounds_t* bound, long val);
+long          hrange_int_value(int_bounds_t* bound, unsigned long idx);
+long          hrange_int_nearest(int_bounds_t* bound, long val);
 
-unsigned long hrange_real_max_idx(real_bounds_t *bound);
-unsigned long hrange_real_index(real_bounds_t *bound, double val);
-double        hrange_real_value(real_bounds_t *bound, unsigned long idx);
-double        hrange_real_nearest(real_bounds_t *bound, double val);
+unsigned long hrange_real_max_idx(real_bounds_t* bound);
+unsigned long hrange_real_index(real_bounds_t* bound, double val);
+double        hrange_real_value(real_bounds_t* bound, unsigned long idx);
+double        hrange_real_nearest(real_bounds_t* bound, double val);
 
-unsigned long hrange_str_max_idx(str_bounds_t *bound);
-unsigned long hrange_str_index(str_bounds_t *bound, const char *val);
-const char *  hrange_str_value(str_bounds_t *bound, unsigned long idx);
+unsigned long hrange_str_max_idx(str_bounds_t* bound);
+unsigned long hrange_str_index(str_bounds_t* bound, const char* val);
+const char*   hrange_str_value(str_bounds_t* bound, unsigned long idx);
 
 /* Harmony signature functions */
-int  hsignature_copy(hsignature_t *dst, const hsignature_t *src);
-void hsignature_fini(hsignature_t *sig);
-int  hsignature_equal(const hsignature_t *sig_a, const hsignature_t *sig_b);
-int  hsignature_match(const hsignature_t *sig_a, const hsignature_t *sig_b);
-int  hsignature_name(hsignature_t *sig, const char *name);
-int  hsignature_int(hsignature_t *sig, const char *name,
+int  hsignature_copy(hsignature_t* dst, const hsignature_t* src);
+void hsignature_fini(hsignature_t* sig);
+int  hsignature_equal(const hsignature_t* sig_a, const hsignature_t* sig_b);
+int  hsignature_match(const hsignature_t* sig_a, const hsignature_t* sig_b);
+int  hsignature_name(hsignature_t* sig, const char* name);
+int  hsignature_int(hsignature_t* sig, const char* name,
                     long min, long max, long step);
-int  hsignature_real(hsignature_t *sig, const char *name,
+int  hsignature_real(hsignature_t* sig, const char* name,
                      double min, double max, double step);
-int  hsignature_enum(hsignature_t *sig, const char *name, const char *value);
-int  hsignature_serialize(char **buf, int *buflen, const hsignature_t *sig);
-int  hsignature_deserialize(hsignature_t *sig, char *buf);
+int  hsignature_enum(hsignature_t* sig, const char* name, const char* value);
+int  hsignature_serialize(char** buf, int* buflen, const hsignature_t* sig);
+int  hsignature_deserialize(hsignature_t* sig, char* buf);
 
 /* General helper function */
-hrange_t *hrange_find(hsignature_t *sig, const char *name);
-hrange_t *hrange_add(hsignature_t *sig, const char *name);
+hrange_t* hrange_find(hsignature_t* sig, const char* name);
+hrange_t* hrange_add(hsignature_t* sig, const char* name);
 
 #ifdef __cplusplus
 }

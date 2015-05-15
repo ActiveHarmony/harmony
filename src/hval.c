@@ -26,11 +26,11 @@
 #include <string.h>
 #include <ctype.h>
 
-int hval_parse_string(const char *buf, const char **newbuf);
+int hval_parse_string(const char* buf, const char** newbuf);
 
 const hval_t HVAL_INITIALIZER = {0};
 
-int hval_parse(hval_t *val, const char *buf)
+int hval_parse(hval_t* val, const char* buf)
 {
     int ret, cnt;
 
@@ -43,10 +43,10 @@ int hval_parse(hval_t *val, const char *buf)
     return (ret > 0) ? cnt : -1;
 }
 
-int hval_parse_string(const char *buf, const char **newbuf)
+int hval_parse_string(const char* buf, const char** newbuf)
 {
-    const char *head;
-    const char *tail;
+    const char* head;
+    const char* tail;
     int len, span, quoted = 0;
 
     /* Find the head. */
@@ -78,7 +78,7 @@ int hval_parse_string(const char *buf, const char **newbuf)
 
     /* Allocate memory and copy an unescaped version of the string. */
     if (newbuf) {
-        char *ptr = calloc(len + 1, sizeof(*ptr));
+        char* ptr = calloc(len + 1, sizeof(*ptr));
         if (!ptr)
             return -1;
         *newbuf = ptr;
@@ -91,10 +91,10 @@ int hval_parse_string(const char *buf, const char **newbuf)
     return span;
 }
 
-int hval_serialize(char **buf, int *buflen, const hval_t *val)
+int hval_serialize(char** buf, int* buflen, const hval_t* val)
 {
     int count, total;
-    const char *type_str;
+    const char* type_str;
 
     switch (val->type) {
     case HVAL_INT:  type_str = "INT"; break;
@@ -137,7 +137,7 @@ int hval_serialize(char **buf, int *buflen, const hval_t *val)
     return -1;
 }
 
-int hval_deserialize(hval_t *val, char *buf)
+int hval_deserialize(hval_t* val, char* buf)
 {
     int count, total;
     char type_str[4];

@@ -24,7 +24,6 @@
 #include <math.h>
 
 #include "hclient.h"
-#include "defaults.h"
 
 /* For illustration purposes, the performance here is defined by following
  * simple definition:
@@ -49,10 +48,10 @@ long application(long p1, long p2, long p3, long p4, long p5, long p6)
     return perf;
 }
 
-int main(int argc, char **argv)
+int main(int argc, char* argv[])
 {
-    const char *name;
-    hdesc_t *hdesc;
+    const char* name;
+    hdesc_t* hdesc;
     int i, retval, loop = 200;
     double perf = -INFINITY;
 
@@ -77,11 +76,12 @@ int main(int argc, char **argv)
     }
 
     /* Initialize a Harmony client. */
-    hdesc = harmony_init(&argc, &argv);
+    hdesc = harmony_init();
     if (hdesc == NULL) {
         fprintf(stderr, "Failed to initialize a harmony session.\n");
         return -1;
     }
+    argc -= harmony_parse_args(hdesc, argc - 1, &argv[1]);
 
     /* Process the program arguments. */
     name = "XML_example";
@@ -90,7 +90,7 @@ int main(int argc, char **argv)
 
     errno = 0;
     harmony_session_name(hdesc, name);
-    harmony_setcfg(hdesc, CFGKEY_SESSION_LAYERS, "xmlWriter.so");
+    harmony_layers(hdesc, "xmlWriter.so");
     if (errno) {
         fprintf(stderr, "Error during session configuration.\n");
         return -1;

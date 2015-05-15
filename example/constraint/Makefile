@@ -11,9 +11,7 @@ install: all
 	@echo "Examples must be executed from source directory (for now)."
 
 test: client
-	$(TEST_DIR)/$(TEST_BIN) \
-		SESSION_LAYER_LIST=constraint.so \
-		CONSTRAINT_FILE=constraint.in
+	$(TEST_DIR)/$(TEST_BIN) LAYERS=constraint.so OC_FILE=constraint.in
 
 client:
 	$(MAKE) -C $(TEST_DIR) $(TEST_BIN)

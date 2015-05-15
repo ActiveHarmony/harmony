@@ -46,14 +46,6 @@
  * available at:<br>
  * <https://github.com/davewathaverford/the-omega-project/>.
  *
- * **Configuration Variables**
- * Key             | Type      | Default | Description
- * --------------- | --------- | ------- | -----------
- * OC_BIN          | Filename  | oc      | Location of the Omega Calculator binary.  The `PATH` environment variable will be searched if not found initially.
- * CONSTRAINTS     | String    | [none]  | Constraint statements to be used during this session.  This variable has precedence over `CONSTRAINT_FILE`.
- * CONSTRAINT_FILE | Filename  | [none]  | If the `CONSTRAINTS` variable is not specified, they will be loaded from this file.
- * QUIET           | Boolean   | 0       | Bounds suggestion and rejection messages can be suppressed by setting this variable to 1.
- *
  * \note Some search strategies provide a `REJECT_METHOD`
  * configuration variable that can be used to specify how to deal with
  * rejected points.  This can have great affect on the productivity of
@@ -74,35 +66,53 @@
 #include "hpoint.h"
 #include "hutil.h"
 #include "hsockutil.h"
-#include "defaults.h"
+#include "hcfg.h"
+
+/*
+ * Name used to identify this plugin layer.
+ * All Harmony plugin layers must define this variable.
+ */
+const char harmony_layer_name[] = "constraint";
+
+/*
+ * Configuration variables used in this plugin.
+ * These will automatically be registered by session-core upon load.
+ */
+hcfg_info_t plugin_keyinfo[] = {
+    { CFGKEY_OC_BIN, "oc",
+      "Location of the Omega Calculator binary. The PATH environment "
+      "variable will be searched if not found initially." },
+    { CFGKEY_OC_CONSTRAINTS, NULL,
+      "Constraint statements to be used during this session. "
+      "This variable has precedence over " CFGKEY_OC_FILE "." },
+    { CFGKEY_OC_FILE, NULL,
+      "If the " CFGKEY_OC_CONSTRAINTS " variable is not specified, "
+      "constraints will be loaded from this file." },
+    { CFGKEY_OC_QUIET, "False",
+      "Bounds suggestion and rejection messages can be suppressed "
+      "by setting this variable to true." },
+    { NULL }
+};
 
 #define MAX_CMD_LEN  4096
 #define MAX_TEXT_LEN 1024
 #define REG_TEXT_LEN 128
 #define SHORT_TEXT_LEN 32
 
-const char harmony_layer_name[] = "constraint";
-
-/* Configuration Keys Used. */
-#define CFGKEY_OC_BIN          "OC_BIN"
-#define CFGKEY_CONSTRAINTS     "CONSTRAINTS"
-#define CFGKEY_CONSTRAINT_FILE "CONSTRAINT_FILE"
-#define CFGKEY_QUIET           "QUIET"
-
 /* Forward function declarations. */
-int strategy_cfg(hsignature_t *sig);
-int build_vars_text(hsignature_t *sig);
-int build_bounds_text(hsignature_t *sig);
+int strategy_cfg(hsignature_t* sig);
+int build_vars_text(hsignature_t* sig);
+int build_bounds_text(hsignature_t* sig);
 int build_user_text(void);
-int build_point_text(hpoint_t *point);
-int update_bounds(hsignature_t *sig);
-int check_validity(hpoint_t *point);
-char *call_omega_calc(const char *cmd);
+int build_point_text(hpoint_t* point);
+int update_bounds(hsignature_t* sig);
+int check_validity(hpoint_t* point);
+char* call_omega_calc(const char* cmd);
 
 /* Keep copy of session information */
 hsignature_t local_sig;
 
-const char *omega_bin   = "oc";
+const char* omega_bin   = "oc";
 char constraints[MAX_TEXT_LEN];
 
 char vars_text[MAX_TEXT_LEN];
@@ -113,7 +123,7 @@ char point_text[MAX_TEXT_LEN];
 /* Some global variables */
 int quiet;
 
-int constraint_init(hsignature_t *sig)
+int constraint_init(hsignature_t* sig)
 {
     /* Make a copy of the signature. */
     hsignature_copy(&local_sig, sig);
@@ -138,52 +148,44 @@ int constraint_init(hsignature_t *sig)
     return 0;
 }
 
-int strategy_cfg(hsignature_t *sig)
+int strategy_cfg(hsignature_t* sig)
 {
-    const char *cfgval;
+    const char* cfgval;
 
-    cfgval = session_getcfg(CFGKEY_OC_BIN);
-    if (cfgval)
-        omega_bin = cfgval;
-
+    omega_bin = hcfg_get(session_cfg, CFGKEY_OC_BIN);
     if (!file_exists(omega_bin)) {
         omega_bin = search_path(omega_bin);
         if (!omega_bin) {
-            session_error("Could not find Omega Calculator executable."
-                          "  Use " CFGKEY_OC_BIN " to specify its location.");
+            session_error("Could not find Omega Calculator executable. "
+                          "Use " CFGKEY_OC_BIN " to specify its location.");
             return -1;
         }
     }
 
-    cfgval = session_getcfg(CFGKEY_QUIET);
-    if (cfgval) {
-        quiet = (*cfgval == '1' ||
-                 *cfgval == 't' || *cfgval == 'T' ||
-                 *cfgval == 'y' || *cfgval == 'Y');
-    }
+    quiet = hcfg_bool(session_cfg, CFGKEY_OC_QUIET);
 
-    cfgval = session_getcfg(CFGKEY_CONSTRAINTS);
+    cfgval = hcfg_get(session_cfg, CFGKEY_OC_CONSTRAINTS);
     if (cfgval) {
         if (strlen(cfgval) >= sizeof(constraints)) {
-            session_error("Constraint string too long");
+            session_error("Constraint string too long.");
             return -1;
         }
         strncpy(constraints, cfgval, sizeof(constraints));
     }
     else {
-        FILE *fp;
+        FILE* fp;
 
-        cfgval = session_getcfg(CFGKEY_CONSTRAINT_FILE);
+        cfgval = hcfg_get(session_cfg, CFGKEY_OC_FILE);
         if (!cfgval) {
             session_error("No constraints specified.  Either "
-                          CFGKEY_CONSTRAINTS " or " CFGKEY_CONSTRAINT_FILE
+                          CFGKEY_OC_CONSTRAINTS " or " CFGKEY_OC_FILE
                           " must be defined.");
             return -1;
         }
 
         fp = fopen(cfgval, "r");
         if (!fp) {
-            session_error("Could not open constraint file");
+            session_error("Could not open constraint file.");
             return -1;
         }
 
@@ -191,19 +193,19 @@ int strategy_cfg(hsignature_t *sig)
         constraints[sizeof(constraints) - 1] = '\0';
 
         if (!feof(fp)) {
-            session_error("Constraint file too large");
+            session_error("Constraint file too large.");
             return -1;
         }
 
         if (fclose(fp) != 0) {
-            session_error("Could not close constraint file");
+            session_error("Could not close constraint file.");
             return -1;
         }
     }
     return 0;
 }
 
-int constraint_generate(hflow_t *flow, hpoint_t *point)
+int constraint_generate(hflow_t* flow, hpoint_t* point)
 {
     int i;
 
@@ -215,7 +217,7 @@ int constraint_generate(hflow_t *flow, hpoint_t *point)
         if (!quiet) {
             fprintf(stderr, "Rejecting point: {");
             for (i = 0; i < point->n; ++i) {
-                hval_t *val = &point->val[i];
+                hval_t* val = &point->val[i];
 
                 switch (val->type) {
                 case HVAL_INT:  fprintf(stderr, "%ld", val->value.i); break;
@@ -239,7 +241,7 @@ int constraint_fini(void)
     return 0;
 }
 
-int build_vars_text(hsignature_t *sig)
+int build_vars_text(hsignature_t* sig)
 {
     int i;
 
@@ -252,15 +254,15 @@ int build_vars_text(hsignature_t *sig)
     return 0;
 }
 
-int build_bounds_text(hsignature_t *sig)
+int build_bounds_text(hsignature_t* sig)
 {
     int i;
-    char *ptr = bounds_text;
-    char *end = bounds_text + sizeof(bounds_text);
+    char* ptr = bounds_text;
+    char* end = bounds_text + sizeof(bounds_text);
 
     bounds_text[0] = '\0';
     for (i = 0; i < sig->range_len; ++i) {
-        hrange_t *range = &sig->range[i];
+        hrange_t* range = &sig->range[i];
 
         /* Fetch min and max according to variable type */
         switch (range->type) {
@@ -289,8 +291,8 @@ int build_bounds_text(hsignature_t *sig)
 
 int build_user_text(void)
 {
-    const char *ptr = constraints;
-    const char *end;
+    const char* ptr = constraints;
+    const char* end;
     int len = 0;
 
     while (*ptr) {
@@ -317,15 +319,15 @@ int build_user_text(void)
     return 0;
 }
 
-int build_point_text(hpoint_t *point)
+int build_point_text(hpoint_t* point)
 {
     int i;
-    char *ptr = point_text;
-    char *end = point_text + sizeof(point_text);
+    char* ptr = point_text;
+    char* end = point_text + sizeof(point_text);
 
     point_text[0] = '\0';
     for (i = 0; i < point->n; ++i) {
-        hval_t *val = &point->val[i];
+        hval_t* val = &point->val[i];
 
         /* Fetch min and max according to variable type */
         switch (val->type) {
@@ -353,14 +355,14 @@ int build_point_text(hpoint_t *point)
 /* XXX - We don't actually update the session signature just yet,
  * resulting in correct, but less optimal point generation.
  */
-int update_bounds(hsignature_t *sig)
+int update_bounds(hsignature_t* sig)
 {
     char cmd[MAX_CMD_LEN];
-    char *retstr;
+    char* retstr;
     int i, retval;
 
     for (i = 0; i < local_sig.range_len; ++i) {
-        hrange_t *range = &local_sig.range[i];
+        hrange_t* range = &local_sig.range[i];
 
         /* Write the domain text with variable constraints to the file */
         snprintf(cmd, sizeof(cmd),
@@ -418,7 +420,7 @@ int update_bounds(hsignature_t *sig)
                     " the session with these bounds:\n");
 
             for (i = 0; i < local_sig.range_len; ++i) {
-                hrange_t *range = &local_sig.range[i];
+                hrange_t* range = &local_sig.range[i];
 
                 switch (range->type) {
                 case HVAL_INT:
@@ -445,10 +447,10 @@ int update_bounds(hsignature_t *sig)
     return 0;
 }
 
-int check_validity(hpoint_t *point)
+int check_validity(hpoint_t* point)
 {
     char cmd[MAX_CMD_LEN];
-    char *retstr;
+    char* retstr;
     int retval;
 
     if (build_point_text(point) != 0)
@@ -485,22 +487,22 @@ int check_validity(hpoint_t *point)
     return (retval != 1);
 }
 
-char *call_omega_calc(const char *cmd)
+char* call_omega_calc(const char* cmd)
 {
-    static char *buf = NULL;
+    static char* buf = NULL;
     static int buf_cap = 4096;
-    char *child_argv[2];
-    char *ptr;
+    char* child_argv[2];
+    char* ptr;
     pid_t oc_pid;
     int fd, count;
 
     if (buf == NULL) {
-        buf = (char *) malloc(sizeof(char) * buf_cap);
+        buf = malloc(sizeof(char) * buf_cap);
         if (!buf)
             return NULL;
     }
 
-    child_argv[0] = (char *) omega_bin;
+    child_argv[0] = (char*) omega_bin;
     child_argv[1] = NULL;
     fd = socket_launch(omega_bin, child_argv, &oc_pid);
     if (!fd) {

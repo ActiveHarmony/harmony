@@ -32,18 +32,13 @@
 extern "C" {
 #endif
 
-/*
- * Defined configuration key convention
- */
 #ifndef DOXYGEN_SKIP
-
-#define SESSION_CORE_EXECFILE "session-core"
-#define SESSION_LAYER_SEP     ':'
 
 typedef struct hsession {
     hsignature_t sig;
-    hcfg_t *cfg;
+    hcfg_t cfg;
 } hsession_t;
+extern hsession_t HSESSION_INITIALIZER;
 
 #endif
 
@@ -54,7 +49,7 @@ typedef struct hsession {
  *
  * \return Returns 0 on success, and -1 otherwise.
  */
-int hsession_init(hsession_t *sess);
+int hsession_init(hsession_t* sess);
 
 /**
  * \brief Fully copy a Harmony session descriptor.
@@ -66,19 +61,19 @@ int hsession_init(hsession_t *sess);
  *
  * \return Returns 0 on success, and -1 otherwise.
  */
-int hsession_copy(hsession_t *copy, const hsession_t *orig);
+int hsession_copy(hsession_t* copy, const hsession_t* orig);
 
 /**
  * \brief Release all resources associated with a Harmony session descriptor.
  *
  * \param sess Harmony descriptor initialized by hsession_init().
  */
-void hsession_fini(hsession_t *sess);
+void hsession_fini(hsession_t* sess);
 
 #ifndef DOXYGEN_SKIP
 
-int hsession_serialize(char **buf, int *buflen, const hsession_t *sess);
-int hsession_deserialize(hsession_t *sess, char *buf);
+int hsession_serialize(char** buf, int* buflen, const hsession_t* sess);
+int hsession_deserialize(hsession_t* sess, char* buf);
 
 #endif
 

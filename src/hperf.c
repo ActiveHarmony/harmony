@@ -27,11 +27,11 @@
 #include <string.h>
 #include <ctype.h>
 
-hperf_t *hperf_alloc(int n)
+hperf_t* hperf_alloc(int n)
 {
-    hperf_t *retval;
+    hperf_t* retval;
 
-    retval = (hperf_t *) malloc(sizeof(hperf_t) + (n * sizeof(double)));
+    retval = malloc(sizeof(hperf_t) + (n * sizeof(double)));
     if (retval) {
         retval->n = n;
         hperf_reset(retval);
@@ -39,39 +39,39 @@ hperf_t *hperf_alloc(int n)
     return retval;
 }
 
-void hperf_reset(hperf_t *perf)
+void hperf_reset(hperf_t* perf)
 {
     int i;
     for (i = 0; i < perf->n; ++i)
         perf->p[i] = INFINITY;
 }
 
-int hperf_copy(hperf_t *dst, const hperf_t *src)
+int hperf_copy(hperf_t* dst, const hperf_t* src)
 {
     memcpy(dst, src, sizeof(hperf_t) + (src->n * sizeof(double)));
 
     return 0;
 }
 
-hperf_t *hperf_clone(const hperf_t *perf)
+hperf_t* hperf_clone(const hperf_t* perf)
 {
     int newsize = sizeof(hperf_t) + (perf->n * sizeof(double));
-    hperf_t *retval;
+    hperf_t* retval;
 
-    retval = (hperf_t *) malloc(newsize);
+    retval = malloc(newsize);
     if (retval) {
         memcpy(retval, perf, newsize);
     }
     return retval;
 }
 
-void hperf_fini(hperf_t *perf)
+void hperf_fini(hperf_t* perf)
 {
     if (perf)
         free(perf);
 }
 
-int hperf_cmp(const hperf_t *a, const hperf_t *b)
+int hperf_cmp(const hperf_t* a, const hperf_t* b)
 {
     int i;
     double sum_a = 0.0, sum_b = 0.0;
@@ -85,7 +85,7 @@ int hperf_cmp(const hperf_t *a, const hperf_t *b)
     return (sum_a > sum_b) - (sum_a < sum_b);
 }
 
-double hperf_unify(const hperf_t *perf)
+double hperf_unify(const hperf_t* perf)
 {
     int i;
     double retval = 0.0;
@@ -95,7 +95,7 @@ double hperf_unify(const hperf_t *perf)
     return retval;
 }
 
-int hperf_serialize(char **buf, int *buflen, const hperf_t *perf)
+int hperf_serialize(char** buf, int* buflen, const hperf_t* perf)
 {
     int i, count, total;
 
@@ -116,7 +116,7 @@ int hperf_serialize(char **buf, int *buflen, const hperf_t *perf)
     return -1;
 }
 
-int hperf_deserialize(hperf_t **perf, char *buf)
+int hperf_deserialize(hperf_t** perf, char* buf)
 {
     int i, n, count, total;
 

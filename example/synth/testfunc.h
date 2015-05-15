@@ -29,20 +29,20 @@ extern "C" {
 typedef double benchfunc_t(int n, double x[], double option[]);
 
 typedef struct finfo {
-    const char *name;
-    char *title;
+    const char* name;
+    char* title;
     int n_max;
     double b_min;
     double b_max;
     double optimal;
-    benchfunc_t *f;
-    char *description;
+    benchfunc_t* f;
+    char* description;
 } finfo_t;
 
 extern finfo_t flist[];
 
-void flist_print(FILE *fd, int verbose);
-finfo_t *flist_find(const char *name);
+void flist_print(FILE* fd, int verbose);
+finfo_t* flist_find(const char* name);
 
 #ifdef __cplusplus
 }

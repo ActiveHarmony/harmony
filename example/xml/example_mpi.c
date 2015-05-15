@@ -39,7 +39,7 @@
  *
  */
 
-hdesc_t *hdesc = NULL;
+hdesc_t* hdesc = NULL;
 int rank = -1;
 /* Variables to hold the application's runtime tunable parameters.
  * Once bound to a Harmony tuning session, these variables will be
@@ -64,9 +64,9 @@ long application(long p1, long p2, long p3, long p4, long p5, long p6)
     return perf;
 }
 
-int main(int argc, char **argv)
+int main(int argc, char* argv[])
 {
-    const char *name = "xmlWriter_MPI_example";
+    const char* name = "xmlWriter_MPI_example";
     int i, retval, loop = 200;
     double perf = -INFINITY;
     int node_count;
@@ -84,27 +84,28 @@ int main(int argc, char **argv)
     }
 
     /* Initialize a Harmony client. */
-    hdesc = harmony_init(&argc, &argv);
+    hdesc = harmony_init();
     if (hdesc == NULL) {
         fprintf(stderr, "Failed to initialize a harmony session.\n");
         return -1;
     }
+    argc -= harmony_parse_args(hdesc, argc - 1, &argv[1]);
 
     /*Get rank and size of this MPI application*/
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &node_count);
 
     if (rank == 0) {
-        snprintf(numbuf, sizeof(numbuf), "%d", node_count);
-
         /* Process the program arguments. */
         if (argc > 1)
             name = argv[1];
 
         errno = 0;
         harmony_session_name(hdesc, name);
-        harmony_setcfg(hdesc, CFGKEY_SESSION_LAYERS, "xmlWriter.so");
-        harmony_setcfg(hdesc, CFGKEY_SESSION_STRATEGY, "pro.so");
+        harmony_strategy(hdesc, "pro.so");
+        harmony_layers(hdesc, "xmlWriter.so");
+
+        snprintf(numbuf, sizeof(numbuf), "%d", node_count);
         harmony_setcfg(hdesc, CFGKEY_CLIENT_COUNT, numbuf);
         if (errno) {
             fprintf(stderr, "Error during session configuration.\n");

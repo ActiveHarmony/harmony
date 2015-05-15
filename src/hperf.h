@@ -35,17 +35,17 @@ typedef struct hperf {
 
 } hperf_t;
 
-hperf_t *hperf_alloc(int n);
-void     hperf_reset(hperf_t *perf);
-int      hperf_copy(hperf_t *src, const hperf_t *dst);
-hperf_t *hperf_clone(const hperf_t *perf);
-void     hperf_fini(hperf_t *perf);
+hperf_t* hperf_alloc(int n);
+void     hperf_reset(hperf_t* perf);
+int      hperf_copy(hperf_t* src, const hperf_t* dst);
+hperf_t* hperf_clone(const hperf_t* perf);
+void     hperf_fini(hperf_t* perf);
 
-int      hperf_cmp(const hperf_t *a, const hperf_t *b);
-double   hperf_unify(const hperf_t *perf);
+int      hperf_cmp(const hperf_t* a, const hperf_t* b);
+double   hperf_unify(const hperf_t* perf);
 
-int hperf_serialize(char **buf, int *buflen, const hperf_t *perf);
-int hperf_deserialize(hperf_t **perf, char *buf);
+int hperf_serialize(char** buf, int* buflen, const hperf_t* perf);
+int hperf_deserialize(hperf_t** perf, char* buf);
 
 #ifdef __cplusplus
 }

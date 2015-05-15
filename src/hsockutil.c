@@ -33,49 +33,25 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
-int tcp_connect(const char *host, int port)
+int tcp_connect(const char* host, int port)
 {
     struct sockaddr_in addr;
-    struct hostent *h_name;
-    char *portenv;
+    struct hostent* h_name;
     int sockfd;
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0)
         return -1;
 
-    /* Look up the address associated with the supplied hostname
-     * string.  If no hostname is provided, use the HARMONY_S_HOST
-     * environment variable, if defined.  Otherwise, resort to
-     * default.
-     */
-    if (host == NULL) {
-        host = getenv("HARMONY_S_HOST");
-        if (host == NULL)
-            host = DEFAULT_HOST;
-    }
-
     h_name = gethostbyname(host);
     if (!h_name)
         return -1;
     memcpy(&addr.sin_addr, h_name->h_addr_list[0], sizeof(struct in_addr));
-
-    /* Prepare the port of connection.  If the supplied port is 0, use
-     * the HARMONY_S_PORT environment variable, if defined.
-     * Otherwise, resort to default.
-     */
-    if (port == 0) {
-        portenv = getenv("HARMONY_S_PORT");
-        if (portenv)
-            port = atoi(portenv);
-        else
-            port = DEFAULT_PORT;
-    }
     addr.sin_port = htons(port);
 
     /* try to connect to the server */
     addr.sin_family = AF_INET;
-    if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
+    if (connect(sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0)
         return -1;
 
     return sockfd;
@@ -86,14 +62,14 @@ int tcp_connect(const char *host, int port)
  * Here we define some useful functions to handle data communication
  *
  ***/
-int socket_write(int fd, const void *data, unsigned datalen)
+int socket_write(int fd, const void* data, unsigned datalen)
 {
     int retval;
     unsigned count;
 
     count = 0;
     do {
-        retval = send(fd, ((char *)data) + count,
+        retval = send(fd, ((char*)data) + count,
                       datalen - count, MSG_NOSIGNAL);
         if (retval < 0) {
             if (errno == EINTR) continue;
@@ -108,13 +84,13 @@ int socket_write(int fd, const void *data, unsigned datalen)
     return count;
 }
 
-int socket_read(int fd, const void *data, unsigned datalen)
+int socket_read(int fd, const void* data, unsigned datalen)
 {
     int retval;
     unsigned count = 0;
 
     do {
-        retval = recv(fd, ((char *)data) + count,
+        retval = recv(fd, ((char*)data) + count,
                       datalen - count, MSG_NOSIGNAL);
         if (retval < 0) {
             if (errno == EINTR) continue;
@@ -129,7 +105,7 @@ int socket_read(int fd, const void *data, unsigned datalen)
     return count;
 }
 
-int socket_launch(const char *path, char *const argv[], pid_t *return_pid)
+int socket_launch(const char* path, char* const argv[], pid_t* return_pid)
 {
     int sockfd[2];
     pid_t pid;
@@ -167,7 +143,7 @@ int socket_launch(const char *path, char *const argv[], pid_t *return_pid)
 /*
  * send a message to the given socket
  */
-int mesg_send(int sock, hmesg_t *mesg)
+int mesg_send(int sock, hmesg_t* mesg)
 {
     int msglen;
 
@@ -187,10 +163,10 @@ int mesg_send(int sock, hmesg_t *mesg)
 /*
  * receive a message from a given socket
  */
-int mesg_recv(int sock, hmesg_t *mesg)
+int mesg_recv(int sock, hmesg_t* mesg)
 {
     char hdr[HMESG_HDRLEN + 1];
-    char *newbuf;
+    char* newbuf;
     int msglen, retval;
     unsigned int msgver;
 
@@ -198,7 +174,7 @@ int mesg_recv(int sock, hmesg_t *mesg)
     if (retval <  0) goto error;
     if (retval == 0) return 0;
 
-    if (ntohl(*(unsigned int *)hdr) != HMESG_MAGIC)
+    if (ntohl(*(unsigned int*)hdr) != HMESG_MAGIC)
         goto invalid;
 
     hdr[HMESG_HDRLEN] = '\0';
@@ -209,7 +185,7 @@ int mesg_recv(int sock, hmesg_t *mesg)
         goto invalid;
 
     if (mesg->buflen <= msglen) {
-        newbuf = (char *) realloc(mesg->buf, msglen + 1);
+        newbuf = realloc(mesg->buf, msglen + 1);
         if (!newbuf)
             goto error;
         mesg->buf = newbuf;

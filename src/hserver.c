@@ -15,7 +15,8 @@
  *
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ */
+#define _GNU_SOURCE
 
 #include "hserver.h"
 #include "httpsvr.h"
@@ -24,7 +25,6 @@
 #include "hperf.h"
 #include "hsockutil.h"
 #include "hutil.h"
-#include "defaults.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,6 +34,7 @@
 #include <libgen.h>
 #include <signal.h>
 #include <math.h>
+#include <getopt.h> /* For getopt_long(). Requires _GNU_SOURCE */
 
 #include <sys/types.h>
 #include <sys/select.h>
@@ -43,48 +44,65 @@
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
 
+#define dprintf(fmt, ...) \
+    do { if (verbose) fprintf(stderr, fmt, ## __VA_ARGS__); } while (0)
+
 /*
  * Function prototypes
  */
-int vars_init(int argc, char *argv[]);
+int parse_opts(int argc, char* argv[]);
+int vars_init(int argc, char* argv[]);
 int network_init(void);
 int handle_new_connection(int fd);
 int handle_unknown_connection(int fd);
 int handle_client_socket(int fd);
 int handle_session_socket(int idx);
-int available_index(int **list, int *cap);
+int available_index(int** list, int* cap);
 void client_close(int fd);
-int append_http_log(session_state_t *sess, const hpoint_t *pt, double perf);
+int append_http_log(session_state_t* sess, const hpoint_t* pt, double perf);
 
 /*
  * Main variables
  */
+int listen_port = DEFAULT_PORT;
 int listen_socket;
 fd_set listen_fds;
 int highest_socket;
 
-int *unk_fds, unk_cap;
-int *client_fds, client_cap;
-int *http_fds, http_len, http_cap;
+int* unk_fds, unk_cap;
+int* client_fds, client_cap;
+int* http_fds, http_len, http_cap;
 
-hcfg_t *cfg;
-char *harmony_dir;
-char *session_bin;
+char* harmony_dir;
+char* session_bin;
 hmesg_t mesg_in, mesg_out; /* Maintain two message structures
                             * to avoid overwriting buffers.
                             */
-session_state_t *slist;
+session_state_t* slist;
 int slist_cap;
 
 /*
  * Local variables
  */
-static int debug_mode = 1;
+int verbose;
 
-int main(int argc, char *argv[])
+void usage(const char* prog)
+{
+    fprintf(stderr, "Usage: %s [options]\n", prog);
+    fprintf(stderr, "OPTIONS:\n"
+"  -p, --port=PORT   Port to listen to on the local host. (Default: %d)\n"
+"  -v, --verbose     Print additional information during operation.\n\n",
+            listen_port);
+}
+
+int main(int argc, char* argv[])
 {
     int i, fd_count, retval;
     fd_set ready_fds;
+
+    /* Parse user options. */
+    if (parse_opts(argc, argv) != 0)
+        return -1;
 
     /* Initialize global variable state. */
     if (vars_init(argc, argv) < 0)
@@ -172,9 +190,44 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-int vars_init(int argc, char *argv[])
+int parse_opts(int argc, char* argv[])
 {
-    char *tmppath, *binfile, *cfgpath;
+    int c;
+    static struct option long_options[] = {
+        {"port",    required_argument, NULL, 'p'},
+        {"verbose", no_argument,       NULL, 'v'},
+        {NULL, 0, NULL, 0}
+    };
+
+    while (1) {
+        c = getopt_long(argc, argv, "p:v", long_options, NULL);
+        if (c == -1)
+            break;
+
+        switch(c) {
+        case 'p': listen_port = atoi(optarg); break;
+        case 'v': verbose = 1; break;
+
+        case ':':
+            usage(argv[0]);
+            fprintf(stderr, "\nOption ('%c') requires an argument.\n", optopt);
+            break;
+
+        case '?':
+        default:
+            usage(argv[0]);
+            fprintf(stderr, "\nInvalid argument ('%c').\n", optopt);
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+int vars_init(int argc, char* argv[])
+{
+    char* tmppath;
+    char* binfile;
 
     /*
      * Install proper signal handling.
@@ -188,15 +241,9 @@ int vars_init(int argc, char *argv[])
     binfile = stralloc(basename(tmppath));
     free(tmppath);
 
-    cfg = hcfg_alloc();
-    if (!cfg) {
-        perror("Could not initialize the global configuration structure");
-        return -1;
-    }
-
     if ( (tmppath = getenv(CFGKEY_HARMONY_HOME))) {
         harmony_dir = stralloc(tmppath);
-        printf(CFGKEY_HARMONY_HOME " is %s\n", harmony_dir);
+        dprintf(CFGKEY_HARMONY_HOME " is %s\n", harmony_dir);
     }
     else {
         if (strchr(argv[0], '/'))
@@ -211,11 +258,11 @@ int vars_init(int argc, char *argv[])
             harmony_dir = stralloc(dirname(harmony_dir));
         free(tmppath);
 
-        printf("Detected %s/ as " CFGKEY_HARMONY_HOME "\n", harmony_dir);
+        dprintf("Detected %s/ as HARMONY_HOME\n", harmony_dir);
     }
     free(binfile);
 
-    if (hcfg_set(cfg, CFGKEY_HARMONY_HOME, harmony_dir) < 0) {
+    if (setenv(CFGKEY_HARMONY_HOME, harmony_dir, 1) != 0) {
         perror("Could not set " CFGKEY_HARMONY_HOME " in global config");
         return -1;
     }
@@ -226,49 +273,9 @@ int vars_init(int argc, char *argv[])
     session_bin = sprintf_alloc("%s/libexec/" SESSION_CORE_EXECFILE,
                                 harmony_dir);
     if (!file_exists(session_bin)) {
-        fprintf(stderr, "Could not find support files in HARMONY_HOME\n");
+        fprintf(stderr, "Could not find support files in "
+                CFGKEY_HARMONY_HOME "\n");
         return -1;
-    }
-
-    /*
-     * Config file search
-     */
-    if (argc > 1) {
-        /* Option #1: Command-line parameter. */
-        cfgpath = stralloc(argv[1]);
-    }
-    else {
-        /* Option #2: Environment variable. */
-        if ( (tmppath = getenv("HARMONY_CONFIG"))) {
-            cfgpath = stralloc(tmppath);
-        }
-        else {
-            /* Option #3: Check if default filename exists. */
-            cfgpath = sprintf_alloc("%s/bin/" DEFAULT_CONFIG_FILENAME,
-                                    harmony_dir);
-            if (!file_exists(cfgpath)) {
-                free(cfgpath);
-                cfgpath = NULL;
-            }
-        }
-    }
-
-    /*
-     * Load config file, if found.
-     */
-    if (cfgpath) {
-        if (strcmp(cfgpath, "-") == 0)
-            printf("Reading config values from <stdin>\n");
-        else
-            printf("Reading config values from %s\n", cfgpath);
-
-        if (hcfg_load(cfg, cfgpath) != 0)
-            return -1;
-
-        free(cfgpath);
-    }
-    else {
-        printf("No config file found.  Proceeding with default values.\n");
     }
 
     mesg_in = HMESG_INITIALIZER;
@@ -313,23 +320,11 @@ int vars_init(int argc, char *argv[])
 
 int network_init(void)
 {
-    const char *cfgval;
-    int listen_port, optval;
+    int optval;
     struct sockaddr_in addr;
 
-    /* try to get the port info from the environment */
-    if (getenv("HARMONY_S_PORT") != NULL) {
-        listen_port = atoi(getenv("HARMONY_S_PORT"));
-    }
-    else if ( (cfgval = hcfg_get(cfg, CFGKEY_SERVER_PORT))) {
-        listen_port = atoi(cfgval);
-    }
-    else {
-        printf("Using default TCP port: %d\n", DEFAULT_PORT);
-        listen_port = DEFAULT_PORT;
-    }
-
     /* create a listening socket */
+    dprintf("Listening on TCP port: %d\n", listen_port);
     listen_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (listen_socket < 0) {
         perror("Could not create listening socket");
@@ -353,7 +348,7 @@ int network_init(void)
     addr.sin_port        = htons(listen_port);
 
     /* Bind the socket to the desired port. */
-    if (bind(listen_socket, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+    if (bind(listen_socket, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         perror("Could not bind socket to listening address");
         return -1;
     }
@@ -379,7 +374,7 @@ int handle_new_connection(int fd)
     socklen_t addrlen = sizeof(addr);
     int idx, newfd;
 
-    newfd = accept(fd, (struct sockaddr *)&addr, &addrlen);
+    newfd = accept(fd, (struct sockaddr*)&addr, &addrlen);
     if (newfd < 0) {
         perror("Error accepting new connection");
         return -1;
@@ -395,8 +390,8 @@ int handle_new_connection(int fd)
     }
 
     unk_fds[idx] = newfd;
-    if (debug_mode) printf("Accepted connection from %s as socket %d\n",
-                           inet_ntoa(addr.sin_addr), newfd);
+    dprintf("Accepted connection from %s as socket %d\n",
+            inet_ntoa(addr.sin_addr), newfd);
     return newfd;
 }
 
@@ -453,7 +448,7 @@ int handle_client_socket(int fd)
 {
     int idx, i, retval;
     double perf;
-    session_state_t *sess;
+    session_state_t* sess;
 
     sess = NULL;
     retval = mesg_recv(fd, &mesg_in);
@@ -524,7 +519,7 @@ int handle_client_socket(int fd)
                 break;
         }
         if (i < sess->fetched_len) {
-            const hpoint_t *pt = &sess->fetched[i];
+            const hpoint_t* pt = &sess->fetched[i];
 
             /* Copy point from fetched list to HTTP log. */
             if (append_http_log(sess, pt, perf) != 0) {
@@ -595,7 +590,7 @@ int handle_client_socket(int fd)
 
 int handle_session_socket(int idx)
 {
-    session_state_t *sess;
+    session_state_t* sess;
 
     sess = &slist[idx];
     if (mesg_recv(sess->fd, &mesg_in) < 1)
@@ -603,7 +598,7 @@ int handle_session_socket(int idx)
 
     if (mesg_in.dest == -1) {
         if (mesg_in.status == HMESG_STATUS_REQ) {
-            if (handle_http_info(sess, (char *)mesg_in.data.string) != 0) {
+            if (handle_http_info(sess, (char*)mesg_in.data.string) != 0) {
                 perror("Error handling http info message");
                 goto error;
             }
@@ -625,7 +620,7 @@ int handle_session_socket(int idx)
             /* Log this point before we forward it to the client. */
             if (sess->fetched_len == sess->fetched_cap) {
                 if (array_grow(&sess->fetched, &sess->fetched_cap,
-                               sizeof(hpoint_t *)) != 0)
+                               sizeof(hpoint_t*)) != 0)
                 {
                     perror("Could not grow fetch log");
                     goto error;
@@ -671,14 +666,13 @@ int handle_session_socket(int idx)
     return -1;
 }
 
-session_state_t *session_open(hmesg_t *mesg)
+session_state_t* session_open(hmesg_t* mesg)
 {
-    int i, idx, clients_expected;
-    session_state_t *sess;
-    char *child_argv[2];
-    const char *cfgstr;
+    int i, idx = -1;
+    session_state_t* sess;
+    char* child_argv[2];
+    const char* cfgstr;
 
-    idx = -1;
     /* check if session already exists, and return if it does */
     for (i = 0; i < slist_cap; ++i) {
         if (!slist[i].name) {
@@ -708,42 +702,17 @@ session_state_t *session_open(hmesg_t *mesg)
     hpoint_fini(&sess->best);
     sess->best_perf = INFINITY;
 
-    if (hcfg_merge(mesg->data.session.cfg, cfg) < 0) {
-        mesg_out.data.string = "Internal error merging config structures";
-        goto error;
-    }
-
     /* Force sessions to load the httpinfo plugin layer. */
     #define HTTPINFO "httpinfo.so"
-    cfgstr = hcfg_get(mesg->data.session.cfg, CFGKEY_SESSION_LAYERS);
-    if (!cfgstr || *cfgstr == '\0') {
-        hcfg_set(mesg->data.session.cfg, CFGKEY_SESSION_LAYERS, HTTPINFO);
+    cfgstr = hcfg_get(&mesg->data.session.cfg, CFGKEY_LAYERS);
+    if (!cfgstr) {
+        hcfg_set(&mesg->data.session.cfg, CFGKEY_LAYERS, HTTPINFO);
     }
     else if (strstr(cfgstr, HTTPINFO) == NULL) {
         char *buf = sprintf_alloc(HTTPINFO ":%s", cfgstr);
-        hcfg_set(mesg->data.session.cfg, CFGKEY_SESSION_LAYERS, buf);
+        hcfg_set(&mesg->data.session.cfg, CFGKEY_LAYERS, buf);
         free(buf);
     }
-
-    /* Make sure we have at least 1 expected client. */
-    cfgstr = hcfg_get(mesg->data.session.cfg, CFGKEY_CLIENT_COUNT);
-    if (!cfgstr) {
-        clients_expected = DEFAULT_CLIENT_COUNT;
-    }
-    else {
-        clients_expected = atoi(cfgstr);
-    }
-    if (clients_expected < 1) {
-        mesg_out.data.string = "Invalid config value for " CFGKEY_CLIENT_COUNT;
-        goto error;
-    }
-
-    /* Fork and exec a session handler. */
-    child_argv[0] = sess->name;
-    child_argv[1] = NULL;
-    sess->fd = socket_launch(session_bin, child_argv, NULL);
-    if (sess->fd < 0)
-        goto error;
 
     /* Initialize HTTP server fields. */
     if (hsignature_copy(&sess->sig, &mesg->data.session.sig) != 0)
@@ -752,14 +721,18 @@ session_state_t *session_open(hmesg_t *mesg)
     if (gettimeofday(&sess->start, NULL) < 0)
         goto error;
 
-    cfgstr = hcfg_get(mesg->data.session.cfg, CFGKEY_SESSION_STRATEGY);
-    if (!cfgstr)
-        cfgstr = DEFAULT_STRATEGY;
-
-    sess->strategy = stralloc(cfgstr);
+    cfgstr = hcfg_get(&mesg->data.session.cfg, CFGKEY_STRATEGY);
+    sess->strategy = stralloc( cfgstr );
     sess->status = 0x0;
     sess->log_len = 0;
     sess->reported = 0;
+
+    /* Fork and exec a session handler. */
+    child_argv[0] = sess->name;
+    child_argv[1] = NULL;
+    sess->fd = socket_launch(session_bin, child_argv, NULL);
+    if (sess->fd < 0)
+        goto error;
 
     FD_SET(sess->fd, &listen_fds);
     if (highest_socket < sess->fd)
@@ -773,7 +746,7 @@ session_state_t *session_open(hmesg_t *mesg)
     return NULL;
 }
 
-void session_close(session_state_t *sess)
+void session_close(session_state_t* sess)
 {
     int i;
 
@@ -816,7 +789,7 @@ void client_close(int fd)
     FD_CLR(fd, &listen_fds);
 }
 
-int available_index(int **list, int *cap)
+int available_index(int** list, int* cap)
 {
     int i, orig_cap;
 
@@ -832,9 +805,9 @@ int available_index(int **list, int *cap)
     return orig_cap;
 }
 
-int append_http_log(session_state_t *sess, const hpoint_t *pt, double perf)
+int append_http_log(session_state_t* sess, const hpoint_t* pt, double perf)
 {
-    http_log_t *entry;
+    http_log_t* entry;
 
     /* Extend HTTP log if necessary. */
     if (sess->log_len == sess->log_cap) {
@@ -858,10 +831,10 @@ int append_http_log(session_state_t *sess, const hpoint_t *pt, double perf)
     return 0;
 }
 
-int session_setcfg(session_state_t *sess, const char *key, const char *val)
+int session_setcfg(session_state_t* sess, const char* key, const char* val)
 {
     hmesg_t mesg = HMESG_INITIALIZER;
-    char *buf = sprintf_alloc("%s=%s", key, val ? val : "");
+    char* buf = sprintf_alloc("%s=%s", key, val ? val : "");
     int retval = 0;
 
     mesg.dest = -1;
@@ -877,7 +850,7 @@ int session_setcfg(session_state_t *sess, const char *key, const char *val)
     return retval;
 }
 
-int session_restart(session_state_t *sess)
+int session_restart(session_state_t* sess)
 {
     hmesg_t mesg = HMESG_INITIALIZER;
     int retval = 0;
