@@ -1,5 +1,4 @@
 TO_BASE=../../..
-PREFIX=$(TO_BASE)
 
 CC=gcc
 CFLAGS=-std=c99 -pedantic -Wall -Werror -g
@@ -46,11 +45,9 @@ ifneq (, $(wildcard $(LIBTAUDB_LIBDIR)/libtaudb.a))
 	LIBEXEC_TARGETS += TAUdb.so
 endif
 
-.PHONY: all install libharmony clean distclean
+.PHONY: libharmony
 
-all: $(TARGETS)
-
-install: $(TARGETS)
+install:
 	@if [ ! -d $(PREFIX)/libexec ]; then                             \
 		echo mkdir -p $(PREFIX)/libexec;                         \
 		mkdir -p $(PREFIX)/libexec;                              \
@@ -70,20 +67,5 @@ xmlWriter.so: override CPPFLAGS+=-I${LIBXML2_INCDIR}
 libharmony:
 	$(MAKE) -C $(TO_BASE)/src libharmony.a
 
-clean:
-	rm -f core a.out *.o $(TARGETS)
-
-distclean: clean
-	rm -f *~ *.d
-
-#
-# Auto dependency creation
-#
-%.d: %.c
-	@rm -f $@; \
-		$(CC) -MM $(CPPFLAGS) $< > $@.$$$$ 2>/dev/null; \
-		sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
-		rm -f $@.$$$$
-
-
--include $(SRCS:.c=.d)
+# Active Harmony makefiles should always include this file last.
+include $(TO_BASE)/Makefile.common

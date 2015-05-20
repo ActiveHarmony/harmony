@@ -1,0 +1,46 @@
+ifndef TO_BASE
+    $(error Makefile does not define TO_BASE variables.)
+endif
+
+#
+# Variables that control the build system.
+#
+.DEFAULT_GOAL=all
+PREFIX=$(TO_BASE)
+
+#
+# Standard rules to make available in all subsystems.
+#
+.PHONY: all install clean distclean subdirs $(SUBDIRS)
+
+all: $(TARGETS) subdirs
+
+install: all
+
+clean: subdirs
+	rm -f core a.out *.o $(TARGETS) $(EXTRA_CLEANUP)
+
+distclean: clean
+	rm -f *~ *.d
+
+subdirs: $(SUBDIRS)
+
+$(SUBDIRS):
+	$(MAKE) -C $@ $(MAKECMDGOALS)
+
+#
+# Auto dependency creation
+#
+%.d: %.c
+	@$(RM) $@; \
+	$(CC) -MM $(CPPFLAGS) $< > $@.$$$$ 2>/dev/null; \
+	sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
+	rm -f $@.$$$$
+-include $(patsubst %.c,%.d,$(filter %.c,$(SRCS)))
+
+%.d: %.cxx
+	@$(RM) $@; \
+	$(CXX) -MM $(CPPFLAGS) $< > $@.$$$$ 2>/dev/null; \
+	sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
+	rm -f $@.$$$$
+-include $(patsubst %.cxx,%.d,$(filter %.cxx,$(SRCS)))

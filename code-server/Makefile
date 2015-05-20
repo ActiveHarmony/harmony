@@ -1,5 +1,4 @@
 TO_BASE=..
-PREFIX=$(TO_BASE)
 
 CXX=g++
 CXXFLAGS=-Wall -pedantic -Werror -g
@@ -11,11 +10,9 @@ SRCS=$(BIN_SRCS)
 
 BIN_TARGETS=code_generator
 
-.PHONY: all install clean distclean
+TARGETS=$(BIN_TARGETS)
 
-all: $(BIN_TARGETS)
-
-install: $(BIN_TARGETS)
+install:
 	@echo "Code server must be executed from source directory (for now)."
 
 code_generator: code_generator.o $(TO_BASE)/src/libharmony.a
@@ -27,19 +24,5 @@ code_generator: code_generator.o $(TO_BASE)/src/libharmony.a
 $(TO_BASE)/src/libharmony.a:
 	$(MAKE) -C $(TO_BASE)/src libharmony.a
 
-clean:
-	rm -f core.* *.o $(BIN_TARGETS)
-
-distclean: clean
-	rm -f *~ *.d
-
-#
-# Auto dependency creation
-#
-%.d: %.cxx
-	@rm -f $@; \
-		$(CXX) -MM $(CPPFLAGS) $< > $@.$$$$ 2>/dev/null; \
-		sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
-		rm -f $@.$$$$
-
--include $(SRCS:.cxx=.d)
+# Active Harmony makefiles should always include this file last.
+include $(TO_BASE)/Makefile.common

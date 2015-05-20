@@ -1,5 +1,4 @@
 TO_BASE=../../..
-PREFIX=$(TO_BASE)
 INST_DIR=$(PREFIX)/libexec
 
 CC=gcc
@@ -28,11 +27,7 @@ LIBEXEC_TARGETS=exhaustive.so \
 
 TARGETS=$(LIBEXEC_TARGETS)
 
-.PHONY: all install clean distclean
-
-all: $(TARGETS)
-
-install: $(TARGETS)
+install:
 	@if [ ! -d $(INST_DIR) ]; then       \
 		echo mkdir -p $(INST_DIR);   \
 		mkdir -p $(INST_DIR);        \
@@ -60,19 +55,5 @@ nemo.so: libvertex.o
 %.so: %.o
 	$(CC) -shared $(LDFLAGS) $(CFLAGS) $^ $(LOADLIBES) $(LDLIBS) -o $@
 
-clean:
-	rm -f core a.out *.o $(TARGETS)
-
-distclean: clean
-	rm -f *~ *.d
-
-#
-# Auto dependency creation
-#
-%.d: %.c
-	@rm -f $@; \
-		$(CC) -MM $(CPPFLAGS) $< > $@.$$$$ 2>/dev/null; \
-		sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
-		rm -f $@.$$$$
-
--include $(SRCS:.c=.d)
+# Active Harmony makefiles should always include this file last.
+include $(TO_BASE)/Makefile.common

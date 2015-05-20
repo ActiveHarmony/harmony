@@ -10,11 +10,9 @@ override LDLIBS+=-lharmony
 
 TARGETS=example example_mpi
 
-.PHONY: all install libharmony clean distclean
+.PHONY: libharmony
 
-all: $(TARGETS)
-
-install: $(TARGETS)
+install:
 	@echo "Examples must be executed from source directory (for now)."
 
 example: example.c libharmony
@@ -36,8 +34,5 @@ example_mpi: example_mpi.c libharmony
 libharmony:
 	$(MAKE) -C $(TO_BASE)/src libharmony.a
 
-clean:
-	rm -f core $(TARGETS)
-
-distclean: clean
-	rm -f *~
+# Active Harmony makefiles should always include this file last.
+include $(TO_BASE)/Makefile.common

@@ -1,5 +1,4 @@
 TO_BASE=..
-PREFIX=$(TO_BASE)
 
 CC=gcc
 CFLAGS=-std=c99 -pedantic -Wall -Werror -g
@@ -49,11 +48,7 @@ TARGETS=$(BIN_TARGETS) $(LIB_TARGETS) $(LIBEXEC_TARGETS)
 SUBDIRS=plugins/strategies \
         plugins/layers
 
-.PHONY: all install clean distclean $(SUBDIRS)
-
-all: $(TARGETS) $(SUBDIRS)
-
-install: $(TARGETS) $(SUBDIRS)
+install:
 	@if [ ! -d $(PREFIX)/bin ]; then                     \
 		echo mkdir -p $(PREFIX)/bin;                 \
 		mkdir -p $(PREFIX)/bin;                      \
@@ -106,22 +101,5 @@ libharmony.a: $(LIB_OBJS) $(SHR_OBJS)
 
 $(LIB_OBJS) $(SHR_OBJS): override CFLAGS+=-fPIC
 
-$(SUBDIRS):
-	$(MAKE) -C $@ $(MAKECMDGOALS)
-
-clean: $(SUBDIRS)
-	rm -f core a.out *.o $(TARGETS)
-
-distclean: clean
-	rm -f *~ *.d
-
-#
-# Auto dependency creation
-#
-%.d: %.c
-	@rm -f $@; \
-		$(CC) -MM $(CPPFLAGS) $< > $@.$$$$ 2>/dev/null; \
-		sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
-		rm -f $@.$$$$
-
--include $(SRCS:.c=.d)
+# Active Harmony makefiles should always include this file last.
+include $(TO_BASE)/Makefile.common
