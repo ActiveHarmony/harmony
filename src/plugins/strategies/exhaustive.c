@@ -269,7 +269,7 @@ int strategy_analyze(htrial_t* trial)
     /* converged when the final point has been received, 
        and there are no outstanding points */
     if(outstanding_points <= 0 && final_point_received) {
-        if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "1") != 0) {
+        if (session_setcfg(CFGKEY_CONVERGED, "1") != 0) {
             session_error("Internal error: Could not set convergence status.");
             return -1;
         }

@@ -139,7 +139,7 @@ int cache_generate(hflow_t* flow, htrial_t* trial)
     // so the client gets a chance to do something when the search is converged 
     // not really part of cache, but gemm example client will never terminate
     // or do anything if this isn't present (it never knows when strat is converged)
-    if(strncmp(session_getcfg(CFGKEY_STRATEGY_CONVERGED), "1", 1) == 0) {
+    if(strncmp(hcfg_get(session_cfg, CFGKEY_CONVERGED), "1", 1) == 0) {
       return HFLOW_ACCEPT;
     } 
 
