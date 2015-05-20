@@ -2,14 +2,13 @@ TO_BASE=.
 
 SUBDIRS=src \
 	code-server \
-	example/client_api \
-	example/constraint \
-	example/code_generation \
-	example/synth \
-	example/taudb \
-	example/xml
+	example
 
 .PHONY: doc
+
+code-server: src
+
+example: src
 
 doc:
 	$(MAKE) -C doc
