@@ -1,5 +1,4 @@
 TO_BASE=../../..
-INST_DIR=$(PREFIX)/libexec
 
 override CFLAGS+=-fPIC
 override CPPFLAGS+=-I$(TO_BASE)/src
@@ -7,32 +6,18 @@ override CPPFLAGS+=-I$(TO_BASE)/src
 TCL_INCDIR?=/usr/include
 TCL_LIBDIR?=/usr/lib64
 
-LIBEXEC_SRCS=libvertex.c \
-             exhaustive.c \
-             random.c \
-             nm.c \
-             pro.c \
-             nemo.c
+SRCS=libvertex.c \
+     exhaustive.c \
+     random.c \
+     nm.c \
+     pro.c \
+     nemo.c
 
-SRCS=$(LIBEXEC_SRCS)
-
-LIBEXEC_TARGETS=exhaustive.so \
-                random.so \
-                nm.so \
-                pro.so \
-                nemo.so
-
-TARGETS=$(LIBEXEC_TARGETS)
-
-install:
-	@if [ ! -d $(INST_DIR) ]; then       \
-		echo mkdir -p $(INST_DIR);   \
-		mkdir -p $(INST_DIR);        \
-	fi &&                                \
-	for i in $(LIBEXEC_TARGETS); do      \
-		echo cp $$i $(INST_DIR)/$$i; \
-		cp $$i $(INST_DIR)/$$i;      \
-	done
+LIBEXEC_TGTS=exhaustive.so \
+             random.so \
+             nm.so \
+             pro.so \
+             nemo.so
 
 exhaustive.so: override LDLIBS+=-lm
 exhaustive.so: libvertex.o

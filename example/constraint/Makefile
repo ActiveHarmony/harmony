@@ -7,9 +7,6 @@ TEST_BIN=example_c
 
 all: client
 
-install:
-	@echo "Examples must be executed from source directory (for now)."
-
 test: client
 	$(TEST_DIR)/$(TEST_BIN) LAYERS=constraint.so OC_FILE=constraint.in
 

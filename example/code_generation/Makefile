@@ -5,10 +5,7 @@ MPICC=mpicc
 override CPPFLAGS+=-I$(TO_BASE)/src
 override LDLIBS+=-ldl
 
-TARGETS=gemm
-
-install:
-	@echo "Examples must be executed from source directory (for now)."
+NO_INST_TGTS=gemm
 
 gemm: gemm.c $(TO_BASE)/src/libharmony.a
 	@if [ -x "`which $(MPICC) 2>&1`" ]; then                              \

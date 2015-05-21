@@ -4,10 +4,7 @@ MPICC=mpicc
 
 override CFLAGS+=-I$(TO_BASE)/src
 
-TARGETS=example example_mpi
-
-install:
-	@echo "Examples must be executed from source directory (for now)."
+NO_INST_TGTS=example example_mpi
 
 example: example.c $(TO_BASE)/src/libharmony.a
 	@if [ -x "`which $(CC) 2>&1`" ]; then                              \

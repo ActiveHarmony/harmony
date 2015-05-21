@@ -7,10 +7,7 @@ override FFLAGS+=-fno-underscoring
 override CHPLFLAGS+=-M$(TO_BASE)/src -I$(TO_BASE)/src
 override LDLIBS+=-lm
 
-TARGETS=example_c #example_f example_chpl
-
-install:
-	@echo "Examples must be executed from source directory (for now)."
+NO_INST_TGTS=example_c #example_f example_chpl
 
 example_c: example.c $(TO_BASE)/src/libharmony.a
 	@if [ -x "`which $(CC) 2>&1`" ]; then                              \

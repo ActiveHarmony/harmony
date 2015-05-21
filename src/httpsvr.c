@@ -126,7 +126,7 @@ int http_init(const char* basedir)
         if (html_file[i].buf != NULL)
             file_unmap(html_file[i].buf, html_file[i].buflen);
 
-        filename = sprintf_alloc("%s/libexec/html/%s", basedir,
+        filename = sprintf_alloc("%s/libexec/http/%s", basedir,
                                  html_file[i].filename);
         if (!filename) {
             perror("Could not allocate temp memory for filename");

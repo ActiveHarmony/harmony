@@ -1,6 +1,8 @@
 TO_BASE=..
+SUBDIRS=plugins/layers \
+        plugins/strategies \
 
-SHR_SRCS=hcfg.c \
+LIB_SRCS=hcfg.c \
          hmesg.c \
          hpoint.c \
          hperf.c \
@@ -9,91 +11,49 @@ SHR_SRCS=hcfg.c \
          hsockutil.c \
          hutil.c \
          hval.c
-LIB_SRCS=hclient.c
+CLI_SRCS=hclient.c
 BIN_SRCS=hserver.c \
          httpsvr.c \
          session-core.c \
          tuna.c \
          hinfo.c
-SRCS=$(SHR_SRCS) $(LIB_SRCS) $(BIN_SRCS)
+SRCS=$(BIN_SRCS) $(LIB_SRCS) $(CLI_SRCS)
 
-SHR_OBJS=$(SHR_SRCS:.c=.o)
 LIB_OBJS=$(LIB_SRCS:.c=.o)
+CLI_OBJS=$(CLI_SRCS:.c=.o)
 
-BIN_FILES=harmony.cfg
-INCLUDE_FILES=hclient.h
-HTTP_FILES=http/overview.cgi \
-           http/overview.js \
-           http/session-view.cgi \
-           http/session-view.js \
-           http/common.js \
-           http/activeharmony.css \
-           http/jquery.min.js \
-           http/jquery.flot.min.js \
-           http/jquery.flot.time.min.js \
-           http/jquery.flot.resize.min.js \
-           http/jquery.flot.selection.min.js \
-           http/excanvas.min.js
+BIN_TGTS=hinfo \
+         hserver \
+         tuna
+LIB_TGTS=libharmony.a
+LIBEXEC_TGTS=session-core
+LIBEXEC_COPY=http/overview.cgi \
+             http/overview.js \
+             http/session-view.cgi \
+             http/session-view.js \
+             http/common.js \
+             http/activeharmony.css \
+             http/jquery.min.js \
+             http/jquery.flot.min.js \
+             http/jquery.flot.time.min.js \
+             http/jquery.flot.resize.min.js \
+             http/jquery.flot.selection.min.js \
+             http/excanvas.min.js
+INCLUDE_COPY=hclient.h
 
-BIN_TARGETS=hserver \
-            tuna \
-            hinfo
-LIB_TARGETS=libharmony.a
-LIBEXEC_TARGETS=session-core
-TARGETS=$(BIN_TARGETS) $(LIB_TARGETS) $(LIBEXEC_TARGETS)
-
-SUBDIRS=plugins/strategies \
-        plugins/layers
-
-install:
-	@if [ ! -d $(PREFIX)/bin ]; then                     \
-		echo mkdir -p $(PREFIX)/bin;                 \
-		mkdir -p $(PREFIX)/bin;                      \
-	fi &&                                                \
-	echo cp $(BIN_TARGETS) $(BIN_FILES) $(PREFIX)/bin && \
-	cp $(BIN_TARGETS) $(BIN_FILES) $(PREFIX)/bin &&      \
-                                                             \
-	if [ ! -d $(PREFIX)/lib ]; then                      \
-		echo mkdir -p $(PREFIX)/lib;                 \
-		mkdir -p $(PREFIX)/lib;                      \
-	fi &&                                                \
-	echo cp $(LIB_TARGETS) $(PREFIX)/lib &&              \
-	cp $(LIB_TARGETS) $(PREFIX)/lib &&                   \
-                                                             \
-	if [ ! -d $(PREFIX)/include ]; then                  \
-		echo mkdir -p $(PREFIX)/include;             \
-		mkdir -p $(PREFIX)/include;                  \
-	fi &&                                                \
-	echo cp $(INCLUDE_FILES) $(PREFIX)/include &&        \
-	cp $(INCLUDE_FILES) $(PREFIX)/include &&             \
-                                                             \
-	if [ ! -d $(PREFIX)/libexec ]; then                  \
-		echo mkdir -p $(PREFIX)/libexec;             \
-		mkdir -p $(PREFIX)/libexec;                  \
-	fi &&                                                \
-	echo cp $(LIBEXEC_TARGETS) $(PREFIX)/libexec &&      \
-	cp $(LIBEXEC_TARGETS) $(PREFIX)/libexec &&           \
-                                                             \
-	if [ ! -d $(PREFIX)/libexec/html ]; then             \
-		echo mkdir -p $(PREFIX)/libexec/html;        \
-		mkdir -p $(PREFIX)/libexec/html;             \
-	fi &&                                                \
-	echo cp $(HTTP_FILES) $(PREFIX)/libexec/html &&      \
-	cp $(HTTP_FILES) $(PREFIX)/libexec/html
-
-hserver: httpsvr.o $(SHR_OBJS)
+hserver: httpsvr.o $(LIB_OBJS)
 
 session-core: override LDFLAGS+=-Wl,--export-dynamic
 session-core: override LDLIBS+=-ldl
-session-core: $(SHR_OBJS)
+session-core: $(LIB_OBJS)
 
 hinfo: override LDFLAGS+=-Wl,--export-dynamic
 hinfo: override LDLIBS+=-ldl
-hinfo: $(SHR_OBJS)
+hinfo: $(LIB_OBJS)
 
 tuna: libharmony.a
 
-libharmony.a: $(LIB_OBJS) $(SHR_OBJS)
+libharmony.a: $(LIB_OBJS) $(CLI_OBJS)
 	$(AR) $(ARFLAGS) $@ $^
 
 $(LIB_OBJS) $(SHR_OBJS): override CFLAGS+=-fPIC
