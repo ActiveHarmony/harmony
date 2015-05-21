@@ -1,9 +1,6 @@
 TO_BASE=../../..
 INST_DIR=$(PREFIX)/libexec
 
-CC=gcc
-CFLAGS=-std=c99 -pedantic -Wall -Werror -g
-
 override CFLAGS+=-fPIC
 override CPPFLAGS+=-I$(TO_BASE)/src
 

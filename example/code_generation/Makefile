@@ -1,7 +1,6 @@
 TO_BASE=../..
 
 MPICC=mpicc
-CFLAGS=-std=c99 -pedantic -Wall -Werror -g
 
 override CPPFLAGS+=-I$(TO_BASE)/src
 override LDLIBS+=-ldl

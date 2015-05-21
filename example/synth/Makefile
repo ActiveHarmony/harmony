@@ -1,8 +1,5 @@
 TO_BASE=../..
 
-CC=gcc
-CFLAGS=-std=c99 -pedantic -Wall -Werror -g
-
 SRCS=	synth.c \
 	testfunc.c
 OBJS=	$(SRCS:.c=.o)

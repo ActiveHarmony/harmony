@@ -1,9 +1,5 @@
 TO_BASE=../..
 
-CC=gcc
-CFLAGS=-std=c99 -pedantic -Wall -Werror -g
-FC=gfortran
-FFLAGS=-Wall -g
 CHPLC=chpl
 
 override CPPFLAGS+=-I$(TO_BASE)/src

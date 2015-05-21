@@ -1,9 +1,7 @@
 TO_BASE=../..
 
 EXTRA_CLEANUP=*.xml
-CC=gcc
 MPICC=mpicc
-CFLAGS=-std=c99 -pedantic -Wall -Werror -g
 
 override CFLAGS+=-I$(TO_BASE)/src
 

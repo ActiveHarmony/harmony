@@ -1,8 +1,5 @@
 TO_BASE=../../..
 
-CC=gcc
-CFLAGS=-std=c99 -pedantic -Wall -Werror -g
-
 override CFLAGS+=-fPIC
 override CPPFLAGS+=-I$(TO_BASE)/src
 override LDFLAGS+=-L$(TO_BASE)/src

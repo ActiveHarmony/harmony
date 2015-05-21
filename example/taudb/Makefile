@@ -1,8 +1,6 @@
 TO_BASE=../..
 
-CC=gcc
 MPICC=mpicc
-CFLAGS=-std=c99 -pedantic -Wall -Werror -g
 
 override CFLAGS+=-I$(TO_BASE)/src
 

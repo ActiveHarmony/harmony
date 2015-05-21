@@ -1,8 +1,5 @@
 TO_BASE=..
 
-CXX=g++
-CXXFLAGS=-Wall -pedantic -Werror -g
-
 override CPPFLAGS+=-I$(TO_BASE)/src
 
 BIN_SRCS=code_generator.cxx
