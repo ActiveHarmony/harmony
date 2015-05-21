@@ -16,13 +16,10 @@ install:
 	@echo "Code server must be executed from source directory (for now)."
 
 code_generator: code_generator.o $(TO_BASE)/src/libharmony.a
-	$(CXX) -L$(TO_BASE)/src $(LDFLAGS) $< -lharmony $(LDLIBS) -o $@
+	$(CXX) $(LDFLAGS) $^ $(LOADLIBES) $(LDLIBS) -o $@
 
 %.o: %.cxx
 	$(CXX) -c $< $(CPPFLAGS) $(CXXFLAGS) -o $@
-
-$(TO_BASE)/src/libharmony.a:
-	$(MAKE) -C $(TO_BASE)/src libharmony.a
 
 # Active Harmony makefiles should always include this file last.
 include $(TO_BASE)/Makefile.common

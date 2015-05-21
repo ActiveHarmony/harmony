@@ -11,7 +11,13 @@ PREFIX=$(TO_BASE)
 #
 # Standard rules to make available in all subsystems.
 #
-.PHONY: all install clean distclean subdirs $(SUBDIRS)
+.PHONY: all \
+        clean \
+        distclean \
+        install \
+        subdirs \
+        $(SUBDIRS) \
+        $(TO_BASE)/src/libharmony.a
 
 all: $(TARGETS) subdirs
 
@@ -27,6 +33,9 @@ subdirs: $(SUBDIRS)
 
 $(SUBDIRS):
 	$(MAKE) -C $@ $(MAKECMDGOALS)
+
+$(TO_BASE)/src/libharmony.a:
+	$(MAKE) -C $(TO_BASE)/src libharmony.a
 
 #
 # Auto dependency creation

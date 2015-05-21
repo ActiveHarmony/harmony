@@ -45,8 +45,6 @@ ifneq (, $(wildcard $(LIBTAUDB_LIBDIR)/libtaudb.a))
 	LIBEXEC_TARGETS += TAUdb.so
 endif
 
-.PHONY: libharmony
-
 install:
 	@if [ ! -d $(PREFIX)/libexec ]; then                             \
 		echo mkdir -p $(PREFIX)/libexec;                         \
@@ -61,11 +59,8 @@ TAUdb.so: override CPPFLAGS+=-I$(LIBTAUDB_INCDIR)
 xmlWriter.so: override LDLIBS+=-L${LIBXML2_LIBDIR} -lxml2
 xmlWriter.so: override CPPFLAGS+=-I${LIBXML2_INCDIR}
 
-%.so: %.o libharmony
+%.so: %.o $(TO_BASE)/src/libharmony.a
 	$(CC) -shared $(LDFLAGS) $(CFLAGS) $< $(LOADLIBES) $(LDLIBS) -o $@
-
-libharmony:
-	$(MAKE) -C $(TO_BASE)/src libharmony.a
 
 # Active Harmony makefiles should always include this file last.
 include $(TO_BASE)/Makefile.common
