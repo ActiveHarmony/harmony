@@ -115,10 +115,10 @@ install: all
 	fi
 
 clean: subdirs
-	rm -f core a.out *.o $(TARGETS) $(EXTRA_CLEANUP)
+	$(RM) core a.out *.o $(TGTS) $(EXTRA_CLEANUP)
 
 distclean: clean
-	rm -f *~ *.d
+	$(RM) *~ *.d
 
 subdirs: $(SUBDIRS)
 
@@ -135,12 +135,12 @@ $(TO_BASE)/src/libharmony.a:
 	@$(RM) $@; \
 	$(CC) -MM $(CPPFLAGS) $< > $@.$$$$ 2>/dev/null; \
 	sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
-	rm -f $@.$$$$
+	$(RM) $@.$$$$
 -include $(patsubst %.c,%.d,$(filter %.c,$(SRCS)))
 
 %.d: %.cxx
 	@$(RM) $@; \
 	$(CXX) -MM $(CPPFLAGS) $< > $@.$$$$ 2>/dev/null; \
 	sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
-	rm -f $@.$$$$
+	$(RM) $@.$$$$
 -include $(patsubst %.cxx,%.d,$(filter %.cxx,$(SRCS)))
