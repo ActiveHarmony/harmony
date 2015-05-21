@@ -73,15 +73,6 @@ else
     ${chill_exec_name} temp.script
 fi
 
-# generate the code from lxf
-if [ "${file_suffix}" = "f" ]; then
-    s2f ${file_prefix}.lxf > ${file_prefix}_modified.${file_suffix}
-fi
-
-if [ "${file_suffix}" = "c" ]; then
-    s2c ${file_prefix}.lxf > ${file_prefix}_modified.${file_suffix}
-fi
-
 # very basic error checking
 if [ ! -e "${file_prefix}_modified.${file_suffix}" ]; then
     echo "ERROR: Generating the variant for ${appname}."
@@ -102,7 +93,7 @@ fi
 echo "Got here without errors"
 
 # Compilation.
-if [ "${file_suffix}" = "f" ]; then
+if [ "${file_suffix}" = "f90" ]; then
     echo "compiling using fortran"
     $FC_COMMAND -c -fpic ${file_prefix}_modified.${file_suffix}
 fi
@@ -115,11 +106,11 @@ out_file=${__out_file_prefix}.${output_file_suffix}
 echo "compiling shared $out_file"
 
 if [ "$output_file_suffix" = "so" ]; then
-    $CC_COMMAND -shared -lc -o $out_file ${file_prefix}_modified.o
+    $CC_COMMAND -shared -lc -o $out_file rose_${file_prefix}.o
 fi
 if [ "$output_file_suffix" = "exe" ]; then
     # assumption is we know what the driver file is.
-    $CC_COMMAND -o $out_file ${driver_filename} ${file_prefix}_modified.o
+    $CC_COMMAND -o $out_file ${driver_filename} rose_${file_prefix}.o
 fi
 
 # finally move this file to appropriate location. Remember that if you are

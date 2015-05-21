@@ -40,9 +40,9 @@ echo "Currently generating code for configuration: TI: $TI, TJ: $TJ, TK: $TK, UI
 #  chill_script_generic.(remote)+.sh
 
 echo "
-    source: ${file_prefix}.sp2
-    format: suif
-    procedure: 0
+    source: ${file_prefix}.f90
+    format: rose
+    procedure: gemm
     loop: 0
 
     TI=$TI
