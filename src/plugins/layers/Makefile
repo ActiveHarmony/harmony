@@ -19,8 +19,8 @@ LIBEXEC_TGTS=agg.so \
              group.so \
              httpinfo.so \
              log.so
+SHARED_OBJS=$(filter %.so, $(LIBEXEC_TGTS))
 
-REQ_CFLAGS+=-fPIC
 REQ_CPPFLAGS+=-I$(TO_BASE)/src
 
 LIBTAUDB=
@@ -45,6 +45,7 @@ ifneq (, $(wildcard $(LIBXML2_INCDIR)/libxml/xmlwriter.h))
     xmlWriter.so: REQ_LDLIBS+=-lxml2
 endif
 
+$(SHARED_OBJS:%.so=%.o): REQ_CFLAGS+=-fPIC
 
 codegen-helper: $(TO_BASE)/src/libharmony.a
 

@@ -54,7 +54,6 @@ hinfo: $(LIB_OBJS)
 tuna: libharmony.a
 
 libharmony.a: $(LIB_OBJS) $(CLI_OBJS)
-$(LIB_OBJS) $(SHR_OBJS): REQ_CFLAGS+=-fPIC
 
 # Active Harmony makefiles should always include this file last.
 include $(TO_BASE)/Makefile.common
