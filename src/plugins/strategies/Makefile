@@ -3,9 +3,6 @@ TO_BASE=../../..
 REQ_CFLAGS+=-fPIC
 REQ_CPPFLAGS+=-I$(TO_BASE)/src
 
-TCL_INCDIR?=/usr/include
-TCL_LIBDIR?=/usr/lib64
-
 SRCS=libvertex.c \
      exhaustive.c \
      random.c \
