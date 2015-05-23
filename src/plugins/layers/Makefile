@@ -1,10 +1,5 @@
 TO_BASE=../../..
 
-override CFLAGS+=-fPIC
-override CPPFLAGS+=-I$(TO_BASE)/src
-override LDFLAGS+=-L$(TO_BASE)/src
-override LDLIBS+=-lharmony
-
 SRCS=agg.c \
      cache.c \
      codegen.c \
@@ -25,30 +20,33 @@ LIBEXEC_TGTS=agg.so \
              httpinfo.so \
              log.so
 
-LIBXML2=
-LIBXML2_INCDIR=$(LIBXML2)/include/libxml2
-LIBXML2_LIBDIR=$(LIBXML2)/lib
-
-ifneq (, $(wildcard $(LIBXML2_INCDIR)/libxml/xmlwriter.h))
-	LIBEXEC_TGTS += xmlWriter.so
-endif
+REQ_CFLAGS+=-fPIC
+REQ_CPPFLAGS+=-I$(TO_BASE)/src
 
 LIBTAUDB=
 LIBTAUDB_INCDIR=$(LIBTAUDB)/include
 LIBTAUDB_LIBDIR=$(LIBTAUDB)/lib
-
 ifneq (, $(wildcard $(LIBTAUDB_LIBDIR)/libtaudb.a))
-	LIBEXEC_TGTS += TAUdb.so
+    LIBEXEC_TGTS += TAUdb.so
+
+    TAUdb.so: REQ_CPPFLAGS+=-I$(LIBTAUDB_INCDIR)
+    TAUdb.so: REQ_LDFLAGS+=-L$(LIBTAUDB_LIBDIR)
+    TAUdb.so: REQ_LDLIBS+=-ltaudb
 endif
 
-TAUdb.so: override LDLIBS+=$(LIBTAUDB_LIBDIR)/libtaudb.a
-TAUdb.so: override CPPFLAGS+=-I$(LIBTAUDB_INCDIR)
+LIBXML2=
+LIBXML2_INCDIR=$(LIBXML2)/include/libxml2
+LIBXML2_LIBDIR=$(LIBXML2)/lib
+ifneq (, $(wildcard $(LIBXML2_INCDIR)/libxml/xmlwriter.h))
+    LIBEXEC_TGTS += xmlWriter.so
 
-xmlWriter.so: override LDLIBS+=-L${LIBXML2_LIBDIR} -lxml2
-xmlWriter.so: override CPPFLAGS+=-I${LIBXML2_INCDIR}
+    xmlWriter.so: REQ_CPPFLAGS+=-I${LIBXML2_INCDIR}
+    xmlWriter.so: REQ_LDFLAGS+=-L${LIBXML2_LIBDIR}
+    xmlWriter.so: REQ_LDLIBS+=-lxml2
+endif
 
-%.so: %.o $(TO_BASE)/src/libharmony.a
-	$(CC) -shared $(LDFLAGS) $(CFLAGS) $< $(LOADLIBES) $(LDLIBS) -o $@
+
+codegen-helper: $(TO_BASE)/src/libharmony.a
 
 # Active Harmony makefiles should always include this file last.
 include $(TO_BASE)/Makefile.common

@@ -16,22 +16,22 @@ includedir=$(prefix)/include
 TGTS=$(BIN_TGTS) $(LIB_TGTS) $(INCLUDE_TGTS) $(LIBEXEC_TGTS) $(NO_INST_TGTS)
 
 ifeq (GCC, $(findstring GCC,$(shell $(CC) --version 2>&1)))
-    override CFLAGS+=-std=c99
+    REQ_CFLAGS+=-std=c99
 else
-    override CFLAGS+=-c99
+    REQ_CFLAGS+=-c99
 endif
 
 ifeq ($(DEBUG), 1)
-    override CFLAGS+=-g
-    override CXXFLAGS+=-g
+    REQ_CFLAGS+=-g
+    REQ_CXXFLAGS+=-g
 else
-    override CFLAGS+=-O2
-    override CXXFLAGS+=-O2
+    REQ_CFLAGS+=-O2
+    REQ_CXXFLAGS+=-O2
 endif
 
 ifeq ($(STRICT), 1)
-    override CFLAGS+=-Wpedantic -Wall -Werror
-    override CXXFLAGS+=-Wpedantic -Wall -Werror
+    REQ_CFLAGS+=-Wpedantic -Wall -Werror
+    REQ_CXXFLAGS+=-Wpedantic -Wall -Werror
 endif
 
 #
@@ -129,18 +129,59 @@ $(TO_BASE)/src/libharmony.a:
 	$(MAKE) -C $(TO_BASE)/src libharmony.a
 
 #
+# Standard pattern rules to make available in all subsystems.
+#
+_FLAGS_CC=$(REQ_CFLAGS) $(CFLAGS)
+_FLAGS_CPP=$(REQ_CPPFLAGS) $(CPPFLAGS)
+_FLAGS_CXX=$(REQ_CXXFLAGS) $(CXXFLAGS)
+_FLAGS_FC=$(REQ_FFLAGS) $(FFLAGS)
+_FLAGS_LD=$(REQ_LDFLAGS) $(LDFLAGS)
+_FLAGS_LIBS=$(REQ_LDLIBS) $(LOADLIBES) $(LDLIBS)
+_FLAGS_AR=$(REQ_ARFLAGS) $(ARFLAGS)
+
+%.o: %.c
+	$(CC) -c $(_FLAGS_CPP) $(_FLAGS_CC) $< -o $@
+
+%.o: %.cxx
+	$(CXX) -c $(_FLAGS_CPP) $(_FLAGS_CXX) $< -o $@
+
+%.o: %.f
+	$(FC) -c $(_FLAGS_FC) $< -o $@
+
+%.o: %.F
+	$(FC) -c $(_FLAGS_CPP) $(_FLAGS_FC) $< -o $@
+
+%.so: %.o
+	$(CC) -shared $(_FLAGS_CC) $(_FLAGS_LD) $^ $(_FLAGS_LIBS) -o $@
+
+%.a:
+	$(AR) $(_FLAGS_AR) $@ $^
+
+%: %.o
+	$(CC) $(_FLAGS_LD) $^ $(_FLAGS_LIBS) -o $@
+
+%: %.c
+	$(CC) $(_FLAGS_CPP) $(_FLAGS_CC) $(_FLAGS_LD) $^ $(_FLAGS_LIBS) -o $@
+
+%: %.f
+	$(FC) $(_FLAGS_FC) $(_FLAGS_LD) $^ $(_FLAGS_LDLIBS) -o $@
+
+%: %.F
+	$(FC) $(_FLAGS_CPP) $(_FLAGS_FC) $(_FLAGS_LD) $^ $(_FLAGS_LIBS) -o $@
+
+#
 # Auto dependency creation
 #
 %.d: %.c
 	@$(RM) $@; \
-	$(CC) -MM $(CPPFLAGS) $< > $@.$$$$ 2>/dev/null; \
+	$(CC) -MM $(_FLAGS_CPP) $< > $@.$$$$ 2>/dev/null; \
 	sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
 	$(RM) $@.$$$$
 -include $(patsubst %.c,%.d,$(filter %.c,$(SRCS)))
 
 %.d: %.cxx
 	@$(RM) $@; \
-	$(CXX) -MM $(CPPFLAGS) $< > $@.$$$$ 2>/dev/null; \
+	$(CXX) -MM $(_FLAGS_CPP) $< > $@.$$$$ 2>/dev/null; \
 	sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
 	$(RM) $@.$$$$
 -include $(patsubst %.cxx,%.d,$(filter %.cxx,$(SRCS)))

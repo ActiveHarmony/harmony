@@ -43,20 +43,18 @@ INCLUDE_COPY=hclient.h
 
 hserver: httpsvr.o $(LIB_OBJS)
 
-session-core: override LDFLAGS+=-Wl,--export-dynamic
-session-core: override LDLIBS+=-ldl
+session-core: REQ_LDFLAGS+=-Wl,--export-dynamic
+session-core: REQ_LDLIBS+=-ldl
 session-core: $(LIB_OBJS)
 
-hinfo: override LDFLAGS+=-Wl,--export-dynamic
-hinfo: override LDLIBS+=-ldl
+hinfo: REQ_LDFLAGS+=-Wl,--export-dynamic
+hinfo: REQ_LDLIBS+=-ldl
 hinfo: $(LIB_OBJS)
 
 tuna: libharmony.a
 
 libharmony.a: $(LIB_OBJS) $(CLI_OBJS)
-	$(AR) $(ARFLAGS) $@ $^
-
-$(LIB_OBJS) $(SHR_OBJS): override CFLAGS+=-fPIC
+$(LIB_OBJS) $(SHR_OBJS): REQ_CFLAGS+=-fPIC
 
 # Active Harmony makefiles should always include this file last.
 include $(TO_BASE)/Makefile.common

@@ -1,19 +1,17 @@
 TO_BASE=../..
 
 MPICC=mpicc
+ifeq (0, $(shell which $(MPICC) > /dev/null 2>&1; echo $$?))
+    SRCS+=gemm.c
+    NO_INST_TGTS+=gemm
 
-override CPPFLAGS+=-I$(TO_BASE)/src
-override LDLIBS+=-ldl
-
-NO_INST_TGTS=gemm
-
-gemm: gemm.c $(TO_BASE)/src/libharmony.a
-	@if [ -x "`which $(MPICC) 2>&1`" ]; then                              \
-	  echo "$(MPICC) $(CPPFLAGS) $(CFLAGS) $^ $(LDFLAGS) $(LDLIBS) -o $@";\
-	  $(MPICC) $(CPPFLAGS) $(CFLAGS) $^ $(LDFLAGS) $(LDLIBS) -o $@;       \
-	else                                                                  \
-	  echo "Skipping build of $@: $(MPICC) not found.";                   \
-	fi
+    gemm: override CC=$(MPICC)
+    gemm: REQ_CPPFLAGS+=-I$(TO_BASE)/src
+    gemm: REQ_LDLIBS+=-ldl
+    gemm: $(TO_BASE)/src/libharmony.a
+else
+    $(info Skipping code_generation example: $(MPICC) not found.)
+endif
 
 # Active Harmony makefiles should always include this file last.
 include $(TO_BASE)/Makefile.common
