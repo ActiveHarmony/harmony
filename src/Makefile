@@ -41,15 +41,14 @@ LIBEXEC_COPY=http/overview.cgi \
              http/excanvas.min.js
 INCLUDE_COPY=hclient.h
 
+hinfo: REQ_LDLIBS+=-ldl
+hinfo: $(LIB_OBJS)
+
 hserver: httpsvr.o $(LIB_OBJS)
 
 session-core: REQ_LDFLAGS+=-Wl,--export-dynamic
 session-core: REQ_LDLIBS+=-ldl
 session-core: $(LIB_OBJS)
-
-hinfo: REQ_LDFLAGS+=-Wl,--export-dynamic
-hinfo: REQ_LDLIBS+=-ldl
-hinfo: $(LIB_OBJS)
 
 tuna: libharmony.a
 
