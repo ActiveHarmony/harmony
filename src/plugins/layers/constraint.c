@@ -173,6 +173,7 @@ int strategy_cfg(hsignature_t* sig)
         strncpy(constraints, cfgval, sizeof(constraints));
     }
     else {
+        size_t retval;
         FILE* fp;
 
         cfgval = hcfg_get(session_cfg, CFGKEY_OC_FILE);
@@ -189,10 +190,10 @@ int strategy_cfg(hsignature_t* sig)
             return -1;
         }
 
-        fread(constraints, sizeof(char), sizeof(constraints) - 1, fp);
+        retval = fread(constraints, sizeof(char), sizeof(constraints), fp);
         constraints[sizeof(constraints) - 1] = '\0';
 
-        if (!feof(fp)) {
+        if (retval >= sizeof(constraints)) {
             session_error("Constraint file too large.");
             return -1;
         }

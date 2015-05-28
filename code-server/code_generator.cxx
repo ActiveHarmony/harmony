@@ -831,7 +831,10 @@ int mesg_write(hmesg_t& mesg, int step)
 
         ss << reply_url.host << ":" << reply_url.path;
 
-        system(ss.str().c_str());
+        if (system(ss.str().c_str()) == -1) {
+            cerr << "Error calling scp to transfer message.\n";
+            return -1;
+        }
         std::remove(filename.c_str());
     }
     return 0;

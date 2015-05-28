@@ -15,7 +15,7 @@ libexecdir=$(exec_prefix)/libexec
 includedir=$(prefix)/include
 TGTS=$(BIN_TGTS) $(LIB_TGTS) $(INCLUDE_TGTS) $(LIBEXEC_TGTS) $(NO_INST_TGTS)
 
-ifeq (GCC, $(findstring GCC,$(shell $(CC) --version 2>&1)))
+ifeq (Free, $(findstring Free,$(shell $(CC) --version 2>&1)))
     REQ_CFLAGS+=-std=c99
 else
     REQ_CFLAGS+=-c99
@@ -30,8 +30,8 @@ else
 endif
 
 ifeq ($(STRICT), 1)
-    REQ_CFLAGS+=-Wpedantic -Wall -Werror
-    REQ_CXXFLAGS+=-Wpedantic -Wall -Werror
+    REQ_CFLAGS+=-pedantic -Wall -Werror
+    REQ_CXXFLAGS+=-pedantic -Wall -Werror
 endif
 
 #
