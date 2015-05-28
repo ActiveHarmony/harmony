@@ -217,7 +217,7 @@ int nemo_phase_incr(void)
 
     if (best.id > 0) {
         if (anchor) {
-            int idx;
+            int idx = -1;
             min_dist = INFINITY;
             for (i = 0; i < simplex_size; ++i) {
                 vertex_from_hpoint(&best, test);

@@ -359,7 +359,7 @@ int update_bounds(hsignature_t* sig)
 {
     char cmd[MAX_CMD_LEN];
     char* retstr;
-    int i, retval;
+    int i, retval = 0;
 
     for (i = 0; i < local_sig.range_len; ++i) {
         hrange_t* range = &local_sig.range[i];
@@ -451,7 +451,7 @@ int check_validity(hpoint_t* point)
 {
     char cmd[MAX_CMD_LEN];
     char* retstr;
-    int retval;
+    int retval = 0;
 
     if (build_point_text(point) != 0)
         return -1;

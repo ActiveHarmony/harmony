@@ -264,6 +264,7 @@ int main(int argc, char* argv[])
             generate_trial();
         }
     }
+    retval = 0;
     goto cleanup;
 
   error:
@@ -273,6 +274,7 @@ int main(int argc, char* argv[])
         fprintf(stderr, "%s: Error sending error message: %s\n",
                 argv[0], mesg.data.string);
     }
+    retval = -1;
 
   cleanup:
     for (i = lstack_len - 1; i >= 0; --i) {
@@ -338,7 +340,7 @@ int init_session(void)
 int generate_trial(void)
 {
     int idx;
-    htrial_t* trial;
+    htrial_t* trial = NULL;
 
     /* Find a free point. */
     for (idx = 0; idx < pending_cap; ++idx) {
@@ -686,7 +688,7 @@ int handle_fetch(hmesg_t* mesg)
 int handle_report(hmesg_t* mesg)
 {
     int idx;
-    htrial_t* trial;
+    htrial_t* trial = NULL;
 
     /* Find the associated trial in the pending list. */
     for (idx = 0; idx < pending_cap; ++idx) {

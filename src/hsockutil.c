@@ -168,17 +168,18 @@ int mesg_recv(int sock, hmesg_t* mesg)
     char hdr[HMESG_HDRLEN + 1];
     char* newbuf;
     int msglen, retval;
-    unsigned int msgver;
+    unsigned int magic, msgver;
 
     retval = recv(sock, hdr, sizeof(hdr), MSG_PEEK);
     if (retval <  0) goto error;
     if (retval == 0) return 0;
 
-    if (ntohl(*(unsigned int*)hdr) != HMESG_MAGIC)
+    memcpy(&magic, hdr, sizeof(magic));
+    if (ntohl(magic) != HMESG_MAGIC)
         goto invalid;
 
     hdr[HMESG_HDRLEN] = '\0';
-    if (sscanf(hdr + sizeof(int), "%4d%2x", &msglen, &msgver) < 2)
+    if (sscanf(hdr + sizeof(magic), "%4d%2x", &msglen, &msgver) < 2)
         goto invalid;
 
     if (msgver != HMESG_VERSION)

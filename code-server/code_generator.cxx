@@ -196,7 +196,7 @@ void generator_main(generator_t& gen)
 int main(int argc, char* argv[])
 {
     stringstream ss;
-    int status, num_ready;
+    int status, num_ready = 0;
     unsigned i;
     pid_t pid;
 

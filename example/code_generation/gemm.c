@@ -104,7 +104,7 @@ int main(int argc, char* argv[])
     int node_count;
     double time_initial, time_current, time;
     double raw_perf, perf;
-    int i, found_iter, harmonized;
+    int i, found_iter = 0, harmonized;
 
     /* MPI Initialization */
     MPI_Init(&argc, &argv);
