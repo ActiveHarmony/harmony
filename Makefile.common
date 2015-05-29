@@ -17,6 +17,8 @@ TGTS=$(BIN_TGTS) $(LIB_TGTS) $(INCLUDE_TGTS) $(LIBEXEC_TGTS) $(NO_INST_TGTS)
 
 ifeq (Free, $(findstring Free,$(shell $(CC) --version 2>&1)))
     include $(TO_BASE)/make/gcc.mk
+else ifeq (Intel, $(findstring Intel,$(shell $(CC) --version 2>&1)))
+    include $(TO_BASE)/make/intel.mk
 endif
 
 #

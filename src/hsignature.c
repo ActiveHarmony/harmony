@@ -70,8 +70,6 @@ long hrange_int_value(int_bounds_t* bound, unsigned long idx)
 {
     unsigned long max_idx = hrange_int_max_idx(bound);
 
-    if (idx < 0.0)
-        idx = 0.0;
     if (idx > max_idx)
         idx = max_idx;
 
@@ -111,8 +109,6 @@ double hrange_real_value(real_bounds_t* bound, unsigned long idx)
 {
     unsigned long max_idx = hrange_real_max_idx(bound);
 
-    if (idx < 0.0)
-        idx = 0.0;
     if (idx > max_idx)
         idx = max_idx;
 
@@ -154,8 +150,6 @@ unsigned long hrange_str_index(str_bounds_t* bound, const char* val)
 
 const char* hrange_str_value(str_bounds_t* bound, unsigned long idx)
 {
-    if (idx < 0)
-        idx = 0;
     if (idx > bound->set_len - 1)
         idx = bound->set_len - 1;
 

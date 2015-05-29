@@ -28,7 +28,7 @@
 
 int hval_parse_string(const char* buf, const char** newbuf);
 
-const hval_t HVAL_INITIALIZER = {0};
+const hval_t HVAL_INITIALIZER = { HVAL_UNKNOWN };
 
 int hval_parse(hval_t* val, const char* buf)
 {

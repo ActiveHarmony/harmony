@@ -326,8 +326,6 @@ int vertex_to_hpoint(const vertex_t* v, hpoint_t* result)
             unsigned long idx = v->term[i];
 
             idx = v->term[i] + 0.5;
-            if (idx < 0)
-                idx = 0;
             if (idx > range[i].bounds.s.set_len - 1)
                 idx = range[i].bounds.s.set_len - 1;
 
