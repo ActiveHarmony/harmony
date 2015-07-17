@@ -218,7 +218,7 @@ int nemo_phase_incr(void)
     if (best.id > 0) {
         if (anchor) {
             int idx = -1;
-            min_dist = INFINITY;
+            min_dist = HUGE_VAL;
             for (i = 0; i < simplex_size; ++i) {
                 vertex_from_hpoint(&best, test);
                 curr_dist = vertex_dist(test, base->vertex[i]);
@@ -459,8 +459,8 @@ int strategy_cfg(hsignature_t* sig)
         return -1;
     }
     for (i = 0; i < perf_n; ++i) {
-        range[i].min =  INFINITY;
-        range[i].max = -INFINITY;
+        range[i].min =  HUGE_VAL;
+        range[i].max = -HUGE_VAL;
     }
 
     thresh = malloc(sizeof(double) * (perf_n - 1));
@@ -523,7 +523,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
              */
 
             for (i = 0; i < perf_n; ++i)
-                next->perf->p[i] = INFINITY;
+                next->perf->p[i] = HUGE_VAL;
 
             if (nm_algorithm() != 0) {
                 session_error("Internal error: Nelder-Mead"
@@ -571,7 +571,7 @@ int strategy_analyze(htrial_t* trial)
         if (range[i].min > next->perf->p[i])
             range[i].min = next->perf->p[i];
 
-        if (range[i].max < next->perf->p[i] && next->perf->p[i] < INFINITY)
+        if (range[i].max < next->perf->p[i] && next->perf->p[i] < HUGE_VAL)
             range[i].max = next->perf->p[i];
     }
 

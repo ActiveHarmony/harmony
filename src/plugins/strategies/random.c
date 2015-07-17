@@ -83,7 +83,7 @@ int strategy_init(hsignature_t* sig)
          * and thus be retained across a restart.
          */
         best = HPOINT_INITIALIZER;
-        best_perf = INFINITY;
+        best_perf = HUGE_VAL;
         curr->id = 1;
     }
 

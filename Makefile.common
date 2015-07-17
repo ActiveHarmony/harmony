@@ -19,6 +19,8 @@ ifeq (Free, $(findstring Free,$(shell $(CC) --version 2>&1)))
     include $(TO_BASE)/make/gcc.mk
 else ifeq (Intel, $(findstring Intel,$(shell $(CC) --version 2>&1)))
     include $(TO_BASE)/make/intel.mk
+else ifeq (Portland, $(findstring Portland,$(shell $(CC) --version 2>&1)))
+    include $(TO_BASE)/make/pgi.mk
 endif
 
 #

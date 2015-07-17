@@ -700,7 +700,7 @@ session_state_t* session_open(hmesg_t* mesg)
 
     sess->client_len = 0;
     hpoint_fini(&sess->best);
-    sess->best_perf = INFINITY;
+    sess->best_perf = HUGE_VAL;
 
     /* Force sessions to load the httpinfo plugin layer. */
     #define HTTPINFO "httpinfo.so"

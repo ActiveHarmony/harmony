@@ -127,7 +127,7 @@ int main(int argc, char* argv[])
 {
     int i, j, hresult, report, retval = 0;
     int width, maxwidth;
-    double best_val = INFINITY;
+    double best_val = HUGE_VAL;
     hdesc_t* hdesc;
 
     parse_opts(argc, argv);
@@ -221,7 +221,7 @@ int main(int argc, char* argv[])
     fprintf(stdout, "%6d eval%s, best value: ", i, i == 1 ? "" : "s");
     fprint_darr(stdout, "(", best, o_cnt, ")");
 
-    if (o_cnt == 1 && finfo[0]->optimal != -INFINITY)
+    if (o_cnt == 1 && finfo[0]->has_optimal)
         printf(" [Global optimal: %lf]\n", finfo[0]->optimal);
     else
         printf(" [Global optimal: <Unknown>]\n");
@@ -412,8 +412,8 @@ void parse_funcs(char* list)
 {
     char* end;
 
-    bound_min =  INFINITY;
-    bound_max = -INFINITY;
+    bound_min =  HUGE_VAL;
+    bound_max = -HUGE_VAL;
     while (list && *list) {
         char stash = '\0';
         while (isspace(*list))
