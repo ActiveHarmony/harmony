@@ -9,4 +9,4 @@ synth: REQ_LDLIBS+=-lm
 synth: $(SRCS:.c=.o) $(TO_BASE)/src/libharmony.a
 
 # Active Harmony makefiles should always include this file last.
-include $(TO_BASE)/Makefile.common
+include $(TO_BASE)/make/common.mk

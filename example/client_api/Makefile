@@ -29,4 +29,4 @@ example: $(TO_BASE)/src/libharmony.a
 # endif
 
 # Active Harmony makefiles should always include this file last.
-include $(TO_BASE)/Makefile.common
+include $(TO_BASE)/make/common.mk

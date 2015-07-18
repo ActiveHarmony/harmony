@@ -32,4 +32,4 @@ nemo.so: REQ_LDLIBS+=-lm
 nemo.so: libvertex.o
 
 # Active Harmony makefiles should always include this file last.
-include $(TO_BASE)/Makefile.common
+include $(TO_BASE)/make/common.mk

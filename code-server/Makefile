@@ -9,4 +9,4 @@ code_generator: code_generator.o $(TO_BASE)/src/libharmony.a
 	$(CXX) $(LDFLAGS) $^ $(LOADLIBES) $(LDLIBS) -o $@
 
 # Active Harmony makefiles should always include this file last.
-include $(TO_BASE)/Makefile.common
+include $(TO_BASE)/make/common.mk

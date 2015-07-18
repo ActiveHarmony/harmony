@@ -55,4 +55,4 @@ tuna: libharmony.a
 libharmony.a: $(LIB_OBJS) $(CLI_OBJS)
 
 # Active Harmony makefiles should always include this file last.
-include $(TO_BASE)/Makefile.common
+include $(TO_BASE)/make/common.mk

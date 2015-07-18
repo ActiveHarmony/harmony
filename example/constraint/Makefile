@@ -14,4 +14,4 @@ client:
 	$(MAKE) -C $(TEST_DIR) $(TEST_BIN)
 
 # Active Harmony makefiles should always include this file last.
-include $(TO_BASE)/Makefile.common
+include $(TO_BASE)/make/common.mk
