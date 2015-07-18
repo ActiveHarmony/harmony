@@ -1,6 +1,9 @@
 TO_BASE=../..
 
 MPICC=mpicc
+export OMPI_CC:=$(CC)
+export MPICH_CC:=$(CC)
+
 ifeq (0, $(shell which $(firstword $(MPICC)) > /dev/null 2>&1; echo $$?))
     SRCS+=gemm.c
     NO_INST_TGTS+=gemm
