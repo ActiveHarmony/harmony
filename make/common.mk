@@ -17,14 +17,28 @@ TGTS=$(BIN_TGTS) $(LIB_TGTS) $(INCLUDE_TGTS) $(LIBEXEC_TGTS) $(NO_INST_TGTS)
 
 CC_DEFS=$(shell eval "echo | $(CC) -dM -E - 2>&1; $(CC) -dM 2>&1")
 ifeq (__ICC, $(findstring __ICC, $(CC_DEFS)))
-    include $(TO_BASE)/make/intel.mk
+    C_COMPILER_MAKE=intel
 else ifeq (__PGI, $(findstring __PGI, $(CC_DEFS)))
-    include $(TO_BASE)/make/pgi.mk
+    C_COMPILER_MAKE=pgi
 else ifeq (__clang__, $(findstring __clang__, $(CC_DEFS)))
-    include $(TO_BASE)/make/clang.mk
+    C_COMPILER_MAKE=clang
 else
-    include $(TO_BASE)/make/gcc.mk
+    C_COMPILER_MAKE=gcc
 endif
+
+CXX_DEFS=$(shell eval "echo | $(CXX) -dM -E - 2>&1; $(CXX) -dM 2>&1")
+ifeq (__ICC, $(findstring __ICC, $(CXX_DEFS)))
+    CXX_COMPILER_MAKE+=intel
+else ifeq (__PGI, $(findstring __PGI, $(CXX_DEFS)))
+    CXX_COMPILER_MAKE+=pgi
+else ifeq (__clang__, $(findstring __clang__, $(CXX_DEFS)))
+    CXX_COMPILER_MAKE+=clang
+else
+    CXX_COMPILER_MAKE+=gcc
+endif
+
+COMPILER_INCLUDES=$(sort $(C_COMPILER_MAKE) $(CXX_COMPILER_MAKE))
+include $(COMPILER_INCLUDES:%=$(TO_BASE)/make/%.mk)
 
 #
 # Standard rules to make available in all subsystems.
