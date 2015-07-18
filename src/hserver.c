@@ -28,6 +28,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <strings.h>
 #include <errno.h>
@@ -44,12 +45,10 @@
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
 
-#define dprintf(fmt, ...) \
-    do { if (verbose) fprintf(stderr, fmt, ## __VA_ARGS__); } while (0)
-
 /*
  * Function prototypes
  */
+int verbose(const char* fmt, ...);
 int parse_opts(int argc, char* argv[]);
 int vars_init(int argc, char* argv[]);
 int network_init(void);
@@ -84,7 +83,7 @@ int slist_cap;
 /*
  * Local variables
  */
-int verbose;
+int verbose_flag;
 
 void usage(const char* prog)
 {
@@ -190,6 +189,21 @@ int main(int argc, char* argv[])
     return 0;
 }
 
+int verbose(const char* fmt, ...)
+{
+    int retval;
+    va_list ap;
+
+    if (!verbose_flag)
+        return 0;
+
+    va_start(ap, fmt);
+    retval = vfprintf(stderr, fmt, ap);
+    va_end(ap);
+
+    return retval;
+}
+
 int parse_opts(int argc, char* argv[])
 {
     int c;
@@ -206,7 +220,7 @@ int parse_opts(int argc, char* argv[])
 
         switch(c) {
         case 'p': listen_port = atoi(optarg); break;
-        case 'v': verbose = 1; break;
+        case 'v': verbose_flag = 1; break;
 
         case ':':
             usage(argv[0]);
@@ -243,7 +257,7 @@ int vars_init(int argc, char* argv[])
 
     if ( (tmppath = getenv(CFGKEY_HARMONY_HOME))) {
         harmony_dir = stralloc(tmppath);
-        dprintf(CFGKEY_HARMONY_HOME " is %s\n", harmony_dir);
+        verbose(CFGKEY_HARMONY_HOME " is %s\n", harmony_dir);
     }
     else {
         if (strchr(argv[0], '/'))
@@ -258,7 +272,7 @@ int vars_init(int argc, char* argv[])
             harmony_dir = stralloc(dirname(harmony_dir));
         free(tmppath);
 
-        dprintf("Detected %s/ as HARMONY_HOME\n", harmony_dir);
+        verbose("Detected %s/ as HARMONY_HOME\n", harmony_dir);
     }
     free(binfile);
 
@@ -324,7 +338,7 @@ int network_init(void)
     struct sockaddr_in addr;
 
     /* create a listening socket */
-    dprintf("Listening on TCP port: %d\n", listen_port);
+    verbose("Listening on TCP port: %d\n", listen_port);
     listen_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (listen_socket < 0) {
         perror("Could not create listening socket");
@@ -345,7 +359,7 @@ int network_init(void)
     /* Initialize the socket address. */
     addr.sin_family      = AF_INET;
     addr.sin_addr.s_addr = INADDR_ANY;
-    addr.sin_port        = htons(listen_port);
+    addr.sin_port        = htons((unsigned short)listen_port);
 
     /* Bind the socket to the desired port. */
     if (bind(listen_socket, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
@@ -390,7 +404,7 @@ int handle_new_connection(int fd)
     }
 
     unk_fds[idx] = newfd;
-    dprintf("Accepted connection from %s as socket %d\n",
+    verbose("Accepted connection from %s as socket %d\n",
             inet_ntoa(addr.sin_addr), newfd);
     return newfd;
 }

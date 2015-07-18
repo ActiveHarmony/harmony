@@ -41,7 +41,6 @@ unsigned long hrange_max_idx(hrange_t* range)
     default:
         return 0;
     }
-    return 0;
 }
 
 unsigned long hrange_int_max_idx(int_bounds_t* bound)
@@ -63,7 +62,7 @@ unsigned long hrange_int_index(int_bounds_t* bound, long val)
     if (idx > max_idx)
         idx = max_idx;
 
-    return idx;
+    return (unsigned long)idx;
 }
 
 long hrange_int_value(int_bounds_t* bound, unsigned long idx)
@@ -84,7 +83,7 @@ long hrange_int_nearest(int_bounds_t* bound, long val)
 unsigned long hrange_real_max_idx(real_bounds_t* bound)
 {
     if (bound->step > 0.0)
-        return (bound->max - bound->min) / bound->step;
+        return (unsigned long)((bound->max - bound->min) / bound->step);
     return 0;
 }
 
@@ -102,7 +101,7 @@ unsigned long hrange_real_index(real_bounds_t* bound, double val)
     if (idx > max_idx)
         idx = max_idx;
 
-    return idx;
+    return (unsigned long)idx;
 }
 
 double hrange_real_value(real_bounds_t* bound, unsigned long idx)

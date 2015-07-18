@@ -96,8 +96,6 @@ hcfg_info_t plugin_keyinfo[] = {
 
 #define MAX_CMD_LEN  4096
 #define MAX_TEXT_LEN 1024
-#define REG_TEXT_LEN 128
-#define SHORT_TEXT_LEN 32
 
 /* Forward function declarations. */
 int strategy_cfg(hsignature_t* sig);

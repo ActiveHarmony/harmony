@@ -60,7 +60,7 @@ typedef void (*code_t)(void*, void*, void*, void*);
  * Function Prototypes
  */
 int    fetch_configuration(void);
-int    check_convergence(hdesc_t* hdesc);
+int    check_convergence(void);
 char*  construct_so_filename(void);
 int    update_so(const char* filename);
 void   initialize_matrices(void);
@@ -227,7 +227,7 @@ int main(int argc, char* argv[])
 
         if (!harmonized) {
             // check_convergence returns 0 if not converged, 1 if converged
-            harmonized = check_convergence(hdesc);
+            harmonized = check_convergence();
             if (harmonized != 0 && harmonized != 1) {
                 errprint("Error checking harmony convergence status.\n");
                 goto cleanup;
@@ -334,7 +334,7 @@ int fetch_configuration(void)
  * Check if the parameter space search has converged.
  * Only rank 0 communicates directly with the Harmony server.
  */
-int check_convergence(hdesc_t* hdesc)
+int check_convergence(void)
 {
     int status;
 

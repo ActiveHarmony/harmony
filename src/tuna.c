@@ -894,7 +894,6 @@ bundle_info_t* tuna_bundle_get(char** name)
         {
             retval = binfo + i;
             break;
-            return binfo + i;
         }
     }
 

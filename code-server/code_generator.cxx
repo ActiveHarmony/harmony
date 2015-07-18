@@ -306,9 +306,6 @@ int main(int argc, char* argv[])
         // increment the timestep
         timestep++;
     } // mainloop
-
-    hsession_fini(&sess);
-    return 0;
 }
 
 int codeserver_init(string& filename)
@@ -568,7 +565,7 @@ int parse_slave_list(const char* hostlist)
         num = -1;
 
         /* Find the entry boundary. */
-        tail = (char*)memchr(head, ',', end - head);
+        tail = reinterpret_cast<const char*>(memchr(head, ',', end - head));
         if (!tail) {
             tail = end;
         }
@@ -739,7 +736,7 @@ int mesg_read(const char* filename, hmesg_t* msg)
 
     msglen = sb.st_size + 1;
     if (msg->buflen < msglen) {
-        newbuf = (char*) realloc(msg->buf, msglen);
+        newbuf = reinterpret_cast<char*>(realloc(msg->buf, msglen));
         if (!newbuf) {
             cerr << "Could not allocate memory for message data.\n";
             retval = -1;

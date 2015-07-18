@@ -258,7 +258,7 @@ int hcfg_loadfile(hcfg_t* cfg, const char* filename)
         if (ptr != buf)
             memmove(buf, ptr, len);
 
-        if (len + 1 == buf_cap) {
+        if (len + 1 == (size_t)buf_cap) {
             if (array_grow(&buf, &buf_cap, sizeof(char)) != 0) {
                 perror("Error: Could not grow config parsing buffer");
                 goto error;

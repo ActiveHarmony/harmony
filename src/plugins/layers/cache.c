@@ -368,7 +368,7 @@ int safe_scanstr(FILE* fp, int bounds_idx, const char** match)
         if (c == '\"' || c == EOF)
             break;
 
-        buf[i] = c;
+        buf[i] = (char)c;
     }
     if (i == sizeof(buf)) {
         session_error("Input HVAL_STR overrun");

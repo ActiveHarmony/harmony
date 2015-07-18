@@ -505,7 +505,7 @@ char* http_request_recv(int fd, char* buf, int buflen, char** data)
     const char delim[] = HTTP_ENDL HTTP_ENDL;
     char* retval;
     char* split;
-    int len, recvlen;
+    int len = 0, recvlen;
 
     if (!*data) {
         *data = buf;

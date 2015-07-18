@@ -20,6 +20,8 @@ ifeq (__ICC, $(findstring __ICC, $(CC_DEFS)))
     include $(TO_BASE)/make/intel.mk
 else ifeq (__PGI, $(findstring __PGI, $(CC_DEFS)))
     include $(TO_BASE)/make/pgi.mk
+else ifeq (__clang__, $(findstring __clang__, $(CC_DEFS)))
+    include $(TO_BASE)/make/clang.mk
 else
     include $(TO_BASE)/make/gcc.mk
 endif

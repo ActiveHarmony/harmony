@@ -59,9 +59,9 @@ typedef struct callback {
     cb_func_t func;
 } callback_t;
 
-callback_t* cb = NULL;
-int cb_len = 0;
-int cb_cap = 0;
+callback_t* cbs = NULL;
+int cbs_len = 0;
+int cbs_cap = 0;
 
 /* -------------------------
  * Plug-in system variables.
@@ -225,9 +225,9 @@ int main(int argc, char* argv[])
             goto error;
 
         /* Launch callbacks, if needed. */
-        for (i = 0; i < cb_len; ++i) {
-            if (FD_ISSET(cb[i].fd, &ready_fds))
-                handle_callback(&cb[i]);
+        for (i = 0; i < cbs_len; ++i) {
+            if (FD_ISSET(cbs[i].fd, &ready_fds))
+                handle_callback(&cbs[i]);
         }
 
         /* Handle hmesg_t, if needed. */
@@ -264,8 +264,6 @@ int main(int argc, char* argv[])
             generate_trial();
         }
     }
-    retval = 0;
-    goto cleanup;
 
   error:
     mesg.status = HMESG_STATUS_FAIL;
@@ -307,7 +305,7 @@ int init_session(void)
     FD_SET(STDIN_FILENO, &fds);
     maxfd = STDIN_FILENO;
 
-    if (array_grow(&cb, &cb_cap, sizeof(callback_t)) != 0) {
+    if (array_grow(&cbs, &cbs_cap, sizeof(callback_t)) != 0) {
         errmsg = "Error allocating callback vector.";
         return -1;
     }
@@ -976,14 +974,14 @@ void reverse_array(void* ptr, int head, int tail)
 
 int callback_generate(int fd, cb_func_t func)
 {
-    if (cb_len >= cb_cap) {
-        if (array_grow(&cb, &cb_cap, sizeof(callback_t)) < 0)
+    if (cbs_len >= cbs_cap) {
+        if (array_grow(&cbs, &cbs_cap, sizeof(callback_t)) < 0)
             return -1;
     }
-    cb[cb_len].fd = fd;
-    cb[cb_len].index = curr_layer;
-    cb[cb_len].func = func;
-    ++cb_len;
+    cbs[cbs_len].fd = fd;
+    cbs[cbs_len].index = curr_layer;
+    cbs[cbs_len].func = func;
+    ++cbs_len;
 
     FD_SET(fd, &fds);
     if (maxfd < fd)
@@ -994,14 +992,14 @@ int callback_generate(int fd, cb_func_t func)
 
 int callback_analyze(int fd, cb_func_t func)
 {
-    if (cb_len >= cb_cap) {
-        if (array_grow(&cb, &cb_cap, sizeof(callback_t)) < 0)
+    if (cbs_len >= cbs_cap) {
+        if (array_grow(&cbs, &cbs_cap, sizeof(callback_t)) < 0)
             return -1;
     }
-    cb[cb_len].fd = fd;
-    cb[cb_len].index = -curr_layer;
-    cb[cb_len].func = func;
-    ++cb_len;
+    cbs[cbs_len].fd = fd;
+    cbs[cbs_len].index = -curr_layer;
+    cbs[cbs_len].func = func;
+    ++cbs_len;
 
     FD_SET(fd, &fds);
     if (maxfd < fd)

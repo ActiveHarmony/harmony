@@ -44,7 +44,7 @@ void   parse_funcs(char* list);
 int    parse_fopts(int idx, char** opts);
 int    start_harmony(hdesc_t* hdesc);
 void   eval_func(void);
-double quantize_value(double perf);
+double quantize_value(double val);
 double random_value(double min, double max);
 void   fprint_darr(FILE* fp, const char* head,
                    double* arr, int len, const char* tail);
@@ -619,14 +619,14 @@ void eval_func(void)
         fprintf(stdout, "\n");
 }
 
-double quantize_value(double perf)
+double quantize_value(double val)
 {
-    return round(perf * quantize) / quantize;
+    return round(val * quantize) / quantize;
 }
 
 double random_value(double min, double max)
 {
-    return min + ((double)rand()/(double)RAND_MAX) * (max - min);
+    return min + (rand()/((double)RAND_MAX)) * (max - min);
 }
 
 void fprint_darr(FILE* fp, const char* head,
@@ -656,7 +656,7 @@ void use_resources(void)
     for (i = 0; i < o_cnt; ++i)
         sum += perf[i];
 
-    stall = sum * 1000;
+    stall = (unsigned int)(sum * 1000);
 
     switch (tuna_mode) {
     case 'w': /* Wall time */

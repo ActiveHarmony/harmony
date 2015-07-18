@@ -47,7 +47,7 @@ int tcp_connect(const char* host, int port)
     if (!h_name)
         return -1;
     memcpy(&addr.sin_addr, h_name->h_addr_list[0], sizeof(struct in_addr));
-    addr.sin_port = htons(port);
+    addr.sin_port = htons((unsigned short)port);
 
     /* try to connect to the server */
     addr.sin_family = AF_INET;

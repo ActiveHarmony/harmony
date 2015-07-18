@@ -558,7 +558,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
 int strategy_analyze(htrial_t* trial)
 {
     int i;
-    double penalty, base;
+    double penalty, penalty_base;
 
     if (trial->point.id != next->id) {
         session_error("Rouge points not supported.");
@@ -576,16 +576,16 @@ int strategy_analyze(htrial_t* trial)
     }
 
     penalty = 0.0;
-    base = 1.0;
+    penalty_base = 1.0;
     for (i = phase-1; i >= 0; --i) {
         if (next->perf->p[i] > thresh[i]) {
             if (!loose) {
-                penalty += base;
+                penalty += penalty_base;
             }
             penalty += (next->perf->p[i] - range[i].min) / (range[i].max -
                                                             range[i].min);
         }
-        base *= 2;
+        penalty_base *= 2;
     }
 
     if (penalty > 0.0) {

@@ -71,11 +71,7 @@ hcfg_info_t plugin_keyinfo[] = {
     { NULL }
 };
 
-#define CLIENTID_INIT 16
-#define SECONDARY_METADATA_NUM 10
 #define REG_STR_LEN 32
-#define MAX_STR_LEN 1024
-#define POINTS_PER_SAVE 20
 
 TAUDB_METRIC*      metric;
 TAUDB_TRIAL*       taudb_trial;
@@ -422,7 +418,7 @@ TAUDB_THREAD* harmony_taudb_create_thread(int num)
 }
 
 /*Get per client metadata*/
-void harmony_taudb_get_secondary_metadata(TAUDB_THREAD* thread, char* opsys,
+void harmony_taudb_get_secondary_metadata(TAUDB_THREAD* thr, char* opsys,
                                           char* machine, char* release,
                                           char* hostname, char* procnum,
                                           char* cpuvendor, char* cpumodel,
@@ -433,7 +429,7 @@ void harmony_taudb_get_secondary_metadata(TAUDB_THREAD* thread, char* opsys,
 
     /*Loading os info*/
     fprintf(stderr, "Loading OS information.\n");
-    sm->key.thread = thread;
+    sm->key.thread = thr;
     sm->key.name = taudb_strdup("OS");
     sm->value = malloc(sizeof(char*));
     sm->value[0] = taudb_strdup(opsys);
@@ -441,7 +437,7 @@ void harmony_taudb_get_secondary_metadata(TAUDB_THREAD* thread, char* opsys,
     fprintf(stderr, "OS name loaded.\n");
 
     sm = taudb_create_secondary_metadata(1);
-    sm->key.thread = thread;
+    sm->key.thread = thr;
     sm->key.name = taudb_strdup("Machine");
     sm->value = malloc(sizeof(char*));
     sm->value[0] = taudb_strdup(machine);
@@ -449,7 +445,7 @@ void harmony_taudb_get_secondary_metadata(TAUDB_THREAD* thread, char* opsys,
     fprintf(stderr, "Machine name loaded.\n");
 
     sm = taudb_create_secondary_metadata(1);
-    sm->key.thread = thread;
+    sm->key.thread = thr;
     sm->key.name = taudb_strdup("Release");
     sm->value = malloc(sizeof(char*));
     sm->value[0] = taudb_strdup(release);
@@ -457,7 +453,7 @@ void harmony_taudb_get_secondary_metadata(TAUDB_THREAD* thread, char* opsys,
     fprintf(stderr, "Release name loaded.\n");
 
     sm = taudb_create_secondary_metadata(1);
-    sm->key.thread = thread;
+    sm->key.thread = thr;
     sm->key.name = taudb_strdup("HostName");
     sm->value = malloc(sizeof(char*));
     sm->value[0] = taudb_strdup(hostname);
@@ -467,7 +463,7 @@ void harmony_taudb_get_secondary_metadata(TAUDB_THREAD* thread, char* opsys,
     /*Loading CPU info*/
     fprintf(stderr, "Loading CPU information.\n");
     sm = taudb_create_secondary_metadata(1);
-    sm->key.thread = thread;
+    sm->key.thread = thr;
     sm->key.name = taudb_strdup("ProcNum");
     sm->value = malloc(sizeof(char*));
     sm->value[0] = taudb_strdup(procnum);
@@ -475,7 +471,7 @@ void harmony_taudb_get_secondary_metadata(TAUDB_THREAD* thread, char* opsys,
     fprintf(stderr, "Processor num loaded.\n");
 
     sm = taudb_create_secondary_metadata(1);
-    sm->key.thread = thread;
+    sm->key.thread = thr;
     sm->key.name = taudb_strdup("CPUVendor");
     sm->value = malloc(sizeof(char*));
     sm->value[0] = taudb_strdup(cpuvendor);
@@ -483,7 +479,7 @@ void harmony_taudb_get_secondary_metadata(TAUDB_THREAD* thread, char* opsys,
     fprintf(stderr, "CPU vendor loaded.\n");
 
     sm = taudb_create_secondary_metadata(1);
-    sm->key.thread = thread;
+    sm->key.thread = thr;
     sm->key.name = taudb_strdup("CPUModel");
     sm->value = malloc(sizeof(char*));
     sm->value[0] = taudb_strdup(cpumodel);
@@ -491,7 +487,7 @@ void harmony_taudb_get_secondary_metadata(TAUDB_THREAD* thread, char* opsys,
     fprintf(stderr, "CPU model loaded.\n");
 
     sm = taudb_create_secondary_metadata(1);
-    sm->key.thread = thread;
+    sm->key.thread = thr;
     sm->key.name = taudb_strdup("ClockFreq");
     sm->value = malloc(sizeof(char*));
     sm->value[0] = taudb_strdup(clkfreq);
@@ -499,7 +495,7 @@ void harmony_taudb_get_secondary_metadata(TAUDB_THREAD* thread, char* opsys,
     fprintf(stderr, "Clock frequency loaded.\n");
 
     sm = taudb_create_secondary_metadata(1);
-    sm->key.thread = thread;
+    sm->key.thread = thr;
     sm->key.name = taudb_strdup("CacheSize");
     sm->value = malloc(sizeof(char*));
     sm->value[0] = taudb_strdup(cachesize);
