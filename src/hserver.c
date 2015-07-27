@@ -244,9 +244,9 @@ int vars_init(int argc, char* argv[])
     char* binfile;
 
     /*
-     * Install proper signal handling.
+     * Ignore signal for writes to broken pipes/sockets.
      */
-    signal(SIGPOLL, SIG_IGN);
+    signal(SIGPIPE, SIG_IGN);
 
     /*
      * Determine directory where this binary is located.
