@@ -41,12 +41,13 @@ LIBEXEC_COPY=http/overview.cgi \
              http/excanvas.min.js
 INCLUDE_COPY=hclient.h
 
+hinfo: REQ_LDFLAGS+=$(EXPORT_FLAG)
 hinfo: REQ_LDLIBS+=-ldl
 hinfo: $(LIB_OBJS)
 
 hserver: httpsvr.o $(LIB_OBJS)
 
-session-core: REQ_LDFLAGS+=-Wl,--export-dynamic
+session-core: REQ_LDFLAGS+=$(EXPORT_FLAG)
 session-core: REQ_LDLIBS+=-ldl
 session-core: $(LIB_OBJS)
 

@@ -16,7 +16,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-#define _XOPEN_SOURCE 500 // Needed for gethostname()
+#define _XOPEN_SOURCE 600 // Needed for gethostname()
 
 #include "hclient.h"
 #include "hsession.h"
@@ -713,14 +713,14 @@ int send_request(hdesc_t* hdesc, hmesg_type msg_type)
 
     if (mesg_send(hdesc->socket, &hdesc->mesg) < 1) {
         hdesc->errstr = "Error sending Harmony message to server.";
-        errno = ECOMM;
+        errno = EIO;
         return -1;
     }
 
     do {
         if (mesg_recv(hdesc->socket, &hdesc->mesg) < 1) {
             hdesc->errstr = "Error retrieving Harmony message from server.";
-            errno = ECOMM;
+            errno = EIO;
             return -1;
         }
 

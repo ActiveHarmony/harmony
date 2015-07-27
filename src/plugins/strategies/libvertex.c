@@ -287,8 +287,7 @@ int vertex_regrid(vertex_t* v)
             break;
 
         case HVAL_REAL:
-            v->term[i] = hrange_real_nearest(&range[i].bounds.r,
-                                             (long)v->term[i]);
+            v->term[i] = hrange_real_nearest(&range[i].bounds.r, v->term[i]);
             break;
 
         case HVAL_STR:

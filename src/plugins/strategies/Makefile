@@ -2,6 +2,7 @@ TO_BASE=../../..
 
 REQ_CFLAGS+=-fPIC
 REQ_CPPFLAGS+=-I$(TO_BASE)/src
+REQ_LDFLAGS+=$(SHAREDOBJ_FLAG)
 
 SRCS=libvertex.c \
      exhaustive.c \

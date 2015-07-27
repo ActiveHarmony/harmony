@@ -16,8 +16,6 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-#define _POSIX_C_SOURCE 200112L
-
 #include "hcfg.h"
 #include "hutil.h"
 

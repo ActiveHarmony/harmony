@@ -46,6 +46,7 @@ ifneq (, $(wildcard $(LIBXML2_INCDIR)/libxml/xmlwriter.h))
 endif
 
 $(SHARED_OBJS:%.so=%.o): REQ_CFLAGS+=-fPIC
+$(SHARED_OBJS): REQ_LDFLAGS+=$(SHAREDOBJ_FLAG)
 
 codegen-helper: $(TO_BASE)/src/libharmony.a
 

@@ -33,6 +33,14 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
+#if defined(SO_NOSIGPIPE)
+void init_socket(int sockfd)
+{
+    static const int set = 1;
+    setsockopt(sockfd, SOL_SOCKET, SO_NOSIGPIPE, &set, sizeof(int));
+}
+#endif
+
 int tcp_connect(const char* host, int port)
 {
     struct sockaddr_in addr;
@@ -54,6 +62,10 @@ int tcp_connect(const char* host, int port)
     if (connect(sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0)
         return -1;
 
+#if defined(SO_NOSIGPIPE)
+    init_socket(sockfd);
+#endif
+
     return sockfd;
 }
 
@@ -62,15 +74,18 @@ int tcp_connect(const char* host, int port)
  * Here we define some useful functions to handle data communication
  *
  ***/
-int socket_write(int fd, const void* data, unsigned datalen)
+#ifndef MSG_NOSIGNAL
+#define MSG_NOSIGNAL 0x0
+#endif
+
+int socket_write(int fd, const void* data, unsigned len)
 {
     int retval;
     unsigned count;
 
     count = 0;
     do {
-        retval = send(fd, ((char*)data) + count,
-                      datalen - count, MSG_NOSIGNAL);
+        retval = send(fd, ((char*)data) + count, len - count, MSG_NOSIGNAL);
         if (retval < 0) {
             if (errno == EINTR) continue;
             else return -1;
@@ -79,7 +94,7 @@ int socket_write(int fd, const void* data, unsigned datalen)
             break;
 
         count += retval;
-    } while (count < datalen);
+    } while (count < len);
 
     return count;
 }
@@ -135,6 +150,10 @@ int socket_launch(const char* path, char* const argv[], pid_t* return_pid)
     /* Parent continues here. */
     if (return_pid)
         *return_pid = pid;
+
+#if defined(SO_NOSIGPIPE)
+    init_socket(sockfd[0]);
+#endif
 
     close(sockfd[1]);
     return sockfd[0];

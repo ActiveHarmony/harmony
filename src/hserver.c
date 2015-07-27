@@ -16,8 +16,6 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-#define _GNU_SOURCE
-
 #include "hserver.h"
 #include "httpsvr.h"
 #include "hcfg.h"
@@ -275,11 +273,6 @@ int vars_init(int argc, char* argv[])
         verbose("Detected %s/ as HARMONY_HOME\n", harmony_dir);
     }
     free(binfile);
-
-    if (setenv(CFGKEY_HARMONY_HOME, harmony_dir, 1) != 0) {
-        perror("Could not set " CFGKEY_HARMONY_HOME " in global config");
-        return -1;
-    }
 
     /*
      * Find supporting binaries and shared objects.
@@ -715,6 +708,9 @@ session_state_t* session_open(hmesg_t* mesg)
     sess->client_len = 0;
     hpoint_fini(&sess->best);
     sess->best_perf = HUGE_VAL;
+
+    /* Override any CFGKEY_HARMONY_HOME sent by remote client. */
+    hcfg_set(&mesg->data.session.cfg, CFGKEY_HARMONY_HOME, harmony_dir);
 
     /* Force sessions to load the httpinfo plugin layer. */
     #define HTTPINFO "httpinfo.so"

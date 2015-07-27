@@ -16,7 +16,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-#define _XOPEN_SOURCE 500 // Needed for drand48() and S_ISSOCK.
+#define _XOPEN_SOURCE 600 // Needed for srand48() and S_ISSOCK.
 
 #include "session-core.h"
 #include "hsession.h"

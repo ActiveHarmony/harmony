@@ -26,6 +26,12 @@ else
     C_COMPILER_MAKE=gcc
 endif
 
+ifeq (__gnu_linux__, $(findstring __gnu_linux__, $(CC_DEFS)))
+    OS_MAKE=linux
+else ifeq (__APPLE__, $(findstring __APPLE__, $(CC_DEFS)))
+    OS_MAKE=darwin
+endif
+
 CXX_DEFS=$(shell eval "echo | $(CXX) -dM -E - 2>&1; $(CXX) -dM 2>&1")
 ifeq (__ICC, $(findstring __ICC, $(CXX_DEFS)))
     CXX_COMPILER_MAKE+=intel
@@ -39,6 +45,7 @@ endif
 
 COMPILER_INCLUDES=$(sort $(C_COMPILER_MAKE) $(CXX_COMPILER_MAKE))
 include $(COMPILER_INCLUDES:%=$(TO_BASE)/make/%.mk)
+include $(TO_BASE)/make/$(OS_MAKE).mk
 
 #
 # Standard rules to make available in all subsystems.
