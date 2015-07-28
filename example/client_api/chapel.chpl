@@ -35,12 +35,12 @@ if (numThreads == 0) {
  *      (15, 30, 45, 60, 75, 90)
  *
  * And a reasonable search range for all parameters is [1-100].
- * 
+ *
  */
-proc application(p1, p2, p3, p4, p5, p6: int) 
+proc application(p1, p2, p3, p4, p5, p6: int)
 {
-    var perf = 
-        (p1-45)*(p1-9) + (p2-65)*(p2-8) + 
+    var perf =
+        (p1-45)*(p1-9) + (p2-65)*(p2-8) +
         (p3-85)*(p3-7) - (p4-75)*(p4-6) +
         (p5-55)*(p5-4) -
         (p6-45)*(p6-3) - 200;

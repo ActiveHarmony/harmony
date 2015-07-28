@@ -28,10 +28,19 @@ extern "C" {
 
 typedef double benchfunc_t(int n, double x[], double option[]);
 
+typedef enum ftype {
+    FTYPE_UNKNOWN,
+    FTYPE_INT,
+    FTYPE_REAL,
+
+    FTYPE_MAX
+} ftype_t;
+
 typedef struct finfo {
     const char* name;
     char* title;
     int n_max;
+    ftype_t type;
     double b_min;
     double b_max;
     int has_optimal;

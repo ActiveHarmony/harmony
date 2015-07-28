@@ -135,13 +135,13 @@ int cache_generate(hflow_t* flow, htrial_t* trial)
 {
     int i, pt_num;
     visited_t *visited_pt;
-    
-    // so the client gets a chance to do something when the search is converged 
+
+    // so the client gets a chance to do something when the search is converged
     // not really part of cache, but gemm example client will never terminate
     // or do anything if this isn't present (it never knows when strat is converged)
     if(strncmp(hcfg_get(session_cfg, CFGKEY_CONVERGED), "1", 1) == 0) {
       return HFLOW_ACCEPT;
-    } 
+    }
 
     visited_pt = find_visited(&trial->point);
 
@@ -150,8 +150,8 @@ int cache_generate(hflow_t* flow, htrial_t* trial)
         // we should give back the first point
         if(visited_pt->total_num > 0 && visited_pt->count > visited_pt->total_num)
             visited_pt->count = visited_pt->count % visited_pt->total_num + 1;
-    } 
-    
+    }
+
     cache_lookup:
     pt_num = 0;
 
@@ -166,7 +166,7 @@ int cache_generate(hflow_t* flow, htrial_t* trial)
             if(visited_pt != NULL) {
               if(pt_num == visited_pt->count || visited_pt->count == 0) {
                 return 0;      // pt found, is % nth point listed (where n = times visited)
-              }                
+              }
             } else {
                 return 0;   // pt found, never visited
             }
@@ -179,9 +179,9 @@ int cache_generate(hflow_t* flow, htrial_t* trial)
         goto cache_lookup;
     }
 
-    if(! skip) 
+    if(! skip)
         flow->status = HFLOW_ACCEPT; // pt not found
-    
+
     return 0;
 }
 
@@ -425,7 +425,7 @@ int pt_equiv(const hpoint_t* a, const hpoint_t* b)
     return 1;
 }
 
-visited_t *find_visited(const struct hpoint *a) 
+visited_t *find_visited(const struct hpoint *a)
 {
     int i;
 

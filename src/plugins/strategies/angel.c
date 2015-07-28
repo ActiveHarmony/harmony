@@ -70,19 +70,39 @@ hcfg_info_t plugin_keyinfo[] = {
     { CFGKEY_FVAL_TOL, "0.0001",
       "Convergence test succeeds if difference between all vertex "
       "performance values fall below this value." },
-    { CFGKEY_SIZE_TOL, NULL,
-      "Convergence test succeeds if simplex size falls below this value. "
-      "Default is 5% of the initial simplex radius." },
-    { CFGKEY_NEMO_LOOSE, "False",
-      "" },
-    { CFGKEY_NEMO_MULT, "1.0",
-      "" },
-    { CFGKEY_NEMO_ANCHOR, "True",
-      "" },
-    { CFGKEY_NEMO_SAMESIMPLEX, "True",
-      "" },
-    { CFGKEY_NEMO_LEEWAY, NULL,
-      "" },
+    { CFGKEY_SIZE_TOL, "0.005",
+      "Convergence test succeeds if the simplex radius becomes smaller "
+      "than this percentage of the total search space.  Simplex radius "
+      "is measured from centroid to furthest vertex.  Total search space "
+      "is measured from minimum to maximum point." },
+    { CFGKEY_DIST_TOL, NULL,
+      "Convergence test succeeds if the simplex moves (via reflection) "
+      "a distance less than or equal to this percentage of the total "
+      "search space for TOL_CNT consecutive steps.  Total search space "
+      "is measured from minimum to maximum point.  This method overrides "
+      "the default size/fval method." },
+    { CFGKEY_TOL_CNT, "3",
+      "The number of consecutive reflection steps which travel at or "
+      "below DIST_TOL before the search is considered converged." },
+    { CFGKEY_ANGEL_LOOSE, "False",
+      "When all leeways cannot be satisfied simultaneously, attempt to "
+      "satisfy as many leeways as possible, not necessarily favoring "
+      "objectives with higher priority.  If false, ANGEL will satisfy "
+      "as many higher priority objectives as possible before allowing "
+      "violations in lower priority objectives." },
+    { CFGKEY_ANGEL_MULT, "1.0",
+      "Multiplicative factor for penalty function." },
+    { CFGKEY_ANGEL_ANCHOR, "True",
+      "Transfer the best known solution across search phases." },
+    { CFGKEY_ANGEL_SAMESIMPLEX, "True",
+      "Use the same initial simplex to begin each search phase.  This "
+      "reduces the total number of evaluations when combined with the "
+      "caching layer." },
+    { CFGKEY_ANGEL_LEEWAY, NULL,
+      "Comma (or whitespace) separated list of N-1 leeway values, "
+      "where N is the number of objectives.  Each value may range "
+      "from 0.0 to 1.0 (inclusive), and specifies how much the search "
+      "may stray from its objective's minimum value." },
     { NULL }
 };
 
@@ -126,9 +146,9 @@ typedef enum simplex_state {
 } simplex_state_t;
 
 /* Forward function definitions. */
-int nemo_init_simplex(void);
+int angel_init_simplex(void);
 int strategy_cfg(hsignature_t* sig);
-int nemo_phase_incr(void);
+int angel_phase_incr(void);
 void simplex_update_index(void);
 void simplex_update_centroid(void);
 int  nm_algorithm(void);
@@ -149,7 +169,10 @@ double contract = 0.5;
 double shrink   = 0.5;
 double fval_tol = 1e-8;
 double size_tol;
+double dist_tol = NAN;
+double move_len;
 int simplex_size;
+int tol_cnt;
 
 /* Variables to track current search state. */
 simplex_state_t state;
@@ -176,7 +199,7 @@ int anchor;
 int loose;
 int samesimplex;
 
-int nemo_init_simplex()
+int angel_init_simplex()
 {
     switch (init_method) {
     case SIMPLEX_INIT_CENTER: vertex_center(init_point); break;
@@ -190,7 +213,7 @@ int nemo_init_simplex()
     return simplex_from_vertex(init_point, init_percent, init);
 }
 
-int nemo_phase_incr(void)
+int angel_phase_incr(void)
 {
     int i;
     double min_dist, curr_dist;
@@ -204,11 +227,11 @@ int nemo_phase_incr(void)
 
     ++phase;
     snprintf(intbuf, sizeof(intbuf), "%d", phase);
-    session_setcfg(CFGKEY_NEMO_PHASE, intbuf);
+    session_setcfg(CFGKEY_ANGEL_PHASE, intbuf);
 
     if (!samesimplex) {
         /* Re-initialize the initial simplex, if needed. */
-        if (nemo_init_simplex() != 0) {
+        if (angel_init_simplex() != 0) {
             session_error("Could not reinitialize the initial simplex.");
             return -1;
         }
@@ -278,17 +301,13 @@ int strategy_init(hsignature_t* sig)
         return -1;
     }
 
-    /* Default stopping criteria: 0.5% of dist(vertex_min, vertex_max). */
-    if (size_tol == 0)
-        size_tol = vertex_dist(vertex_min(), vertex_max()) * 0.001;
-
     init = simplex_alloc(simplex_size);
     if (!init) {
         session_error("Could not allocate memory for initial simplex.");
         return -1;
     }
 
-    if (nemo_init_simplex() != 0) {
+    if (angel_init_simplex() != 0) {
         session_error("Could not initialize initial simplex.");
         return -1;
     }
@@ -305,7 +324,7 @@ int strategy_init(hsignature_t* sig)
     }
 
     next_id = 1;
-    if (nemo_phase_incr() != 0)
+    if (angel_phase_incr() != 0)
         return -1;
 
     if (nm_next_vertex() != 0) {
@@ -321,16 +340,16 @@ int strategy_cfg(hsignature_t* sig)
     int i;
     const char* cfgval;
 
-    loose = hcfg_bool(session_cfg, CFGKEY_NEMO_LOOSE);
-    mult = hcfg_real(session_cfg, CFGKEY_NEMO_MULT);
+    loose = hcfg_bool(session_cfg, CFGKEY_ANGEL_LOOSE);
+    mult = hcfg_real(session_cfg, CFGKEY_ANGEL_MULT);
     if (isnan(mult)) {
-        session_error("Invalid value for " CFGKEY_NEMO_MULT
+        session_error("Invalid value for " CFGKEY_ANGEL_MULT
                       " configuration key.");
         return -1;
     }
 
-    anchor = hcfg_bool(session_cfg, CFGKEY_NEMO_ANCHOR);
-    samesimplex = hcfg_bool(session_cfg, CFGKEY_NEMO_SAMESIMPLEX);
+    anchor = hcfg_bool(session_cfg, CFGKEY_ANGEL_ANCHOR);
+    samesimplex = hcfg_bool(session_cfg, CFGKEY_ANGEL_SAMESIMPLEX);
 
     /* Make sure the simplex size is N+1 or greater. */
     simplex_size = hcfg_int(session_cfg, CFGKEY_SIMPLEX_SIZE);
@@ -405,18 +424,32 @@ int strategy_cfg(hsignature_t* sig)
         return -1;
     }
 
-    fval_tol = hcfg_real(session_cfg, CFGKEY_FVAL_TOL);
-    if (isnan(fval_tol)) {
-        session_error("Invalid value for " CFGKEY_FVAL_TOL
-                      " configuration key.");
-        return -1;
+    dist_tol = hcfg_real(session_cfg, CFGKEY_DIST_TOL);
+    if (!isnan(dist_tol)) {
+        if (dist_tol <= 0.0 || dist_tol >= 1.0) {
+            session_error("Configuration key " CFGKEY_DIST_TOL
+                          " must be between 0.0 and 1.0 (exclusive).");
+            return -1;
+        }
+        dist_tol *= vertex_dist(vertex_min(), vertex_max());
+        tol_cnt = hcfg_int(session_cfg, CFGKEY_TOL_CNT);
     }
+    else {
+        // CFGKEY_DIST_TOL is not defined.  Use the size/fval method.
+        fval_tol = hcfg_real(session_cfg, CFGKEY_FVAL_TOL);
+        if (isnan(fval_tol)) {
+            session_error("Invalid value for " CFGKEY_FVAL_TOL
+                          " configuration key.");
+            return -1;
+        }
 
-    size_tol = hcfg_real(session_cfg, CFGKEY_SIZE_TOL);
-    if (isnan(size_tol)) {
-        session_error("Invalid value for " CFGKEY_SIZE_TOL
-                      " configuration key.");
-        return -1;
+        size_tol = hcfg_real(session_cfg, CFGKEY_SIZE_TOL);
+        if (isnan(size_tol) || size_tol <= 0.0 || size_tol >= 1.0) {
+            session_error("Configuration key " CFGKEY_SIZE_TOL
+                          " must be between 0.0 and 1.0 (exclusive).");
+            return -1;
+        }
+        size_tol *= vertex_dist(vertex_min(), vertex_max());
     }
 
     perf_n = hcfg_int(session_cfg, CFGKEY_PERF_COUNT);
@@ -432,25 +465,24 @@ int strategy_cfg(hsignature_t* sig)
         return -1;
     }
 
-    if (hcfg_get(session_cfg, CFGKEY_NEMO_LEEWAY)) {
-        if (hcfg_arr_len(session_cfg, CFGKEY_NEMO_LEEWAY) != perf_n - 1) {
-            session_error("Insufficient leeway values provided.");
+    if (hcfg_get(session_cfg, CFGKEY_ANGEL_LEEWAY)) {
+        if (hcfg_arr_len(session_cfg, CFGKEY_ANGEL_LEEWAY) != perf_n - 1) {
+            session_error("Incorrect number of leeway values provided.");
             return -1;
         }
 
         for (i = 0; i < perf_n - 1; ++i) {
-            leeway[i] = hcfg_arr_real(session_cfg, CFGKEY_NEMO_LEEWAY, i);
+            leeway[i] = hcfg_arr_real(session_cfg, CFGKEY_ANGEL_LEEWAY, i);
             if (isnan(leeway[i])) {
-                session_error("Invalid value for " CFGKEY_NEMO_LEEWAY
+                session_error("Invalid value for " CFGKEY_ANGEL_LEEWAY
                               " configuration key.");
                 return -1;
             }
         }
     }
     else {
-        /* Default to a 10% leeway for all objectives. */
-        for (i = 0; i < perf_n - 1; ++i)
-            leeway[i] = 0.10;
+        session_error(CFGKEY_ANGEL_LEEWAY " must be defined.");
+        return -1;
     }
 
     range = malloc(sizeof(value_range_t) * perf_n);
@@ -582,8 +614,8 @@ int strategy_analyze(htrial_t* trial)
             if (!loose) {
                 penalty += penalty_base;
             }
-            penalty += (next->perf->p[i] - range[i].min) / (range[i].max -
-                                                            range[i].min);
+            penalty += 1.0 / (1.0 - log((next->perf->p[i] - thresh[i]) /
+                                        (range[i].max     - thresh[i])));
         }
         penalty_base *= 2;
     }
@@ -637,11 +669,11 @@ int nm_algorithm(void)
         if (nm_state_transition() != 0)
             return -1;
 
-        if (state == SIMPLEX_STATE_REFLECT)
-            check_convergence();
-
         if (nm_next_vertex() != 0)
             return -1;
+
+        if (state == SIMPLEX_STATE_REFLECT)
+            check_convergence();
 
     } while (vertex_outofbounds(next));
 
@@ -750,6 +782,8 @@ int nm_next_vertex(void)
          * through the centroid point. */
         vertex_transform(simplex_worst, centroid, -reflect, test);
         next = test;
+        move_len = 100 * (vertex_dist(simplex_worst, next) /
+                          vertex_dist(vertex_min(), vertex_max()));
         break;
 
     case SIMPLEX_STATE_EXPAND:
@@ -821,30 +855,42 @@ void simplex_update_centroid(void)
 
 void check_convergence(void)
 {
-    int i;
-    double fval_err, size_max, dist, base_val;
+    static int cnt;
 
     if (simplex_collapsed(base) == 1)
         goto converged;
 
-    fval_err = 0;
-    base_val = centroid->perf->p[phase];
-    for (i = 0; i < simplex_size; ++i) {
-        fval_err += ((base->vertex[i]->perf->p[phase] - base_val) *
-                     (base->vertex[i]->perf->p[phase] - base_val));
+    if (!isnan(dist_tol)) {
+        if (move_len < dist_tol) {
+            if (++cnt >= tol_cnt) {
+                cnt = 0;
+                goto converged;
+            }
+        }
+        else cnt = 0;
     }
-    fval_err /= simplex_size;
+    else {
+        int i;
+        double fval_err, size_max, base_val;
 
-    size_max = 0;
-    for (i = 0; i < simplex_size; ++i) {
-        dist = vertex_dist(base->vertex[i], centroid);
-        if (size_max < dist)
-            size_max = dist;
+        fval_err = 0;
+        base_val = centroid->perf->p[phase];
+        for (i = 0; i < simplex_size; ++i) {
+            fval_err += ((base->vertex[i]->perf->p[phase] - base_val) *
+                         (base->vertex[i]->perf->p[phase] - base_val));
+        }
+        fval_err /= simplex_size;
+
+        size_max = 0;
+        for (i = 0; i < simplex_size; ++i) {
+            double dist = vertex_dist(base->vertex[i], centroid);
+            if (size_max < dist)
+                size_max = dist;
+        }
+
+        if (fval_err < fval_tol && size_max < size_tol)
+            goto converged;
     }
-
-    if (fval_err < fval_tol && size_max < size_tol)
-        goto converged;
-
     return;
 
   converged:
@@ -853,6 +899,6 @@ void check_convergence(void)
         session_setcfg(CFGKEY_CONVERGED, "1");
     }
     else {
-        nemo_phase_incr();
+        angel_phase_incr();
     }
 }

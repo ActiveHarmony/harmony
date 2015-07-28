@@ -57,4 +57,3 @@ c     update the variable x
 c     close the session
       call harmony_end_f(hd)
       end program example
-
