@@ -77,19 +77,28 @@ hcfg_info_t plugin_keyinfo[] = {
       "Convergence test succeeds if the simplex moves (via reflection) "
       "a distance less than or equal to this value for TOL_CNT "
       "consecutive steps." },
-    { CFGKEY_TOL_CNT, NULL,
+    { CFGKEY_TOL_CNT, "3",
       "The number of consecutive reflection steps which travel at or "
       "below DIST_TOL before the search is considered converged." },
     { CFGKEY_ANGEL_LOOSE, "False",
-      "" },
+      "When all leeways cannot be satisfied simultaneously, attempt to "
+      "satisfy as many leeways as possible, not necessarily favoring "
+      "objectives with higher priority.  If false, ANGEL will satisfy "
+      "as many higher priority objectives as possible before allowing "
+      "violations in lower priority objectives." },
     { CFGKEY_ANGEL_MULT, "1.0",
-      "" },
+      "Multiplicative factor for penalty function." },
     { CFGKEY_ANGEL_ANCHOR, "True",
-      "" },
+      "Transfer the best known solution across search phases." },
     { CFGKEY_ANGEL_SAMESIMPLEX, "True",
-      "" },
+      "Use the same initial simplex to begin each search phase.  This "
+      "reduces the total number of evaluations when combined with the "
+      "caching layer." },
     { CFGKEY_ANGEL_LEEWAY, NULL,
-      "" },
+      "Comma (or whitespace) separated list of N-1 leeway values, "
+      "where N is the number of objectives.  Each value may range "
+      "from 0.0 to 1.0 (inclusive), and specifies how much the search "
+      "may stray from its objective's minimum value." },
     { NULL }
 };
 
@@ -439,7 +448,7 @@ int strategy_cfg(hsignature_t* sig)
 
     if (hcfg_get(session_cfg, CFGKEY_ANGEL_LEEWAY)) {
         if (hcfg_arr_len(session_cfg, CFGKEY_ANGEL_LEEWAY) != perf_n - 1) {
-            session_error("Insufficient leeway values provided.");
+            session_error("Incorrect number of leeway values provided.");
             return -1;
         }
 
@@ -453,9 +462,8 @@ int strategy_cfg(hsignature_t* sig)
         }
     }
     else {
-        /* Default to a 10% leeway for all objectives. */
-        for (i = 0; i < perf_n - 1; ++i)
-            leeway[i] = 0.10;
+        session_error(CFGKEY_ANGEL_LEEWAY " must be defined.");
+        return -1;
     }
 
     range = malloc(sizeof(value_range_t) * perf_n);
