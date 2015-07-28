@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2015 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -34,33 +34,33 @@
 extern "C" {
 #endif
 
-int tcp_connect(const char *host, int port);
+int tcp_connect(const char* host, int port);
 
 /**
  * Loop until all data has been written to fd.
  **/
-int socket_write(int fd, const void *data, unsigned datalen);
+int socket_write(int fd, const void* data, unsigned datalen);
 
 /**
  * Loop until all data has been read from fd.
  **/
-int socket_read(int fd, const void *data, unsigned datalen);
+int socket_read(int fd, const void* data, unsigned datalen);
 
 /**
  * Fork and exec a new process with STDIN_FILENO and STDOUT_FILENO
  * replaced with a bidirectional socket descriptor.
  **/
-int socket_launch(const char *path, char *const argv[], pid_t *return_pid);
+int socket_launch(const char* path, char* const argv[], pid_t* return_pid);
 
 /**
  * send a message on the given socket
  **/
-int mesg_send(int sock, hmesg_t *mesg);
+int mesg_send(int sock, hmesg_t* mesg);
 
 /**
  * read a message from the given socket
  **/
-int mesg_recv(int sock, hmesg_t *mesg);
+int mesg_recv(int sock, hmesg_t* mesg);
 
 #ifdef __cplusplus
 }

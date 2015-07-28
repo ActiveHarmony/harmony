@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2015 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -23,9 +23,9 @@
 #include "hperf.h"
 #include "hutil.h"
 #include "hcfg.h"
-#include "defaults.h"
 #include "libvertex.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -36,20 +36,65 @@
 #include <assert.h>
 
 /*
- * Local configuration strings.
+ * Configuration variables used in this plugin.
+ * These will automatically be registered by session-core upon load.
  */
-#define CFGKEY_NEMO_LOOSE       "NEMO_LOOSE"
-#define CFGKEY_NEMO_MULT        "NEMO_MULT"
-#define CFGKEY_NEMO_ANCHOR      "NEMO_ANCHOR"
-#define CFGKEY_NEMO_SAMESIMPLEX "NEMO_SAMESIMPLEX"
-#define CFGKEY_NEMO_LEEWAY      "NEMO_LEEWAY"
-#define CFGKEY_NEMO_DIST_TOL    "NEMO_DIST_TOL"
-#define CFGKEY_NEMO_UP_MUL      "NEMO_UP_MUL"
-#define CFGKEY_NEMO_DN_MUL      "NEMO_DN_MUL"
-#define CFGKEY_NEMO_TOL_CNT     "NEMO_TOL_CNT"
+hcfg_info_t plugin_keyinfo[] = {
+    { CFGKEY_SIMPLEX_SIZE, NULL,
+      "Number of vertices in the simplex.  Defaults to the number of tuning "
+      "variables + 1." },
+    { CFGKEY_INIT_METHOD, "center",
+      "Initial simplex generation method. Valid values are "
+      "point, center, and random." },
+    { CFGKEY_INIT_PERCENT, "0.35",
+      "Initial simplex size as a percentage of the total search space. "
+      "Only for point initial simplex methods." },
+    { CFGKEY_REJECT_METHOD, "penalty",
+      "How to choose a replacement when dealing with rejected points. "
+      "Penalty: Use this method if the chance of point rejection is "
+      "relatively low. It applies an infinite penalty factor for invalid "
+      "points, allowing the Nelder-Mead algorithm to select a sensible "
+      "next point.  However, if the entire simplex is comprised of invalid "
+      "points, an infinite loop of invalid points may occur. Random: Use "
+      "this method if the chance of point rejection is high.  It reduces "
+      "the risk of infinitely selecting invalid points at the cost of "
+      "increasing the risk of deforming the simplex." },
+    { CFGKEY_REFLECT, "1.0",
+      "Multiplicative coefficient for simplex reflection step." },
+    { CFGKEY_EXPAND, "2.0",
+      "Multiplicative coefficient for simplex expansion step." },
+    { CFGKEY_CONTRACT, "0.5",
+      "Multiplicative coefficient for simplex contraction step." },
+    { CFGKEY_SHRINK, "0.5",
+      "Multiplicative coefficient for simplex shrink step." },
+    { CFGKEY_FVAL_TOL, "0.0001",
+      "Convergence test succeeds if difference between all vertex "
+      "performance values fall below this value." },
+    { CFGKEY_SIZE_TOL, NULL,
+      "Convergence test succeeds if simplex size falls below this value. "
+      "Default is 5% of the initial simplex radius." },
+    { CFGKEY_DIST_TOL, NULL,
+      "Convergence test succeeds if the simplex moves (via reflection) "
+      "a distance less than or equal to this value for TOL_CNT "
+      "consecutive steps." },
+    { CFGKEY_TOL_CNT, NULL,
+      "The number of consecutive reflection steps which travel at or "
+      "below DIST_TOL before the search is considered converged." },
+    { CFGKEY_NEMO_LOOSE, "False",
+      "" },
+    { CFGKEY_NEMO_MULT, "1.0",
+      "" },
+    { CFGKEY_NEMO_ANCHOR, "True",
+      "" },
+    { CFGKEY_NEMO_SAMESIMPLEX, "True",
+      "" },
+    { CFGKEY_NEMO_LEEWAY, NULL,
+      "" },
+    { NULL }
+};
 
 hpoint_t best;
-hperf_t *best_perf;
+hperf_t* best_perf;
 
 hpoint_t curr;
 
@@ -89,7 +134,7 @@ typedef enum simplex_state {
 
 /* Forward function definitions. */
 int nemo_init_simplex(void);
-int strategy_cfg(hsignature_t *sig);
+int strategy_cfg(hsignature_t* sig);
 int nemo_phase_incr(void);
 void simplex_update_index(void);
 void simplex_update_centroid(void);
@@ -97,11 +142,11 @@ int  nm_algorithm(void);
 int  nm_state_transition(void);
 int  nm_next_vertex(void);
 void check_convergence(void);
-double calc_perf(double *perf);
+double calc_perf(double* perf);
 
 /* Variables to control search properties. */
 simplex_init_t  init_method  = SIMPLEX_INIT_CENTER;
-vertex_t *      init_point;
+vertex_t*       init_point;
 double          init_percent = 0.35;
 reject_method_t reject_type  = REJECT_METHOD_PENALTY;
 
@@ -120,24 +165,24 @@ int tol_cnt;
 
 /* Variables to track current search state. */
 simplex_state_t state;
-vertex_t *centroid;
-vertex_t *test;
-simplex_t *base;
-simplex_t *init;
-vertex_t *next;
+vertex_t* centroid;
+vertex_t* test;
+simplex_t* base;
+simplex_t* init;
+vertex_t* next;
 
 int phase = -1;
-vertex_t *simplex_best;
-vertex_t *simplex_worst;
+vertex_t* simplex_best;
+vertex_t* simplex_worst;
 int curr_idx; /* for INIT or SHRINK */
 int next_id;
 
 int perf_n;
-double *thresh;
-value_range_t *range;
+double* thresh;
+value_range_t* range;
 
 /* Option variables */
-double *leeway;
+double* leeway;
 double mult;
 int anchor;
 int loose;
@@ -171,7 +216,7 @@ int nemo_phase_incr(void)
 
     ++phase;
     snprintf(intbuf, sizeof(intbuf), "%d", phase);
-    session_setcfg("NEMO_PHASE", intbuf);
+    session_setcfg(CFGKEY_NEMO_PHASE, intbuf);
 
     if (!samesimplex) {
         /* Re-initialize the initial simplex, if needed. */
@@ -184,8 +229,8 @@ int nemo_phase_incr(void)
 
     if (best.id > 0) {
         if (anchor) {
-            int idx;
-            min_dist = INFINITY;
+            int idx = -1;
+            min_dist = HUGE_VAL;
             for (i = 0; i < simplex_size; ++i) {
                 vertex_from_hpoint(&best, test);
                 curr_dist = vertex_dist(test, base->vertex[i]);
@@ -209,7 +254,7 @@ int nemo_phase_incr(void)
 /*
  * Invoked once on strategy load.
  */
-int strategy_init(hsignature_t *sig)
+int strategy_init(hsignature_t* sig)
 {
     if (libvertex_init(sig) != 0) {
         session_error("Could not initialize vertex library.");
@@ -245,10 +290,6 @@ int strategy_init(hsignature_t *sig)
         return -1;
     }
 
-    /* Default stopping criteria: 0.5% of dist(vertex_min, vertex_max). */
-    if (size_tol == 0)
-        size_tol = vertex_dist(vertex_min(), vertex_max()) * 0.001;
-
     init = simplex_alloc(simplex_size);
     if (!init) {
         session_error("Could not allocate memory for initial simplex.");
@@ -266,9 +307,8 @@ int strategy_init(hsignature_t *sig)
         return -1;
     }
 
-    if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
-        session_error("Could not set "
-                      CFGKEY_STRATEGY_CONVERGED " config variable.");
+    if (session_setcfg(CFGKEY_CONVERGED, "0") != 0) {
+        session_error("Could not set " CFGKEY_CONVERGED " config variable.");
         return -1;
     }
 
@@ -284,57 +324,28 @@ int strategy_init(hsignature_t *sig)
     return 0;
 }
 
-int strategy_cfg(hsignature_t *sig)
+int strategy_cfg(hsignature_t* sig)
 {
     int i;
-    const char *cfgval;
-    char *endp;
+    const char* cfgval;
 
-    cfgval = session_getcfg(CFGKEY_NEMO_LOOSE);
-    if (cfgval) {
-        loose = (*cfgval == '1' || *cfgval == 'y' || *cfgval == 'Y');
-    }
-    else {
-        loose = 0;
-    }
-
-    cfgval = session_getcfg(CFGKEY_NEMO_MULT);
-    if (cfgval) {
-        mult = strtod(cfgval, &endp);
-        if (*endp != '\0') {
-            session_error("Invalid value for NEMO_MULT configuration key.");
-            return -1;
-        }
-    }
-    else {
-        mult = 1.0;
+    loose = hcfg_bool(session_cfg, CFGKEY_NEMO_LOOSE);
+    mult = hcfg_real(session_cfg, CFGKEY_NEMO_MULT);
+    if (isnan(mult)) {
+        session_error("Invalid value for " CFGKEY_NEMO_MULT
+                      " configuration key.");
+        return -1;
     }
 
-    cfgval = session_getcfg(CFGKEY_NEMO_ANCHOR);
-    if (cfgval) {
-        anchor = (*cfgval == '1' || *cfgval == 'y' || *cfgval == 'Y');
-    }
-    else {
-        anchor = 1;
-    }
-
-    cfgval = session_getcfg(CFGKEY_NEMO_SAMESIMPLEX);
-    if (cfgval) {
-        samesimplex = (*cfgval == '1' || *cfgval == 'y' || *cfgval == 'Y');
-    }
-    else {
-        samesimplex = 1;
-    }
+    anchor = hcfg_bool(session_cfg, CFGKEY_NEMO_ANCHOR);
+    samesimplex = hcfg_bool(session_cfg, CFGKEY_NEMO_SAMESIMPLEX);
 
     /* Make sure the simplex size is N+1 or greater. */
-    cfgval = session_getcfg(CFGKEY_SIMPLEX_SIZE);
-    if (cfgval)
-        simplex_size = atoi(cfgval);
-
+    simplex_size = hcfg_int(session_cfg, CFGKEY_SIMPLEX_SIZE);
     if (simplex_size < sig->range_len + 1)
         simplex_size = sig->range_len + 1;
 
-    cfgval = session_getcfg(CFGKEY_INIT_METHOD);
+    cfgval = hcfg_get(session_cfg, CFGKEY_INIT_METHOD);
     if (cfgval) {
         if (strcasecmp(cfgval, "center") == 0) {
             init_method = SIMPLEX_INIT_CENTER;
@@ -352,22 +363,14 @@ int strategy_cfg(hsignature_t *sig)
         }
     }
 
-    cfgval = session_getcfg(CFGKEY_INIT_PERCENT);
-    if (cfgval) {
-        init_percent = strtod(cfgval, &endp);
-        if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_INIT_PERCENT
-                " configuration key.");
-            return -1;
-        }
-        if (init_percent <= 0 || init_percent > 1) {
-            session_error("Configuration key " CFGKEY_INIT_PERCENT
-                " must be between 0.0 and 1.0 (exclusive).");
-            return -1;
-        }
+    init_percent = hcfg_real(session_cfg, CFGKEY_INIT_PERCENT);
+    if (init_percent <= 0 || init_percent > 1) {
+        session_error("Configuration key " CFGKEY_INIT_PERCENT
+                      " must be between 0.0 and 1.0 (exclusive).");
+        return -1;
     }
 
-    cfgval = session_getcfg(CFGKEY_REJECT_METHOD);
+    cfgval = hcfg_get(session_cfg, CFGKEY_REJECT_METHOD);
     if (cfgval) {
         if (strcasecmp(cfgval, "penalty") == 0) {
             reject_type = REJECT_METHOD_PENALTY;
@@ -382,122 +385,73 @@ int strategy_cfg(hsignature_t *sig)
         }
     }
 
-    cfgval = session_getcfg(CFGKEY_REFLECT);
-    if (cfgval) {
-        reflect = strtod(cfgval, &endp);
-        if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_REFLECT
-                          " configuration key.");
-            return -1;
-        }
-        if (reflect <= 0.0) {
-            session_error("Configuration key " CFGKEY_REFLECT
-                          " must be positive.");
-            return -1;
-        }
+    reflect = hcfg_real(session_cfg, CFGKEY_REFLECT);
+    if (isnan(reflect) || reflect <= 0.0) {
+        session_error("Configuration key " CFGKEY_REFLECT
+                      " must be positive.");
+        return -1;
     }
 
-    cfgval = session_getcfg(CFGKEY_EXPAND);
-    if (cfgval) {
-        expand = strtod(cfgval, &endp);
-        if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_EXPAND
-                          " configuration key.");
-            return -1;
-        }
-        if (expand <= reflect) {
-            session_error("Configuration key " CFGKEY_EXPAND
-                          " must be greater than the reflect coefficient.");
-            return -1;
-        }
+    expand = hcfg_real(session_cfg, CFGKEY_EXPAND);
+    if (isnan(expand) || expand <= reflect) {
+        session_error("Configuration key " CFGKEY_EXPAND
+                      " must be greater than the reflect coefficient.");
+        return -1;
     }
 
-    cfgval = session_getcfg(CFGKEY_CONTRACT);
-    if (cfgval) {
-        contract = strtod(cfgval, &endp);
-        if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_CONTRACT
-                          " configuration key.");
-            return -1;
-        }
-        if (contract <= 0.0 || contract >= 1.0) {
-            session_error("Configuration key " CFGKEY_CONTRACT
-                          " must be between 0.0 and 1.0 (exclusive).");
-            return -1;
-        }
+    contract = hcfg_real(session_cfg, CFGKEY_CONTRACT);
+    if (isnan(contract) || contract <= 0.0 || contract >= 1.0) {
+        session_error("Configuration key " CFGKEY_CONTRACT
+                      " must be between 0.0 and 1.0 (exclusive).");
+        return -1;
     }
 
-    cfgval = session_getcfg(CFGKEY_SHRINK);
-    if (cfgval) {
-        shrink = strtod(cfgval, &endp);
-        if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_SHRINK
-                          " configuration key.");
-            return -1;
-        }
-        if (shrink <= 0.0 || shrink >= 1.0) {
-            session_error("Configuration key " CFGKEY_SHRINK
-                          " must be between 0.0 and 1.0 (exclusive).");
-            return -1;
-        }
+    shrink = hcfg_real(session_cfg, CFGKEY_SHRINK);
+    if (isnan(shrink) || shrink <= 0.0 || shrink >= 1.0) {
+        session_error("Configuration key " CFGKEY_SHRINK
+                      " must be between 0.0 and 1.0 (exclusive).");
+        return -1;
     }
 
-    cfgval = session_getcfg(CFGKEY_FVAL_TOL);
-    if (cfgval) {
-        fval_tol = strtod(cfgval, &endp);
-        if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_FVAL_TOL
-                          " configuration key.");
-            return -1;
-        }
+    fval_tol = hcfg_real(session_cfg, CFGKEY_FVAL_TOL);
+    if (isnan(fval_tol)) {
+        session_error("Invalid value for " CFGKEY_FVAL_TOL
+                      " configuration key.");
+        return -1;
     }
 
-    cfgval = session_getcfg(CFGKEY_SIZE_TOL);
-    if (cfgval) {
-        size_tol = strtod(cfgval, &endp);
-        if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_SIZE_TOL
-                          " configuration key.");
-            return -1;
-        }
+    size_tol = hcfg_real(session_cfg, CFGKEY_SIZE_TOL);
+    if (isnan(size_tol)) {
+        /* Default stopping criteria: 0.5% of dist(vertex_min, vertex_max). */
+        size_tol = vertex_dist(vertex_min(), vertex_max()) * 0.005;
     }
 
-    cfgval = session_getcfg(CFGKEY_PERF_COUNT);
-    if (cfgval) {
-        perf_n = atoi(cfgval);
-        if (perf_n < 1) {
-            session_error("Invalid value for " CFGKEY_PERF_COUNT
-                          " configuration key.");
-            return -1;
-        }
-    }
-    else {
-        perf_n = DEFAULT_PERF_COUNT;
+    perf_n = hcfg_int(session_cfg, CFGKEY_PERF_COUNT);
+    if (perf_n < 1) {
+        session_error("Invalid value for " CFGKEY_PERF_COUNT
+                      " configuration key.");
+        return -1;
     }
 
-    leeway = (double *) malloc(sizeof(double) * (perf_n - 1));
+    leeway = malloc(sizeof(double) * (perf_n - 1));
     if (!leeway) {
         session_error("Could not allocate memory for leeway vector.");
         return -1;
     }
-    cfgval = session_getcfg(CFGKEY_NEMO_LEEWAY);
-    if (cfgval) {
-        endp = (char *)cfgval;
-        for (i = 0; *endp && i < perf_n - 1; ++i) {
-            leeway[i] = strtod(cfgval, &endp);
-            if (*endp && !isspace(*endp) && *endp != ',') {
-                session_error("Invalid value for NEMO_LEEWAY"
+
+    if (hcfg_get(session_cfg, CFGKEY_NEMO_LEEWAY)) {
+        if (hcfg_arr_len(session_cfg, CFGKEY_NEMO_LEEWAY) != perf_n - 1) {
+            session_error("Insufficient leeway values provided.");
+            return -1;
+        }
+
+        for (i = 0; i < perf_n - 1; ++i) {
+            leeway[i] = hcfg_arr_real(session_cfg, CFGKEY_NEMO_LEEWAY, i);
+            if (isnan(leeway[i])) {
+                session_error("Invalid value for " CFGKEY_NEMO_LEEWAY
                               " configuration key.");
                 return -1;
             }
-
-            cfgval = endp;
-            while (cfgval && (isspace(*cfgval) || *cfgval == ','))
-                ++cfgval;
-        }
-        if (i < perf_n - 1) {
-            session_error("Insufficient leeway values provided.");
-            return -1;
         }
     }
     else {
@@ -506,44 +460,31 @@ int strategy_cfg(hsignature_t *sig)
             leeway[i] = 0.10;
     }
 
-    range = (value_range_t *) malloc(sizeof(value_range_t) * perf_n);
+    range = malloc(sizeof(value_range_t) * perf_n);
     if (!range) {
         session_error("Could not allocate memory for range container.");
         return -1;
     }
     for (i = 0; i < perf_n; ++i) {
-        range[i].min =  INFINITY;
-        range[i].max = -INFINITY;
+        range[i].min =  HUGE_VAL;
+        range[i].max = -HUGE_VAL;
     }
 
-    thresh = (double *) malloc(sizeof(double) * (perf_n - 1));
+    thresh = malloc(sizeof(double) * (perf_n - 1));
     if (!thresh) {
         session_error("Could not allocate memory for threshold container.");
         return -1;
     }
 
-    cfgval = session_getcfg(CFGKEY_NEMO_DIST_TOL);
-    if (cfgval)
-        dist_tol = atof(cfgval);
-
-    cfgval = session_getcfg(CFGKEY_NEMO_UP_MUL);
-    if (cfgval)
-        up_mul = atof(cfgval);
-
-    cfgval = session_getcfg(CFGKEY_NEMO_DN_MUL);
-    if (cfgval)
-        dn_mul = atof(cfgval);
-
-    cfgval = session_getcfg(CFGKEY_NEMO_TOL_CNT);
-    if (cfgval)
-        tol_cnt = atoi(cfgval);
+    dist_tol = hcfg_real(session_cfg, CFGKEY_DIST_TOL);
+    tol_cnt = hcfg_int(session_cfg, CFGKEY_TOL_CNT);
     return 0;
 }
 
 /*
  * Generate a new candidate configuration point.
  */
-int strategy_generate(hflow_t *flow, hpoint_t *point)
+int strategy_generate(hflow_t* flow, hpoint_t* point)
 {
     if (next->id == next_id) {
         flow->status = HFLOW_WAIT;
@@ -564,9 +505,9 @@ int strategy_generate(hflow_t *flow, hpoint_t *point)
 /*
  * Regenerate a point deemed invalid by a later plug-in.
  */
-int strategy_rejected(hflow_t *flow, hpoint_t *point)
+int strategy_rejected(hflow_t* flow, hpoint_t* point)
 {
-    hpoint_t *hint = &flow->point;
+    hpoint_t* hint = &flow->point;
 
     if (hint && hint->id != -1) {
         int orig_id = point->id;
@@ -591,7 +532,7 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
              */
 
             for (i = 0; i < perf_n; ++i)
-                next->perf->p[i] = INFINITY;
+                next->perf->p[i] = HUGE_VAL;
 
             if (nm_algorithm() != 0) {
                 session_error("Internal error: Nelder-Mead"
@@ -623,10 +564,10 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
 /*
  * Analyze the observed performance for this configuration point.
  */
-int strategy_analyze(htrial_t *trial)
+int strategy_analyze(htrial_t* trial)
 {
     int i;
-    double penalty, base;
+    double penalty, penalty_base;
 
     if (trial->point.id != next->id) {
         session_error("Rouge points not supported.");
@@ -639,21 +580,21 @@ int strategy_analyze(htrial_t *trial)
         if (range[i].min > next->perf->p[i])
             range[i].min = next->perf->p[i];
 
-        if (range[i].max < next->perf->p[i] && next->perf->p[i] < INFINITY)
+        if (range[i].max < next->perf->p[i] && next->perf->p[i] < HUGE_VAL)
             range[i].max = next->perf->p[i];
     }
 
     penalty = 0.0;
-    base = 1.0;
+    penalty_base = 1.0;
     for (i = phase-1; i >= 0; --i) {
         if (next->perf->p[i] > thresh[i]) {
             if (!loose) {
-                penalty += base;
+                penalty += penalty_base;
             }
             penalty += (next->perf->p[i] - range[i].min) / (range[i].max -
                                                             range[i].min);
         }
-        base *= 2;
+        penalty_base *= 2;
     }
 
     if (penalty > 0.0) {
@@ -687,7 +628,7 @@ int strategy_analyze(htrial_t *trial)
 /*
  * Return the best performing point thus far in the search.
  */
-int strategy_best(hpoint_t *point)
+int strategy_best(hpoint_t* point)
 {
     if (hpoint_copy(point, &best) != 0) {
         session_error("Internal error: Could not copy point.");
@@ -744,7 +685,7 @@ int nm_state_transition(void)
              * known simplex vertex.  Replace the worst performing
              * simplex vertex with the reflected test vertex.
              */
-            vertex_t *prev_worst;
+            vertex_t* prev_worst;
             vertex_copy(simplex_worst, test);
 
             prev_worst = simplex_worst;
@@ -950,7 +891,7 @@ void check_convergence(void)
   converged:
     if (phase == perf_n - 1) {
         state = SIMPLEX_STATE_CONVERGED;
-        session_setcfg(CFGKEY_STRATEGY_CONVERGED, "1");
+        session_setcfg(CFGKEY_CONVERGED, "1");
     }
     else {
         nemo_phase_incr();

@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2015 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -17,15 +17,32 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/**
+ * \page refname Layer Name (sharedobject.so)
+ *
+ * Documentation written in this comment block will automatically be
+ * processed by Doxygen and combined into the user document.
+ */
+
 #include "session-core.h"
 #include "hsignature.h"
 #include "hpoint.h"
+#include "hcfg.h"
 
 /*
- * Name used to identify this plugin.  All Harmony plugins must define
- * this variable.
+ * Name used to identify this plugin.
+ * All Harmony plugins must define this variable.
  */
 const char harmony_layer_name[] = "<plugin>";
+
+/*
+ * Configuration variables used in this plugin.
+ * These will automatically be registered by session-core upon load.
+ */
+hcfg_info_t plugin_keyinfo[] = {
+    { "VARNAME", "Default Value", "Text description." },
+    { NULL }
+};
 
 /*
  * Invoked once on module load, and during subsequent session restarts.
@@ -37,7 +54,7 @@ const char harmony_layer_name[] = "<plugin>";
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int <plugin>_init(hsignature_t *sig)
+int <plugin>_init(hsignature_t* sig)
 {
     return 0;
 }
@@ -52,22 +69,7 @@ int <plugin>_init(hsignature_t *sig)
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int <plugin>_join(const char *id)
-{
-    return 0;
-}
-
-/*
- * Invoked when a client reads from the configuration system.
- *
- * Params:
- *   key - Configuration key requested.
- *
- * Upon error, this function should call session_error() with a
- * human-readable string explaining the problem and return -1.
- * Otherwise, returning 0 indicates success.
- */
-int <plugin>_getcfg(const char *key)
+int <plugin>_join(const char* id)
 {
     return 0;
 }
@@ -83,7 +85,7 @@ int <plugin>_getcfg(const char *key)
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int <plugin>_setcfg(const char *key, const char *val)
+int <plugin>_setcfg(const char* key, const char* val)
 {
     return 0;
 }
@@ -101,7 +103,7 @@ int <plugin>_setcfg(const char *key, const char *val)
  * Otherwise, this routine should return 0, and the contents of the
  * "flow" variable should be set appropriately.
  */
-int <plugin>_generate(hflow_t *flow, htrial_t *trial)
+int <plugin>_generate(hflow_t* flow, htrial_t* trial)
 {
     flow->status = HFLOW_ACCEPT;
     return 0;
@@ -120,7 +122,7 @@ int <plugin>_generate(hflow_t *flow, htrial_t *trial)
  * Otherwise, this routine should return 0, and the contents of the
  * "flow" variable should be set appropriately.
  */
-int <plugin>_analyze(hflow_t *flow, htrial_t *trial)
+int <plugin>_analyze(hflow_t* flow, htrial_t* trial)
 {
     flow->status = HFLOW_ACCEPT;
     return 0;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2015 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -47,18 +47,13 @@
  * Grouping should be beneficial for search spaces whose input
  * variables are relatively independent with respect to the reported
  * performance.
- *
- * **Configuration Variables**
- * Key          | Type   | Default | Description
- * ------------ | ------ | ------- | -----------
- * GROUP_LIST   | String | (none)  | List of input parameter indexes.
  */
 
 #include "session-core.h"
 #include "hsignature.h"
 #include "hpoint.h"
 #include "hutil.h"
-#include "defaults.h"
+#include "hcfg.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -67,51 +62,62 @@
 #include <ctype.h>
 
 /*
- * Name used to identify this plugin.  All Harmony plugins must define
- * this variable.
+ * Name used to identify this plugin layer.
+ * All Harmony plugin layers must define this variable.
  */
 const char harmony_layer_name[] = "group";
 
-int parse_group(const char *buf);
+/*
+ * Configuration variables used in this plugin.
+ * These will automatically be registered by session-core upon load.
+ */
+hcfg_info_t plugin_keyinfo[] = {
+    { CFGKEY_GROUP_LIST, NULL, "List of input parameter indexes." },
+    { NULL }
+};
+
+int parse_group(const char* buf);
 
 typedef struct group_def {
-    int *idx;
+    int* idx;
     int idx_len;
 } group_def_t;
 
 static char internal_restart_req;
 static int cap_max;
-static hval_t *locked_val, *hint_val;
-static group_def_t *glist;
+static hval_t* locked_val;
+static hval_t* hint_val;
+static group_def_t* glist;
 static int glist_len, glist_cap;
 static int glist_curr;
 static hpoint_t best;
 
-int group_init(hsignature_t *sig)
+int group_init(hsignature_t* sig)
 {
-    const char *ptr;
+    const char* ptr;
 
     if (internal_restart_req) {
         /* Ignore our own requests to re-initialize. */
         return 0;
     }
 
-    ptr = session_getcfg("GROUP_LIST");
+    ptr = hcfg_get(session_cfg, CFGKEY_GROUP_LIST);
     if (!ptr) {
-        session_error("GROUP_LIST configuration variable must be defined.");
+        session_error(CFGKEY_GROUP_LIST
+                      " configuration variable must be defined.");
         return -1;
     }
 
     /* The maximum group size is the number of input ranges. */
     cap_max = sig->range_len;
 
-    locked_val = (hval_t *) calloc(cap_max, sizeof(hval_t));
+    locked_val = calloc(cap_max, sizeof(hval_t));
     if (!locked_val) {
         session_error("Could not allocate memory for locked value list.");
         return -1;
     }
 
-    hint_val = (hval_t *) calloc(cap_max, sizeof(hval_t));
+    hint_val = calloc(cap_max, sizeof(hval_t));
     if (!hint_val) {
         session_error("Could not allocate memory for hint value list.");
         return -1;
@@ -127,11 +133,11 @@ int group_init(hsignature_t *sig)
     return parse_group(ptr);
 }
 
-int group_setcfg(const char *key, const char *val)
+int group_setcfg(const char* key, const char* val)
 {
     int i, retval = 0;
 
-    if (strcmp(key, CFGKEY_STRATEGY_CONVERGED) == 0 && val && *val == '1') {
+    if (strcmp(key, CFGKEY_CONVERGED) == 0 && val && *val == '1') {
         session_best(&best);
 
         /* Update locked values with converged group. */
@@ -149,12 +155,12 @@ int group_setcfg(const char *key, const char *val)
     return retval;
 }
 
-int group_generate(hflow_t *flow, htrial_t *trial)
+int group_generate(hflow_t* flow, htrial_t* trial)
 {
     int i;
 
     if (glist_curr < glist_len) {
-        hval_t *trial_val = trial->point.val;
+        hval_t* trial_val = trial->point.val;
 
         /* Initialize locked values, if needed. */
         for (i = 0; i < cap_max; ++i) {
@@ -197,12 +203,12 @@ int group_fini(void)
     return 0;
 }
 
-int parse_group(const char *buf)
+int parse_group(const char* buf)
 {
     int i, j, count, success;
 
-    int *list = (int *) malloc(cap_max * sizeof(int));
-    char *seen = (char *) calloc(cap_max, sizeof(char));
+    int* list = malloc(cap_max * sizeof(int));
+    char* seen = calloc(cap_max, sizeof(char));
 
     if (!list || !seen) {
         session_error("Error allocating memory for group parsing function");
@@ -242,7 +248,7 @@ int parse_group(const char *buf)
         ++buf;
 
         /* Allocate memory for the parsed index list. */
-        glist[i].idx = (int *) malloc(j * sizeof(int));
+        glist[i].idx = malloc(j * sizeof(int));
         if (!glist[i].idx) {
             session_error("Error allocating memory for group index list");
             goto cleanup;

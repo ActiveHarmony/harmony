@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2015 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -28,13 +28,13 @@
 
 const hpoint_t HPOINT_INITIALIZER = {-1, 0, NULL, 0};
 
-void hpoint_scrub(hpoint_t *pt);
+void hpoint_scrub(hpoint_t* pt);
 
-int hpoint_init(hpoint_t *pt, int n)
+int hpoint_init(hpoint_t* pt, int n)
 {
     pt->id = 0;
     pt->n = n;
-    pt->val = (hval_t *) calloc(n, sizeof(hval_t));
+    pt->val = calloc(n, sizeof(hval_t));
     if (!pt->val)
         return -1;
     pt->memlevel = 0;
@@ -42,7 +42,7 @@ int hpoint_init(hpoint_t *pt, int n)
     return 0;
 }
 
-void hpoint_fini(hpoint_t *pt)
+void hpoint_fini(hpoint_t* pt)
 {
     if (pt->n > 0) {
         hpoint_scrub(pt);
@@ -51,11 +51,11 @@ void hpoint_fini(hpoint_t *pt)
     *pt = HPOINT_INITIALIZER;
 }
 
-int hpoint_copy(hpoint_t *copy, const hpoint_t *orig)
+int hpoint_copy(hpoint_t* copy, const hpoint_t* orig)
 {
     int i;
-    hval_t *newbuf;
-    char *newstr;
+    hval_t* newbuf;
+    char* newstr;
 
     if (orig->id == -1) {
         hpoint_fini(copy);
@@ -65,7 +65,7 @@ int hpoint_copy(hpoint_t *copy, const hpoint_t *orig)
     copy->id = orig->id;
     hpoint_scrub(copy);
     if (copy->n != orig->n) {
-        newbuf = (hval_t *) realloc(copy->val, sizeof(hval_t) * orig->n);
+        newbuf = realloc(copy->val, sizeof(hval_t) * orig->n);
         if (!newbuf)
             return -1;
         copy->val = newbuf;
@@ -87,7 +87,7 @@ int hpoint_copy(hpoint_t *copy, const hpoint_t *orig)
     return 0;
 }
 
-int hpoint_align(hpoint_t *pt, hsignature_t *sig)
+int hpoint_align(hpoint_t* pt, hsignature_t* sig)
 {
     int i;
 
@@ -95,7 +95,7 @@ int hpoint_align(hpoint_t *pt, hsignature_t *sig)
         return -1;
 
     for (i = 0; i < pt->n; ++i) {
-        hval_t *val = &pt->val[i];
+        hval_t* val = &pt->val[i];
 
         if (val->type != sig->range[i].type)
             return -1;
@@ -115,7 +115,7 @@ int hpoint_align(hpoint_t *pt, hsignature_t *sig)
             unsigned long idx = hrange_str_index(&sig->range[i].bounds.s,
                                                  val->value.s);
             if (pt->memlevel == 1)
-                free((char *)val->value.s);
+                free((char*)val->value.s);
 
             val->value.s = sig->range[i].bounds.s.set[idx];
             break;
@@ -130,7 +130,7 @@ int hpoint_align(hpoint_t *pt, hsignature_t *sig)
     return 0;
 }
 
-int hpoint_parse(hpoint_t *pt, hsignature_t *sig, const char *buf)
+int hpoint_parse(hpoint_t* pt, hsignature_t* sig, const char* buf)
 {
     int i, span;
 
@@ -161,7 +161,7 @@ int hpoint_parse(hpoint_t *pt, hsignature_t *sig, const char *buf)
     return 0;
 }
 
-int hpoint_serialize(char **buf, int *buflen, const hpoint_t *pt)
+int hpoint_serialize(char** buf, int* buflen, const hpoint_t* pt)
 {
     int i, count, total;
 
@@ -188,10 +188,10 @@ int hpoint_serialize(char **buf, int *buflen, const hpoint_t *pt)
     return -1;
 }
 
-int hpoint_deserialize(hpoint_t *pt, char *buf)
+int hpoint_deserialize(hpoint_t* pt, char* buf)
 {
     int i, count, total, new_n;
-    hval_t *newbuf;
+    hval_t* newbuf;
 
     if (sscanf(buf, " hpoint:%d%n", &pt->id, &count) < 1)
         goto invalid;
@@ -203,7 +203,7 @@ int hpoint_deserialize(hpoint_t *pt, char *buf)
         total += count;
 
         if (pt->n != new_n) {
-            newbuf = (hval_t *) realloc(pt->val, sizeof(hval_t) * new_n);
+            newbuf = realloc(pt->val, sizeof(hval_t) * new_n);
             if (!newbuf)
                 goto error;
             pt->val = newbuf;
@@ -226,14 +226,14 @@ int hpoint_deserialize(hpoint_t *pt, char *buf)
     return -1;
 }
 
-void hpoint_scrub(hpoint_t *pt)
+void hpoint_scrub(hpoint_t* pt)
 {
     int i;
 
     if (pt->memlevel == 1) {
         for (i = 0; i < pt->n; ++i) {
             if (pt->val[i].type == HVAL_STR)
-                free((char *)pt->val[i].value.s);
+                free((char*)pt->val[i].value.s);
         }
         pt->memlevel = 0;
     }

@@ -132,30 +132,24 @@ Server Mode                                       {#start_test_server}
 This running model requires tuning clients to communicate to a server
 via a TCP connection.  To run the server:
 
-    $ ./hserver [configuration_file]
-
-The `HARMONY_CONFIG` environment variable can also be used to specify
-which configuration file to use.  For example (assuming Bourne shell
-semantics):
-
-    $ HARMONY_CONFIG=/some/other/dir/harmony.cfg ./hserver
+    $ ./hserver [-p PORT]
 
 Once the server is running, we must inform the client to use it.  This
-is accomplished through two environment variables, `HARMONY_S_HOST`
-and `HARMONY_S_PORT`.  As a quick example, to run the previous example
-in server mode, one could use the following command (assuming Bourne
+is accomplished through two environment variables, `HARMONY_HOST` and
+`HARMONY_PORT`.  As a quick example, to run the previous example in
+server mode, one could use the following command (assuming Bourne
 shell semantics):
 
-    $ HARMONY_S_HOST=localhost ./example_c
+    $ HARMONY_HOST=localhost ./example_c
 
-If `HARMONY_S_HOST` is defined, the example will attempt to contact a
+If `HARMONY_HOST` is defined, the example will attempt to contact a
 Harmony Server listening on the specified host (in this case,
 `localhost`) on port 1979.  If you wish to connect to a server running
-on a different port, set the `HARMONY_S_PORT` environment variable.
-For example:
+on a different port, set the `HARMONY_PORT` environment variable.  For
+example:
 
-    $ export HARMONY_S_HOST=other.host.net
-    $ export HARMONY_S_PORT=2013
+    $ export HARMONY_HOST=other.host.net
+    $ export HARMONY_PORT=2013
 
 An additional perk of running in Server Mode is the web interface.
 Simply point a javascript-enabled browser to the *host:port* of a
@@ -170,18 +164,18 @@ examples below make use of the [Configuration System](\ref cfg), which
 is documented in the User's Manual.
 
 By default, the PRO search strategy is used.  It can easily be changed
-by setting the SESSION_STRATEGY configuration variable.  This way,
-search strategies are easily comparable.  For instance, the following
-example instructs the session to use a random search strategy instead:
+by setting the `STRATEGY` configuration variable.  This way, search
+strategies are easily comparable.  For instance, the following example
+instructs the session to use a random search strategy instead:
 
-    $ ./example_c SESSION_STRATEGY=random.so
+    $ ./example_c STRATEGY=random.so
 
 In addition to changing the core search strategy, additional
 [processing layers](\ref layers) can be easily added to the feedback
 loop.  For instance, if you'd like to write a log of the search
 session to disk, use the [Point Logger](\ref logger) processing layer:
 
-    $ ./example_c SESSION_LAYER_LIST=log.so LOGFILE=search.log
+    $ ./example_c LAYERS=log.so LOG_FILE=search.log
 
 Wall-time is a non-deterministic performance metric.  Multiple factors
 such as competing processes, or even CPU temperature can perturb
@@ -189,19 +183,19 @@ measurement.  This phenomenon can be mitigated by performing multiple
 tests of each point and aggregating the results with the
 [Aggregator](\ref agg) processing layer:
 
-    $ ./example_c SESSION_LAYER_LIST=agg.so AGG_TIMES=5 AGG_FUNC=median
+    $ ./example_c LAYERS=agg.so AGG_TIMES=5 AGG_FUNC=median
 
 As described in the [Tuning Session](\ref intro_session), processing
 layers may be stacked.  However, it is important to remember that
 processing layers are not commutative; their order is important.
 Consider the following two tuning sessions:
 
-    $ ./example_c SESSION_LAYER_LIST=agg.so:log.so \
-                  LOGFILE=search.log AGG_TIMES=5 AGG_FUNC=median
+    $ ./example_c LAYERS=agg.so:log.so \
+                  LOG_FILE=search.log AGG_TIMES=5 AGG_FUNC=median
 and
 
-    $ ./example_c SESSION_LAYER_LIST=log.so:agg.so \
-                  LOGFILE=search.log AGG_TIMES=5 AGG_FUNC=median
+    $ ./example_c LAYERS=log.so:agg.so \
+                  LOG_FILE=search.log AGG_TIMES=5 AGG_FUNC=median
 
 Only the order of the processing layers have changed, but the second
 invocation will produce a much smaller log file.  This is because the

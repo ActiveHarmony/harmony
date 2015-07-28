@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2015 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -27,11 +27,6 @@
  *
  * It is mainly used as a basis of comparison for more intelligent
  * search strategies.
- *
- * **Configuration Variables**
- * Key          | Type       | Default | Description
- * ------------ | ---------- | ------- | -----------
- * RANDOM_SEED  | Integer    | time()  | Value to seed the pseudo-random number generator.  Default is to seed the random generator by time.
  */
 
 #include "strategy.h"
@@ -40,7 +35,6 @@
 #include "hperf.h"
 #include "hutil.h"
 #include "hcfg.h"
-#include "defaults.h"
 #include "libvertex.h"
 
 #include <stdlib.h>
@@ -49,19 +43,28 @@
 #include <time.h>
 #include <math.h>
 
+/*
+ * Configuration variables used in this plugin.
+ * These will automatically be registered by session-core upon load.
+ */
+hcfg_info_t plugin_keyinfo[] = {
+    { CFGKEY_INIT_POINT, NULL, "Initial point begin testing from." },
+    { NULL }
+};
+
 hpoint_t best;
 double   best_perf;
 
 /* Forward function definitions. */
-int strategy_cfg(hsignature_t *sig);
+int strategy_cfg(hsignature_t* sig);
 
 /* Variables to track current search state. */
-vertex_t *curr;
+vertex_t* curr;
 
 /*
  * Invoked once on strategy load.
  */
-int strategy_init(hsignature_t *sig)
+int strategy_init(hsignature_t* sig)
 {
     if (libvertex_init(sig) != 0) {
         session_error("Could not initialize vertex library.");
@@ -80,7 +83,7 @@ int strategy_init(hsignature_t *sig)
          * and thus be retained across a restart.
          */
         best = HPOINT_INITIALIZER;
-        best_perf = INFINITY;
+        best_perf = HUGE_VAL;
         curr->id = 1;
     }
 
@@ -88,19 +91,17 @@ int strategy_init(hsignature_t *sig)
     if (strategy_cfg(sig) != 0)
         return -1;
 
-    if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
-        session_error("Could not set "
-                      CFGKEY_STRATEGY_CONVERGED " config variable.");
+    if (session_setcfg(CFGKEY_CONVERGED, "0") != 0) {
+        session_error("Could not set " CFGKEY_CONVERGED " config variable.");
         return -1;
     }
     return 0;
 }
 
-int strategy_cfg(hsignature_t *sig)
+int strategy_cfg(hsignature_t* sig)
 {
-    const char *cfgval;
+    const char* cfgval = hcfg_get(session_cfg, CFGKEY_INIT_POINT);
 
-    cfgval = session_getcfg(CFGKEY_INIT_POINT);
     if (cfgval) {
         if (vertex_from_string(cfgval, sig, curr) != 0)
             return -1;
@@ -114,7 +115,7 @@ int strategy_cfg(hsignature_t *sig)
 /*
  * Generate a new candidate configuration.
  */
-int strategy_generate(hflow_t *flow, hpoint_t *point)
+int strategy_generate(hflow_t* flow, hpoint_t* point)
 {
     if (vertex_to_hpoint(curr, point) != 0) {
         session_error("Internal error: Could not make point from vertex.");
@@ -132,9 +133,9 @@ int strategy_generate(hflow_t *flow, hpoint_t *point)
 /*
  * Regenerate a point deemed invalid by a later plug-in.
  */
-int strategy_rejected(hflow_t *flow, hpoint_t *point)
+int strategy_rejected(hflow_t* flow, hpoint_t* point)
 {
-    hpoint_t *hint = &flow->point;
+    hpoint_t* hint = &flow->point;
 
     if (hint && hint->id != -1) {
         int orig_id = point->id;
@@ -160,7 +161,7 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
 /*
  * Analyze the observed performance for this configuration point.
  */
-int strategy_analyze(htrial_t *trial)
+int strategy_analyze(htrial_t* trial)
 {
     double perf = hperf_unify(trial->perf);
 
@@ -177,7 +178,7 @@ int strategy_analyze(htrial_t *trial)
 /*
  * Return the best performing point thus far in the search.
  */
-int strategy_best(hpoint_t *point)
+int strategy_best(hpoint_t* point)
 {
     if (hpoint_copy(point, &best) != 0) {
         session_error("Internal error: Could not copy point.");

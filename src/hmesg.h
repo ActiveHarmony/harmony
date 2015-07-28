@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2015 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -81,7 +81,7 @@ typedef struct {
     int dest;
     hmesg_type type;
     hmesg_status status;
-    const char *src_id;
+    const char* src_id;
 
     union {
         hsession_t session;
@@ -89,21 +89,21 @@ typedef struct {
         hpoint_t point;
         struct mesg_report {
             int cand_id;
-            hperf_t *perf;
+            hperf_t* perf;
         } report;
-        const char *string;
+        const char* string;
     } data;
 
-    char *buf;
+    char* buf;
     int buflen;
 } hmesg_t;
 extern const hmesg_t HMESG_INITIALIZER;
 
-void hmesg_init(hmesg_t *mesg);
-void hmesg_scrub(hmesg_t *mesg);
-void hmesg_fini(hmesg_t *mesg);
-int  hmesg_serialize(hmesg_t *mesg);
-int  hmesg_deserialize(hmesg_t *mesg);
+void hmesg_init(hmesg_t* mesg);
+void hmesg_scrub(hmesg_t* mesg);
+void hmesg_fini(hmesg_t* mesg);
+int  hmesg_serialize(hmesg_t* mesg);
+int  hmesg_deserialize(hmesg_t* mesg);
 
 #ifdef __cplusplus
 }

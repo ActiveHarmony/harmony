@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2015 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -31,7 +31,7 @@
 
 const hmesg_t HMESG_INITIALIZER = {0};
 
-void hmesg_scrub(hmesg_t *mesg)
+void hmesg_scrub(hmesg_t* mesg)
 {
     switch (mesg->type) {
     case HMESG_SESSION:
@@ -68,18 +68,20 @@ void hmesg_scrub(hmesg_t *mesg)
     mesg->type = HMESG_UNKNOWN;
 }
 
-void hmesg_fini(hmesg_t *mesg)
+void hmesg_fini(hmesg_t* mesg)
 {
     hmesg_scrub(mesg);
     free(mesg->buf);
 }
 
-int hmesg_serialize(hmesg_t *mesg)
+int hmesg_serialize(hmesg_t* mesg)
 {
-    const char *type_str, *status_str;
+    const char* type_str;
+    const char* status_str;
     char hdr[HMESG_HDRLEN + 1];
-    char *buf;
+    char* buf;
     int buflen, count, total;
+    unsigned int magic;
 
   top:
     buf = mesg->buf;
@@ -183,7 +185,7 @@ int hmesg_serialize(hmesg_t *mesg)
     }
 
     if (total >= mesg->buflen) {
-        buf = (char *) realloc(mesg->buf, total + 1);
+        buf = realloc(mesg->buf, total + 1);
         if (!buf)
             goto error;
 
@@ -192,9 +194,10 @@ int hmesg_serialize(hmesg_t *mesg)
         goto top;
     }
 
-    snprintf(hdr, sizeof(hdr), "XXXX%04d%02x", total, HMESG_VERSION);
-    *(unsigned int *)(hdr) = htonl(HMESG_MAGIC);
-    memcpy(mesg->buf, hdr, HMESG_HDRLEN);
+    magic = htonl(HMESG_MAGIC);
+    snprintf(hdr, sizeof(hdr), "%04d%02x", total, HMESG_VERSION);
+    memcpy(mesg->buf, &magic, sizeof(magic));
+    memcpy(mesg->buf + sizeof(magic), hdr, HMESG_HDRLEN - sizeof(magic));
 
     return total;
 
@@ -204,18 +207,19 @@ int hmesg_serialize(hmesg_t *mesg)
     return -1;
 }
 
-int hmesg_deserialize(hmesg_t *mesg)
+int hmesg_deserialize(hmesg_t* mesg)
 {
     char type_str[4], status_str[4];
     int count, total;
-    unsigned int msgver;
-    char *buf = mesg->buf;
+    unsigned int magic, msgver;
+    char* buf = mesg->buf;
 
     /* Verify HMESG_MAGIC and HMESG_VERSION */
-    if (ntohl(*(unsigned int *)buf) != HMESG_MAGIC)
+    memcpy(&magic, buf, sizeof(magic));
+    if (ntohl(magic) != HMESG_MAGIC)
         goto invalid;
 
-    if (sscanf(buf + sizeof(unsigned int), "%*4d%2x", &msgver) < 1)
+    if (sscanf(buf + sizeof(magic), "%*4d%2x", &msgver) < 1)
         goto invalid;
 
     if (msgver != HMESG_VERSION)
@@ -260,7 +264,7 @@ int hmesg_deserialize(hmesg_t *mesg)
         switch (mesg->type) {
         case HMESG_SESSION:
             if (mesg->status == HMESG_STATUS_REQ) {
-                hsession_init(&mesg->data.session);
+                mesg->data.session = HSESSION_INITIALIZER;
                 count = hsession_deserialize(&mesg->data.session, buf + total);
                 if (count < 0) goto error;
                 total += count;

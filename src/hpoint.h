@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2015 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -34,19 +34,19 @@ extern "C" {
 typedef struct hpoint {
     int id;
     int n;
-    hval_t *val;
+    hval_t* val;
     int memlevel; /* 1 if *val has pointers to memory that must be freed. */
 } hpoint_t;
 
 extern const hpoint_t HPOINT_INITIALIZER;
 
-int  hpoint_init(hpoint_t *pt, int n);
-void hpoint_fini(hpoint_t *pt);
-int  hpoint_copy(hpoint_t *dst, const hpoint_t *src);
-int  hpoint_serialize(char **buf, int *buflen, const hpoint_t *pt);
-int  hpoint_deserialize(hpoint_t *pt, char *buf);
-int  hpoint_align(hpoint_t *pt, hsignature_t *sig);
-int  hpoint_parse(hpoint_t *pt, hsignature_t *sig, const char *buf);
+int  hpoint_init(hpoint_t* pt, int n);
+void hpoint_fini(hpoint_t* pt);
+int  hpoint_copy(hpoint_t* dst, const hpoint_t* src);
+int  hpoint_serialize(char** buf, int* buflen, const hpoint_t* pt);
+int  hpoint_deserialize(hpoint_t* pt, char* buf);
+int  hpoint_align(hpoint_t* pt, hsignature_t* sig);
+int  hpoint_parse(hpoint_t* pt, hsignature_t* sig, const char* buf);
 
 #ifdef __cplusplus
 }

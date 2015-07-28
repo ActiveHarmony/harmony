@@ -1,15 +1,17 @@
-all_subsystems = src code-server example/client_api example/constraint example/code_generation example/synth example/taudb example/xml
+TO_BASE=.
 
-.PHONY: all install clean distclean doc
+SUBDIRS=src \
+	code-server \
+	example
 
-all install clean distclean:
-	+@for subsystem in $(all_subsystems); do \
-	    $(MAKE) -C $$subsystem $@;           \
-	    RETVAL=$$?;                          \
-	    if [ $$RETVAL != 0 ]; then           \
-		exit $$RETVAL;                   \
-	    fi;                                  \
-	done
+.PHONY: doc
+
+code-server: src
+
+example: src
 
 doc:
 	$(MAKE) -C doc
+
+# Active Harmony makefiles should always include this file last.
+include $(TO_BASE)/make/common.mk

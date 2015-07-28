@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2015 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -28,11 +28,11 @@ extern "C" {
 
 extern unsigned int http_connection_limit;
 
-int http_init(const char *basedir);
-void http_send_error(int fd, int status, const char *message);
-int http_session_data_send(int fd, const char *data);
+int http_init(const char* basedir);
+void http_send_error(int fd, int status, const char* message);
+int http_session_data_send(int fd, const char* data);
 int handle_http_socket(int fd);
-int handle_http_info(session_state_t *sess, char *buf);
+int handle_http_info(session_state_t* sess, char* buf);
 
 #ifdef __cplusplus
 }

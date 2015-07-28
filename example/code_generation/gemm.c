@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2015 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -16,6 +16,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
+#define _XOPEN_SOURCE 600 // Needed for gethostname().
 
 /*
  * This is an example of an application that uses the code-server
@@ -53,32 +54,32 @@
 #define HACK_CAST(x) (code_t)(long)(x)
 
 /* Function signature of the tuning target function produced by CHiLL. */
-typedef void (*code_t)(void *, void *, void *, void *);
+typedef void (*code_t)(void*, void*, void*, void*);
 
 /*
  * Function Prototypes
  */
 int    fetch_configuration(void);
-int    check_convergence(hdesc_t *hdesc);
-char * construct_so_filename(void);
-int    update_so(const char *filename);
+int    check_convergence(void);
+char*  construct_so_filename(void);
+int    update_so(const char* filename);
 void   initialize_matrices(void);
 int    check_code_correctness(void);
 int    penalty_factor(void);
 double calculate_performance(double raw_perf);
 double timer(void);
-int    dprint(const char *fmt, ...);
-int    errprint(const char *fmt, ...);
+int    dprint(const char* fmt, ...);
+int    errprint(const char* fmt, ...);
 /*
  * Global variable declarations.
  */
 int debug = 1;
 int rank = -1;
-hdesc_t *hdesc = NULL;
+hdesc_t* hdesc = NULL;
 int matrix_size = N;
 
 /* Pointers to data loaded from shared libraries of generated code. */
-void *flib_eval;
+void* flib_eval;
 code_t code_so;
 
 /*
@@ -93,9 +94,9 @@ double C_TRUTH[N][N];
 long TI, TJ, TK, UI, UJ;
 
 double time_start, time_end;
-const char *new_code_path;
+const char* new_code_path;
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
     char numbuf[12];
     char hostname[64];
@@ -103,7 +104,7 @@ int main(int argc, char *argv[])
     int node_count;
     double time_initial, time_current, time;
     double raw_perf, perf;
-    int i, found_iter, harmonized;
+    int i, found_iter = 0, harmonized;
 
     /* MPI Initialization */
     MPI_Init(&argc, &argv);
@@ -127,21 +128,21 @@ int main(int argc, char *argv[])
     harmony_connected = 0;
 
     /* Initialize Harmony API. */
-    hdesc = harmony_init(&argc, &argv);
+    hdesc = harmony_init();
     if (hdesc == NULL) {
         errprint("Failed to initialize a Harmony session.\n");
         goto cleanup;
     }
+    argc -= harmony_parse_args(hdesc, argc - 1, &argv[1]);
 
     if (rank == 0) {
         /* We are the master rank.  Establish a new Harmony tuning session. */
-        snprintf(numbuf, sizeof(numbuf), "%d", node_count);
-
         errno = 0;
         harmony_session_name(hdesc, SESSION_NAME);
+        harmony_strategy(hdesc, "pro.so");
+        harmony_layers(hdesc, "codegen.so");
+        snprintf(numbuf, sizeof(numbuf), "%d", node_count);
         harmony_setcfg(hdesc, CFGKEY_CLIENT_COUNT, numbuf);
-        harmony_setcfg(hdesc, CFGKEY_SESSION_STRATEGY, "pro.so");
-        harmony_setcfg(hdesc, CFGKEY_SESSION_LAYERS, "codegen.so");
         if (errno) {
             errprint("Error during session configuration.\n");
             MPI_Abort(MPI_COMM_WORLD, -1);
@@ -225,8 +226,9 @@ int main(int argc, char *argv[])
         }
 
         if (!harmonized) {
-            harmonized = check_convergence(hdesc);
-            if (harmonized != 0) {
+            // check_convergence returns 0 if not converged, 1 if converged
+            harmonized = check_convergence();
+            if (harmonized != 0 && harmonized != 1) {
                 errprint("Error checking harmony convergence status.\n");
                 goto cleanup;
             }
@@ -332,7 +334,7 @@ int fetch_configuration(void)
  * Check if the parameter space search has converged.
  * Only rank 0 communicates directly with the Harmony server.
  */
-int check_convergence(hdesc_t *hdesc)
+int check_convergence(void)
 {
     int status;
 
@@ -352,7 +354,7 @@ int check_convergence(hdesc_t *hdesc)
 /*
  * Construct the full pathname for the new code variant.
  */
-char *construct_so_filename()
+char* construct_so_filename()
 {
     static char fullpath[1024];
 
@@ -365,9 +367,9 @@ char *construct_so_filename()
  * Loads function <symbol_name> from shared object <filename>,
  * and stores that address in code_ptr.
  */
-int update_so(const char *filename)
+int update_so(const char* filename)
 {
-    char *err_str;
+    char* err_str;
 
     flib_eval = dlopen(filename, RTLD_LAZY);
     err_str = dlerror();
@@ -441,7 +443,7 @@ double calculate_performance(double raw_perf)
     return (double)(result + penalty_factor());
 }
 
-int dprint(const char *fmt, ...)
+int dprint(const char* fmt, ...)
 {
     va_list ap;
     int count;
@@ -457,7 +459,7 @@ int dprint(const char *fmt, ...)
     return count;
 }
 
-int errprint(const char *fmt, ...)
+int errprint(const char* fmt, ...)
 {
     va_list ap;
     int count;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2015 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -20,31 +20,31 @@
 #include "session-core.h"
 #include "hmesg.h"
 #include "hutil.h"
+#include "hcfg.h"
 #include "hsockutil.h"
-#include "defaults.h"
 
 #include <unistd.h>
 #include <string.h>
 
 /*
- * Name used to identify this plugin.  All Harmony plugins must define
- * this variable.
+ * Name used to identify this plugin layer.
+ * All Harmony plugin layers must define this variable.
  */
 const char harmony_layer_name[] = "httpinfo";
 
-int httpinfo_setcfg(const char *key, const char *val)
-{
-    static char *buf = NULL;
-    static int buflen = 0;
+static char* buf = NULL;
+static int buflen = 0;
 
-    if (strcmp(key, CFGKEY_STRATEGY_CONVERGED) == 0 ||
-        strcmp(key, CFGKEY_SESSION_STRATEGY)   == 0 ||
-        strcmp(key, CFGKEY_SESSION_PAUSED)     == 0)
+int httpinfo_setcfg(const char* key, const char* val)
+{
+    if (strcmp(key, CFGKEY_CONVERGED) == 0 ||
+        strcmp(key, CFGKEY_STRATEGY)  == 0 ||
+        strcmp(key, CFGKEY_PAUSED)    == 0)
     {
         hmesg_t mesg = HMESG_INITIALIZER;
 
         if (snprintf_grow(&buf, &buflen, "%s=%s", key, val ? val : "") == -1) {
-            session_error("Error allocating memory for http info string");
+            session_error("Error allocating memory for http info string.");
             return -1;
         }
 
@@ -60,5 +60,12 @@ int httpinfo_setcfg(const char *key, const char *val)
         hmesg_fini(&mesg);
     }
 
+    return 0;
+}
+
+int httpinfo_fini(void)
+{
+    free(buf);
+    buflen = 0;
     return 0;
 }

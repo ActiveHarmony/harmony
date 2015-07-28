@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2015 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -37,21 +37,22 @@ typedef enum ftype {
 } ftype_t;
 
 typedef struct finfo {
-    const char *name;
-    char *title;
+    const char* name;
+    char* title;
     int n_max;
     ftype_t type;
     double b_min;
     double b_max;
+    int has_optimal;
     double optimal;
-    benchfunc_t *f;
-    char *description;
+    benchfunc_t* f;
+    char* description;
 } finfo_t;
 
 extern finfo_t flist[];
 
-void flist_print(FILE *fd, int verbose);
-finfo_t *flist_find(const char *name);
+void flist_print(FILE* fd, int verbose);
+finfo_t* flist_find(const char* name);
 
 #ifdef __cplusplus
 }

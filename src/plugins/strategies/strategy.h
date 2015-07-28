@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2015 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -46,7 +46,7 @@ extern "C" {
  * Otherwise, this routine should return 0, and the contents of the
  * "flow" variable should be set appropriately.
  */
-int strategy_generate(hflow_t *flow, hpoint_t *point);
+int strategy_generate(hflow_t* flow, hpoint_t* point);
 
 /*
  * Regenerate a rejected candidate configuration point.
@@ -61,7 +61,7 @@ int strategy_generate(hflow_t *flow, hpoint_t *point);
  * Otherwise, this routine should return 0, and the contents of the
  * "flow" variable should be set appropriately.
  */
-int strategy_rejected(hflow_t *flow, hpoint_t *point);
+int strategy_rejected(hflow_t* flow, hpoint_t* point);
 
 /*
  * Analyze the observed performance associated with a configuration point.
@@ -73,7 +73,7 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point);
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int strategy_analyze(htrial_t *trial);
+int strategy_analyze(htrial_t* trial);
 
 /*
  * Return the best performing configuration point thus far in the search.
@@ -85,7 +85,7 @@ int strategy_analyze(htrial_t *trial);
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int strategy_best(hpoint_t *point);
+int strategy_best(hpoint_t* point);
 
 /* ===================================================================
  * The following functions are optional.  They will be invoked at the
@@ -102,7 +102,7 @@ int strategy_best(hpoint_t *point);
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int strategy_init(hsignature_t *sig);
+int strategy_init(hsignature_t* sig);
 
 /*
  * Invoked when a client joins the tuning session.
@@ -114,19 +114,7 @@ int strategy_init(hsignature_t *sig);
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int strategy_join(const char *id);
-
-/*
- * Invoked when a client reads from the configuration system.
- *
- * Params:
- *   key - Configuration key requested.
- *
- * Upon error, this function should call session_error() with a
- * human-readable string explaining the problem and return -1.
- * Otherwise, returning 0 indicates success.
- */
-int strategy_getcfg(const char *key);
+int strategy_join(const char* id);
 
 /*
  * Invoked when a client writes to the configuration system.
@@ -139,7 +127,7 @@ int strategy_getcfg(const char *key);
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int strategy_setcfg(const char *key, const char *val);
+int strategy_setcfg(const char* key, const char* val);
 
 /*
  * Invoked on session exit.

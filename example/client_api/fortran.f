@@ -1,5 +1,5 @@
 c
-c Copyright 2003-2013 Jeffrey K. Hollingsworth
+c Copyright 2003-2015 Jeffrey K. Hollingsworth
 c
 c This file is part of Active Harmony.
 c
@@ -57,4 +57,3 @@ c     update the variable x
 c     close the session
       call harmony_end_f(hd)
       end program example
-

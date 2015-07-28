@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2015 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -41,15 +41,15 @@ typedef struct hval {
     union {
         long i;
         double r;
-        const char *s;
+        const char* s;
     } value;
 } hval_t;
 
 extern const hval_t HVAL_INITIALIZER;
 
-int hval_parse(hval_t *val, const char *buf);
-int hval_serialize(char **buf, int *buflen, const hval_t *val);
-int hval_deserialize(hval_t *val, char *buf);
+int hval_parse(hval_t* val, const char* buf);
+int hval_serialize(char** buf, int* buflen, const hval_t* val);
+int hval_deserialize(hval_t* val, char* buf);
 
 #ifdef __cplusplus
 }

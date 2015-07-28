@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2015 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -21,7 +21,6 @@
 #include "hutil.h"
 #include "hsockutil.h"
 #include "hcfg.h"
-#include "defaults.h" /* needed for looking cfg params up */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -61,10 +60,10 @@ typedef enum {
 } content_t;
 
 typedef struct {
-    const char *filename;
+    const char* filename;
     content_t type;
-    char *buf;
-    unsigned buflen;
+    char* buf;
+    size_t buflen;
 } memfile_t;
 
 static memfile_t html_file[] = {
@@ -88,6 +87,7 @@ static memfile_t html_file[] = {
 static const char status_200[] = "HTTP/1.1 200 OK" HTTP_ENDL;
 static const char status_400[] = "HTTP/1.1 400 Bad Request" HTTP_ENDL;
 static const char status_404[] = "HTTP/1.1 404 Not Found" HTTP_ENDL;
+static const char status_500[] = "HTTP/1.1 500 Internal Error" HTTP_ENDL;
 static const char status_501[] = "HTTP/1.1 501 Not Implemented" HTTP_ENDL;
 static const char status_503[] = "HTTP/1.1 503 Service Unavailable" HTTP_ENDL;
 
@@ -106,62 +106,39 @@ char sendbuf[8192];  /* Static buffer used for outgoing HTTP data. */
 char recvbuf[10240]; /* Static buffer used for incoming HTTP data. */
 
 /* Internal helper function declarations */
-const char *status_string(session_state_t *sess);
-char *uri_decode(char *buf);
-session_state_t *find_session(const char *name);
-int http_request_handle(int fd, char *req);
-char *http_request_recv(int fd, char *buf, int buflen, char **data);
-int http_chunk_send(int fd, const char *data, int datalen);
+const char* status_string(session_state_t* sess);
+char* uri_decode(char* buf);
+session_state_t* find_session(const char* name);
+int http_request_handle(int fd, char* req);
+char* http_request_recv(int fd, char* buf, int buflen, char** data);
+int http_chunk_send(int fd, const char* data, int datalen);
 int http_send_overview(int fd);
-int http_send_init(int fd, session_state_t *sess);
-int http_send_refresh(int fd, session_state_t *sess, const char *arg);
-int report_append(char **buf, int *buflen, session_state_t *sess,
-                  struct timeval *tv, const hpoint_t *pt, const double perf);
+int http_send_init(int fd, session_state_t* sess);
+int http_send_refresh(int fd, session_state_t* sess, const char* arg);
+int report_append(char** buf, int* buflen, session_state_t* sess,
+                  struct timeval* tv, const hpoint_t* pt, const double perf);
 
-int http_init(const char *basedir)
+int http_init(const char* basedir)
 {
-    int fd, i;
-    char *filename;
-    struct stat sb;
+    int i;
+    char* filename;
 
     for (i = 0; html_file[i].filename != NULL; ++i) {
         if (html_file[i].buf != NULL)
-            munmap(html_file[i].buf, html_file[i].buflen);
+            file_unmap(html_file[i].buf, html_file[i].buflen);
 
-        filename = sprintf_alloc("%s/libexec/html/%s", basedir,
+        filename = sprintf_alloc("%s/libexec/http/%s", basedir,
                                  html_file[i].filename);
         if (!filename) {
             perror("Could not allocate temp memory for filename");
             goto error;
         }
 
-        fd = open(filename, O_RDONLY);
-        if (fd == -1) {
-            fprintf(stderr, "Error on open(%s): %s\n",
-                    filename, strerror(errno));
+        html_file[i].buf = file_map(filename, &html_file[i].buflen);
+        if (!html_file[i].buf) {
+            perror("Error mapping HTML server support file");
             goto error;
         }
-
-        /* Obtain file size */
-        if (fstat(fd, &sb) == -1) {
-            fprintf(stderr, "Error on fstat(%s): %s",
-                    filename, strerror(errno));
-            goto error;
-        }
-        html_file[i].buflen = sb.st_size;
-
-        html_file[i].buf = (char *)mmap(NULL, html_file[i].buflen,
-                                        PROT_READ, MAP_PRIVATE, fd, 0);
-        if (html_file[i].buf == (char *)-1) {
-            fprintf(stderr, "Error on mmap(%s): %s",
-                    filename, strerror(errno));
-            goto error;
-        }
-
-        if (close(fd) != 0)
-            fprintf(stderr, "Ignoring error on close(%s): %s",
-                    filename, strerror(errno));
-
         free(filename);
     }
     return 0;
@@ -171,10 +148,10 @@ int http_init(const char *basedir)
     return -1;
 }
 
-void http_send_error(int fd, int status, const char *arg)
+void http_send_error(int fd, int status, const char* arg)
 {
-    const char *status_line;
-    const char *message = NULL;
+    const char* status_line;
+    const char* message = NULL;
 
     if (status == 400) {
         status_line = status_400;
@@ -191,6 +168,10 @@ void http_send_error(int fd, int status, const char *arg)
     } else if (status == 503) {
         status_line = status_503;
         message = "The maximum number of HTTP connections has been exceeded.";
+
+    } else {
+        status_line = status_500;
+        message = "An unknown status was passed to http_send_error().";
     }
 
     opt_sock_write(fd, status_line);
@@ -217,7 +198,9 @@ void http_send_error(int fd, int status, const char *arg)
 int handle_http_socket(int fd)
 {
     static char buf[4096];
-    char *ptr = NULL, *req, *endp;
+    char* ptr = NULL;
+    char* req;
+    char* endp;
 
     errno = 0;
     req = http_request_recv(fd, buf, sizeof(buf), &ptr);
@@ -261,34 +244,39 @@ int handle_http_socket(int fd)
     return 0;
 }
 
-int handle_http_info(session_state_t *sess, char *buf)
+int handle_http_info(session_state_t* sess, char* buf)
 {
-    char *key, *val;
+    int val = 0;
 
-    if (hcfg_parse(buf, &key, &val) == NULL)
-        return -1;
-
-    if (strcmp(key, CFGKEY_SESSION_STRATEGY) == 0) {
+    sscanf(buf, CFGKEY_STRATEGY "=%n", &val);
+    if (val) {
         free(sess->strategy);
-        sess->strategy = stralloc(val);
+        sess->strategy = stralloc(&buf[val]);
+        return 0;
     }
-    else if (strcmp(key, CFGKEY_STRATEGY_CONVERGED) == 0) {
-        if (*val == '1')
+
+    sscanf(buf, CFGKEY_CONVERGED "=%n", &val);
+    if (val) {
+        if (buf[val] == '1')
             sess->status |= HTTP_STATUS_CONVERGED;
         else
             sess->status &= ~HTTP_STATUS_CONVERGED;
+        return 0;
     }
-    else if (strcmp(key, CFGKEY_SESSION_PAUSED) == 0) {
-        if (*val == '1')
+
+    sscanf(buf, CFGKEY_PAUSED "=%n", &val);
+    if (val) {
+        if (buf[val] == '1')
             sess->status |= HTTP_STATUS_PAUSED;
         else
             sess->status &= ~HTTP_STATUS_PAUSED;
+        return 0;
     }
 
     return 0;
 }
 
-const char *status_string(session_state_t *sess)
+const char* status_string(session_state_t* sess)
 {
     if (sess->status & HTTP_STATUS_PAUSED)
         return "Paused";
@@ -302,10 +290,10 @@ const char *status_string(session_state_t *sess)
 /**************************************
  * Internal helper function definitions
  */
-char *uri_decode(char *buf)
+char* uri_decode(char* buf)
 {
-    char *head = buf;
-    char *tail = buf;
+    char* head = buf;
+    char* tail = buf;
 
     while (*head != '\0') {
         if (*head == '%') {
@@ -324,7 +312,7 @@ char *uri_decode(char *buf)
     return buf;
 }
 
-session_state_t *find_session(const char *name)
+session_state_t* find_session(const char* name)
 {
     int i;
 
@@ -335,10 +323,11 @@ session_state_t *find_session(const char *name)
     return NULL;
 }
 
-int http_request_handle(int fd, char *req)
+int http_request_handle(int fd, char* req)
 {
-    session_state_t *sess = NULL;
-    char *sess_name, *arg;
+    session_state_t* sess = NULL;
+    char* sess_name;
+    char* arg = NULL;
     int i;
 
     sess_name = strchr(req, '?');
@@ -425,7 +414,7 @@ int http_request_handle(int fd, char *req)
         opt_sock_write(fd, HTTP_ENDL);
 
         if (sess) {
-            session_setcfg(sess, CFGKEY_SESSION_PAUSED, "1");
+            session_setcfg(sess, CFGKEY_PAUSED, "1");
             opt_http_write(fd, "OK");
             opt_http_write(fd, "");
             return 0;
@@ -441,7 +430,7 @@ int http_request_handle(int fd, char *req)
         opt_sock_write(fd, HTTP_ENDL);
 
         if (sess) {
-            session_setcfg(sess, CFGKEY_SESSION_PAUSED, "0");
+            session_setcfg(sess, CFGKEY_PAUSED, "0");
             opt_http_write(fd, "OK");
             opt_http_write(fd, "");
             return 0;
@@ -497,7 +486,7 @@ int http_request_handle(int fd, char *req)
     return -1;
 }
 
-int http_chunk_send(int fd, const char *data, int datalen)
+int http_chunk_send(int fd, const char* data, int datalen)
 {
     int n;
     char buf[11];
@@ -511,11 +500,12 @@ int http_chunk_send(int fd, const char *data, int datalen)
     return n + opt_sock_write(fd, HTTP_ENDL);
 }
 
-char *http_request_recv(int fd, char *buf, int buflen, char **data)
+char* http_request_recv(int fd, char* buf, int buflen, char** data)
 {
     const char delim[] = HTTP_ENDL HTTP_ENDL;
-    char *retval, *split;
-    int len, recvlen;
+    char* retval;
+    char* split;
+    int len = 0, recvlen;
 
     if (!*data) {
         *data = buf;
@@ -577,7 +567,8 @@ char *http_request_recv(int fd, char *buf, int buflen, char **data)
 
 int http_send_overview(int fd)
 {
-    char *buf, *ptr;
+    char* buf;
+    char* ptr;
     int i, j, buflen, count, total;
 
     sendbuf[0] = '\0';
@@ -672,9 +663,9 @@ int http_send_overview(int fd)
     return 0;
 }
 
-int http_send_init(int fd, session_state_t *sess)
+int http_send_init(int fd, session_state_t* sess)
 {
-    char *buf = sendbuf;
+    char* buf = sendbuf;
     int buflen = sizeof(sendbuf), total = 0;
     int i, j, count;
 
@@ -685,7 +676,7 @@ int http_send_init(int fd, session_state_t *sess)
 
     for (i = 0; i < sess->sig.range_len; ++i) {
         char type;
-        hrange_t *range = &sess->sig.range[i];
+        hrange_t* range = &sess->sig.range[i];
 
         if (i > 0) {
             count = snprintf_serial(&buf, &buflen, ",");
@@ -733,9 +724,10 @@ int http_send_init(int fd, session_state_t *sess)
     return -1;
 }
 
-int http_send_refresh(int fd, session_state_t *sess, const char *arg)
+int http_send_refresh(int fd, session_state_t* sess, const char* arg)
 {
-    char *ptr, *buf = sendbuf;
+    char* ptr;
+    char* buf = sendbuf;
     int idx = 0, buflen = sizeof(sendbuf), total = 0;
     int i, count;
     struct timeval tv;
@@ -806,8 +798,8 @@ int http_send_refresh(int fd, session_state_t *sess, const char *arg)
     return -1;
 }
 
-int report_append(char **buf, int *buflen, session_state_t *sess,
-                  struct timeval *tv, const hpoint_t *pt, const double perf)
+int report_append(char** buf, int* buflen, session_state_t* sess,
+                  struct timeval* tv, const hpoint_t* pt, const double perf)
 {
     int i, count, total = 0;
 
@@ -829,7 +821,7 @@ int report_append(char **buf, int *buflen, session_state_t *sess,
     }
     else {
         for (i = 0; i < sess->sig.range_len; ++i) {
-            hval_t *val;
+            hval_t* val;
 
             val = &pt->val[i];
             switch (val->type) {
@@ -840,7 +832,7 @@ int report_append(char **buf, int *buflen, session_state_t *sess,
                 count = snprintf_serial(buf, buflen, "%.17lf,", val->value.r);
                 break;
             case HVAL_STR: {
-                str_bounds_t *bounds = &sess->sig.range[i].bounds.s;
+                str_bounds_t* bounds = &sess->sig.range[i].bounds.s;
                 unsigned long index = hrange_str_index(bounds, val->value.s);
                 count = snprintf_serial(buf, buflen, "%ld,", index);
                 break;

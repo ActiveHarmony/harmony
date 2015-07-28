@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2015 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -22,19 +22,13 @@
  *
  * This processing layer writes a log of point/performance pairs to disk as
  * they flow through the auto-tuning [feedback loop](\ref intro_feedback).
- *
- * **Configuration Variables**
- * Key          | Type   | Default | Description
- * ------------ | ------ | ------- | -----------
- * LOGFILE      | String | (none)  | Name of point/performance log file.
- * LOGFILE_MODE | String | a       | Mode to use with `fopen()`.  Valid values are "a" and "w" (without quotes).
  */
 
 #include "session-core.h"
 #include "hsignature.h"
 #include "hpoint.h"
 #include "hperf.h"
-#include "defaults.h"
+#include "hcfg.h"
 
 #include <stdio.h>
 #include <time.h>
@@ -42,28 +36,36 @@
 #include <errno.h>
 
 /*
- * Name used to identify this plugin.  All Harmony plugins must define
- * this variable.
+ * Name used to identify this plugin layer.
+ * All Harmony plugin layers must define this variable.
  */
 const char harmony_layer_name[] = "logger";
 
-FILE *fd;
+/*
+ * Configuration variables used in this plugin.
+ * These will automatically be registered by session-core upon load.
+ */
+hcfg_info_t plugin_keyinfo[] = {
+    { CFGKEY_LOG_FILE, NULL,
+      "Name of point/performance log file." },
+    { CFGKEY_LOG_MODE, "a",
+      "Mode to use with 'fopen()'.  Valid values are a for append, "
+      "and w for overwrite." },
+    { NULL }
+};
 
-int logger_init(hsignature_t *sig)
+FILE* fd;
+
+int logger_init(hsignature_t* sig)
 {
-    const char *filename;
-    const char *mode;
+    const char* filename = hcfg_get(session_cfg, CFGKEY_LOG_FILE);
+    const char* mode     = hcfg_get(session_cfg, CFGKEY_LOG_MODE);
     time_t tm;
 
-    filename = session_getcfg("LOGFILE");
     if (!filename) {
-        session_error("LOGFILE config key empty");
+        session_error(CFGKEY_LOG_FILE " config key empty.");
         return -1;
     }
-
-    mode = session_getcfg("LOGFILE_MODE");
-    if (!mode)
-        mode = "a";
 
     fd = fopen(filename, mode);
     if (!fd) {
@@ -78,19 +80,19 @@ int logger_init(hsignature_t *sig)
     return 0;
 }
 
-int logger_join(const char *id)
+int logger_join(const char* id)
 {
     fprintf(fd, "Client \"%s\" joined the tuning session.\n", id);
     return 0;
 }
 
-int logger_analyze(hflow_t *flow, htrial_t *trial)
+int logger_analyze(hflow_t* flow, htrial_t* trial)
 {
     int i;
 
     fprintf(fd, "Point #%d: (", trial->point.id);
     for (i = 0; i < trial->point.n; ++i) {
-        hval_t *v = &trial->point.val[i];
+        hval_t* v = &trial->point.val[i];
         if (i > 0) fprintf(fd, ",");
 
         switch (v->type) {

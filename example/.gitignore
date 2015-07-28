@@ -1,12 +1,10 @@
-client_api/example_c
-client_api/example_f
-client_api/example_chpl
+client_api/example
+client_api/fortran
+client_api/chapel
 code_generation/gemm
 synth/synth
 unique_points.tuna.dat
 taudb/example
-taudb/example_mpi
 xml/example
-xml/example_mpi
 xml/*.xml
 *.log

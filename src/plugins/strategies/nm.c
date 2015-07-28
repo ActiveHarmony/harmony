@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2015 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -35,19 +35,6 @@
  * For details of the algorithm, see:
  * > Nelder, John A.; R. Mead (1965). "A simplex method for function minimization".
  * > Computer Journal 7: 308–313. doi:10.1093/comjnl/7.4.308
- *
- * **Configuration Variables**
- * Key           | Type    | Default | Description
- * --------------| ------- | ------- | -----------
- * SIMPLEX_SIZE  | Integer | N+1     | Number of vertices in the simplex.  Defaults to the number of tuning variables + 1.
- * INIT_METHOD   | String  | point   | Initial simplex generation method.  Valid values are "point", and "random" (without quotes).
- * INIT_PERCENT  | Real    | 0.35    | Initial simplex size as a percentage of the total search space.  Only for "point" and "point_fast" initial simplex methods.
- * REJECT_METHOD | String  | penalty | How to choose a replacement when dealing with rejected points:<br> **Penalty** - Use this method if the chance of point rejection is relatively low.  It applies an infinite penalty factor for invalid points, allowing the Nelder-Mead algorithm to select a sensible next point.  However, if the entire simplex is comprised of invalid points, an infinite loop of invalid points may occur.<br> **Random** - Use this method if the chance of point rejection is high.  It reduces the risk of infinitely selecting invalid points at the cost of increasing the risk of deforming the simplex.
- * REFLECT       | Real    | 1.0     | Multiplicative coefficient for simplex reflection step.
- * EXPAND        | Real    | 2.0     | Multiplicative coefficient for simplex expansion step.
- * SHRINK        | Real    | 0.5     | Multiplicative coefficient for simplex shrink step.
- * FVAL_TOL      | Real    | 0.0001  | Convergence test succeeds if difference between all vertex performance values fall below this value.
- * SIZE_TOL      | Real    | 0.05*r  | Convergence test succeeds if simplex size falls below this value.  Default is 5% of the initial simplex radius.
  */
 
 #include "strategy.h"
@@ -56,7 +43,6 @@
 #include "hperf.h"
 #include "hutil.h"
 #include "hcfg.h"
-#include "defaults.h"
 #include "libvertex.h"
 
 #include <stdlib.h>
@@ -66,6 +52,47 @@
 #include <time.h>
 #include <math.h>
 #include <assert.h>
+
+/*
+ * Configuration variables used in this plugin.
+ * These will automatically be registered by session-core upon load.
+ */
+hcfg_info_t plugin_keyinfo[] = {
+    { CFGKEY_SIMPLEX_SIZE, NULL,
+      "Number of vertices in the simplex.  Defaults to the number of tuning "
+      "variables + 1." },
+    { CFGKEY_INIT_METHOD, "center",
+      "Initial simplex generation method. Valid values are "
+      "point, center, and random." },
+    { CFGKEY_INIT_PERCENT, "0.35",
+      "Initial simplex size as a percentage of the total search space. "
+      "Only for point initial simplex methods." },
+    { CFGKEY_REJECT_METHOD, "penalty",
+      "How to choose a replacement when dealing with rejected points. "
+      "Penalty: Use this method if the chance of point rejection is "
+      "relatively low. It applies an infinite penalty factor for invalid "
+      "points, allowing the Nelder-Mead algorithm to select a sensible "
+      "next point.  However, if the entire simplex is comprised of invalid "
+      "points, an infinite loop of invalid points may occur. Random: Use "
+      "this method if the chance of point rejection is high.  It reduces "
+      "the risk of infinitely selecting invalid points at the cost of "
+      "increasing the risk of deforming the simplex." },
+    { CFGKEY_REFLECT, "1.0",
+      "Multiplicative coefficient for simplex reflection step." },
+    { CFGKEY_EXPAND, "2.0",
+      "Multiplicative coefficient for simplex expansion step." },
+    { CFGKEY_CONTRACT, "0.5",
+      "Multiplicative coefficient for simplex contraction step." },
+    { CFGKEY_SHRINK, "0.5",
+      "Multiplicative coefficient for simplex shrink step." },
+    { CFGKEY_FVAL_TOL, "0.0001",
+      "Convergence test succeeds if difference between all vertex "
+      "performance values fall below this value." },
+    { CFGKEY_SIZE_TOL, NULL,
+      "Convergence test succeeds if simplex size falls below this value. "
+      "Default is 5% of the initial simplex radius." },
+    { NULL }
+};
 
 hpoint_t best;
 double   best_perf;
@@ -100,11 +127,11 @@ typedef enum simplex_state {
 } simplex_state_t;
 
 /* Forward function definitions. */
-int  strategy_cfg(hsignature_t *sig);
+int  strategy_cfg(hsignature_t* sig);
 int  init_by_random(void);
 int  init_by_maxval(void);
 int  init_by_point(int fast);
-int  init_by_specified_point(const char *str);
+int  init_by_specified_point(const char* str);
 void simplex_update_index(void);
 void simplex_update_centroid(void);
 int  nm_algorithm(void);
@@ -114,24 +141,24 @@ void check_convergence(void);
 
 /* Variables to control search properties. */
 simplex_init_t  init_method;
-vertex_t *      init_point;
+vertex_t*       init_point;
 double          init_percent = 0.35;
 reject_method_t reject_type  = REJECT_METHOD_PENALTY;
 
-double reflect  = 1.0;
-double expand   = 2.0;
-double contract = 0.5;
-double shrink   = 0.5;
-double fval_tol = 1e-4;
+double reflect;
+double expand;
+double contract;
+double shrink;
+double fval_tol;
 double size_tol;
 int simplex_size;
 
 /* Variables to track current search state. */
 simplex_state_t state;
-vertex_t *centroid;
-vertex_t *test;
-simplex_t *base;
-vertex_t *next;
+vertex_t* centroid;
+vertex_t* test;
+simplex_t* base;
+vertex_t* next;
 
 int index_best;
 int index_worst;
@@ -142,7 +169,7 @@ int coords; /* number of coordinates for each vertex, from sig->range */
 /*
  * Invoked once on strategy load.
  */
-int strategy_init(hsignature_t *sig)
+int strategy_init(hsignature_t* sig)
 {
     if (libvertex_init(sig) != 0) {
         session_error("Could not initialize vertex library.");
@@ -150,14 +177,10 @@ int strategy_init(hsignature_t *sig)
     }
 
     if (!base) {
-        const char *cfgval;
         /* One time memory allocation and/or initialization. */
 
-        cfgval = session_getcfg(CFGKEY_SIMPLEX_SIZE);
-        if (cfgval)
-            simplex_size = atoi(cfgval);
-
         /* Make sure the simplex size is N+1 or greater. */
+        simplex_size = hcfg_int(session_cfg, CFGKEY_SIMPLEX_SIZE);
         if (simplex_size < sig->range_len + 1)
             simplex_size = sig->range_len + 1;
 
@@ -189,7 +212,7 @@ int strategy_init(hsignature_t *sig)
          * and thus be retained across a restart.
          */
         best = HPOINT_INITIALIZER;
-        best_perf = INFINITY;
+        best_perf = HUGE_VAL;
         next_id = 1;
     }
 
@@ -213,7 +236,8 @@ int strategy_init(hsignature_t *sig)
         break;
 
     case SIMPLEX_INIT_POINT:
-        vertex_from_string(session_getcfg(CFGKEY_INIT_POINT), sig, init_point);
+        vertex_from_string(hcfg_get(session_cfg, CFGKEY_INIT_POINT),
+                           sig, init_point);
         break;
 
     default:
@@ -222,9 +246,8 @@ int strategy_init(hsignature_t *sig)
     }
     simplex_from_vertex(init_point, init_percent, base);
 
-    if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
-        session_error("Could not set "
-                      CFGKEY_STRATEGY_CONVERGED " config variable.");
+    if (session_setcfg(CFGKEY_CONVERGED, "0") != 0) {
+        session_error("Could not set " CFGKEY_CONVERGED " config variable.");
         return -1;
     }
 
@@ -238,13 +261,12 @@ int strategy_init(hsignature_t *sig)
     return 0;
 }
 
-int strategy_cfg(hsignature_t *sig)
+int strategy_cfg(hsignature_t* sig)
 {
-    const char *cfgval;
-    char *endp;
+    const char* cfgval;
 
     init_method = SIMPLEX_INIT_CENTER; /* Default value. */
-    cfgval = session_getcfg(CFGKEY_INIT_METHOD);
+    cfgval = hcfg_get(session_cfg, CFGKEY_INIT_METHOD);
     if (cfgval) {
         if (strcasecmp(cfgval, "center") == 0) {
             init_method = SIMPLEX_INIT_CENTER;
@@ -262,28 +284,26 @@ int strategy_cfg(hsignature_t *sig)
         }
     }
 
-    /* CFGKEY_INIT_POINT will override CFGKEY_INIT_METHOD is necessary. */
-    cfgval = session_getcfg(CFGKEY_INIT_POINT);
+    /* CFGKEY_INIT_POINT will override CFGKEY_INIT_METHOD if necessary. */
+    cfgval = hcfg_get(session_cfg, CFGKEY_INIT_POINT);
     if (cfgval) {
         init_method = SIMPLEX_INIT_POINT;
     }
-
-    cfgval = session_getcfg(CFGKEY_INIT_PERCENT);
-    if (cfgval) {
-        init_percent = strtod(cfgval, &endp);
-        if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_INIT_PERCENT
-                " configuration key.");
-            return -1;
-        }
-        if (init_percent <= 0 || init_percent > 1) {
-            session_error("Configuration key " CFGKEY_INIT_PERCENT
-                " must be between 0.0 and 1.0 (exclusive).");
-            return -1;
-        }
+    else if (init_method == SIMPLEX_INIT_POINT) {
+        session_error("Initial point must be provided in configuration key "
+                      CFGKEY_INIT_POINT " if " CFGKEY_INIT_METHOD
+                      " is 'point'.");
+        return -1;
     }
 
-    cfgval = session_getcfg(CFGKEY_REJECT_METHOD);
+    init_percent = hcfg_real(session_cfg, CFGKEY_INIT_PERCENT);
+    if (isnan(init_percent) || init_percent <= 0 || init_percent > 1) {
+        session_error("Configuration key " CFGKEY_INIT_PERCENT
+                      " must be between 0.0 and 1.0 (exclusive).");
+        return -1;
+    }
+
+    cfgval = hcfg_get(session_cfg, CFGKEY_REJECT_METHOD);
     if (cfgval) {
         if (strcasecmp(cfgval, "penalty") == 0) {
             reject_type = REJECT_METHOD_PENALTY;
@@ -298,86 +318,42 @@ int strategy_cfg(hsignature_t *sig)
         }
     }
 
-    cfgval = session_getcfg(CFGKEY_REFLECT);
-    if (cfgval) {
-        reflect = strtod(cfgval, &endp);
-        if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_REFLECT
-                          " configuration key.");
-            return -1;
-        }
-        if (reflect <= 0.0) {
-            session_error("Configuration key " CFGKEY_REFLECT
-                          " must be positive.");
-            return -1;
-        }
+    reflect = hcfg_real(session_cfg, CFGKEY_REFLECT);
+    if (isnan(reflect) || reflect <= 0.0) {
+        session_error("Configuration key " CFGKEY_REFLECT
+                      " must be positive.");
+        return -1;
     }
 
-    cfgval = session_getcfg(CFGKEY_EXPAND);
-    if (cfgval) {
-        expand = strtod(cfgval, &endp);
-        if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_EXPAND
-                          " configuration key.");
-            return -1;
-        }
-        if (expand <= reflect) {
-            session_error("Configuration key " CFGKEY_EXPAND
-                          " must be greater than the reflect coefficient.");
-            return -1;
-        }
+    expand = hcfg_real(session_cfg, CFGKEY_EXPAND);
+    if (isnan(expand) || expand <= reflect) {
+        session_error("Configuration key " CFGKEY_EXPAND
+                      " must be greater than the reflect coefficient.");
+        return -1;
     }
 
-    cfgval = session_getcfg(CFGKEY_CONTRACT);
-    if (cfgval) {
-        contract = strtod(cfgval, &endp);
-        if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_CONTRACT
-                          " configuration key.");
-            return -1;
-        }
-        if (contract <= 0.0 || contract >= 1.0) {
-            session_error("Configuration key " CFGKEY_CONTRACT
-                          " must be between 0.0 and 1.0 (exclusive).");
-            return -1;
-        }
+    contract = hcfg_real(session_cfg, CFGKEY_CONTRACT);
+    if (isnan(contract) || contract <= 0.0 || contract >= 1.0) {
+        session_error("Configuration key " CFGKEY_CONTRACT
+                      " must be between 0.0 and 1.0 (exclusive).");
+        return -1;
     }
 
-    cfgval = session_getcfg(CFGKEY_SHRINK);
-    if (cfgval) {
-        shrink = strtod(cfgval, &endp);
-        if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_SHRINK
-                          " configuration key.");
-            return -1;
-        }
-        if (shrink <= 0.0 || shrink >= 1.0) {
-            session_error("Configuration key " CFGKEY_SHRINK
-                          " must be between 0.0 and 1.0 (exclusive).");
-            return -1;
-        }
+    shrink = hcfg_real(session_cfg, CFGKEY_SHRINK);
+    if (isnan(shrink) || shrink <= 0.0 || shrink >= 1.0) {
+        session_error("Configuration key " CFGKEY_SHRINK
+                      " must be between 0.0 and 1.0 (exclusive).");
+        return -1;
     }
 
-    cfgval = session_getcfg(CFGKEY_FVAL_TOL);
-    if (cfgval) {
-        fval_tol = strtod(cfgval, &endp);
-        if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_REFLECT
-                          " configuration key.");
-            return -1;
-        }
+    fval_tol = hcfg_real(session_cfg, CFGKEY_FVAL_TOL);
+    if (isnan(fval_tol)) {
+        session_error("Configuration key " CFGKEY_FVAL_TOL " is invalid.");
+        return -1;
     }
 
-    cfgval = session_getcfg(CFGKEY_SIZE_TOL);
-    if (cfgval) {
-        size_tol = strtod(cfgval, &endp);
-        if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_REFLECT
-                          " configuration key.");
-            return -1;
-        }
-    }
-    else {
+    size_tol = hcfg_real(session_cfg, CFGKEY_SIZE_TOL);
+    if (isnan(size_tol)) {
         /* Default stopping criteria: 0.5% of dist(vertex_min, vertex_max). */
         size_tol = vertex_dist(vertex_min(), vertex_max()) * 0.005;
     }
@@ -387,7 +363,7 @@ int strategy_cfg(hsignature_t *sig)
 /*
  * Generate a new candidate configuration point.
  */
-int strategy_generate(hflow_t *flow, hpoint_t *point)
+int strategy_generate(hflow_t* flow, hpoint_t* point)
 {
     if (next->id == next_id) {
         flow->status = HFLOW_WAIT;
@@ -408,9 +384,9 @@ int strategy_generate(hflow_t *flow, hpoint_t *point)
 /*
  * Regenerate a point deemed invalid by a later plug-in.
  */
-int strategy_rejected(hflow_t *flow, hpoint_t *point)
+int strategy_rejected(hflow_t* flow, hpoint_t* point)
 {
-    hpoint_t *hint = &flow->point;
+    hpoint_t* hint = &flow->point;
 
     if (hint && hint->id != -1) {
         int orig_id = point->id;
@@ -463,7 +439,7 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
 /*
  * Analyze the observed performance for this configuration point.
  */
-int strategy_analyze(htrial_t *trial)
+int strategy_analyze(htrial_t* trial)
 {
     double perf = hperf_unify(trial->perf);
 
@@ -495,7 +471,7 @@ int strategy_analyze(htrial_t *trial)
 /*
  * Return the best performing point thus far in the search.
  */
-int strategy_best(hpoint_t *point)
+int strategy_best(hpoint_t* point)
 {
     if (hpoint_copy(point, &best) != 0) {
         session_error("Internal error: Could not copy point.");
@@ -722,5 +698,5 @@ void check_convergence(void)
 
   converged:
     state = SIMPLEX_STATE_CONVERGED;
-    session_setcfg(CFGKEY_STRATEGY_CONVERGED, "1");
+    session_setcfg(CFGKEY_CONVERGED, "1");
 }
