@@ -77,8 +77,10 @@ hcfg_info_t plugin_keyinfo[] = {
       "is measured from minimum to maximum point." },
     { CFGKEY_DIST_TOL, NULL,
       "Convergence test succeeds if the simplex moves (via reflection) "
-      "a distance less than or equal to this value for TOL_CNT "
-      "consecutive steps." },
+      "a distance less than or equal to this percentage of the total "
+      "search space for TOL_CNT consecutive steps.  Total search space "
+      "is measured from minimum to maximum point.  This method overrides "
+      "the default size/fval method." },
     { CFGKEY_TOL_CNT, "3",
       "The number of consecutive reflection steps which travel at or "
       "below DIST_TOL before the search is considered converged." },
@@ -422,20 +424,33 @@ int strategy_cfg(hsignature_t* sig)
         return -1;
     }
 
-    fval_tol = hcfg_real(session_cfg, CFGKEY_FVAL_TOL);
-    if (isnan(fval_tol)) {
-        session_error("Invalid value for " CFGKEY_FVAL_TOL
-                      " configuration key.");
-        return -1;
+    dist_tol = hcfg_real(session_cfg, CFGKEY_DIST_TOL);
+    if (!isnan(dist_tol)) {
+        if (dist_tol <= 0.0 || dist_tol >= 1.0) {
+            session_error("Configuration key " CFGKEY_DIST_TOL
+                          " must be between 0.0 and 1.0 (exclusive).");
+            return -1;
+        }
+        dist_tol *= vertex_dist(vertex_min(), vertex_max());
+        tol_cnt = hcfg_int(session_cfg, CFGKEY_TOL_CNT);
     }
+    else {
+        // CFGKEY_DIST_TOL is not defined.  Use the size/fval method.
+        fval_tol = hcfg_real(session_cfg, CFGKEY_FVAL_TOL);
+        if (isnan(fval_tol)) {
+            session_error("Invalid value for " CFGKEY_FVAL_TOL
+                          " configuration key.");
+            return -1;
+        }
 
-    size_tol = hcfg_real(session_cfg, CFGKEY_SIZE_TOL);
-    if (isnan(size_tol) || size_tol <= 0.0 || size_tol >= 1.0) {
-        session_error("Configuration key " CFGKEY_SIZE_TOL
-                      " must be between 0.0 and 1.0 (exclusive).");
-        return -1;
+        size_tol = hcfg_real(session_cfg, CFGKEY_SIZE_TOL);
+        if (isnan(size_tol) || size_tol <= 0.0 || size_tol >= 1.0) {
+            session_error("Configuration key " CFGKEY_SIZE_TOL
+                          " must be between 0.0 and 1.0 (exclusive).");
+            return -1;
+        }
+        size_tol *= vertex_dist(vertex_min(), vertex_max());
     }
-    size_tol *= vertex_dist(vertex_min(), vertex_max());
 
     perf_n = hcfg_int(session_cfg, CFGKEY_PERF_COUNT);
     if (perf_n < 1) {
@@ -486,8 +501,6 @@ int strategy_cfg(hsignature_t* sig)
         return -1;
     }
 
-    dist_tol = hcfg_real(session_cfg, CFGKEY_DIST_TOL);
-    tol_cnt = hcfg_int(session_cfg, CFGKEY_TOL_CNT);
     return 0;
 }
 
