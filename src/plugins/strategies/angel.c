@@ -597,8 +597,8 @@ int strategy_analyze(htrial_t* trial)
             if (!loose) {
                 penalty += penalty_base;
             }
-            penalty += (next->perf->p[i] - range[i].min) / (range[i].max -
-                                                            range[i].min);
+            penalty += 1.0 / (1.0 - log((next->perf->p[i] - thresh[i]) /
+                                        (range[i].max     - thresh[i])));
         }
         penalty_base *= 2;
     }
