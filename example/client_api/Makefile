@@ -1,55 +1,32 @@
 TO_BASE=../..
 
-CC=gcc
-CFLAGS=-std=c99 -pedantic -Wall -Werror -g
-FC=gfortran
-FFLAGS=-Wall -g
-CHPLC=chpl
+SRCS=example.c
+NO_INST_TGTS=example
 
-override CPPFLAGS+=-I$(TO_BASE)/src
-override FFLAGS+=-fno-underscoring
-override CHPLFLAGS+=-M$(TO_BASE)/src -I$(TO_BASE)/src
-override LDFLAGS+=-L$(TO_BASE)/src
-override LDLIBS+=-lharmony -lm
+example: REQ_CPPFLAGS+=-I$(TO_BASE)/src
+example: REQ_LDLIBS+=-lm
+example: $(TO_BASE)/src/libharmony.a
 
-TARGETS=example_c #example_f example_chpl
+# ifeq (0, $(shell which $(FC) > /dev/null 2>&1; echo $$?))
+#     SRCS+=fortran.f
+#     NO_INST_TGTS+=fortran
+#
+#     fortran: REQ_FFLAGS+=-fno-underscoring
+#     fortran: fortran.o $(TO_BASE)/src/libharmony.a
+# else
+#     $(info Skipping fortran client_api example: $(FC) not found.)
+# endif
 
-.PHONY: all install libharmony clean distclean
+# CHPLC=chpl
+# ifeq (0, $(shell which $(CHPLC) > /dev/null 2>&1; echo $$?))
+#     SRCS+=chapel.chpl
+#     NO_INST_TGTS+=chapel
+#
+#     chapel: chapel.chpl $(TO_BASE)/src/libharmony.a
+# 	$(CHPLC) $(CHPLFLAGS) $^ $(TO_BASE)/src/hclient.h -o $@
+# else
+#     $(info Skipping chapel client_api example: $(CHPLC) not found.)
+# endif
 
-all: $(TARGETS)
-
-install: $(TARGETS)
-	@echo "Examples must be executed from source directory (for now)."
-
-example_c: example.c libharmony
-	@if [ -x "`which $(CC) 2>&1`" ]; then                              \
-	  echo "$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LDFLAGS) $(LDLIBS) -o $@";\
-	  $(CC) $(CPPFLAGS) $(CFLAGS) $< $(LDFLAGS) $(LDLIBS) -o $@;       \
-	else                                                               \
-	  echo "Skipping build of $@: $(CC) not found.";                   \
-	fi
-
-example_f: example.f libharmony
-	@if [ -x "`which $(FC) 2>&1`" ]; then                  \
-	  echo "$(FC) $(FFLAGS) $< $(LDFLAGS) $(LDLIBS) -o $@";\
-	  $(FC) $(FFLAGS) $< $(LDFLAGS) $(LDLIBS) -o $@;       \
-	else                                                   \
-	  echo "Skipping build of $@: $(FC) not found.";       \
-	fi
-
-example_chpl: example.chpl libharmony
-	@if [ -x "`which $(CHPLC) 2>&1`" ]; then                        \
-	  echo "$(CHPLC) $(CHPLFLAGS) $< hclient.h $(LDFLAGS) $(LDLIBS) -o $@";\
-	  $(CHPLC) $(CHPLFLAGS) $< hclient.h $(LDFLAGS) $(LDLIBS) -o $@;\
-	else                                                            \
-	  echo "Skipping build of $@: chpl not found.";                 \
-	fi
-
-libharmony:
-	$(MAKE) -C $(TO_BASE)/src libharmony.a
-
-clean:
-	rm -f core $(TARGETS)
-
-distclean: clean
-	rm -f *~
+# Active Harmony makefiles should always include this file last.
+include $(TO_BASE)/make/common.mk

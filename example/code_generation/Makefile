@@ -1,32 +1,21 @@
 TO_BASE=../..
 
 MPICC=mpicc
-CFLAGS=-std=c99 -pedantic -Wall -Werror -g
+export OMPI_CC:=$(CC)
+export MPICH_CC:=$(CC)
 
-override CPPFLAGS+=-I$(TO_BASE)/src
-override LDFLAGS+=-L$(TO_BASE)/src
-override LDLIBS+=-lharmony -ldl
+ifeq (0, $(shell which $(firstword $(MPICC)) > /dev/null 2>&1; echo $$?))
+    SRCS+=gemm.c
+    NO_INST_TGTS+=gemm
 
-.PHONY: all install libharmony clean distclean
+    gemm: override CC=$(MPICC)
+    gemm: REQ_CPPFLAGS+=-I$(TO_BASE)/src
+    gemm: REQ_CFLAGS+=$(MPICFLAGS)
+    gemm: REQ_LDLIBS+=-ldl
+    gemm: $(TO_BASE)/src/libharmony.a
+else
+    $(info Skipping code_generation example: $(firstword $(MPICC)) not found.)
+endif
 
-all: gemm
-
-install: gemm
-	@echo "Examples must be executed from source directory (for now)."
-
-gemm: gemm.c libharmony
-	@if [ -x "`which $(MPICC) 2>&1`" ]; then                              \
-	  echo "$(MPICC) $(CPPFLAGS) $(CFLAGS) $< $(LDFLAGS) $(LDLIBS) -o $@";\
-	  $(MPICC) $(CPPFLAGS) $(CFLAGS) $< $(LDFLAGS) $(LDLIBS) -o $@;       \
-	else                                                                  \
-	  echo "Skipping build of $@: $(MPICC) not found.";                   \
-	fi
-
-libharmony:
-	$(MAKE) -C $(TO_BASE)/src libharmony.a
-
-clean:
-	rm -f core gemm
-
-distclean: clean
-	rm -f *~
+# Active Harmony makefiles should always include this file last.
+include $(TO_BASE)/make/common.mk

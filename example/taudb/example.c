@@ -84,7 +84,10 @@ int get_cpu_info(char* cpu_vendor, char* cpu_model,
     }
 
     while (!feof(cpuinfo)) {
-        fgets(line_str, sizeof(line_str), cpuinfo);
+        if (fgets(line_str, sizeof(line_str), cpuinfo) == NULL) {
+            fprintf(stderr, "Warning: Could not read /proc/cpuinfo.\n");
+            return -1;
+        }
 
         if (strlen(line_str) <= 1)
             continue;
@@ -150,7 +153,7 @@ int main(int argc, char* argv[])
     const char* name;
     hdesc_t* hdesc;
     int i, retval, loop = 200;
-    double perf = -INFINITY;
+    double perf = -HUGE_VAL;
     char* metadata;
 
     /* Variables to hold the application's runtime tunable parameters.

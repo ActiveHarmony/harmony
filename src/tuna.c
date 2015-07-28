@@ -16,9 +16,10 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-#define _BSD_SOURCE       // Deprecate at some point in the future.
-#define _DEFAULT_SOURCE   // Needed for timersub().
-#define _XOPEN_SOURCE 500 // Needed for wait3(), kill(), and fdopen().
+#ifdef __gnu_linux__
+#define _BSD_SOURCE     // Needed for wait3(), kill(), timersub() and fdopen().
+#define _DEFAULT_SOURCE // Needed for _BSD_SOURCE on glibc 2.20 and later.
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -894,7 +895,6 @@ bundle_info_t* tuna_bundle_get(char** name)
         {
             retval = binfo + i;
             break;
-            return binfo + i;
         }
     }
 

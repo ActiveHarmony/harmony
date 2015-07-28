@@ -43,7 +43,7 @@ void hperf_reset(hperf_t* perf)
 {
     int i;
     for (i = 0; i < perf->n; ++i)
-        perf->p[i] = INFINITY;
+        perf->p[i] = HUGE_VAL;
 }
 
 int hperf_copy(hperf_t* dst, const hperf_t* src)

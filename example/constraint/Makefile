@@ -1,14 +1,11 @@
 TO_BASE=../..
 
 TEST_DIR=$(TO_BASE)/example/client_api
-TEST_BIN=example_c
+TEST_BIN=example
 
-.PHONY: all install test client clean distclean
+.PHONY: test client
 
 all: client
-
-install: all
-	@echo "Examples must be executed from source directory (for now)."
 
 test: client
 	$(TEST_DIR)/$(TEST_BIN) LAYERS=constraint.so OC_FILE=constraint.in
@@ -16,7 +13,5 @@ test: client
 client:
 	$(MAKE) -C $(TEST_DIR) $(TEST_BIN)
 
-clean:
-
-distclean: clean
-	rm -f *~
+# Active Harmony makefiles should always include this file last.
+include $(TO_BASE)/make/common.mk

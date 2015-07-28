@@ -81,6 +81,7 @@ int hmesg_serialize(hmesg_t* mesg)
     char hdr[HMESG_HDRLEN + 1];
     char* buf;
     int buflen, count, total;
+    unsigned int magic;
 
   top:
     buf = mesg->buf;
@@ -193,9 +194,10 @@ int hmesg_serialize(hmesg_t* mesg)
         goto top;
     }
 
-    snprintf(hdr, sizeof(hdr), "XXXX%04d%02x", total, HMESG_VERSION);
-    *(unsigned int*)(hdr) = htonl(HMESG_MAGIC);
-    memcpy(mesg->buf, hdr, HMESG_HDRLEN);
+    magic = htonl(HMESG_MAGIC);
+    snprintf(hdr, sizeof(hdr), "%04d%02x", total, HMESG_VERSION);
+    memcpy(mesg->buf, &magic, sizeof(magic));
+    memcpy(mesg->buf + sizeof(magic), hdr, HMESG_HDRLEN - sizeof(magic));
 
     return total;
 
@@ -209,14 +211,15 @@ int hmesg_deserialize(hmesg_t* mesg)
 {
     char type_str[4], status_str[4];
     int count, total;
-    unsigned int msgver;
+    unsigned int magic, msgver;
     char* buf = mesg->buf;
 
     /* Verify HMESG_MAGIC and HMESG_VERSION */
-    if (ntohl(*(unsigned int*)buf) != HMESG_MAGIC)
+    memcpy(&magic, buf, sizeof(magic));
+    if (ntohl(magic) != HMESG_MAGIC)
         goto invalid;
 
-    if (sscanf(buf + sizeof(unsigned int), "%*4d%2x", &msgver) < 1)
+    if (sscanf(buf + sizeof(magic), "%*4d%2x", &msgver) < 1)
         goto invalid;
 
     if (msgver != HMESG_VERSION)

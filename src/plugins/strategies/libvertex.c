@@ -207,7 +207,7 @@ int vertex_rand_trim(vertex_t* v, double trim_percentage)
             int_bounds_t* b = &range[i].bounds.i;
             rval = (b->max - b->min - v->term[i]) * drand48();
             rval += b->min + (v->term[i] / 2);
-            v->term[i] = hrange_int_nearest(b, rval);
+            v->term[i] = hrange_int_nearest(b, (long)rval);
             break;
         }
         case HVAL_REAL: {
@@ -282,7 +282,8 @@ int vertex_regrid(vertex_t* v)
     for (i = 0; i < N; ++i) {
         switch (range[i].type) {
         case HVAL_INT:
-            v->term[i] = hrange_int_nearest(&range[i].bounds.i, v->term[i]);
+            v->term[i] = hrange_int_nearest(&range[i].bounds.i,
+                                            (long)v->term[i]);
             break;
 
         case HVAL_REAL:
@@ -317,17 +318,14 @@ int vertex_to_hpoint(const vertex_t* v, hpoint_t* result)
         val->type = range[i].type;
         switch (range[i].type) {
         case HVAL_INT:
-            val->value.i = hrange_int_nearest(&range[i].bounds.i, v->term[i]);
+            val->value.i = hrange_int_nearest(&range[i].bounds.i,
+                                              (long)v->term[i]);
             break;
         case HVAL_REAL:
             val->value.r = hrange_real_nearest(&range[i].bounds.r, v->term[i]);
             break;
         case HVAL_STR: {
-            unsigned long idx = v->term[i];
-
-            idx = v->term[i] + 0.5;
-            if (idx < 0)
-                idx = 0;
+            unsigned long idx = (unsigned long)(v->term[i] + 0.5);
             if (idx > range[i].bounds.s.set_len - 1)
                 idx = range[i].bounds.s.set_len - 1;
 
@@ -406,7 +404,7 @@ simplex_t* simplex_alloc(int m)
 {
     int i;
     simplex_t* s;
-    unsigned char* buf;
+    vertex_t* buf;
 
     if (m <= N)
         return NULL;
@@ -418,7 +416,7 @@ simplex_t* simplex_alloc(int m)
 
     buf = malloc(m * sizeof_vertex);
     for (i = 0; i < m; ++i) {
-        s->vertex[i] = (vertex_t*)(buf + i * sizeof_vertex);
+        s->vertex[i] = buf + ((i * sizeof_vertex) / sizeof(*buf));
         s->vertex[i]->perf = hperf_alloc(P);
         if (!s->vertex[i]->perf)
             return NULL;

@@ -16,7 +16,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-#define _XOPEN_SOURCE 500 // Needed for gethostname()
+#define _XOPEN_SOURCE 600 // Needed for gethostname().
 
 /*
  * This is an example of an application that uses the code-server
@@ -60,7 +60,7 @@ typedef void (*code_t)(void*, void*, void*, void*);
  * Function Prototypes
  */
 int    fetch_configuration(void);
-int    check_convergence(hdesc_t* hdesc);
+int    check_convergence(void);
 char*  construct_so_filename(void);
 int    update_so(const char* filename);
 void   initialize_matrices(void);
@@ -104,7 +104,7 @@ int main(int argc, char* argv[])
     int node_count;
     double time_initial, time_current, time;
     double raw_perf, perf;
-    int i, found_iter, harmonized;
+    int i, found_iter = 0, harmonized;
 
     /* MPI Initialization */
     MPI_Init(&argc, &argv);
@@ -227,7 +227,7 @@ int main(int argc, char* argv[])
 
         if (!harmonized) {
             // check_convergence returns 0 if not converged, 1 if converged
-            harmonized = check_convergence(hdesc);
+            harmonized = check_convergence();
             if (harmonized != 0 && harmonized != 1) {
                 errprint("Error checking harmony convergence status.\n");
                 goto cleanup;
@@ -334,7 +334,7 @@ int fetch_configuration(void)
  * Check if the parameter space search has converged.
  * Only rank 0 communicates directly with the Harmony server.
  */
-int check_convergence(hdesc_t* hdesc)
+int check_convergence(void)
 {
     int status;
 

@@ -16,7 +16,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-#define _XOPEN_SOURCE 500 // Needed for drand48() and usleep().
+#define _XOPEN_SOURCE 600 // Needed for srand48() and usleep().
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,7 +44,7 @@ void   parse_funcs(char* list);
 int    parse_fopts(int idx, char** opts);
 int    start_harmony(hdesc_t* hdesc);
 void   eval_func(void);
-double quantize_value(double perf);
+double quantize_value(double val);
 double random_value(double min, double max);
 void   fprint_darr(FILE* fp, const char* head,
                    double* arr, int len, const char* tail);
@@ -127,7 +127,7 @@ int main(int argc, char* argv[])
 {
     int i, j, hresult, report, retval = 0;
     int width, maxwidth;
-    double best_val = INFINITY;
+    double best_val = HUGE_VAL;
     hdesc_t* hdesc;
 
     parse_opts(argc, argv);
@@ -221,7 +221,7 @@ int main(int argc, char* argv[])
     fprintf(stdout, "%6d eval%s, best value: ", i, i == 1 ? "" : "s");
     fprint_darr(stdout, "(", best, o_cnt, ")");
 
-    if (o_cnt == 1 && finfo[0]->optimal != -INFINITY)
+    if (o_cnt == 1 && finfo[0]->has_optimal)
         printf(" [Global optimal: %lf]\n", finfo[0]->optimal);
     else
         printf(" [Global optimal: <Unknown>]\n");
@@ -412,8 +412,8 @@ void parse_funcs(char* list)
 {
     char* end;
 
-    bound_min =  INFINITY;
-    bound_max = -INFINITY;
+    bound_min =  HUGE_VAL;
+    bound_max = -HUGE_VAL;
     while (list && *list) {
         char stash = '\0';
         while (isspace(*list))
@@ -619,14 +619,14 @@ void eval_func(void)
         fprintf(stdout, "\n");
 }
 
-double quantize_value(double perf)
+double quantize_value(double val)
 {
-    return round(perf * quantize) / quantize;
+    return round(val * quantize) / quantize;
 }
 
 double random_value(double min, double max)
 {
-    return min + ((double)rand()/(double)RAND_MAX) * (max - min);
+    return min + (rand()/((double)RAND_MAX)) * (max - min);
 }
 
 void fprint_darr(FILE* fp, const char* head,
@@ -656,7 +656,7 @@ void use_resources(void)
     for (i = 0; i < o_cnt; ++i)
         sum += perf[i];
 
-    stall = sum * 1000;
+    stall = (unsigned int)(sum * 1000);
 
     switch (tuna_mode) {
     case 'w': /* Wall time */

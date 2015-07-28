@@ -196,7 +196,7 @@ void generator_main(generator_t& gen)
 int main(int argc, char* argv[])
 {
     stringstream ss;
-    int status, num_ready;
+    int status, num_ready = 0;
     unsigned i;
     pid_t pid;
 
@@ -306,9 +306,6 @@ int main(int argc, char* argv[])
         // increment the timestep
         timestep++;
     } // mainloop
-
-    hsession_fini(&sess);
-    return 0;
 }
 
 int codeserver_init(string& filename)
@@ -568,7 +565,7 @@ int parse_slave_list(const char* hostlist)
         num = -1;
 
         /* Find the entry boundary. */
-        tail = (char*)memchr(head, ',', end - head);
+        tail = reinterpret_cast<const char*>(memchr(head, ',', end - head));
         if (!tail) {
             tail = end;
         }
@@ -739,7 +736,7 @@ int mesg_read(const char* filename, hmesg_t* msg)
 
     msglen = sb.st_size + 1;
     if (msg->buflen < msglen) {
-        newbuf = (char*) realloc(msg->buf, msglen);
+        newbuf = reinterpret_cast<char*>(realloc(msg->buf, msglen));
         if (!newbuf) {
             cerr << "Could not allocate memory for message data.\n";
             retval = -1;
@@ -831,7 +828,10 @@ int mesg_write(hmesg_t& mesg, int step)
 
         ss << reply_url.host << ":" << reply_url.path;
 
-        system(ss.str().c_str());
+        if (system(ss.str().c_str()) == -1) {
+            cerr << "Error calling scp to transfer message.\n";
+            return -1;
+        }
         std::remove(filename.c_str());
     }
     return 0;

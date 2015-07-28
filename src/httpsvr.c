@@ -87,6 +87,7 @@ static memfile_t html_file[] = {
 static const char status_200[] = "HTTP/1.1 200 OK" HTTP_ENDL;
 static const char status_400[] = "HTTP/1.1 400 Bad Request" HTTP_ENDL;
 static const char status_404[] = "HTTP/1.1 404 Not Found" HTTP_ENDL;
+static const char status_500[] = "HTTP/1.1 500 Internal Error" HTTP_ENDL;
 static const char status_501[] = "HTTP/1.1 501 Not Implemented" HTTP_ENDL;
 static const char status_503[] = "HTTP/1.1 503 Service Unavailable" HTTP_ENDL;
 
@@ -126,7 +127,7 @@ int http_init(const char* basedir)
         if (html_file[i].buf != NULL)
             file_unmap(html_file[i].buf, html_file[i].buflen);
 
-        filename = sprintf_alloc("%s/libexec/html/%s", basedir,
+        filename = sprintf_alloc("%s/libexec/http/%s", basedir,
                                  html_file[i].filename);
         if (!filename) {
             perror("Could not allocate temp memory for filename");
@@ -167,6 +168,10 @@ void http_send_error(int fd, int status, const char* arg)
     } else if (status == 503) {
         status_line = status_503;
         message = "The maximum number of HTTP connections has been exceeded.";
+
+    } else {
+        status_line = status_500;
+        message = "An unknown status was passed to http_send_error().";
     }
 
     opt_sock_write(fd, status_line);
@@ -322,7 +327,7 @@ int http_request_handle(int fd, char* req)
 {
     session_state_t* sess = NULL;
     char* sess_name;
-    char* arg;
+    char* arg = NULL;
     int i;
 
     sess_name = strchr(req, '?');
@@ -500,7 +505,7 @@ char* http_request_recv(int fd, char* buf, int buflen, char** data)
     const char delim[] = HTTP_ENDL HTTP_ENDL;
     char* retval;
     char* split;
-    int len, recvlen;
+    int len = 0, recvlen;
 
     if (!*data) {
         *data = buf;

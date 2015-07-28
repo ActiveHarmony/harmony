@@ -217,8 +217,8 @@ int nemo_phase_incr(void)
 
     if (best.id > 0) {
         if (anchor) {
-            int idx;
-            min_dist = INFINITY;
+            int idx = -1;
+            min_dist = HUGE_VAL;
             for (i = 0; i < simplex_size; ++i) {
                 vertex_from_hpoint(&best, test);
                 curr_dist = vertex_dist(test, base->vertex[i]);
@@ -459,8 +459,8 @@ int strategy_cfg(hsignature_t* sig)
         return -1;
     }
     for (i = 0; i < perf_n; ++i) {
-        range[i].min =  INFINITY;
-        range[i].max = -INFINITY;
+        range[i].min =  HUGE_VAL;
+        range[i].max = -HUGE_VAL;
     }
 
     thresh = malloc(sizeof(double) * (perf_n - 1));
@@ -523,7 +523,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
              */
 
             for (i = 0; i < perf_n; ++i)
-                next->perf->p[i] = INFINITY;
+                next->perf->p[i] = HUGE_VAL;
 
             if (nm_algorithm() != 0) {
                 session_error("Internal error: Nelder-Mead"
@@ -558,7 +558,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
 int strategy_analyze(htrial_t* trial)
 {
     int i;
-    double penalty, base;
+    double penalty, penalty_base;
 
     if (trial->point.id != next->id) {
         session_error("Rouge points not supported.");
@@ -571,21 +571,21 @@ int strategy_analyze(htrial_t* trial)
         if (range[i].min > next->perf->p[i])
             range[i].min = next->perf->p[i];
 
-        if (range[i].max < next->perf->p[i] && next->perf->p[i] < INFINITY)
+        if (range[i].max < next->perf->p[i] && next->perf->p[i] < HUGE_VAL)
             range[i].max = next->perf->p[i];
     }
 
     penalty = 0.0;
-    base = 1.0;
+    penalty_base = 1.0;
     for (i = phase-1; i >= 0; --i) {
         if (next->perf->p[i] > thresh[i]) {
             if (!loose) {
-                penalty += base;
+                penalty += penalty_base;
             }
             penalty += (next->perf->p[i] - range[i].min) / (range[i].max -
                                                             range[i].min);
         }
-        base *= 2;
+        penalty_base *= 2;
     }
 
     if (penalty > 0.0) {

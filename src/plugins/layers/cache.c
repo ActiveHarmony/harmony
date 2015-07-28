@@ -139,7 +139,7 @@ int cache_generate(hflow_t* flow, htrial_t* trial)
     // so the client gets a chance to do something when the search is converged 
     // not really part of cache, but gemm example client will never terminate
     // or do anything if this isn't present (it never knows when strat is converged)
-    if(strncmp(session_getcfg(CFGKEY_STRATEGY_CONVERGED), "1", 1) == 0) {
+    if(strncmp(hcfg_get(session_cfg, CFGKEY_CONVERGED), "1", 1) == 0) {
       return HFLOW_ACCEPT;
     } 
 
@@ -267,6 +267,11 @@ int find_max_strlen(void)
  * Note: This function must be kept in sync with the output routines
  *       of the logger layer.
  */
+#define SKIP_PATTERN(fp, pattern)                                       \
+    if (fscanf(fp, pattern) == EOF) {                                   \
+        session_error("Error parsing logger file: Invalid input.");     \
+        return -1;                                                      \
+    }
 int load_logger_file(const char* filename)
 {
     char c;
@@ -282,10 +287,10 @@ int load_logger_file(const char* filename)
     while (fscanf(fp, " %c", &c) != EOF) {
         /* Skip any line that doesn't start with 'P'. */
         if (c != 'P') {
-            fscanf(fp, "%*[^\n] ");
+            SKIP_PATTERN(fp, "%*[^\n] ");
             continue;
         }
-        fscanf(fp, "oint #%*d: ( ");
+        SKIP_PATTERN(fp, "oint #%*d: ( ");
 
         /* Prepare a new point in the memory cache. */
         if (cache_len == cache_cap) {
@@ -305,7 +310,7 @@ int load_logger_file(const char* filename)
         for (i = 0; i < i_cnt; ++i) {
             hval_t* v = &cache[cache_len].point.val[i];
 
-            if (i > 0) fscanf(fp, " ,");
+            if (i > 0) SKIP_PATTERN(fp, " ,");
 
             v->type = range[i].type;
             switch (range[i].type) {
@@ -324,9 +329,9 @@ int load_logger_file(const char* filename)
         }
 
         /* Parse performance data. */
-        fscanf(fp, " ) => (");
+        SKIP_PATTERN(fp, " ) => (");
         for (i = 0; i < o_cnt; ++i) {
-            if (i > 0) fscanf(fp, " ,");
+            if (i > 0) SKIP_PATTERN(fp, " ,");
             if (fscanf(fp, " %*f[%la]", &cache[cache_len].perf->p[i]) != 1) {
                 session_error("Error parsing performance data from logfile");
                 return -1;
@@ -354,7 +359,7 @@ int safe_scanstr(FILE* fp, int bounds_idx, const char** match)
     int i;
     str_bounds_t* str_bounds = &range[bounds_idx].bounds.s;
 
-    fscanf(fp, " \"");
+    SKIP_PATTERN(fp, " \"");
     for (i = 0; i < buflen; ++i) {
         int c = fgetc(fp);
 
@@ -363,7 +368,7 @@ int safe_scanstr(FILE* fp, int bounds_idx, const char** match)
         if (c == '\"' || c == EOF)
             break;
 
-        buf[i] = c;
+        buf[i] = (char)c;
     }
     if (i == sizeof(buf)) {
         session_error("Input HVAL_STR overrun");

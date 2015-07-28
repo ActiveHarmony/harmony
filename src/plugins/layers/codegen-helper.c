@@ -16,7 +16,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-#define _XOPEN_SOURCE 500 // Needed for S_ISSOCK and sigaction().
+#define _XOPEN_SOURCE 600 // Needed for S_ISSOCK, sigaction(), and gethostname().
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -49,8 +49,8 @@ int url_parse(const char* url);
 int reply_url_build(void);
 int mesg_write(int id);
 int mesg_read(int id);
-int read_loop(int fd, char* buf, int len);
-int write_loop(int fd, char* buf, int len);
+int read_loop(int fd, char* readbuf, int readlen);
+int write_loop(int fd, char* writebuf, int writelen);
 
 hsession_t* sess;
 hmesg_t session_mesg, mesg;
@@ -259,7 +259,7 @@ int url_parse(const char* url)
     const char* ssh_host;
     const char* ssh_port;
     const char* ssh_path;
-    int host_len, port_len;
+    int host_len, port_len = 0;
 
     ptr = strstr(url, "//");
     if (!ptr)
@@ -326,7 +326,7 @@ int url_parse(const char* url)
         if (ptr) {
             ssh_port = ptr + 1;
             port_len = host_len - (ssh_port - ssh_host);
-            host_len =- port_len;
+            host_len -= port_len;
         }
         else {
             ssh_port = NULL;
@@ -502,7 +502,7 @@ int mesg_read(int id)
 int mesg_write(int id)
 {
     static const char out_filename[] = "candidate";
-    unsigned short msglen;
+    unsigned long msglen;
     int fd, count;
 
     count = snprintf_grow(&buf, &buflen, "%s/%s.%d",
@@ -558,12 +558,12 @@ int mesg_write(int id)
     return 0;
 }
 
-int read_loop(int fd, char* buf, int len)
+int read_loop(int fd, char* readbuf, int readlen)
 {
     int count;
 
-    while (len > 0) {
-        count = read(fd, buf, len);
+    while (readlen > 0) {
+        count = read(fd, readbuf, readlen);
         if (count < 0 && errno == EINTR)
             continue;
 
@@ -572,18 +572,18 @@ int read_loop(int fd, char* buf, int len)
             return -1;
         }
 
-        buf += count;
-        len -= count;
+        readbuf += count;
+        readlen -= count;
     }
     return 0;
 }
 
-int write_loop(int fd, char* buf, int len)
+int write_loop(int fd, char* writebuf, int writelen)
 {
     int count;
 
-    while (len > 0) {
-        count = write(fd, buf, len);
+    while (writelen > 0) {
+        count = write(fd, writebuf, writelen);
         if (count < 0 && errno == EINTR)
             continue;
 
@@ -592,8 +592,8 @@ int write_loop(int fd, char* buf, int len)
             return -1;
         }
 
-        buf += count;
-        len -= count;
+        writebuf += count;
+        writelen -= count;
     }
     return 0;
 }

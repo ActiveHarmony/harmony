@@ -95,7 +95,7 @@ int strategy_init(hsignature_t* sig)
          * and thus be retained across a restart.
          */
         best = HPOINT_INITIALIZER;
-        best_perf = INFINITY;
+        best_perf = HUGE_VAL;
         curr.id = 1;
     }
 
@@ -269,7 +269,7 @@ int strategy_analyze(htrial_t* trial)
     /* converged when the final point has been received, 
        and there are no outstanding points */
     if(outstanding_points <= 0 && final_point_received) {
-        if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "1") != 0) {
+        if (session_setcfg(CFGKEY_CONVERGED, "1") != 0) {
             session_error("Internal error: Could not set convergence status.");
             return -1;
         }
@@ -311,15 +311,19 @@ int increment(void)
             break;
 
         case HVAL_REAL:
-            curr.val[i].value.r =
-                (range[i].bounds.r.step > 0.0)
+            next_r = (range[i].bounds.r.step > 0.0)
                 ? range[i].bounds.r.min + (idx[i] * range[i].bounds.r.step)
-                : nextafter(curr.val[i].value.r, INFINITY);
+                : nextafter(curr.val[i].value.r, HUGE_VAL);
 
-            if (curr.val[i].value.r > range[i].bounds.r.max) {
+            if (next_r > range[i].bounds.r.max ||
+                next_r == curr.val[i].value.r)
+            {
                 curr.val[i].value.r = range[i].bounds.r.min;
                 idx[i] = 0;
                 continue;  // Overflow detected.
+            }
+            else {
+                curr.val[i].value.r = next_r;
             }
             break;
 
@@ -349,8 +353,9 @@ int increment(void)
             case HVAL_REAL:
               next_r = (range[i].bounds.r.step > 0.0)
                 ? range[i].bounds.r.min + (idx[i] * range[i].bounds.r.step)
-                : nextafter(curr.val[i].value.r, INFINITY); 
-              if(next_r > range[i].bounds.r.max) 
+                : nextafter(curr.val[i].value.r, HUGE_VAL);
+              if(next_r > range[i].bounds.r.max ||
+                 next_r == curr.val[i].value.r)
                 n_overflows++; 
               break;
             case HVAL_STR:

@@ -53,7 +53,7 @@ int main(int argc, char* argv[])
     const char* name;
     hdesc_t* hdesc;
     int i, retval, loop = 200;
-    double perf = -INFINITY;
+    double perf = -HUGE_VAL;
 
     /* Variables to hold the application's runtime tunable parameters.
      * Once bound to a Harmony tuning session, these variables will be

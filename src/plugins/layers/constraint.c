@@ -96,8 +96,6 @@ hcfg_info_t plugin_keyinfo[] = {
 
 #define MAX_CMD_LEN  4096
 #define MAX_TEXT_LEN 1024
-#define REG_TEXT_LEN 128
-#define SHORT_TEXT_LEN 32
 
 /* Forward function declarations. */
 int strategy_cfg(hsignature_t* sig);
@@ -173,6 +171,7 @@ int strategy_cfg(hsignature_t* sig)
         strncpy(constraints, cfgval, sizeof(constraints));
     }
     else {
+        size_t retval;
         FILE* fp;
 
         cfgval = hcfg_get(session_cfg, CFGKEY_OC_FILE);
@@ -189,10 +188,10 @@ int strategy_cfg(hsignature_t* sig)
             return -1;
         }
 
-        fread(constraints, sizeof(char), sizeof(constraints) - 1, fp);
+        retval = fread(constraints, sizeof(char), sizeof(constraints), fp);
         constraints[sizeof(constraints) - 1] = '\0';
 
-        if (!feof(fp)) {
+        if (retval >= sizeof(constraints)) {
             session_error("Constraint file too large.");
             return -1;
         }
@@ -359,7 +358,7 @@ int update_bounds(hsignature_t* sig)
 {
     char cmd[MAX_CMD_LEN];
     char* retstr;
-    int i, retval;
+    int i, retval = 0;
 
     for (i = 0; i < local_sig.range_len; ++i) {
         hrange_t* range = &local_sig.range[i];
@@ -451,7 +450,7 @@ int check_validity(hpoint_t* point)
 {
     char cmd[MAX_CMD_LEN];
     char* retstr;
-    int retval;
+    int retval = 0;
 
     if (build_point_text(point) != 0)
         return -1;

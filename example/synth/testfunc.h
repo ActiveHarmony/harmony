@@ -34,6 +34,7 @@ typedef struct finfo {
     int n_max;
     double b_min;
     double b_max;
+    int has_optimal;
     double optimal;
     benchfunc_t* f;
     char* description;
