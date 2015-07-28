@@ -157,8 +157,6 @@ double shrink   = 0.5;
 double fval_tol = 1e-8;
 double size_tol;
 double dist_tol = NAN;
-double up_mul = NAN;
-double dn_mul = NAN;
 double move_len;
 int simplex_size;
 int tol_cnt;
@@ -839,24 +837,6 @@ void check_convergence(void)
 
     if (!isnan(dist_tol)) {
         if (move_len < dist_tol) {
-            if (++cnt >= tol_cnt) {
-                cnt = 0;
-                goto converged;
-            }
-        }
-        else cnt = 0;
-    }
-    else if (!isnan(up_mul)) {
-        if (move_len < ((phase + 1) * (1.0 + (up_mul/10)))) {
-            if (++cnt >= tol_cnt) {
-                cnt = 0;
-                goto converged;
-            }
-        }
-        else cnt = 0;
-    }
-    else if (!isnan(dn_mul)) {
-        if (move_len < ((perf_n - phase) * (1.0 + (dn_mul/10)))) {
             if (++cnt >= tol_cnt) {
                 cnt = 0;
                 goto converged;
