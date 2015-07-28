@@ -61,12 +61,12 @@
 #define CFGKEY_DIST_TOL           "DIST_TOL"
 #define CFGKEY_TOL_CNT            "TOL_CNT"
 #define CFGKEY_REJECT_METHOD      "REJECT_METHOD"
-#define CFGKEY_NEMO_LOOSE         "NEMO_LOOSE"
-#define CFGKEY_NEMO_MULT          "NEMO_MULT"
-#define CFGKEY_NEMO_ANCHOR        "NEMO_ANCHOR"
-#define CFGKEY_NEMO_SAMESIMPLEX   "NEMO_SAMESIMPLEX"
-#define CFGKEY_NEMO_LEEWAY        "NEMO_LEEWAY"
-#define CFGKEY_NEMO_PHASE         "NEMO_PHASE"
+#define CFGKEY_ANGEL_LOOSE        "ANGEL_LOOSE"
+#define CFGKEY_ANGEL_MULT         "ANGEL_MULT"
+#define CFGKEY_ANGEL_ANCHOR       "ANGEL_ANCHOR"
+#define CFGKEY_ANGEL_SAMESIMPLEX  "ANGEL_SAMESIMPLEX"
+#define CFGKEY_ANGEL_LEEWAY       "ANGEL_LEEWAY"
+#define CFGKEY_ANGEL_PHASE        "ANGEL_PHASE"
 
 /* Plug-in layer configuration variables. */
 #define CFGKEY_AGG_FUNC           "AGG_FUNC"

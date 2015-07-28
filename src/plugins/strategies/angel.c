@@ -80,15 +80,15 @@ hcfg_info_t plugin_keyinfo[] = {
     { CFGKEY_TOL_CNT, NULL,
       "The number of consecutive reflection steps which travel at or "
       "below DIST_TOL before the search is considered converged." },
-    { CFGKEY_NEMO_LOOSE, "False",
+    { CFGKEY_ANGEL_LOOSE, "False",
       "" },
-    { CFGKEY_NEMO_MULT, "1.0",
+    { CFGKEY_ANGEL_MULT, "1.0",
       "" },
-    { CFGKEY_NEMO_ANCHOR, "True",
+    { CFGKEY_ANGEL_ANCHOR, "True",
       "" },
-    { CFGKEY_NEMO_SAMESIMPLEX, "True",
+    { CFGKEY_ANGEL_SAMESIMPLEX, "True",
       "" },
-    { CFGKEY_NEMO_LEEWAY, NULL,
+    { CFGKEY_ANGEL_LEEWAY, NULL,
       "" },
     { NULL }
 };
@@ -133,9 +133,9 @@ typedef enum simplex_state {
 } simplex_state_t;
 
 /* Forward function definitions. */
-int nemo_init_simplex(void);
+int angel_init_simplex(void);
 int strategy_cfg(hsignature_t* sig);
-int nemo_phase_incr(void);
+int angel_phase_incr(void);
 void simplex_update_index(void);
 void simplex_update_centroid(void);
 int  nm_algorithm(void);
@@ -188,7 +188,7 @@ int anchor;
 int loose;
 int samesimplex;
 
-int nemo_init_simplex()
+int angel_init_simplex()
 {
     switch (init_method) {
     case SIMPLEX_INIT_CENTER: vertex_center(init_point); break;
@@ -202,7 +202,7 @@ int nemo_init_simplex()
     return simplex_from_vertex(init_point, init_percent, init);
 }
 
-int nemo_phase_incr(void)
+int angel_phase_incr(void)
 {
     int i;
     double min_dist, curr_dist;
@@ -216,11 +216,11 @@ int nemo_phase_incr(void)
 
     ++phase;
     snprintf(intbuf, sizeof(intbuf), "%d", phase);
-    session_setcfg(CFGKEY_NEMO_PHASE, intbuf);
+    session_setcfg(CFGKEY_ANGEL_PHASE, intbuf);
 
     if (!samesimplex) {
         /* Re-initialize the initial simplex, if needed. */
-        if (nemo_init_simplex() != 0) {
+        if (angel_init_simplex() != 0) {
             session_error("Could not reinitialize the initial simplex.");
             return -1;
         }
@@ -296,7 +296,7 @@ int strategy_init(hsignature_t* sig)
         return -1;
     }
 
-    if (nemo_init_simplex() != 0) {
+    if (angel_init_simplex() != 0) {
         session_error("Could not initialize initial simplex.");
         return -1;
     }
@@ -313,7 +313,7 @@ int strategy_init(hsignature_t* sig)
     }
 
     next_id = 1;
-    if (nemo_phase_incr() != 0)
+    if (angel_phase_incr() != 0)
         return -1;
 
     if (nm_next_vertex() != 0) {
@@ -329,16 +329,16 @@ int strategy_cfg(hsignature_t* sig)
     int i;
     const char* cfgval;
 
-    loose = hcfg_bool(session_cfg, CFGKEY_NEMO_LOOSE);
-    mult = hcfg_real(session_cfg, CFGKEY_NEMO_MULT);
+    loose = hcfg_bool(session_cfg, CFGKEY_ANGEL_LOOSE);
+    mult = hcfg_real(session_cfg, CFGKEY_ANGEL_MULT);
     if (isnan(mult)) {
-        session_error("Invalid value for " CFGKEY_NEMO_MULT
+        session_error("Invalid value for " CFGKEY_ANGEL_MULT
                       " configuration key.");
         return -1;
     }
 
-    anchor = hcfg_bool(session_cfg, CFGKEY_NEMO_ANCHOR);
-    samesimplex = hcfg_bool(session_cfg, CFGKEY_NEMO_SAMESIMPLEX);
+    anchor = hcfg_bool(session_cfg, CFGKEY_ANGEL_ANCHOR);
+    samesimplex = hcfg_bool(session_cfg, CFGKEY_ANGEL_SAMESIMPLEX);
 
     /* Make sure the simplex size is N+1 or greater. */
     simplex_size = hcfg_int(session_cfg, CFGKEY_SIMPLEX_SIZE);
@@ -439,16 +439,16 @@ int strategy_cfg(hsignature_t* sig)
         return -1;
     }
 
-    if (hcfg_get(session_cfg, CFGKEY_NEMO_LEEWAY)) {
-        if (hcfg_arr_len(session_cfg, CFGKEY_NEMO_LEEWAY) != perf_n - 1) {
+    if (hcfg_get(session_cfg, CFGKEY_ANGEL_LEEWAY)) {
+        if (hcfg_arr_len(session_cfg, CFGKEY_ANGEL_LEEWAY) != perf_n - 1) {
             session_error("Insufficient leeway values provided.");
             return -1;
         }
 
         for (i = 0; i < perf_n - 1; ++i) {
-            leeway[i] = hcfg_arr_real(session_cfg, CFGKEY_NEMO_LEEWAY, i);
+            leeway[i] = hcfg_arr_real(session_cfg, CFGKEY_ANGEL_LEEWAY, i);
             if (isnan(leeway[i])) {
-                session_error("Invalid value for " CFGKEY_NEMO_LEEWAY
+                session_error("Invalid value for " CFGKEY_ANGEL_LEEWAY
                               " configuration key.");
                 return -1;
             }
@@ -894,6 +894,6 @@ void check_convergence(void)
         session_setcfg(CFGKEY_CONVERGED, "1");
     }
     else {
-        nemo_phase_incr();
+        angel_phase_incr();
     }
 }
