@@ -76,9 +76,11 @@ hcfg_info_t plugin_keyinfo[] = {
     { CFGKEY_FVAL_TOL, "0.0001",
       "Convergence test succeeds if difference between all vertex "
       "performance values fall below this value." },
-    { CFGKEY_SIZE_TOL, NULL,
-      "Convergence test succeeds if simplex size falls below this value. "
-      "Default is 5% of the initial simplex radius." },
+    { CFGKEY_SIZE_TOL, "0.005",
+      "Convergence test succeeds if the simplex radius becomes smaller "
+      "than this percentage of the total search space.  Simplex radius "
+      "is measured from centroid to furthest vertex.  Total search space "
+      "is measured from minimum to maximum point." },
     { NULL }
 };
 
@@ -323,10 +325,13 @@ int strategy_cfg(hsignature_t* sig)
     }
 
     size_tol = hcfg_real(session_cfg, CFGKEY_SIZE_TOL);
-    if (isnan(size_tol)) {
-        /* Default stopping criteria: 0.5% of dist(vertex_min, vertex_max). */
-        size_tol = vertex_dist(vertex_min(), vertex_max()) * 0.005;
+    if (isnan(size_tol) || size_tol <= 0.0 || size_tol >= 1.0) {
+        session_error("Configuration key " CFGKEY_SIZE_TOL
+                      " must be between 0.0 and 1.0 (exclusive).");
+        return -1;
     }
+    size_tol *= vertex_dist(vertex_min(), vertex_max());
+
     return 0;
 }
 
