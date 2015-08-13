@@ -1,7 +1,7 @@
 TO_BASE=../..
 
 TEST_DIR=$(TO_BASE)/example/client_api
-TEST_BIN=example
+TEST_BIN=minimal
 
 .PHONY: test client
 

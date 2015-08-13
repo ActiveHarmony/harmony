@@ -1,11 +1,10 @@
 TO_BASE=../..
 
-SRCS=example.c
-NO_INST_TGTS=example
+SRCS=minimal.c
+NO_INST_TGTS=minimal
 
-example: REQ_CPPFLAGS+=-I$(TO_BASE)/src
-example: REQ_LDLIBS+=-lm
-example: $(TO_BASE)/src/libharmony.a
+minimal: REQ_CPPFLAGS+=-I$(TO_BASE)/src
+minimal: $(TO_BASE)/src/libharmony.a
 
 # ifeq (0, $(shell which $(FC) > /dev/null 2>&1; echo $$?))
 #     SRCS+=fortran.f

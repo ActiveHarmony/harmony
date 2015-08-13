@@ -101,28 +101,28 @@ If no `PREFIX` variable was used during `make install`, `HARMONY_HOME`
 should be set to the base directory of the source tree.
 
 Navigate to the `example/client_api` source directory.  The file
-`example_c` should exist if the build was successful.  If
+`minimal` should exist if the build was successful.  If
 `HARMONY_HOME` environment variable is set up correctly, the example
 should be immediately executable.  The example may be run as follows:
 
-    $ ./example_c
+    $ ./minimal
 
 This should produce the output similar to the following:
 
     Starting Harmony...
-    68, 51, 51, 51, 51, 51 = 5464
-    48, 68, 51, 51, 51, 51 = 4747
-    48, 47, 67, 51, 51, 51 = 4040
-    48, 47, 46, 67, 51, 51 = 3525
-    48, 47, 46, 45, 66, 51 = 3206
+    ( 481, 0.5269, "pineapple") = 874545.454545
+    ( 490, 0.3286, "oranges") = 1119872.185027
+    ( 655, 0.5611, "grapes") = 749438.602745
+    ( 373, 0.5836, "grapes") = 410325.565456
+    ( 516, 0.7858, "peaches") = 478701.959786
 
     <... snip ...>
 
-    9, 35, 49, 53, 79, 75 = 367
-    9, 36, 47, 53, 77, 74 = 385
-    9, 34, 48, 53, 76, 74 = 367
-    8, 32, 45, 56, 77, 74 = 329
-    9, 32, 48, 53, 77, 75 = 327
+    (   1, 1.0000, "figs") = 425.000000
+    (   1, 1.0000, "figs") = 425.000000
+    (   1, 0.9999, "figs") = 425.042504
+    (   1, 1.0000, "figs") = 425.000000
+    (   1, 1.0000, "figs") = 425.000000 (* Best point found. *)
 
 This example uses a simple arithmetic function with six variables to
 produce a synthetic performance value.
@@ -140,7 +140,7 @@ is accomplished through two environment variables, `HARMONY_HOST` and
 server mode, one could use the following command (assuming Bourne
 shell semantics):
 
-    $ HARMONY_HOST=localhost ./example_c
+    $ HARMONY_HOST=localhost ./minimal
 
 If `HARMONY_HOST` is defined, the example will attempt to contact a
 Harmony Server listening on the specified host (in this case,
@@ -168,14 +168,14 @@ by setting the `STRATEGY` configuration variable.  This way, search
 strategies are easily comparable.  For instance, the following example
 instructs the session to use a random search strategy instead:
 
-    $ ./example_c STRATEGY=random.so
+    $ ./minimal STRATEGY=random.so
 
 In addition to changing the core search strategy, additional
 [processing layers](\ref layers) can be easily added to the feedback
 loop.  For instance, if you'd like to write a log of the search
 session to disk, use the [Point Logger](\ref logger) processing layer:
 
-    $ ./example_c LAYERS=log.so LOG_FILE=search.log
+    $ ./minimal LAYERS=log.so LOG_FILE=search.log
 
 Wall-time is a non-deterministic performance metric.  Multiple factors
 such as competing processes, or even CPU temperature can perturb
@@ -183,19 +183,19 @@ measurement.  This phenomenon can be mitigated by performing multiple
 tests of each point and aggregating the results with the
 [Aggregator](\ref agg) processing layer:
 
-    $ ./example_c LAYERS=agg.so AGG_TIMES=5 AGG_FUNC=median
+    $ ./minimal LAYERS=agg.so AGG_TIMES=5 AGG_FUNC=median
 
 As described in the [Tuning Session](\ref intro_session), processing
 layers may be stacked.  However, it is important to remember that
 processing layers are not commutative; their order is important.
 Consider the following two tuning sessions:
 
-    $ ./example_c LAYERS=agg.so:log.so \
-                  LOG_FILE=search.log AGG_TIMES=5 AGG_FUNC=median
+    $ ./minimal LAYERS=agg.so:log.so \
+                LOG_FILE=search.log AGG_TIMES=5 AGG_FUNC=median
 and
 
-    $ ./example_c LAYERS=log.so:agg.so \
-                  LOG_FILE=search.log AGG_TIMES=5 AGG_FUNC=median
+    $ ./minimal LAYERS=log.so:agg.so \
+                LOG_FILE=search.log AGG_TIMES=5 AGG_FUNC=median
 
 Only the order of the processing layers have changed, but the second
 invocation will produce a much smaller log file.  This is because the
