@@ -126,7 +126,7 @@ int harmony_session_name(hdesc_t* hdesc, const char* name);
  * \return Returns 0 on success, and -1 otherwise.
  */
 int harmony_int(hdesc_t* hdesc, const char* name,
-                 long min, long max, long step);
+                long min, long max, long step);
 
 /**
  * \brief Add a real-domain variable to the Harmony session.
@@ -140,7 +140,7 @@ int harmony_int(hdesc_t* hdesc, const char* name,
  * \return Returns 0 on success, and -1 otherwise.
  */
 int harmony_real(hdesc_t* hdesc, const char* name,
-                  double min, double max, double step);
+                 double min, double max, double step);
 
 /**
  * \brief Add an enumeration variable and append to the list of valid values
@@ -342,6 +342,52 @@ int harmony_leave(hdesc_t* hdesc);
  *
  * @{
  */
+
+/**
+ * \brief Return the current value of an integer-domain session variable.
+ *
+ * Finds an integer-domain tuning variable given its name and returns
+ * its current value.
+ *
+ * \param hdesc Harmony descriptor returned from harmony_init().
+ * \param name  Name of a tuning variable declared with harmony_int().
+ *
+ * \return Returns the current value of a tuning variable, if the
+ *         given name matches an integer-domain session variable.
+ *         Otherwise, LONG_MIN is returned and errno is set
+ *         appropriately.
+ */
+long harmony_get_int(hdesc_t* hdesc, const char* name);
+
+/**
+ * \brief Return the current value of a real-domain session variable.
+ *
+ * Finds a real-domain tuning variable given its name and returns its
+ * current value.
+ *
+ * \param hdesc Harmony descriptor returned from harmony_init().
+ * \param name  Name of a tuning variable declared with harmony_real().
+ *
+ * \return Returns the current value of a tuning variable, if the
+ *         given name matches a real-domain session variable.
+ *         Otherwise, NAN is returned and errno is set appropriately.
+ */
+double harmony_get_real(hdesc_t* hdesc, const char* name);
+
+/**
+ * \brief Return the current value of an enumerated-domain session variable.
+ *
+ * Finds an enumerated-domain tuning variable given its name and
+ * returns its current value.
+ *
+ * \param hdesc Harmony descriptor returned from harmony_init().
+ * \param name  Name of a tuning variable declared with harmony_enum().
+ *
+ * \return Returns the current value of a tuning variable, if the
+ *         given name matches an enumerated-domain session variable.
+ *         Otherwise, NULL is returned and errno is set appropriately.
+ */
+const char* harmony_get_enum(hdesc_t* hdesc, const char* name);
 
 /**
  * \brief Get a key value from the session's configuration.

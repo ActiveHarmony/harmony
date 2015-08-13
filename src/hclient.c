@@ -35,6 +35,7 @@
 #include <ctype.h>
 #include <assert.h>
 #include <math.h>
+#include <limits.h>
 
 typedef enum harmony_state_t {
     HARMONY_STATE_UNKNOWN,
@@ -50,6 +51,11 @@ typedef enum harmony_state_t {
 #define MAX_HOSTNAME_STRLEN 64
 char default_id_buf[MAX_HOSTNAME_STRLEN + 32] = {0};
 
+typedef struct hvarloc_t {
+    void* ptr;
+    hval_t val;
+} hvarloc_t;
+
 struct hdesc_t {
     harmony_state_t state;
     int socket;
@@ -58,9 +64,8 @@ struct hdesc_t {
     hsession_t sess;
     hmesg_t mesg;
 
-    void** ptr;
-    int ptr_len;
-    int ptr_cap;
+    hvarloc_t* varloc;
+    int varloc_cap;
 
     hperf_t* perf;
     hpoint_t curr, best;
@@ -74,7 +79,9 @@ struct hdesc_t {
  * Forward declarations for internal helper functions.
  */
 char* default_id(int n);
-int   ptr_bind(hdesc_t* hdesc, const char* name, hval_type type, void* ptr);
+int   var_index(hdesc_t* hdesc, const char* name);
+int   varloc_extend(hdesc_t* hdesc);
+int   varloc_setptr(hdesc_t* hdesc, const char* name, void* ptr);
 int   send_request(hdesc_t* hdesc, hmesg_type msg_type);
 int   update_best(hdesc_t* hdesc, const hpoint_t* pt);
 int   set_values(hdesc_t* hdesc, const hpoint_t* pt);
@@ -97,8 +104,8 @@ hdesc_t* harmony_init()
     hdesc->mesg = HMESG_INITIALIZER;
     hdesc->state = HARMONY_STATE_INIT;
 
-    hdesc->ptr = NULL;
-    hdesc->ptr_len = hdesc->ptr_cap = 0;
+    hdesc->varloc = NULL;
+    hdesc->varloc_cap = 0;
 
     hdesc->curr = HPOINT_INITIALIZER;
     hdesc->best = HPOINT_INITIALIZER;
@@ -150,7 +157,7 @@ void harmony_fini(hdesc_t* hdesc)
             free(hdesc->id);
 
         free(hdesc->buf);
-        free(hdesc->ptr);
+        free(hdesc->varloc);
         free(hdesc);
     }
 }
@@ -196,6 +203,10 @@ int harmony_launch(hdesc_t* hdesc, const char* host, int port)
     if (hdesc->sess.sig.range_len < 1) {
         hdesc->errstr = "No tuning variables defined";
         errno = EINVAL;
+        return -1;
+    }
+
+    if (varloc_extend(hdesc) != 0) {
         return -1;
     }
 
@@ -269,55 +280,59 @@ int harmony_id(hdesc_t* hdesc, const char* id)
 
 int harmony_bind_int(hdesc_t* hdesc, const char* name, long* ptr)
 {
-    return ptr_bind(hdesc, name, HVAL_INT, ptr);
+    return varloc_setptr(hdesc, name, ptr);
 }
 
 int harmony_bind_real(hdesc_t* hdesc, const char* name, double* ptr)
 {
-    return ptr_bind(hdesc, name, HVAL_REAL, ptr);
+    return varloc_setptr(hdesc, name, ptr);
 }
 
 int harmony_bind_enum(hdesc_t* hdesc, const char* name, const char** ptr)
 {
-    return ptr_bind(hdesc, name, HVAL_STR, (void*)ptr);
+    return varloc_setptr(hdesc, name, ptr);
 }
 
-int ptr_bind(hdesc_t* hdesc, const char* name, hval_type type, void* ptr)
+inline int varloc_setptr(hdesc_t* hdesc, const char* name, void* ptr)
 {
-    int i;
-    hsignature_t* sig = &hdesc->sess.sig;
-
-    for (i = 0; i < sig->range_len; ++i) {
-        if (strcmp(sig->range[i].name, name) == 0)
-            break;
-    }
-    if (i == sig->range_cap) {
-        if (array_grow(&sig->range, &sig->range_cap, sizeof(hrange_t)) != 0)
-            return -1;
+    int idx = var_index(hdesc, name);
+    if (idx < 0) {
+        errno = EINVAL;
+        return -1;
     }
 
-    if (i == sig->range_len) {
-        sig->range[i].name = stralloc(name);
-        if (!sig->range[i].name)
-            return -1;
-
-        sig->range[i].type = type;
-        ++sig->range_len;
-    }
-
-    if (hdesc->ptr_cap < sig->range_cap) {
-        void** tmpbuf = realloc(hdesc->ptr, sig->range_cap * sizeof(void*));
-        if (!tmpbuf)
-            return -1;
-
-        hdesc->ptr = tmpbuf;
-        hdesc->ptr_cap = sig->range_cap;
-    }
-
-    hdesc->ptr[i] = ptr;
-    ++hdesc->ptr_len;
-
+    varloc_extend(hdesc);
+    hdesc->varloc[idx].ptr = ptr;
     return 0;
+}
+
+inline int varloc_extend(hdesc_t* hdesc)
+{
+    if (hdesc->varloc_cap < hdesc->sess.sig.range_cap) {
+        int i;
+        hvarloc_t* tmp = realloc(hdesc->varloc,
+                                 hdesc->sess.sig.range_cap * sizeof(*tmp));
+        if (!tmp)
+            return -1;
+
+        for (i = hdesc->varloc_cap; i < hdesc->sess.sig.range_cap; ++i)
+            tmp[i].ptr = NULL;
+
+        hdesc->varloc = tmp;
+        hdesc->varloc_cap = i;
+    }
+    return 0;
+}
+
+inline int var_index(hdesc_t* hdesc, const char* name)
+{
+    int idx;
+
+    for (idx = 0; idx < hdesc->sess.sig.range_len; ++idx) {
+        if (strcmp(hdesc->sess.sig.range[idx].name, name) == 0)
+            return idx;
+    }
+    return -1;
 }
 
 int harmony_join(hdesc_t* hdesc, const char* host, int port, const char* name)
@@ -329,12 +344,6 @@ int harmony_join(hdesc_t* hdesc, const char* host, int port, const char* name)
      * this descriptor isn't already associated with a tuning
      * session.
      */
-    if (hdesc->ptr_len == 0) {
-        hdesc->errstr = "No variables bound to Harmony session";
-        errno = EINVAL;
-        return -1;
-    }
-
     if (hdesc->state >= HARMONY_STATE_READY) {
         hdesc->errstr = "Descriptor already joined with an existing session";
         errno = EINVAL;
@@ -429,10 +438,54 @@ int harmony_leave(hdesc_t* hdesc)
 
     /* Reset the hsession_t to prepare for hdesc reuse. */
     hsignature_fini(&hdesc->sess.sig);
-    hdesc->ptr_len = 0;
     hdesc->best.id = -1;
 
     return 0;
+}
+
+long harmony_get_int(hdesc_t* hdesc, const char* name)
+{
+    int idx = var_index(hdesc, name);
+
+    if (idx >= 0 && hdesc->sess.sig.range[idx].type == HVAL_INT) {
+        if (hdesc->varloc[idx].ptr)
+            return *(long*)hdesc->varloc[idx].ptr;
+        else
+            return hdesc->varloc[idx].val.value.i;
+    }
+
+    errno = EINVAL;
+    return LONG_MIN;
+}
+
+double harmony_get_real(hdesc_t* hdesc, const char* name)
+{
+    int idx = var_index(hdesc, name);
+
+    if (idx >= 0 && hdesc->sess.sig.range[idx].type == HVAL_REAL) {
+        if (hdesc->varloc[idx].ptr)
+            return *(double*)hdesc->varloc[idx].ptr;
+        else
+            return hdesc->varloc[idx].val.value.r;
+    }
+
+    errno = EINVAL;
+    return NAN;
+}
+
+const char* harmony_get_enum(hdesc_t* hdesc, const char* name)
+{
+    int idx = var_index(hdesc, name);
+
+    if (idx >= 0 && hdesc->sess.sig.range[idx].type == HVAL_STR) {
+        if (hdesc->varloc[idx].ptr)
+            return *(char**)hdesc->varloc[idx].ptr;
+        else
+            return hdesc->varloc[idx].val.value.s;
+    }
+
+    errno = EINVAL;
+    return NULL;
 }
 
 char* harmony_getcfg(hdesc_t* hdesc, const char* key)
@@ -760,24 +813,32 @@ int set_values(hdesc_t* hdesc, const hpoint_t* pt)
 {
     int i;
 
-    if (hdesc->ptr_len != pt->n) {
+    if (hdesc->sess.sig.range_len != pt->n) {
         hdesc->errstr = "Invalid internal point structure.";
         errno = EINVAL;
         return -1;
     }
 
     for (i = 0; i < pt->n; ++i) {
-        switch (pt->val[i].type) {
-        case HVAL_INT:
-            (*((       long*)hdesc->ptr[i])) = pt->val[i].value.i; break;
-        case HVAL_REAL:
-            (*((     double*)hdesc->ptr[i])) = pt->val[i].value.r; break;
-        case HVAL_STR:
-            (*((const char**)hdesc->ptr[i])) = pt->val[i].value.s; break;
-        default:
-            hdesc->errstr = "Internal error: Invalid signature value type.";
-            errno = EINVAL;
-            return -1;
+        if (hdesc->varloc[i].ptr == NULL) {
+            hdesc->varloc[i].val = pt->val[i];
+        }
+        else {
+            switch (pt->val[i].type) {
+            case HVAL_INT:
+                *(long*)hdesc->varloc[i].ptr = pt->val[i].value.i;
+                break;
+            case HVAL_REAL:
+                *(double*)hdesc->varloc[i].ptr = pt->val[i].value.r;
+                break;
+            case HVAL_STR:
+                *(const char**)hdesc->varloc[i].ptr = pt->val[i].value.s;
+                break;
+            default:
+                hdesc->errstr = "Invalid signature value type.";
+                errno = EINVAL;
+                return -1;
+            }
         }
     }
     return 0;
