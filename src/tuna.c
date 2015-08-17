@@ -133,7 +133,7 @@ int main(int argc, char* argv[])
     }
 
     /* Initialize the Harmony descriptor */
-    hdesc = harmony_init();
+    hdesc = ah_init();
     if (hdesc == NULL) {
         fprintf(stderr, "Failed to initialize a Harmony descriptor.\n");
         return -1;
@@ -142,33 +142,30 @@ int main(int argc, char* argv[])
     /* Parse the command line arguments. */
     parseArgs(argc, argv);
 
-    /* Name the session after the target application. */
-    harmony_session_name(hdesc, client_bin);
-
     /* Use the Nelder-Mead search strategy by default. */
-    harmony_strategy(hdesc, "nm.so");
-
+    ah_strategy(hdesc, "nm.so");
+    
     /* Sanity check before we attempt to connect to the server. */
     if (bcount < 1) {
         fprintf(stderr, "No tunable variables defined.\n");
         return -1;
     }
 
-    if (harmony_launch(hdesc, NULL, 0) != 0) {
+    if (ah_launch(hdesc, NULL, 0, client_bin) != 0) {
         fprintf(stderr, "Error launching new tuning session: %s\n",
-                harmony_error_string(hdesc));
+                ah_error_string(hdesc));
         return -1;
     }
 
     /* Connect to Harmony server and register ourselves as a client. */
-    if (harmony_join(hdesc, NULL, 0, client_bin) != 0) {
+    if (ah_join(hdesc, NULL, 0, client_bin) != 0) {
         fprintf(stderr, "Error joining Harmony session: %s\n",
-                harmony_error_string(hdesc));
+                ah_error_string(hdesc));
         goto cleanup;
     }
 
     for (i = 0; max_loop <= 0 || i < max_loop; ++i) {
-        hresult = harmony_fetch(hdesc);
+        hresult = ah_fetch(hdesc);
         if (hresult < 0) {
             fprintf(stderr, "Failed to fetch values from server.\n");
             goto cleanup;
@@ -226,16 +223,16 @@ int main(int argc, char* argv[])
         }
 
         /* Update the performance result */
-        if (harmony_report(hdesc, &perf) < 0) {
+        if (ah_report(hdesc, &perf) < 0) {
             fprintf(stderr, "Failed to report performance to server.\n");
             goto cleanup;
         }
 
-        if (harmony_converged(hdesc))
+        if (ah_converged(hdesc))
             break;
     }
 
-    if (harmony_best(hdesc) >= 0) {
+    if (ah_best(hdesc) >= 0) {
         printf("Best configuration found:\n");
         for (i = 0; i < bcount; ++i) {
             printf("\t%s: ", binfo[i].name);
@@ -254,9 +251,9 @@ int main(int argc, char* argv[])
 
   cleanup:
     /* Close the session */
-    if (harmony_leave(hdesc) < 0)
+    if (ah_leave(hdesc) < 0)
         fprintf(stderr, "Failed to disconnect from harmony server.\n");
-    harmony_fini(hdesc);
+    ah_fini(hdesc);
 
     if (svr_pid && kill(svr_pid, SIGKILL) < 0)
         fprintf(stderr, "Could not kill server process (%d).\n", svr_pid);
@@ -455,12 +452,12 @@ int handle_int(char* arg)
     if (bun == NULL)
         return -1;
 
-    if (harmony_int(hdesc, name, min, max, step) < 0) {
+    if (ah_int(hdesc, name, min, max, step) < 0) {
         fprintf(stderr, "Error registering variable '%s'.\n", name);
         return -1;
     }
 
-    if (harmony_bind_int(hdesc, name, bun->data) < 0) {
+    if (ah_bind_int(hdesc, name, bun->data) < 0) {
         fprintf(stderr, "Error binding data to variable '%s'.\n", name);
         return -1;
     }
@@ -499,12 +496,12 @@ int handle_real(char* arg)
     if (bun == NULL)
         return -1;
 
-    if (harmony_real(hdesc, name, min, max, step) < 0) {
+    if (ah_real(hdesc, name, min, max, step) < 0) {
         fprintf(stderr, "Error registering variable '%s'.\n", name);
         return -1;
     }
 
-    if (harmony_bind_real(hdesc, name, bun->data) < 0) {
+    if (ah_bind_real(hdesc, name, bun->data) < 0) {
         fprintf(stderr, "Error binding data to variable '%s'.\n", name);
         return -1;
     }
@@ -544,13 +541,13 @@ int handle_enum(char* arg)
         if (*arg != '\0')
             *(arg++) = '\0';
 
-        if (harmony_enum(hdesc, name, val) < 0) {
+        if (ah_enum(hdesc, name, val) < 0) {
             fprintf(stderr, "Invalid value string for variable '%s'.\n", name);
             return -1;
         }
     }
 
-    if (harmony_bind_enum(hdesc, name, bun->data) < 0) {
+    if (ah_bind_enum(hdesc, name, bun->data) < 0) {
         fprintf(stderr, "Error binding data to variable '%s'.\n", name);
         return -1;
     }
@@ -611,11 +608,11 @@ int handle_chapel(char* prog)
     bun = tuna_bundle_add(HVAL_INT, "dataParTsk");
     if (bun == NULL)
         return -1;
-    if (harmony_int(hdesc, "dataParTsk", 1, 64, 1) < 0) {
+    if (ah_int(hdesc, "dataParTsk", 1, 64, 1) < 0) {
         fprintf(stderr, "Error registering variable 'dataParTsk'.\n");
         return -1;
     }
-    if (harmony_bind_int(hdesc, "dataParTsk", bun->data) < 0) {
+    if (ah_bind_int(hdesc, "dataParTsk", bun->data) < 0) {
         fprintf(stderr, "Error binding data to variable 'dataParTsk'.\n");
         return -1;
     }
@@ -626,11 +623,11 @@ int handle_chapel(char* prog)
     bun = tuna_bundle_add(HVAL_INT, "numThr");
     if (bun == NULL)
         return -1;
-    if (harmony_int(hdesc, "numThr", 1, 32, 1) < 0) {
+    if (ah_int(hdesc, "numThr", 1, 32, 1) < 0) {
         fprintf(stderr, "Error registering variable 'numThr'.\n");
         return -1;
     }
-    if (harmony_bind_int(hdesc, "numThr", bun->data) < 0) {
+    if (ah_bind_int(hdesc, "numThr", bun->data) < 0) {
         fprintf(stderr, "Error binding data to variable 'numThr'.\n");
         return -1;
     }
@@ -677,11 +674,11 @@ int handle_chapel(char* prog)
         if (bun == NULL)
             return -1;
 
-        if (harmony_int(hdesc, name, min, max, step) < 0) {
+        if (ah_int(hdesc, name, min, max, step) < 0) {
             fprintf(stderr, "Error registering variable '%s'.\n", name);
             return -1;
         }
-        if (harmony_bind_int(hdesc, name, bun->data) < 0) {
+        if (ah_bind_int(hdesc, name, bun->data) < 0) {
             fprintf(stderr, "Error binding data to variable '%s'.\n", name);
             return -1;
         }

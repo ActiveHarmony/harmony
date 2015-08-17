@@ -68,48 +68,48 @@ int main(int argc, char* argv[])
     }
 
     /* Initialize a Harmony client. */
-    hd = harmony_init();
+    hd = ah_init();
     if (hd == NULL) {
         fprintf(stderr, "Error initializing a Harmony session");
         goto error;
     }
-    harmony_parse_args(hd, argc, argv);
+    ah_args(hd, argc, argv);
 
     /* Define a tuning variable that resides in the integer domain. */
-    if (harmony_int(hd, "i_var",  1, 1000, 1) != 0) {
+    if (ah_int(hd, "i_var",  1, 1000, 1) != 0) {
         fprintf(stderr, "Error defining an integer tuning variable");
         goto error;
     }
 
     /* Define a tuning variable that resides in the real domain. */
-    if (harmony_real(hd, "r_var", 0.0001, 1.0, 0.0001) != 0) {
+    if (ah_real(hd, "r_var", 0.0001, 1.0, 0.0001) != 0) {
         fprintf(stderr, "Error defining a real tuning variable");
         goto error;
     }
 
     /* Define a tuning variable that resides in an enumerated domain. */
     for (i = 0; fruits[i]; ++i) {
-        if (harmony_enum(hd, "s_var", fruits[i]) != 0) {
+        if (ah_enum(hd, "s_var", fruits[i]) != 0) {
             fprintf(stderr, "Error defining an enumerated tuning variable");
             goto error;
         }
     }
 
     printf("Starting Harmony...\n");
-    if (harmony_launch(hd, NULL, 0) != 0) {
+    if (ah_launch(hd, NULL, 0, NULL) != 0) {
         fprintf(stderr, "Error launching tuning session");
         goto error;
     }
 
     /* Join this client to the tuning session we established above. */
-    if (harmony_join(hd, NULL, 0, NULL) != 0) {
+    if (ah_join(hd, NULL, 0, NULL) != 0) {
         fprintf(stderr, "Error connecting to tuning session");
         goto error;
     }
 
     /* Main tuning loop. */
-    for (i = 0; !harmony_converged(hd) && i < MAX_LOOP; ++i) {
-        int hresult = harmony_fetch(hd);
+    for (i = 0; !ah_converged(hd) && i < MAX_LOOP; ++i) {
+        int hresult = ah_fetch(hd);
         if (hresult < 0) {
             fprintf(stderr, "Error fetching values from tuning session");
             goto error;
@@ -127,55 +127,55 @@ int main(int argc, char* argv[])
          * mapping between the parameters and the code-variants is needed to
          * call the appropriate code variant.
          */
-        perf = application(harmony_get_int(hd, "i_var"),
-                           harmony_get_real(hd, "r_var"),
-                           harmony_get_enum(hd, "s_var"));
+        perf = application(ah_get_int(hd, "i_var"),
+                           ah_get_real(hd, "r_var"),
+                           ah_get_enum(hd, "s_var"));
 
         printf("(%4ld, %.4lf, \"%s\") = %lf\n",
-               harmony_get_int(hd, "i_var"),
-               harmony_get_real(hd, "r_var"),
-               harmony_get_enum(hd, "s_var"),
+               ah_get_int(hd, "i_var"),
+               ah_get_real(hd, "r_var"),
+               ah_get_enum(hd, "s_var"),
                perf);
 
         /* Report the performance we've just measured. */
-        if (harmony_report(hd, &perf) != 0) {
+        if (ah_report(hd, &perf) != 0) {
             fprintf(stderr, "Error reporting performance to server");
             goto error;
         }
     }
 
-    if (!harmony_converged(hd)) {
+    if (!ah_converged(hd)) {
         printf("*\n");
         printf("* Leaving tuning session after %d iterations.\n", MAX_LOOP);
         printf("*\n");
     }
 
-    if (harmony_best(hd) < 0) {
+    if (ah_best(hd) < 0) {
         fprintf(stderr, "Error retrieving best tuning point");
         goto error;
     }
-    perf = application(harmony_get_int(hd, "i_var"),
-                       harmony_get_real(hd, "r_var"),
-                       harmony_get_enum(hd, "s_var"));
+    perf = application(ah_get_int(hd, "i_var"),
+                       ah_get_real(hd, "r_var"),
+                       ah_get_enum(hd, "s_var"));
 
     printf("(%4ld, %.4lf, \"%s\") = %lf (* Best point found. *)\n",
-           harmony_get_int(hd, "i_var"),
-           harmony_get_real(hd, "r_var"),
-           harmony_get_enum(hd, "s_var"),
+           ah_get_int(hd, "i_var"),
+           ah_get_real(hd, "r_var"),
+           ah_get_enum(hd, "s_var"),
            perf);
     goto cleanup;
 
   error:
-    fprintf(stderr, ": %s\n", harmony_error_string(hd));
+    fprintf(stderr, ": %s\n", ah_error_string(hd));
     retval = -1;
 
   cleanup:
     /* Leave the tuning session. */
-    if (harmony_leave(hd) != 0) {
+    if (ah_leave(hd) != 0) {
         fprintf(stderr, "Error disconnecting from Harmony session");
         goto error;
     }
 
-    harmony_fini(hd);
+    ah_fini(hd);
     return retval;
 }

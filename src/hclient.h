@@ -42,48 +42,148 @@ typedef struct hdesc_t hdesc_t;
 /* -------------------------------------------------------------------
  * Harmony descriptor management functions.
  */
-hdesc_t* harmony_init(void);
-int      harmony_parse_args(hdesc_t* hdesc, int argc, char** argv);
-void     harmony_fini(hdesc_t* hdesc);
+hdesc_t* ah_init(void);
+int      ah_args(hdesc_t* hd, int argc, char** argv);
+void     ah_fini(hdesc_t* hd);
 
 /* -------------------------------------------------------------------
  * Session setup functions.
  */
-int harmony_session_name(hdesc_t* hdesc, const char* name);
-int harmony_int(hdesc_t* hdesc, const char* name,
-                long min, long max, long step);
-int harmony_real(hdesc_t* hdesc, const char* name,
-                 double min, double max, double step);
-int harmony_enum(hdesc_t* hdesc, const char* name, const char* value);
-int harmony_strategy(hdesc_t* hdesc, const char* strategy);
-int harmony_layers(hdesc_t* hdesc, const char* list);
-int harmony_launch(hdesc_t* hdesc, const char* host, int port);
+int ah_int(hdesc_t* hd, const char* name,
+           long min, long max, long step);
+int ah_real(hdesc_t* hd, const char* name,
+            double min, double max, double step);
+int ah_enum(hdesc_t* hd, const char* name, const char* value);
+int ah_strategy(hdesc_t* hd, const char* strategy);
+int ah_layers(hdesc_t* hd, const char* list);
+int ah_launch(hdesc_t* hd, const char* host, int port, const char* name);
 
 /* -------------------------------------------------------------------
  * Client setup functions.
  */
-int harmony_id(hdesc_t* hdesc, const char* id);
-int harmony_bind_int(hdesc_t* hdesc, const char* name, long* ptr);
-int harmony_bind_real(hdesc_t* hdesc, const char* name, double* ptr);
-int harmony_bind_enum(hdesc_t* hdesc, const char* name, const char** ptr);
-int harmony_join(hdesc_t* hdesc, const char* host, int port, const char* name);
-int harmony_leave(hdesc_t* hdesc);
+int ah_join(hdesc_t* hd, const char* host, int port, const char* name);
+int ah_id(hdesc_t* hd, const char* id);
+int ah_bind_int(hdesc_t* hd, const char* name, long* ptr);
+int ah_bind_real(hdesc_t* hd, const char* name, double* ptr);
+int ah_bind_enum(hdesc_t* hd, const char* name, const char** ptr);
+int ah_leave(hdesc_t* hd);
 
 /* -------------------------------------------------------------------
  * Client/Session interaction functions.
  */
-long        harmony_get_int(hdesc_t* hdesc, const char* name);
-double      harmony_get_real(hdesc_t* hdesc, const char* name);
-const char* harmony_get_enum(hdesc_t* hdesc, const char* name);
-char*       harmony_getcfg(hdesc_t* hdesc, const char* key);
-char*       harmony_setcfg(hdesc_t* hdesc, const char* key, const char* val);
-int         harmony_fetch(hdesc_t* hdesc);
-int         harmony_report(hdesc_t* hdesc, double* perf);
-int         harmony_report_one(hdesc_t* hdesc, int index, double value);
-int         harmony_best(hdesc_t* hdesc);
-int         harmony_converged(hdesc_t* hdesc);
-const char* harmony_error_string(hdesc_t* hdesc);
-void        harmony_error_clear(hdesc_t* hdesc);
+long        ah_get_int(hdesc_t* hd, const char* name);
+double      ah_get_real(hdesc_t* hd, const char* name);
+const char* ah_get_enum(hdesc_t* hd, const char* name);
+char*       ah_get_cfg(hdesc_t* hd, const char* key);
+char*       ah_set_cfg(hdesc_t* hd, const char* key, const char* val);
+int         ah_fetch(hdesc_t* hd);
+int         ah_report(hdesc_t* hd, double* perf);
+int         ah_report_one(hdesc_t* hd, int index, double value);
+int         ah_best(hdesc_t* hd);
+int         ah_converged(hdesc_t* hd);
+const char* ah_error_string(hdesc_t* hd);
+void        ah_error_clear(hdesc_t* hd);
+
+/* -------------------------------------------------------------------
+ * Deprecated API functions.
+ *
+ * These functions are slated for removal in a future release.
+ */
+#ifndef DOXYGEN_SKIP
+
+#if defined(__GNUC__)
+#define DEPRECATED(message) __attribute__((__deprecated__(message)))
+#else
+#define DEPRECATED(message)
+#endif
+
+DEPRECATED("Use ah_init() instead")
+hdesc_t* harmony_init(void);
+
+DEPRECATED("Use ah_args() instead")
+int harmony_parse_args(hdesc_t* hd, int argc, char** argv);
+
+DEPRECATED("Use ah_fini() instead")
+void harmony_fini(hdesc_t* hd);
+
+DEPRECATED("Use ah_int() instead")
+int harmony_int(hdesc_t* hd, const char* name,
+                long min, long max, long step);
+
+DEPRECATED("Use ah_real() instead")
+int harmony_real(hdesc_t* hd, const char* name,
+                 double min, double max, double step);
+
+DEPRECATED("Use ah_enum() instead")
+int harmony_enum(hdesc_t* hd, const char* name, const char* value);
+
+DEPRECATED("Pass name to ah_launch() instead")
+int harmony_session_name(hdesc_t* hd, const char* name);
+
+DEPRECATED("Use ah_strategy() instead")
+int harmony_strategy(hdesc_t* hd, const char* strategy);
+
+DEPRECATED("Use ah_layers() instead")
+int harmony_layers(hdesc_t* hd, const char* list);
+
+DEPRECATED("Use ah_launch() or ah_start() instead")
+int harmony_launch(hdesc_t* hd, const char* host, int port);
+
+DEPRECATED("Use ah_id() instead")
+int harmony_id(hdesc_t* hd, const char* id);
+
+DEPRECATED("Use ah_bind_int() instead")
+int harmony_bind_int(hdesc_t* hd, const char* name, long* ptr);
+
+DEPRECATED("Use ah_bind_real() instead")
+int harmony_bind_real(hdesc_t* hd, const char* name, double* ptr);
+
+DEPRECATED("Use ah_bind_enum() instead")
+int harmony_bind_enum(hdesc_t* hd, const char* name, const char** ptr);
+
+DEPRECATED("Use ah_join() instead")
+int harmony_join(hdesc_t* hd, const char* host, int port, const char* name);
+
+DEPRECATED("Use ah_leave() instead")
+int harmony_leave(hdesc_t* hd);
+
+DEPRECATED("Use ah_get_int() instead")
+long harmony_get_int(hdesc_t* hd, const char* name);
+
+DEPRECATED("Use ah_get_real() instead")
+double harmony_get_real(hdesc_t* hd, const char* name);
+
+DEPRECATED("Use ah_get_enum() instead")
+const char* harmony_get_enum(hdesc_t* hd, const char* name);
+
+DEPRECATED("Use ah_get_cfg() instead")
+char* harmony_getcfg(hdesc_t* hd, const char* key);
+
+DEPRECATED("Use ah_set_cfg() instead")
+char* harmony_setcfg(hdesc_t* hd, const char* key, const char* val);
+
+DEPRECATED("Use ah_fetch() instead")
+int harmony_fetch(hdesc_t* hd);
+
+DEPRECATED("Use ah_report() instead")
+int harmony_report(hdesc_t* hd, double* perf);
+
+DEPRECATED("Use ah_report_one() instead")
+int harmony_report_one(hdesc_t* hd, int index, double value);
+
+DEPRECATED("Use ah_best() instead")
+int harmony_best(hdesc_t* hd);
+
+DEPRECATED("Use ah_converged() instead")
+int harmony_converged(hdesc_t* hd);
+
+DEPRECATED("Use ah_error_string() instead")
+const char* harmony_error_string(hdesc_t* hd);
+
+DEPRECATED("Use ah_error_clear() instead")
+void harmony_error_clear(hdesc_t* hd);
+
+#endif
 
 #ifdef __cplusplus
 }

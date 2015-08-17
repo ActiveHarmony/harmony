@@ -128,39 +128,38 @@ int main(int argc, char* argv[])
     harmony_connected = 0;
 
     /* Initialize Harmony API. */
-    hdesc = harmony_init();
+    hdesc = ah_init();
     if (hdesc == NULL) {
         errprint("Failed to initialize a Harmony session.\n");
         goto cleanup;
     }
-    argc -= harmony_parse_args(hdesc, argc - 1, &argv[1]);
+    ah_args(hdesc, argc, argv);
 
     if (rank == 0) {
         /* We are the master rank.  Establish a new Harmony tuning session. */
         errno = 0;
-        harmony_session_name(hdesc, SESSION_NAME);
-        harmony_strategy(hdesc, "pro.so");
-        harmony_layers(hdesc, "codegen.so");
+        ah_strategy(hdesc, "pro.so");
+        ah_layers(hdesc, "codegen.so");
         snprintf(numbuf, sizeof(numbuf), "%d", node_count);
-        harmony_setcfg(hdesc, CFGKEY_CLIENT_COUNT, numbuf);
+        ah_set_cfg(hdesc, CFGKEY_CLIENT_COUNT, numbuf);
         if (errno) {
             errprint("Error during session configuration.\n");
             MPI_Abort(MPI_COMM_WORLD, -1);
         }
 
-        if (harmony_int(hdesc, "TI", 2, 500, 2) != 0 ||
-            harmony_int(hdesc, "TJ", 2, 500, 2) != 0 ||
-            harmony_int(hdesc, "TK", 2, 500, 2) != 0 ||
-            harmony_int(hdesc, "UI", 1,   8, 1) != 0 ||
-            harmony_int(hdesc, "UJ", 1,   8, 1) != 0)
+        if (ah_int(hdesc, "TI", 2, 500, 2) != 0 ||
+            ah_int(hdesc, "TJ", 2, 500, 2) != 0 ||
+            ah_int(hdesc, "TK", 2, 500, 2) != 0 ||
+            ah_int(hdesc, "UI", 1,   8, 1) != 0 ||
+            ah_int(hdesc, "UJ", 1,   8, 1) != 0)
         {
             errprint("Failed to define tuning session\n");
             MPI_Abort(MPI_COMM_WORLD, -1);
         }
 
-        if (harmony_launch(hdesc, NULL, 0) != 0) {
+        if (ah_launch(hdesc, NULL, 0, SESSION_NAME) != 0) {
             errprint("Could not launch tuning session: %s\n",
-                     harmony_error_string(hdesc));
+                     ah_error_string(hdesc));
             MPI_Abort(MPI_COMM_WORLD, -1);
         }
     }
@@ -172,18 +171,18 @@ int main(int argc, char* argv[])
      * parameters.  For example, these represent loop tiling and
      * unrolling factors.
      */
-    if (harmony_bind_int(hdesc, "TI", &TI) != 0 ||
-        harmony_bind_int(hdesc, "TJ", &TJ) != 0 ||
-        harmony_bind_int(hdesc, "TK", &TK) != 0 ||
-        harmony_bind_int(hdesc, "UI", &UI) != 0 ||
-        harmony_bind_int(hdesc, "UJ", &UJ) != 0)
+    if (ah_bind_int(hdesc, "TI", &TI) != 0 ||
+        ah_bind_int(hdesc, "TJ", &TJ) != 0 ||
+        ah_bind_int(hdesc, "TK", &TK) != 0 ||
+        ah_bind_int(hdesc, "UI", &UI) != 0 ||
+        ah_bind_int(hdesc, "UJ", &UJ) != 0)
     {
         errprint("Error binding local memory to Harmony variables.\n");
         goto cleanup;
     }
 
     /* Connect to Harmony server and register ourselves as a client. */
-    if (harmony_join(hdesc, NULL, 0, SESSION_NAME) != 0) {
+    if (ah_join(hdesc, NULL, 0, SESSION_NAME) != 0) {
         errprint("Could not join Harmony tuning session.\n");
         goto cleanup;
     }
@@ -220,7 +219,7 @@ int main(int argc, char* argv[])
                TI, TJ, TK, UI, UJ, perf);
 
         /* update the performance result */
-        if (harmony_report(hdesc, &perf) != 0) {
+        if (ah_report(hdesc, &perf) != 0) {
             errprint("Error reporting performance to server.\n");
             goto cleanup;
         }
@@ -242,7 +241,7 @@ int main(int argc, char* argv[])
                 if (fetch_configuration() != 0)
                     goto cleanup;
 
-                if (harmony_leave(hdesc) != 0) {
+                if (ah_leave(hdesc) != 0) {
                     errprint("Error leaving tuning session.");
                     goto cleanup;
                 }
@@ -266,7 +265,7 @@ int main(int argc, char* argv[])
 
     /* Leave the Harmony session, if needed. */
     if (harmony_connected) {
-        if (harmony_leave(hdesc) != 0) {
+        if (ah_leave(hdesc) != 0) {
             errprint("Error leaving Harmony session.\n");
             harmony_connected = 0;
             goto cleanup;
@@ -282,10 +281,10 @@ int main(int argc, char* argv[])
 
   cleanup:
     if (harmony_connected) {
-        if (harmony_leave(hdesc) != 0)
+        if (ah_leave(hdesc) != 0)
             errprint("Error disconnecting from Harmony server.\n");
     }
-    harmony_fini(hdesc);
+    ah_fini(hdesc);
     return MPI_Abort(MPI_COMM_WORLD, -1);
 }
 
@@ -308,7 +307,7 @@ int fetch_configuration(void)
     int changed = 0;
 
     while (changed == 0) {
-        changed = harmony_fetch(hdesc);
+        changed = ah_fetch(hdesc);
 
         if (changed == 1) {
             /* Harmony updated variable values.  Load a new shared object. */
@@ -318,7 +317,7 @@ int fetch_configuration(void)
             }
         }
         else if (changed == 0) {
-            /* No points available from Harmony, and harmony_best() failed. */
+            /* No points available from Harmony, and ah_best() failed. */
             sleep(1);
             continue;
         }
@@ -340,13 +339,13 @@ int check_convergence(void)
 
     if (rank == 0) {
         dprint("Checking Harmony search status.\n");
-        status = harmony_converged(hdesc);
+        status = ah_converged(hdesc);
     }
     else {
         dprint("Waiting to hear search status from rank 0.\n");
     }
 
-    /* Broadcast the result of harmony_converged(). */
+    /* Broadcast the result of ah_converged(). */
     MPI_Bcast(&status, 1, MPI_INT, 0, MPI_COMM_WORLD);
     return status;
 }
