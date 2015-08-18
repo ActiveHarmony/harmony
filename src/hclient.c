@@ -366,7 +366,7 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
         /* Find the Active Harmony installation. */
         home = hcfg_get(&hd->sess.cfg, CFGKEY_HARMONY_HOME);
         if (!home) {
-            hd->errstr = "Error: No host or " CFGKEY_HARMONY_HOME " specified";
+            hd->errstr = "No host or " CFGKEY_HARMONY_HOME " specified";
             errno = EINVAL;
             return -1;
         }
@@ -463,7 +463,7 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
             port = hcfg_int(&hd->sess.cfg, CFGKEY_HARMONY_PORT);
 
         if (!host) {
-            hd->errstr = "Error: No host or " CFGKEY_HARMONY_HOST " specified";
+            hd->errstr = "No host specified";
             errno = EINVAL;
             return -1;
         }
@@ -651,7 +651,7 @@ int ah_bind_enum(hdesc_t* hd, const char* name, const char** ptr)
 int ah_leave(hdesc_t* hd)
 {
     if (hd->state <= HARMONY_STATE_INIT) {
-        hd->errstr = "Descriptor not currently joined to any session.";
+        hd->errstr = "Descriptor not currently joined to any session";
         errno = EINVAL;
         return -1;
     }
@@ -777,7 +777,7 @@ const char* ah_get_enum(hdesc_t* hd, const char* name)
 char* ah_get_cfg(hdesc_t* hd, const char* key)
 {
     if (!key) {
-        hd->errstr = "Invalid key string.";
+        hd->errstr = "Invalid key string";
         errno = EINVAL;
         return NULL;
     }
@@ -795,7 +795,7 @@ char* ah_get_cfg(hdesc_t* hd, const char* key)
         return NULL;
 
     if (hd->mesg.status != HMESG_STATUS_OK) {
-        hd->errstr = "Invalid message received from server.";
+        hd->errstr = "Invalid message received from server";
         errno = EINVAL;
         return NULL;
     }
@@ -827,7 +827,7 @@ char* ah_get_cfg(hdesc_t* hd, const char* key)
 char* ah_set_cfg(hdesc_t* hd, const char* key, const char* val)
 {
     if (!key) {
-        hd->errstr = "Invalid key string.";
+        hd->errstr = "Invalid key string";
         errno = EINVAL;
         return NULL;
     }
@@ -839,7 +839,7 @@ char* ah_set_cfg(hdesc_t* hd, const char* key, const char* val)
 
         buf = sprintf_alloc("%s=%s", key, val ? val : "");
         if (!buf) {
-            hd->errstr = "Internal memory allocation error.";
+            hd->errstr = "Internal memory allocation error";
             return NULL;
         }
 
@@ -854,8 +854,7 @@ char* ah_set_cfg(hdesc_t* hd, const char* key, const char* val)
             return NULL;
 
         if (hd->mesg.status != HMESG_STATUS_OK) {
-            hd->errstr = "Invalid message received from server.";
-            errno = EINVAL;
+            hd->errstr = "Invalid message received from server";
             return NULL;
         }
         snprintf_grow(&hd->buf, &hd->buflen, "%s", hd->mesg.data.string);
@@ -892,7 +891,7 @@ int ah_fetch(hdesc_t* hd)
     int i;
 
     if (hd->state < HARMONY_STATE_CONNECTED) {
-        hd->errstr = "Descriptor not currently joined to any session.";
+        hd->errstr = "Descriptor not currently joined to any session";
         errno = EINVAL;
         return -1;
     }
@@ -914,20 +913,18 @@ int ah_fetch(hdesc_t* hd)
 
         /* Set current point to best point. */
         if (hpoint_copy(&hd->curr, &hd->best) != 0) {
-            hd->errstr = "Internal error copying point data.";
-            errno = EINVAL;
+            hd->errstr = "Error copying best point data";
             return -1;
         }
     }
     else if (hd->mesg.status == HMESG_STATUS_OK) {
         if (hpoint_copy(&hd->curr, &hd->mesg.data.point) != 0) {
-            hd->errstr = "Internal error copying point data.";
-            errno = EINVAL;
+            hd->errstr = "Error copying current point data";
             return -1;
         }
     }
     else {
-        hd->errstr = "Invalid message received from server.";
+        hd->errstr = "Invalid message received from server";
         errno = EINVAL;
         return -1;
     }
@@ -978,7 +975,7 @@ int ah_report(hdesc_t* hd, double* perf)
     int i;
 
     if (hd->state < HARMONY_STATE_CONNECTED) {
-        hd->errstr = "Descriptor not currently joined to any session.";
+        hd->errstr = "Descriptor not currently joined to any session";
         errno = EINVAL;
         return -1;
     }
@@ -991,7 +988,7 @@ int ah_report(hdesc_t* hd, double* perf)
 
     for (i = 0; i < hd->perf->n; ++i) {
         if (isnan(hd->perf->p[i])) {
-            hd->errstr = "Error: Performance report incomplete.";
+            hd->errstr = "Insufficient performance values to report";
             errno = EINVAL;
             return -1;
         }
@@ -1002,7 +999,7 @@ int ah_report(hdesc_t* hd, double* perf)
     hd->mesg.data.report.cand_id = hd->curr.id;
     hd->mesg.data.report.perf = hperf_clone(hd->perf);
     if (!hd->mesg.data.report.perf) {
-        hd->errstr = "Error allocating performance array for message.";
+        hd->errstr = "Error allocating performance array for message";
         return -1;
     }
 
@@ -1010,8 +1007,7 @@ int ah_report(hdesc_t* hd, double* perf)
         return -1;
 
     if (hd->mesg.status != HMESG_STATUS_OK) {
-        hd->errstr = "Invalid message received from server.";
-        errno = EINVAL;
+        hd->errstr = "Invalid message received from server";
         return -1;
     }
 
@@ -1038,13 +1034,13 @@ int ah_report(hdesc_t* hd, double* perf)
 int ah_report_one(hdesc_t* hd, int index, double value)
 {
     if (hd->state < HARMONY_STATE_CONNECTED) {
-        hd->errstr = "Descriptor not currently joined to any session.";
+        hd->errstr = "Descriptor not currently joined to any session";
         errno = EINVAL;
         return -1;
     }
 
     if (index != 0 || index >= hd->perf->n) {
-        hd->errstr = "Invalid performance index.";
+        hd->errstr = "Invalid performance index";
         errno = EINVAL;
         return -1;
     }
@@ -1083,8 +1079,7 @@ int ah_best(hdesc_t* hd)
             return -1;
 
         if (hd->mesg.status != HMESG_STATUS_OK) {
-            hd->errstr = "Invalid message received from server.";
-            errno = EINVAL;
+            hd->errstr = "Invalid message received from server";
             return -1;
         }
 
@@ -1324,7 +1319,7 @@ int extend_perf(hdesc_t* hd)
 
     cfgval = ah_get_cfg(hd, CFGKEY_PERF_COUNT);
     if (!cfgval) {
-        hd->errstr = "Error retrieving performance count.";
+        hd->errstr = "Error retrieving performance count";
         return -1;
     }
 
@@ -1336,7 +1331,7 @@ int extend_perf(hdesc_t* hd)
 
     hd->perf = hperf_alloc(perf_len);
     if (!hd->perf) {
-        hd->errstr = "Error allocating performance array.";
+        hd->errstr = "Error allocating performance array";
         return -1;
     }
 
@@ -1378,14 +1373,14 @@ int send_request(hdesc_t* hd, hmesg_type msg_type)
     hd->mesg.src_id = hd->id;
 
     if (mesg_send(hd->socket, &hd->mesg) < 1) {
-        hd->errstr = "Error sending Harmony message to server.";
+        hd->errstr = "Error sending Harmony message to server";
         errno = EIO;
         return -1;
     }
 
     do {
         if (mesg_recv(hd->socket, &hd->mesg) < 1) {
-            hd->errstr = "Error retrieving Harmony message from server.";
+            hd->errstr = "Error retrieving Harmony message from server";
             errno = EIO;
             return -1;
         }
@@ -1398,7 +1393,7 @@ int send_request(hdesc_t* hd, hmesg_type msg_type)
 
     if (hd->mesg.type != msg_type) {
         hd->mesg.status = HMESG_STATUS_FAIL;
-        hd->errstr = "Internal error: Server response message mismatch.";
+        hd->errstr = "Server response message mismatch";
         return -1;
     }
 
@@ -1413,6 +1408,7 @@ int set_varloc(hdesc_t* hd, const char* name, void* ptr)
 {
     int idx = find_var(hd, name);
     if (idx < 0) {
+        hd->errstr = "Tuning variable not found";
         errno = EINVAL;
         return -1;
     }
@@ -1428,7 +1424,7 @@ int update_best(hdesc_t* hd, const hpoint_t* pt)
         return 0;
 
     if (hpoint_copy(&hd->best, pt) != 0) {
-        hd->errstr = "Internal error copying point data.";
+        hd->errstr = "Error copying point data";
         errno = EINVAL;
         return -1;
     }
@@ -1440,8 +1436,7 @@ int write_values(hdesc_t* hd, const hpoint_t* pt)
     int i;
 
     if (hd->sess.sig.range_len != pt->n) {
-        hd->errstr = "Invalid internal point structure.";
-        errno = EINVAL;
+        hd->errstr = "Invalid internal point structure";
         return -1;
     }
 
@@ -1461,8 +1456,7 @@ int write_values(hdesc_t* hd, const hpoint_t* pt)
                 *(const char**)hd->varloc[i].ptr = pt->val[i].value.s;
                 break;
             default:
-                hd->errstr = "Invalid signature value type.";
-                errno = EINVAL;
+                hd->errstr = "Invalid signature value type";
                 return -1;
             }
         }
