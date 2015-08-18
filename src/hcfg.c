@@ -50,8 +50,12 @@ const hcfg_info_t hcfg_global_keys[] = {
       "Number of trials to prepare for each expected client." },
     { CFGKEY_CLIENT_COUNT, "1",
       "Number of expected clients." },
-    { CFGKEY_STRATEGY, "pro.so",
-      "Search strategy to use as the driver for this session." },
+    { CFGKEY_STRATEGY, NULL,
+      "Search strategy to use as the driver for this session."
+      "If left unset, the default strategy then depends upon the "
+      CFGKEY_CLIENT_COUNT " configuration variable.  If it is greater "
+      "than 1, the PRO strategy will be used.  Otherwise, the Nelder-Mead "
+      "strategy will be used." },
     { CFGKEY_LAYERS, NULL,
       "Colon (:) separated list of plugin layer objects to load." },
     { NULL }

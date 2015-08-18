@@ -316,11 +316,32 @@ int init_session(void)
     }
 
     perf_count = hcfg_int(&sess->cfg, CFGKEY_PERF_COUNT);
+    if (perf_count < 1) {
+        errmsg = "Invalid " CFGKEY_PERF_COUNT " configuration key value";
+        return -1;
+    }
+
     per_client = hcfg_int(&sess->cfg, CFGKEY_GEN_COUNT);
-    clients    = hcfg_int(&sess->cfg, CFGKEY_CLIENT_COUNT);
+    if (per_client < 1) {
+        errmsg = "Invalid " CFGKEY_GEN_COUNT " configuration key value";
+        return -1;
+    }
+
+    clients = hcfg_int(&sess->cfg, CFGKEY_CLIENT_COUNT);
+    if (clients < 1) {
+        errmsg = "Invalid " CFGKEY_CLIENT_COUNT " configuration key value";
+        return -1;
+    }
 
     /* Load and initialize the strategy code object. */
     ptr = hcfg_get(&sess->cfg, CFGKEY_STRATEGY);
+    if (!ptr) {
+        if (clients > 1)
+            ptr = "pro.so";
+        else
+            ptr = "nm.so";
+    }
+
     if (load_strategy(ptr) != 0)
         return -1;
 
