@@ -78,13 +78,13 @@ struct hdesc_t {
 /* ---------------------------------------------------
  * Forward declarations for internal helper functions.
  */
-char* default_id(int n);
+char* generate_id(int n);
+int   extend_perf(hdesc_t* hd);
+int   extend_varloc(hdesc_t* hd);
+int   find_var(hdesc_t* hd, const char* name);
 int   send_request(hdesc_t* hd, hmesg_type msg_type);
-int   set_values(hdesc_t* hd, const hpoint_t* pt);
-int   var_index(hdesc_t* hd, const char* name);
-int   varloc_extend(hdesc_t* hd);
-int   varloc_setptr(hdesc_t* hd, const char* name, void* ptr);
-int   perf_extend(hdesc_t* hd);
+int   set_varloc(hdesc_t* hd, const char* name, void* ptr);
+int   write_values(hdesc_t* hd, const hpoint_t* pt);
 int   update_best(hdesc_t* hd, const hpoint_t* pt);
 
 static int debug_mode = 0;
@@ -344,10 +344,10 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
         return -1;
     }
 
-    if (varloc_extend(hd) != 0)
+    if (extend_varloc(hd) != 0)
         return -1;
 
-    if (perf_extend(hd) != 0)
+    if (extend_perf(hd) != 0)
         return -1;
 
     if (!host)
@@ -394,7 +394,7 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
 
     /* Prepare a default client id, if necessary. */
     if (hd->id == NULL)
-        hd->id = default_id(hd->socket);
+        hd->id = generate_id(hd->socket);
 
     /* Prepare a Harmony message. */
     hmesg_scrub(&hd->mesg);
@@ -484,7 +484,7 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
         }
 
         if (hd->id == NULL)
-            hd->id = default_id(hd->socket);
+            hd->id = generate_id(hd->socket);
 
         /* Prepare a Harmony message. */
         hmesg_scrub(&hd->mesg);
@@ -510,10 +510,10 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
             return -1;
         }
 
-        if (varloc_extend(hd) != 0)
+        if (extend_varloc(hd) != 0)
             return -1;
 
-        if (perf_extend(hd) != 0)
+        if (extend_perf(hd) != 0)
             return -1;
 
         hd->state = HARMONY_STATE_READY;
@@ -581,7 +581,7 @@ int ah_id(hdesc_t* hd, const char* id)
  */
 int ah_bind_int(hdesc_t* hd, const char* name, long* ptr)
 {
-    return varloc_setptr(hd, name, ptr);
+    return set_varloc(hd, name, ptr);
 }
 
 /**
@@ -605,7 +605,7 @@ int ah_bind_int(hdesc_t* hd, const char* name, long* ptr)
  */
 int ah_bind_real(hdesc_t* hd, const char* name, double* ptr)
 {
-    return varloc_setptr(hd, name, ptr);
+    return set_varloc(hd, name, ptr);
 }
 
 /**
@@ -629,7 +629,7 @@ int ah_bind_real(hdesc_t* hd, const char* name, double* ptr)
  */
 int ah_bind_enum(hdesc_t* hd, const char* name, const char** ptr)
 {
-    return varloc_setptr(hd, name, ptr);
+    return set_varloc(hd, name, ptr);
 }
 
 /**
@@ -687,7 +687,7 @@ int ah_leave(hdesc_t* hd)
  */
 long ah_get_int(hdesc_t* hd, const char* name)
 {
-    int idx = var_index(hd, name);
+    int idx = find_var(hd, name);
 
     if (idx >= 0 && hd->sess.sig.range[idx].type == HVAL_INT) {
         if (hd->varloc[idx].ptr)
@@ -715,7 +715,7 @@ long ah_get_int(hdesc_t* hd, const char* name)
  */
 double ah_get_real(hdesc_t* hd, const char* name)
 {
-    int idx = var_index(hd, name);
+    int idx = find_var(hd, name);
 
     if (idx >= 0 && hd->sess.sig.range[idx].type == HVAL_REAL) {
         if (hd->varloc[idx].ptr)
@@ -743,7 +743,7 @@ double ah_get_real(hdesc_t* hd, const char* name)
  */
 const char* ah_get_enum(hdesc_t* hd, const char* name)
 {
-    int idx = var_index(hd, name);
+    int idx = find_var(hd, name);
 
     if (idx >= 0 && hd->sess.sig.range[idx].type == HVAL_STR) {
         if (hd->varloc[idx].ptr)
@@ -921,7 +921,7 @@ int ah_fetch(hdesc_t* hd)
     }
 
     /* Update the variables from the content of the message. */
-    if (set_values(hd, &hd->curr) != 0)
+    if (write_values(hd, &hd->curr) != 0)
         return -1;
 
     /* Initialize our internal performance array. */
@@ -1089,7 +1089,7 @@ int ah_best(hdesc_t* hd)
         return -1;
     }
 
-    if (set_values(hd, &hd->best) != 0)
+    if (write_values(hd, &hd->best) != 0)
         return -1;
 
     return retval;
@@ -1294,7 +1294,62 @@ void harmony_error_clear(hdesc_t* hd)
 /* ----------------------------------------
  * Private helper function implementations.
  */
-char* default_id(int n)
+int find_var(hdesc_t* hd, const char* name)
+{
+    int idx;
+
+    for (idx = 0; idx < hd->sess.sig.range_len; ++idx) {
+        if (strcmp(hd->sess.sig.range[idx].name, name) == 0)
+            return idx;
+    }
+    return -1;
+}
+
+int extend_perf(hdesc_t* hd)
+{
+    int perf_len;
+    char* cfgval;
+
+    cfgval = ah_get_cfg(hd, CFGKEY_PERF_COUNT);
+    if (!cfgval) {
+        hd->errstr = "Error retrieving performance count.";
+        return -1;
+    }
+
+    perf_len = atoi(cfgval);
+    if (perf_len < 1) {
+        hd->errstr = "Invalid value for " CFGKEY_PERF_COUNT;
+        return -1;
+    }
+
+    hd->perf = hperf_alloc(perf_len);
+    if (!hd->perf) {
+        hd->errstr = "Error allocating performance array.";
+        return -1;
+    }
+
+    return 0;
+}
+
+int extend_varloc(hdesc_t* hd)
+{
+    if (hd->varloc_cap < hd->sess.sig.range_cap) {
+        int i;
+        hvarloc_t* tmp = realloc(hd->varloc,
+                                 hd->sess.sig.range_cap * sizeof(*tmp));
+        if (!tmp)
+            return -1;
+
+        for (i = hd->varloc_cap; i < hd->sess.sig.range_cap; ++i)
+            tmp[i].ptr = NULL;
+
+        hd->varloc = tmp;
+        hd->varloc_cap = i;
+    }
+    return 0;
+}
+
+char* generate_id(int n)
 {
     gethostname(default_id_buf, MAX_HOSTNAME_STRLEN);
     default_id_buf[MAX_HOSTNAME_STRLEN] = '\0';
@@ -1341,7 +1396,33 @@ int send_request(hdesc_t* hd, hmesg_type msg_type)
     return 0;
 }
 
-int set_values(hdesc_t* hd, const hpoint_t* pt)
+int set_varloc(hdesc_t* hd, const char* name, void* ptr)
+{
+    int idx = find_var(hd, name);
+    if (idx < 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    extend_varloc(hd);
+    hd->varloc[idx].ptr = ptr;
+    return 0;
+}
+
+int update_best(hdesc_t* hd, const hpoint_t* pt)
+{
+    if (hd->best.id >= pt->id)
+        return 0;
+
+    if (hpoint_copy(&hd->best, pt) != 0) {
+        hd->errstr = "Internal error copying point data.";
+        errno = EINVAL;
+        return -1;
+    }
+    return 0;
+}
+
+int write_values(hdesc_t* hd, const hpoint_t* pt)
 {
     int i;
 
@@ -1372,87 +1453,6 @@ int set_values(hdesc_t* hd, const hpoint_t* pt)
                 return -1;
             }
         }
-    }
-    return 0;
-}
-
-int varloc_setptr(hdesc_t* hd, const char* name, void* ptr)
-{
-    int idx = var_index(hd, name);
-    if (idx < 0) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    varloc_extend(hd);
-    hd->varloc[idx].ptr = ptr;
-    return 0;
-}
-
-int varloc_extend(hdesc_t* hd)
-{
-    if (hd->varloc_cap < hd->sess.sig.range_cap) {
-        int i;
-        hvarloc_t* tmp = realloc(hd->varloc,
-                                 hd->sess.sig.range_cap * sizeof(*tmp));
-        if (!tmp)
-            return -1;
-
-        for (i = hd->varloc_cap; i < hd->sess.sig.range_cap; ++i)
-            tmp[i].ptr = NULL;
-
-        hd->varloc = tmp;
-        hd->varloc_cap = i;
-    }
-    return 0;
-}
-
-int perf_extend(hdesc_t* hd)
-{
-    int perf_len;
-    char* cfgval;
-
-    cfgval = ah_get_cfg(hd, CFGKEY_PERF_COUNT);
-    if (!cfgval) {
-        hd->errstr = "Error retrieving performance count.";
-        return -1;
-    }
-
-    perf_len = atoi(cfgval);
-    if (perf_len < 1) {
-        hd->errstr = "Invalid value for " CFGKEY_PERF_COUNT;
-        return -1;
-    }
-
-    hd->perf = hperf_alloc(perf_len);
-    if (!hd->perf) {
-        hd->errstr = "Error allocating performance array.";
-        return -1;
-    }
-
-    return 0;
-}
-
-int var_index(hdesc_t* hd, const char* name)
-{
-    int idx;
-
-    for (idx = 0; idx < hd->sess.sig.range_len; ++idx) {
-        if (strcmp(hd->sess.sig.range[idx].name, name) == 0)
-            return idx;
-    }
-    return -1;
-}
-
-int update_best(hdesc_t* hd, const hpoint_t* pt)
-{
-    if (hd->best.id >= pt->id)
-        return 0;
-
-    if (hpoint_copy(&hd->best, pt) != 0) {
-        hd->errstr = "Internal error copying point data.";
-        errno = EINVAL;
-        return -1;
     }
     return 0;
 }
