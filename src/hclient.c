@@ -753,10 +753,15 @@ const char* ah_get_enum(hdesc_t* hd, const char* name)
  */
 char* ah_get_cfg(hdesc_t* hd, const char* key)
 {
-    if (hd->state < HARMONY_STATE_CONNECTED) {
-        hd->errstr = "Descriptor not currently joined to any session.";
+    if (!key) {
+        hd->errstr = "Invalid key string.";
         errno = EINVAL;
         return NULL;
+    }
+
+    if (hd->state < HARMONY_STATE_CONNECTED) {
+        // Use the local CFG environment.
+        return hcfg_get(&hd->sess.cfg, key);
     }
 
     /* Prepare a Harmony message. */
@@ -794,13 +799,14 @@ char* ah_get_cfg(hdesc_t* hd, const char* key)
  */
 char* ah_set_cfg(hdesc_t* hd, const char* key, const char* val)
 {
-    char* buf;
-    int retval;
+    if (!key) {
+        hd->errstr = "Invalid key string.";
+        errno = EINVAL;
+        return NULL;
+    }
 
     if (hd->state < HARMONY_STATE_CONNECTED) {
-        /* User must be preparing for a new session since we're not
-         * connected yet.  Store the key/value pair in a local cache.
-         */
+        // Use the local CFG environment.
         const char* cfgval = hcfg_get(&hd->sess.cfg, key);
         if (!cfgval) cfgval = "";
         snprintf_grow(&hd->buf, &hd->buflen, "%s", cfgval);
@@ -809,38 +815,35 @@ char* ah_set_cfg(hdesc_t* hd, const char* key, const char* val)
             hd->errstr = "Error setting local environment variable.";
             return NULL;
         }
-        return hd->buf;
     }
+    else {
+        // Query the remote CFG environment.
+        char* buf = sprintf_alloc("%s=%s", key, val ? val : "");
+        int retval;
 
-    if (!key) {
-        hd->errstr = "Invalid key string.";
-        errno = EINVAL;
-        return NULL;
+        buf = sprintf_alloc("%s=%s", key, val ? val : "");
+        if (!buf) {
+            hd->errstr = "Internal memory allocation error.";
+            return NULL;
+        }
+
+        /* Prepare a Harmony message. */
+        hmesg_scrub(&hd->mesg);
+        hd->mesg.data.string = buf;
+
+        retval = send_request(hd, HMESG_SETCFG);
+        free(buf);
+
+        if (retval != 0)
+            return NULL;
+
+        if (hd->mesg.status != HMESG_STATUS_OK) {
+            hd->errstr = "Invalid message received from server.";
+            errno = EINVAL;
+            return NULL;
+        }
+        snprintf_grow(&hd->buf, &hd->buflen, "%s", hd->mesg.data.string);
     }
-
-    buf = sprintf_alloc("%s=%s", key, val ? val : "");
-    if (!buf) {
-        hd->errstr = "Internal memory allocation error.";
-        return NULL;
-    }
-
-    /* Prepare a Harmony message. */
-    hmesg_scrub(&hd->mesg);
-    hd->mesg.data.string = buf;
-
-    retval = send_request(hd, HMESG_SETCFG);
-    free(buf);
-
-    if (retval != 0)
-        return NULL;
-
-    if (hd->mesg.status != HMESG_STATUS_OK) {
-        hd->errstr = "Invalid message received from server.";
-        errno = EINVAL;
-        return NULL;
-    }
-
-    snprintf_grow(&hd->buf, &hd->buflen, "%s", hd->mesg.data.string);
     return hd->buf;
 }
 
