@@ -195,6 +195,11 @@ int ah_args(hdesc_t* hd, int argc, char** argv)
 void ah_fini(hdesc_t* hd)
 {
     if (hd) {
+        if (hd->state >= HARMONY_STATE_CONNECTED) {
+            if (close(hd->socket) != 0 && debug_mode)
+                perror("Error closing socket during ah_leave()");
+        }
+
         hmesg_fini(&hd->mesg);
         hsession_fini(&hd->sess);
         hpoint_fini(&hd->curr);
