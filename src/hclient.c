@@ -796,6 +796,10 @@ char* ah_get_cfg(hdesc_t* hd, const char* key)
     }
 
     snprintf_grow(&hd->buf, &hd->buflen, "%s", hd->mesg.data.string);
+    if (hcfg_set(&hd->sess.cfg, key, hd->buf) != 0) {
+        hd->errstr = "Error setting local CFG cache";
+        return NULL;
+    }
     return hd->buf;
 }
 
@@ -823,18 +827,7 @@ char* ah_set_cfg(hdesc_t* hd, const char* key, const char* val)
         return NULL;
     }
 
-    if (hd->state < HARMONY_STATE_CONNECTED) {
-        // Use the local CFG environment.
-        const char* cfgval = hcfg_get(&hd->sess.cfg, key);
-        if (!cfgval) cfgval = "";
-        snprintf_grow(&hd->buf, &hd->buflen, "%s", cfgval);
-
-        if (hcfg_set(&hd->sess.cfg, key, val) != 0) {
-            hd->errstr = "Error setting local environment variable.";
-            return NULL;
-        }
-    }
-    else {
+    if (hd->state >= HARMONY_STATE_READY) {
         // Query the remote CFG environment.
         char* buf = sprintf_alloc("%s=%s", key, val ? val : "");
         int retval;
@@ -862,6 +855,18 @@ char* ah_set_cfg(hdesc_t* hd, const char* key, const char* val)
         }
         snprintf_grow(&hd->buf, &hd->buflen, "%s", hd->mesg.data.string);
     }
+    else {
+        // Use the local CFG environment.
+        const char* cfgval = hcfg_get(&hd->sess.cfg, key);
+        if (!cfgval) cfgval = "";
+        snprintf_grow(&hd->buf, &hd->buflen, "%s", cfgval);
+    }
+
+    if (hcfg_set(&hd->sess.cfg, key, val) != 0) {
+        hd->errstr = "Error setting local CFG cache";
+        return NULL;
+    }
+
     return hd->buf;
 }
 
