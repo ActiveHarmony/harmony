@@ -84,6 +84,7 @@ int   set_values(hdesc_t* hd, const hpoint_t* pt);
 int   var_index(hdesc_t* hd, const char* name);
 int   varloc_extend(hdesc_t* hd);
 int   varloc_setptr(hdesc_t* hd, const char* name, void* ptr);
+int   perf_extend(hdesc_t* hd);
 int   update_best(hdesc_t* hd, const hpoint_t* pt);
 
 static int debug_mode = 0;
@@ -319,7 +320,7 @@ int ah_layers(hdesc_t* hd, const char* list)
  *
  * If *port* is 0, its value will be taken from the environment
  * variable `HARMONY_PORT`, if defined.  Otherwise, its value will be
- * taken from the src/defaults.h file, if needed.
+ * taken from the src/defaults.h file.
  *
  * \param hd   Harmony descriptor returned from ah_init().
  * \param host Host of the Harmony server (or `NULL`).
@@ -331,38 +332,39 @@ int ah_layers(hdesc_t* hd, const char* list)
 int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
 {
     /* Sanity check input */
+    if (hd->state > HARMONY_STATE_INIT) {
+        hd->errstr = "Descriptor already connected to another session";
+        errno = EINVAL;
+        return -1;
+    }
+
     if (hd->sess.sig.range_len < 1) {
         hd->errstr = "No tuning variables defined";
         errno = EINVAL;
         return -1;
     }
 
-    if (varloc_extend(hd) != 0) {
+    if (varloc_extend(hd) != 0)
         return -1;
-    }
 
-    if (!host) {
+    if (perf_extend(hd) != 0)
+        return -1;
+
+    if (!host)
         host = hcfg_get(&hd->sess.cfg, CFGKEY_HARMONY_HOST);
-    }
 
-    if (port == 0) {
+    if (port == 0)
         port = hcfg_int(&hd->sess.cfg, CFGKEY_HARMONY_PORT);
-    }
 
     if (!host) {
         char* path;
         const char* home;
 
-        /* Provide a default name, if one isn't defined. */
-        if (!hd->sess.sig.name) {
-            if (hsignature_name(&hd->sess.sig, "NONAME"))
-                return -1;
-        }
-
         /* Find the Active Harmony installation. */
         home = hcfg_get(&hd->sess.cfg, CFGKEY_HARMONY_HOME);
         if (!home) {
-            hd->errstr = "No host or " CFGKEY_HARMONY_HOME " specified";
+            hd->errstr = "Error: No host or " CFGKEY_HARMONY_HOME " specified";
+            errno = EINVAL;
             return -1;
         }
 
@@ -379,18 +381,33 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
         hd->errstr = strerror(errno);
         return -1;
     }
+    hd->state = HARMONY_STATE_CONNECTED;
+
+    /* Provide a default name, if necessary. */
+    if (!name && !hd->sess.sig.name)
+        name = "NONAME";
+
+    if (name && hsignature_name(&hd->sess.sig, name) != 0) {
+        hd->errstr = "Error setting session name";
+        return -1;
+    }
 
     /* Prepare a default client id, if necessary. */
     if (hd->id == NULL)
         hd->id = default_id(hd->socket);
-    hd->state = HARMONY_STATE_CONNECTED;
 
     /* Prepare a Harmony message. */
     hmesg_scrub(&hd->mesg);
     hd->mesg.data.session = HSESSION_INITIALIZER;
     hsession_copy(&hd->mesg.data.session, &hd->sess);
 
-    return send_request(hd, HMESG_SESSION);
+    if (send_request(hd, HMESG_SESSION) != 0) {
+        hd->errstr = "Error sending/receiving initial session message";
+        return -1;
+    }
+    hd->state = HARMONY_STATE_READY;
+
+    return 0;
 }
 
 /**
@@ -409,14 +426,20 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
 /**
  * \brief Join an established Harmony tuning session.
  *
- * Establishes a connection with the Harmony Server on a specific
- * host and port, and joins the named session.  All variables must be
- * bound to local memory via ah_bind_XXX() for this call to succeed.
+ * Establishes a connection with the Harmony Server on a specific host
+ * and port, and joins the named session.
  *
- * If `host` is `NULL` or `port` is 0, values from the environment
- * variable `HARMONY_HOST` or `HARMONY_PORT` will be used,
- * respectively.  If either environment variable is not defined,
- * values from defaults.h will be used as a last resort.
+ * If *host* is `NULL`, its value will be taken from the environment
+ * variable `HARMONY_HOST`.  Either *host* or `HARMONY_HOST` must be
+ * defined for this function to succeed.
+ *
+ * If *port* is 0, its value will be taken from the environment
+ * variable `HARMONY_PORT`, if defined.  Otherwise, its value will be
+ * taken from the src/defaults.h file.
+ *
+ * Upon success, tuning variable information is retrieved from the
+ * server and may subsequently be bound to local memory via
+ * ah_bind_XXX().
  *
  * \param hd   Harmony descriptor returned from ah_init().
  * \param host Host of the Harmony server.
@@ -427,28 +450,17 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
  */
 int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
 {
-    int perf_len;
-    char* cfgval;
-
-    /* Verify that we have *at least* one variable bound, and that
-     * this descriptor isn't already associated with a tuning
-     * session.
-     */
-    if (hd->state >= HARMONY_STATE_READY) {
-        hd->errstr = "Descriptor already joined with an existing session";
-        errno = EINVAL;
-        return -1;
-    }
-
-    if (hd->state == HARMONY_STATE_INIT) {
-        if (!host) {
+    if (hd->state < HARMONY_STATE_CONNECTED) {
+        if (!host)
             host = hcfg_get(&hd->sess.cfg, CFGKEY_HARMONY_HOST);
-            hd->errstr = "Invalid value for " CFGKEY_HARMONY_HOST
-                         " configuration variable";
-        }
 
-        if (port == 0) {
+        if (port == 0)
             port = hcfg_int(&hd->sess.cfg, CFGKEY_HARMONY_PORT);
+
+        if (!host) {
+            hd->errstr = "Error: No host or " CFGKEY_HARMONY_HOST " specified";
+            errno = EINVAL;
+            return -1;
         }
 
         hd->socket = tcp_connect(host, port);
@@ -456,61 +468,65 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
             hd->errstr = "Error establishing TCP connection with server";
             return -1;
         }
+        hd->state = HARMONY_STATE_CONNECTED;
+    }
+
+    if (hd->state < HARMONY_STATE_READY) {
+        if (!name) {
+            hd->errstr = "Invalid session name";
+            errno = EINVAL;
+            return -1;
+        }
+
+        if (hsignature_name(&hd->sess.sig, name) != 0) {
+            hd->errstr = "Error setting session name";
+            return -1;
+        }
 
         if (hd->id == NULL)
             hd->id = default_id(hd->socket);
-        hd->state = HARMONY_STATE_CONNECTED;
 
-        hd->sess.sig.name = stralloc(name);
-        if (!hd->sess.sig.name) {
-            hd->errstr = "Error allocating memory for signature name";
+        /* Prepare a Harmony message. */
+        hmesg_scrub(&hd->mesg);
+        hd->mesg.data.join = HSIGNATURE_INITIALIZER;
+        if (hsignature_copy(&hd->mesg.data.join, &hd->sess.sig) != 0) {
+            hd->errstr = "Internal error copying signature data";
+            return -1;
+        }
+
+        /* send the client registration message */
+        if (send_request(hd, HMESG_JOIN) != 0)
+            return -1;
+
+        if (hd->mesg.status != HMESG_STATUS_OK) {
+            hd->errstr = "Invalid message received";
+            errno = EINVAL;
+            return -1;
+        }
+
+        hsignature_fini(&hd->sess.sig);
+        if (hsignature_copy(&hd->sess.sig, &hd->mesg.data.join) != 0) {
+            hd->errstr = "Error copying received signature structure";
+            return -1;
+        }
+
+        if (varloc_extend(hd) != 0)
+            return -1;
+
+        if (perf_extend(hd) != 0)
+            return -1;
+
+        hd->state = HARMONY_STATE_READY;
+    }
+    else {
+        // Descriptor was already joined.  Make sure the session names match.
+        if (name && strcmp(hd->sess.sig.name, name) != 0) {
+            hd->errstr = "Descriptor already joined with an existing session";
+            errno = EINVAL;
             return -1;
         }
     }
 
-    /* Prepare a Harmony message. */
-    hmesg_scrub(&hd->mesg);
-    hd->mesg.data.join = HSIGNATURE_INITIALIZER;
-    if (hsignature_copy(&hd->mesg.data.join, &hd->sess.sig) != 0) {
-        hd->errstr = "Internal error copying signature data";
-        return -1;
-    }
-
-    /* send the client registration message */
-    if (send_request(hd, HMESG_JOIN) != 0)
-        return -1;
-
-    if (hd->mesg.status != HMESG_STATUS_OK) {
-        hd->errstr = "Invalid message received";
-        errno = EINVAL;
-        return -1;
-    }
-
-    hsignature_fini(&hd->sess.sig);
-    if (hsignature_copy(&hd->sess.sig, &hd->mesg.data.join) != 0) {
-        hd->errstr = "Error copying received signature structure";
-        return -1;
-    }
-
-    cfgval = ah_get_cfg(hd, CFGKEY_PERF_COUNT);
-    if (!cfgval) {
-        hd->errstr = "Error retrieving performance count.";
-        return -1;
-    }
-
-    perf_len = atoi(cfgval);
-    if (perf_len < 1) {
-        hd->errstr = "Invalid value for " CFGKEY_PERF_COUNT;
-        return -1;
-    }
-
-    hd->perf = hperf_alloc(perf_len);
-    if (!hd->perf) {
-        hd->errstr = "Error allocating performance array.";
-        return -1;
-    }
-
-    hd->state = HARMONY_STATE_READY;
     return 0;
 }
 
@@ -1388,6 +1404,32 @@ int varloc_extend(hdesc_t* hd)
         hd->varloc = tmp;
         hd->varloc_cap = i;
     }
+    return 0;
+}
+
+int perf_extend(hdesc_t* hd)
+{
+    int perf_len;
+    char* cfgval;
+
+    cfgval = ah_get_cfg(hd, CFGKEY_PERF_COUNT);
+    if (!cfgval) {
+        hd->errstr = "Error retrieving performance count.";
+        return -1;
+    }
+
+    perf_len = atoi(cfgval);
+    if (perf_len < 1) {
+        hd->errstr = "Invalid value for " CFGKEY_PERF_COUNT;
+        return -1;
+    }
+
+    hd->perf = hperf_alloc(perf_len);
+    if (!hd->perf) {
+        hd->errstr = "Error allocating performance array.";
+        return -1;
+    }
+
     return 0;
 }
 

@@ -229,15 +229,6 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    printf("Launching tuning session.\n");
-    if (ah_launch(hdesc, NULL, 0, name) != 0) {
-        fprintf(stderr, "Could not launch tuning session: %s\n",
-                ah_error_string(hdesc));
-        return -1;
-    }
-
-    printf("Starting Harmony...\n");
-
     /* Bind the session variables to local variables. */
     if (ah_bind_int(hdesc, "param_1", &param_1) < 0 ||
         ah_bind_int(hdesc, "param_2", &param_2) < 0 ||
@@ -251,14 +242,13 @@ int main(int argc, char* argv[])
         goto cleanup;
     }
 
-    /* Join this client to the tuning session we established above. */
-    if (ah_join(hdesc, NULL, 0, name) < 0) {
-        fprintf(stderr, "Could not connect to harmony server: %s\n",
+    /* Begin a new tuning session. */
+    printf("Launching tuning session.\n");
+    if (ah_launch(hdesc, NULL, 0, name) != 0) {
+        fprintf(stderr, "Could not launch tuning session: %s\n",
                 ah_error_string(hdesc));
-        retval = -1;
-        goto cleanup;
+        return -1;
     }
-    printf("Connected to harmony server.\n");
 
     /* main loop */
     for (i = 0; !ah_converged(hdesc) && i < loop; i++) {

@@ -556,11 +556,6 @@ int start_harmony(hdesc_t* hdesc)
         return -1;
     }
 
-    if (ah_join(hdesc, NULL, 0, session_name) != 0) {
-        fprintf(stderr, "Error joining tuning session: %s\n",
-                ah_error_string(hdesc));
-        return -1;
-    }
     return 0;
 }
 

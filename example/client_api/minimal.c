@@ -95,15 +95,10 @@ int main(int argc, char* argv[])
         }
     }
 
+    /* Begin a new tuning session. */
     printf("Starting Harmony...\n");
     if (ah_launch(hd, NULL, 0, NULL) != 0) {
         fprintf(stderr, "Error launching tuning session");
-        goto error;
-    }
-
-    /* Join this client to the tuning session we established above. */
-    if (ah_join(hd, NULL, 0, NULL) != 0) {
-        fprintf(stderr, "Error connecting to tuning session");
         goto error;
     }
 
