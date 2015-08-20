@@ -57,6 +57,7 @@ long   hcfg_arr_int(const hcfg_t* cfg, const char* key, int idx);
 double hcfg_arr_real(const hcfg_t* cfg, const char* key, int idx);
 
 int    hcfg_set(hcfg_t* cfg, const char* key, const char* val);
+int    hcfg_parse(hcfg_t* cfg, const char* buf);
 int    hcfg_loadfile(hcfg_t* cfg, const char* filename);
 int    hcfg_write(const hcfg_t* cfg, const char* filename);
 

@@ -74,6 +74,96 @@ void file_unmap(void* buf, size_t size)
         fprintf(stderr, "Ignoring error on munmap(): %s\n", strerror(errno));
 }
 
+char* line_find_end(char* buf, int* linecount)
+{
+    char quote = '\0';
+
+    *linecount = 1;
+    while (*buf) {
+        if (*buf == '\\') ++buf;
+        else if (!quote) {
+            if      (*buf == '\'') { quote = '\''; }
+            else if (*buf ==  '"') { quote =  '"'; }
+            else if (*buf == '\n') { break; }
+            else if (*buf ==  '#') {
+                char* hash = buf;
+                buf += strcspn(buf, "\n");
+                if (*buf == '\n')
+                    *hash = '\0';
+                break;
+            }
+        }
+        else if (*buf == quote) quote = '\0';
+
+        if (*buf == '\n') ++(*linecount);
+        if (*buf != '\0') ++buf;
+    }
+
+    return buf;
+}
+
+int file_read_line(FILE* fp, char** buf, int* cap, char** end)
+{
+    int linecount;
+
+    // Allocate an initial buffer if necessary.
+    if (*cap == 0) {
+        *cap = 1024;
+        *buf = malloc(*cap * sizeof(**buf));
+
+        if (!*buf) {
+            perror("Error: Could not allocate configuration parse buffer");
+            return -1;
+        }
+        **buf = '\0';
+    }
+
+    // Remove prior line from buffer.
+    if (*end && *end - *buf < *cap)
+        memmove(*buf, *end, strlen(*end) + 1);
+    else
+        **buf = '\0';
+
+    // Loop until end of line is found (or end of file).
+    char* final = NULL;
+    while (1) {
+        *end = line_find_end(*buf, &linecount);
+        if (**end == '\0' && !feof(fp)) {
+            int remain = *cap - (*end - *buf) - 2;
+
+            if (remain < 1) {
+                // Extend the line buffer.
+                if (array_grow(buf, cap, sizeof(**buf)) != 0) {
+                    perror("Error: Could not grow config parsing buffer");
+                    return -1;
+                }
+                *end = strchr(*buf, '\0'); // End should point at new buffer.
+                remain = *cap - (*end - *buf) - 2;
+            }
+
+            // Read more data into the line buffer.
+            int len = fread(*end, sizeof(**end), remain, fp);
+            (*end)[len] = '\0';
+
+            // line_find_end() expects complete strings to end with a newline.
+            // Add one temporarily if one does not exist at end of file.
+            if (feof(fp) && (*end)[len - 1] != '\n') {
+                final = *end + len;
+                final[0] = '\n';
+                final[1] = '\0';
+            }
+        }
+        else break;
+    }
+    if (final)
+        final[0] = '\0';
+
+    if (**end == '\n')
+        *((*end)++) = '\0';
+
+    return linecount;
+}
+
 int array_grow(void* buf, int* capacity, int elem_size)
 {
     void* new_buf;

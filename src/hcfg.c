@@ -29,6 +29,13 @@
 #include <ctype.h>
 #include <math.h> /* For NAN */
 
+typedef struct keyval {
+    const char* key;
+    int         klen;
+    const char* val;
+    int         vlen;
+} keyval_t;
+
 const hcfg_t HCFG_INITIALIZER = {0};
 
 /* -------------------------------------------
@@ -62,15 +69,17 @@ const hcfg_info_t hcfg_global_keys[] = {
 };
 
 /* Internal helper function prototypes. */
-static char*   key_lookup(const hcfg_t* cfg, const char* key);
-static char*   key_index(const hcfg_t* cfg, const char* key, int idx);
-static int     key_check(const char* key, char end);
-static int     val_to_bool(const char* val);
-static long    val_to_int(const char* val);
-static double  val_to_real(const char* val);
-static char*   line_findend(char* buf);
-static int     line_unquote(char* buf);
-static char*   line_parse(char** ptr);
+static int    key_find(const hcfg_t* cfg, const char* key, char** val);
+static char*  key_val(const hcfg_t* cfg, const char* key);
+static char*  key_val_index(const hcfg_t* cfg, const char* key, int idx);
+static int    key_check(const char* key, int len);
+static int    key_add(hcfg_t* cfg, keyval_t* pair);
+static int    val_to_bool(const char* val);
+static long   val_to_int(const char* val);
+static double val_to_real(const char* val);
+static int    val_unquote(char* buf, int len);
+static int    buf_parse(const char* buf, keyval_t* pair);
+static int    string_trim(const char** str, int len);
 
 /* Incorporate environment variables into current configuration. */
 int hcfg_init(hcfg_t* cfg)
@@ -84,8 +93,7 @@ int hcfg_init(hcfg_t* cfg)
         return -1;
 
     for (int i = 0; environ[i]; ++i) {
-        char* var = strchr(environ[i], '=') + 1;
-        if (key_check(environ[i], '=') && *var) {
+        if (key_check(environ[i], strcspn(environ[i], "="))) {
             if (cfg->len == cfg->cap)
                 array_grow(&cfg->env, &cfg->cap, sizeof(char*));
 
@@ -93,7 +101,6 @@ int hcfg_init(hcfg_t* cfg)
             ++cfg->len;
         }
     }
-
     return hcfg_reginfo(cfg, hcfg_global_keys);
 }
 
@@ -103,7 +110,7 @@ int hcfg_reginfo(hcfg_t* cfg, const hcfg_info_t* info)
         if (info->val && !hcfg_get(cfg, info->key)) {
             if (hcfg_set(cfg, info->key, info->val) != 0) {
                 fprintf(stderr, "Error: Could not register default value "
-                        "for configuration key '%s'.\n", info->key);
+                                "for configuration key '%s'.\n", info->key);
                 return -1;
             }
         }
@@ -135,27 +142,27 @@ void hcfg_fini(hcfg_t* cfg)
 
 char* hcfg_get(const hcfg_t* cfg, const char* key)
 {
-    return key_lookup(cfg, key);
+    return key_val(cfg, key);
 }
 
 int hcfg_bool(const hcfg_t* cfg, const char* key)
 {
-    return val_to_bool( key_lookup(cfg, key) );
+    return val_to_bool( key_val(cfg, key) );
 }
 
 long hcfg_int(const hcfg_t* cfg, const char* key)
 {
-    return val_to_int( key_lookup(cfg, key) );
+    return val_to_int( key_val(cfg, key) );
 }
 
 double hcfg_real(const hcfg_t* cfg, const char* key)
 {
-    return val_to_real( key_lookup(cfg, key) );
+    return val_to_real( key_val(cfg, key) );
 }
 
 int hcfg_arr_len(const hcfg_t* cfg, const char* key)
 {
-    char* val = key_lookup(cfg, key);
+    char* val = key_val(cfg, key);
     int retval = 0;
 
     if (val) {
@@ -170,7 +177,7 @@ int hcfg_arr_len(const hcfg_t* cfg, const char* key)
 int hcfg_arr_get(const hcfg_t* cfg, const char* key, int idx,
                  char* buf, int len)
 {
-    char* val = key_index(cfg, key, idx);
+    char* val = key_val_index(cfg, key, idx);
     if (!val) return -1;
 
     int n = strcspn(val, ",");
@@ -181,61 +188,41 @@ int hcfg_arr_get(const hcfg_t* cfg, const char* key, int idx,
 
 int hcfg_arr_bool(const hcfg_t* cfg, const char* key, int idx)
 {
-    return val_to_bool( key_index(cfg, key, idx) );
+    return val_to_bool( key_val_index(cfg, key, idx) );
 }
 
 long hcfg_arr_int(const hcfg_t* cfg, const char* key, int idx)
 {
-    return val_to_int( key_index(cfg, key, idx) );
+    return val_to_int( key_val_index(cfg, key, idx) );
 }
 
 double hcfg_arr_real(const hcfg_t* cfg, const char* key, int idx)
 {
-    return val_to_real( key_index(cfg, key, idx) );
+    return val_to_real( key_val_index(cfg, key, idx) );
 }
 
 int hcfg_set(hcfg_t* cfg, const char* key, const char* val)
 {
-    int i;
-
-    if (!key_check(key, '\0'))
+    if (!key_check(key, strlen(key)))
         return -1;
 
-    for (i = 0; i < cfg->len; ++i) {
-        int n = strcspn(cfg->env[i], "=");
-        if (strncasecmp(key, cfg->env[i], n) == 0 && key[n] == '\0') {
-            free(cfg->env[i]);
-            break;
-        }
-    }
+    keyval_t pair = {key, -1, val, -1};
+    return key_add(cfg, &pair);
+}
 
-    if (val && *val) {
-        // Key add/replace case.
-        if (i == cfg->cap)
-            array_grow(&cfg->env, &cfg->cap, sizeof(*cfg->env));
-
-        cfg->env[i] = sprintf_alloc("%s=%s", key, val);
-        if (i == cfg->len)
-            ++cfg->len;
+int hcfg_parse(hcfg_t* cfg, const char* buf)
+{
+    keyval_t pair;
+    if (buf_parse(buf, &pair) != 0) {
+        return -1;
     }
-    else if (i < cfg->len) {
-        // Key delete case.
-        if (i < cfg->len - 1)
-            cfg->env[i] = cfg->env[ cfg->len - 1 ];
-        --cfg->len;
-    }
-
-    return 0;
+    return key_add(cfg, &pair);
 }
 
 /* Incorporate file into the current environment. */
 int hcfg_loadfile(hcfg_t* cfg, const char* filename)
 {
     FILE* fp = stdin;
-    char* buf = NULL;
-    int   buf_cap = 1024;
-    char* ptr;
-    int   linecount = 1;
     int   retval = 0;
 
     if (strcmp(filename, "-") != 0) {
@@ -247,59 +234,37 @@ int hcfg_loadfile(hcfg_t* cfg, const char* filename)
         }
     }
 
-    buf = malloc(buf_cap * sizeof(*buf));
-    if (!buf) {
-        perror("Error: Could not allocate configuration parse buffer");
-        goto error;
-    }
-    buf[0] = '\0';
+    char* end = NULL;
+    char* line = NULL;
+    int   cap = 0, linecount = 1;
+    do {
+        int count = file_read_line(fp, &line, &cap, &end);
+        keyval_t pair = {NULL, 0, NULL, 0};
 
-    ptr = buf;
-    while (!feof(fp)) {
-        size_t len = strlen(ptr);
-        if (ptr != buf)
-            memmove(buf, ptr, len);
+        if (buf_parse(line, &pair) == 0) {
+            if (val_unquote((char*)pair.val, pair.vlen) != 0) {
+                fprintf(stderr, "Error: Non-terminated quote detected.\n");
+                goto error;
+            }
+            pair.vlen = strlen(pair.val);
 
-        if (len + 1 == (size_t)buf_cap) {
-            if (array_grow(&buf, &buf_cap, sizeof(char)) != 0) {
-                perror("Error: Could not grow config parsing buffer");
+            if (key_add(cfg, &pair) != 0) {
+                fprintf(stderr, "Error adding configuration directive.\n");
                 goto error;
             }
         }
-        len += fread(buf + len, sizeof(char), buf_cap - len - 1, fp);
-        buf[len] = '\0';
-
-        ptr = buf;
-        while (*ptr != '\0') {
-            char* next = line_findend(ptr);
-            if (*next == '\n' || feof(fp)) {
-                int more = (*next == '\n');
-                int count = line_unquote(ptr);
-                if (!count) goto error;
-
-                char* key = ptr;
-                char* val = line_parse(&key);
-                if (!val) goto error;
-
-                if (key) {
-                    if (!key_check(key, '\0')) {
-                        fprintf(stderr, "Error: Configuration key '%s' "
-                                "contains invalid characters.\n", key);
-                        goto error;
-                    }
-
-                    if (hcfg_set(cfg, key, val) != 0) {
-                        fprintf(stderr, "Error setting configuration key.\n");
-                        goto error;
-                    }
-                }
-
-                linecount += count;
-                ptr = more ? next + 1 : next;
-            }
-            else break;
+        else if (pair.val) {
+            fprintf(stderr, "Error: No separator character (=) found.\n");
+            goto error;
         }
+        else if (pair.key) {
+            fprintf(stderr, "Error: Configuration key '%.*s' is not a "
+                            "valid identifier.\n", pair.klen, pair.key);
+            goto error;
+        }
+        linecount += count;
     }
+    while (end != line);
     goto cleanup;
 
   error:
@@ -310,7 +275,7 @@ int hcfg_loadfile(hcfg_t* cfg, const char* filename)
     if (fclose(fp) != 0) {
         perror("Warning: Could not close configuration file");
     }
-    free(buf);
+    free(line);
 
     return retval;
 }
@@ -406,19 +371,29 @@ int hcfg_deserialize(hcfg_t* cfg, char* buf)
 /*
  * Internal helper functions.
  */
-char* key_lookup(const hcfg_t* cfg, const char* key)
+int key_find(const hcfg_t* cfg, const char* key, char** val)
 {
-    for (int i = 0; i < cfg->len; ++i) {
-        int n = strcspn(cfg->env[i], "=");
-        if (strncasecmp(key, cfg->env[i], n) == 0 && key[n] == '\0')
-            return cfg->env[i] + n + 1;
+    int i;
+    for (i = 0; i < cfg->len; ++i) {
+        int n = strcspn(key, "=");
+        if (strncmp(key, cfg->env[i], n) == 0 && cfg->env[i][n] == '=') {
+            if (val) *val = cfg->env[i] + n + 1;
+            break;
+        }
     }
-    return NULL;
+    return i;
 }
 
-char* key_index(const hcfg_t* cfg, const char* key, int idx)
+char* key_val(const hcfg_t* cfg, const char* key)
 {
-    char* val = key_lookup(cfg, key);
+    char* val = NULL;
+    key_find(cfg, key, &val);
+    return val;
+}
+
+char* key_val_index(const hcfg_t* cfg, const char* key, int idx)
+{
+    char* val = key_val(cfg, key);
     if (!val)
         return NULL;
 
@@ -432,11 +407,42 @@ char* key_index(const hcfg_t* cfg, const char* key, int idx)
     return val;
 }
 
-int key_check(const char* key, char end)
+#define ALPHA_CHARS "ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz"
+#define NUM_CHARS "0123456789"
+int key_check(const char* key, int len)
 {
-    int n = 0;
-    sscanf(key, "%*[0-9a-zA-Z_]%n", &n);
-    return (key[n] == end);
+    int span = strspn(key, ALPHA_CHARS NUM_CHARS);
+    return span == len && strspn(key, ALPHA_CHARS) > 0;
+}
+
+int key_add(hcfg_t* cfg, keyval_t* pair)
+{
+    int i = key_find(cfg, pair->key, NULL);
+    if (i < cfg->len)
+        free(cfg->env[i]);
+
+    if (pair->val) {
+        // Key add/replace case.
+        if (i == cfg->cap) {
+            if (array_grow(&cfg->env, &cfg->cap, sizeof(*cfg->env)) != 0)
+                return -1;
+        }
+
+        cfg->env[i] = sprintf_alloc("%.*s=%.*s",
+                                    pair->klen, pair->key,
+                                    pair->vlen, pair->val);
+        if (!cfg->env[i])
+            return -1;
+
+        if (i == cfg->len)
+            ++cfg->len;
+    }
+    else if (i < cfg->len) {
+        // Key delete case.
+        if (i < --cfg->len)
+            cfg->env[i] = cfg->env[cfg->len];
+    }
+    return 0;
 }
 
 int val_to_bool(const char* val)
@@ -459,95 +465,67 @@ double val_to_real(const char* val)
     return NAN;
 }
 
-/* Find the end of a configuration key/val string. */
-char* line_findend(char* buf)
+int val_unquote(char* buf, int len)
 {
-    buf += strcspn(buf, "=#\n");
-    if (*buf == '#') {
-        buf += strcspn(buf, "\n");
-    }
-    else if (*buf == '=') {
-        char quote = '\0';
-        while (*buf) {
-            if (*buf == '\\') ++buf;
-            else if (!quote) {
-                if      (*buf == '\'') quote = '\'';
-                else if (*buf == '"')  quote = '"';
-                else if (*buf == '#')  buf += strcspn(buf, "\n") - 1;
-                else if (*buf == '\n') break;
-            }
-            else if (*buf == quote) quote = '\0';
+    char* ptr = buf;
+    char quote = '\0';
 
-            if (*buf) ++buf;
+    buf[len] = '\0';
+    while (*ptr) {
+        if (*ptr == '\\' && *(ptr + 1)) { ++ptr; }
+        else if (!quote) {
+            if (*ptr == '\'') { quote = '\''; ++ptr; continue; }
+            if (*ptr ==  '"') { quote =  '"'; ++ptr; continue; }
+            if (*ptr ==  '#') { break; }
+            if (*ptr == '\n') { break; }
         }
+        else if (*ptr == quote) { quote = '\0'; ++ptr; continue; }
+
+        *(buf++) = *(ptr++);
     }
-    return buf;
-}
+    if (quote != '\0')
+        return -1;
 
-int line_unquote(char* buf)
-{
-    char* ptr;
-    int linecount = 1;
-
-    buf += strcspn(buf, "=#\n");
-    if (*buf == '#') {
-        /* '#' found before '=' or '\n'. */
-        ptr = buf + strcspn(buf, "\n");
-    }
-    else if (*buf == '=') {
-        /* Uncommented '=' found.  Begin unquoting. */
-        char* end = buf;
-        char quote = '\0';
-        ptr = ++buf;
-        while (isspace(*ptr) && *ptr != '\n') ++ptr;
-
-        while (*ptr) {
-            if (*ptr == '\\') ++ptr;
-            else if (!quote) {
-                if      (*ptr == '\'') { quote = *(ptr++); continue; }
-                else if (*ptr == '"')  { quote = *(ptr++); continue; }
-                else if (*ptr == '#')  { ptr += strcspn(ptr, "\n"); break; }
-                else if (*ptr == '\n') break;
-            }
-            else if (*ptr == quote) { quote ^= *(ptr++); end = buf; continue; }
-
-            if (*ptr) {
-                if (*ptr == '\n') ++linecount;
-                *(buf++) = *(ptr++);
-            }
-        }
-
-        if (quote) {
-            fprintf(stderr, "Error: Non-terminated quote detected.\n");
-            return 0;
-        }
-
-        while (buf > end && isspace(*(buf - 1))) --buf;
-    }
     *buf = '\0';
-
-    return linecount;
+    return 0;
 }
 
-char* line_parse(char** ptr)
+int buf_parse(const char* buf, keyval_t* pair)
 {
-    char* key = *ptr;
-    while (isspace(*key)) ++key;
-    if (*key == '\0') {
-        *ptr = NULL;
-        return key;
+    const char* sep = buf + strcspn(buf, "=");
+    int len = string_trim(&buf, sep - buf);
+
+    if (*buf == '\0')
+        return -1;
+
+    pair->key = buf;
+    pair->klen = len;
+    if (!key_check(buf, len))
+        return -1;
+
+    if (*sep != '=') {
+        pair->val = sep;
+        return -1;
     }
 
-    char* sep = strchr(key, '=');
-    if (!sep) {
-        fprintf(stderr, "Error: No separator character (=) found.\n");
-        return NULL;
-    }
+    ++sep;
+    len = string_trim(&sep, strlen(sep));
+    if (sep[len] && sep[len-1] == '\\')
+        ++len; // The final character was backslash-escaped whitespace.
 
-    char* val = sep + 1;
-    while (key < sep && isspace(*(sep - 1))) --sep;
-    *sep = '\0';
+    pair->val = sep;
+    pair->vlen = len;
+    return 0;
+}
 
-    *ptr = key;
-    return val;
+int string_trim(const char** str, int len)
+{
+    const char* head = *str;
+    const char* tail = head + len;
+
+    while (isspace(*head)) ++head;
+    while (head < tail && isspace(*(tail - 1))) --tail;
+
+    *str = head;
+    return tail - head;
 }
