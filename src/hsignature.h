@@ -101,10 +101,7 @@ int  hsignature_real(hsignature_t* sig, const char* name,
 int  hsignature_enum(hsignature_t* sig, const char* name, const char* value);
 int  hsignature_serialize(char** buf, int* buflen, const hsignature_t* sig);
 int  hsignature_deserialize(hsignature_t* sig, char* buf);
-
-/* General helper function */
-hrange_t* hrange_find(hsignature_t* sig, const char* name);
-hrange_t* hrange_add(hsignature_t* sig, const char* name);
+int  hsignature_parse(hsignature_t* sig, const char* buf, const char** errptr);
 
 #ifdef __cplusplus
 }

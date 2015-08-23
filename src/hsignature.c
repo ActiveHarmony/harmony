@@ -25,9 +25,17 @@
 #include <errno.h>
 #include <string.h>
 #include <ctype.h>
+#include <math.h>
+#include <limits.h>
 
 const hrange_t HRANGE_INITIALIZER = {0};
 const hsignature_t HSIGNATURE_INITIALIZER = {0};
+
+/* Internal helper function prototypes. */
+static int       add_enum_string(str_bounds_t* bounds, char* str);
+static int       add_range(hsignature_t* sig, hrange_t* range);
+static int       copy_token(const char* buf, char **token);
+static hrange_t* find_range(hsignature_t* sig, const char* name);
 
 /*
  * Harmony range related function definitions.
@@ -153,40 +161,6 @@ const char* hrange_str_value(str_bounds_t* bound, unsigned long idx)
         idx = bound->set_len - 1;
 
     return bound->set[idx];
-}
-
-hrange_t* hrange_find(hsignature_t* sig, const char* name)
-{
-    int i;
-    for (i = 0; i < sig->range_len; ++i)
-        if (strcmp(name, sig->range[i].name) == 0)
-            return &sig->range[i];
-
-    return NULL;
-}
-
-hrange_t* hrange_add(hsignature_t* sig, const char* name)
-{
-    hrange_t* range;
-
-    if (hrange_find(sig, name) != NULL) {
-        errno = EINVAL;
-        return NULL;
-    }
-
-    /* Grow range array, if needed. */
-    if (sig->range_len == sig->range_cap) {
-        if (array_grow(&sig->range, &sig->range_cap, sizeof(hrange_t)) < 0)
-            return NULL;
-    }
-    range = &sig->range[sig->range_len];
-
-    range->name = stralloc(name);
-    if (!range->name)
-        return NULL;
-    ++sig->range_len;
-
-    return range;
 }
 
 void hrange_fini(hrange_t* range)
@@ -513,84 +487,86 @@ int hsignature_name(hsignature_t* sig, const char* name)
 int hsignature_int(hsignature_t* sig, const char* name,
                    long min, long max, long step)
 {
-    hrange_t* range;
-
     if (max < min) {
         errno = EINVAL;
         return -1;
     }
 
-    range = hrange_add(sig, name);
-    if (!range)
+    hrange_t range;
+    range.type = HVAL_INT;
+    range.bounds.i.min = min;
+    range.bounds.i.max = max;
+    range.bounds.i.step = step;
+    range.name = stralloc(name);
+    if (!range.name)
         return -1;
 
-    range->type = HVAL_INT;
-    range->bounds.i.min = min;
-    range->bounds.i.max = max;
-    range->bounds.i.step = step;
-
+    if (add_range(sig, &range) != 0) {
+        free(range.name);
+        return -1;
+    }
     return 0;
 }
 
 int hsignature_real(hsignature_t* sig, const char* name,
                     double min, double max, double step)
 {
-    hrange_t* range;
-
     if (max < min) {
         errno = EINVAL;
         return -1;
     }
 
-    range = hrange_add(sig, name);
-    if (!range)
+    hrange_t range;
+    range.type = HVAL_REAL;
+    range.bounds.r.min = min;
+    range.bounds.r.max = max;
+    range.bounds.r.step = step;
+    range.name = stralloc(name);
+    if (!range.name)
         return -1;
 
-    range->type = HVAL_REAL;
-    range->bounds.r.min = min;
-    range->bounds.r.max = max;
-    range->bounds.r.step = step;
-
+    if (add_range(sig, &range) != 0) {
+        free(range.name);
+        return -1;
+    }
     return 0;
 }
 
 int hsignature_enum(hsignature_t* sig, const char* name, const char* value)
 {
-    int i;
-    hrange_t* range;
-
-    range = hrange_find(sig, name);
-    if (range && range->type != HVAL_STR) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    if (!range) {
-        range = hrange_add(sig, name);
-        if (!range)
-            return -1;
-
-        range->type = HVAL_STR;
-    }
-
-    for (i = 0; i < range->bounds.s.set_len; ++i) {
-        if (strcmp(value, range->bounds.s.set[i]) == 0) {
+    hrange_t* ptr = find_range(sig, name);
+    if (ptr) {
+        if (ptr->type != HVAL_STR) {
             errno = EINVAL;
             return -1;
         }
     }
-
-    if (range->bounds.s.set_len == range->bounds.s.set_cap) {
-        if (array_grow(&range->bounds.s.set,
-                       &range->bounds.s.set_cap, sizeof(char*)) < 0)
+    else {
+        hrange_t range;
+        range.type = HVAL_STR;
+        range.bounds.s.set = NULL;
+        range.bounds.s.set_len = 0;
+        range.bounds.s.set_cap = 0;
+        range.name = stralloc(name);
+        if (!range.name)
             return -1;
+
+        if (add_range(sig, &range) != 0) {
+            free(range.name);
+            return -1;
+        }
+        ptr = sig->range + sig->range_len - 1;
     }
 
-    range->bounds.s.set[i] = stralloc(value);
-    if (!range->bounds.s.set[i])
+    char* vcopy = stralloc(value);
+    if (!vcopy || add_enum_string(&ptr->bounds.s, vcopy) != 0) {
+        if (ptr->bounds.s.set_len == 0) {
+            free(ptr->bounds.s.set);
+            free(vcopy);
+            --sig->range_len;
+        }
         return -1;
-
-    ++range->bounds.s.set_len;
+    }
     return 0;
 }
 
@@ -665,4 +641,221 @@ int hsignature_deserialize(hsignature_t* sig, char* buf)
     errno = EINVAL;
   error:
     return -1;
+}
+
+int hsignature_parse(hsignature_t* sig, const char* buf, const char** errptr)
+{
+    hrange_t range = HRANGE_INITIALIZER;
+    int id, idlen, bounds = 0, tail = 0;
+    const char* errstr;
+
+    while (isspace(*buf)) ++buf;
+    if (*buf == '\0')
+        return 0;
+
+    sscanf(buf, " int %n%*[0-9A-Z_a-z]%n =%n", &id, &idlen, &bounds);
+    if (bounds && !isdigit(buf[id])) {
+        range.type = HVAL_INT;
+        range.bounds.i = (int_bounds_t){LONG_MIN, LONG_MIN, 1};
+
+        sscanf(buf + bounds, " min: %ld max: %ld %nstep: %ld %n",
+               &range.bounds.i.min,
+               &range.bounds.i.max, &tail,
+               &range.bounds.i.step, &tail);
+
+        if (!tail) {
+            if (range.bounds.i.min == LONG_MIN)
+                errstr = "Invalid integer-domain minimum range value";
+            else
+                errstr = "Invalid integer-domain maximum range value";
+            goto error;
+        }
+        goto found;
+    }
+
+    sscanf(buf, " real %n%*[0-9A-Z_a-z]%n =%n", &id, &idlen, &bounds);
+    if (bounds && !isdigit(buf[id])) {
+        range.type = HVAL_REAL;
+        range.bounds.r = (real_bounds_t){NAN, NAN, NAN};
+
+        sscanf(buf + bounds, " min: %lf max: %lf step: %lf %n",
+               &range.bounds.r.min,
+               &range.bounds.r.max,
+               &range.bounds.r.step, &tail);
+
+        if (!tail) {
+            if (isnan(range.bounds.r.min))
+                errstr = "Invalid real-domain minimum range value";
+            else if (isnan(range.bounds.r.max))
+                errstr = "Invalid real-domain minimum range value";
+            else
+                errstr = "Invalid real-domain step value";
+            goto error;
+        }
+        goto found;
+    }
+
+    sscanf(buf, " enum %n%*[0-9A-Z_a-z]%n =%n", &id, &idlen, &bounds);
+    if (bounds && !isdigit(buf[id])) {
+        range.type = HVAL_STR;
+        range.bounds.s = (str_bounds_t){NULL, 0, 0};
+
+        while (buf[bounds]) {
+            char* token;
+            int len = copy_token(buf + bounds, &token);
+            if (len == -1) {
+                errstr = "Enumerated-domain token parse error";
+                goto error;
+            }
+            bounds += len;
+
+            if (token && add_enum_string(&range.bounds.s, token) != 0) {
+                errstr = "Invalid enumerated-domain string value";
+                free(token);
+                goto error;
+            }
+            if (!token && buf[bounds] != '\0') {
+                errstr = "Empty enumerated-domain value";
+                goto error;
+            }
+
+            if (buf[bounds] == ',') ++bounds;
+        }
+        if (range.bounds.s.set_len == 0) {
+            errstr = "No enumerated string tokens found";
+            goto error;
+        }
+        goto found;
+    }
+    errstr = "Unknown tuning variable type";
+
+  error:
+    hrange_fini(&range);
+    if (errptr) *errptr = errstr;
+    return -1;
+
+  found:
+    if (buf[bounds + tail] != '\0') {
+        errstr = "Invalid trailing characters";
+        goto error;
+    }
+
+    range.name = sprintf_alloc("%.*s", idlen - id, &buf[id]);
+    if (!range.name) {
+        errstr = "Cannot copy range name";
+        goto error;
+    }
+
+    if (add_range(sig, &range) != 0) {
+        errstr = "Invalid range name";
+        goto error;
+    }
+
+    if (errptr) *errptr = NULL;
+    return 1;
+}
+
+/*
+ * Internal helper function implementations.
+ */
+int add_enum_string(str_bounds_t* bounds, char* str)
+{
+    for (int i = 0; i < bounds->set_len; ++i) {
+        if (strcmp(bounds->set[i], str) == 0)
+            return -1;
+    }
+
+    if (bounds->set_len == bounds->set_cap) {
+        if (array_grow(&bounds->set, &bounds->set_cap, sizeof(char*)) != 0)
+            return -1;
+    }
+    bounds->set[ bounds->set_len++ ] = str;
+
+    return 0;
+}
+
+int add_range(hsignature_t* sig, hrange_t* range)
+{
+    if (find_range(sig, range->name) != NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    /* Grow range array, if needed. */
+    if (sig->range_len == sig->range_cap) {
+        if (array_grow(&sig->range, &sig->range_cap, sizeof(hrange_t)) < 0)
+            return -1;
+    }
+    sig->range[ sig->range_len++ ] = *range;
+
+    return 0;
+}
+
+int copy_token(const char* buf, char **token)
+{
+    const char* src = buf;
+    int cap = 0;
+
+    while (1) {
+        // Skip leading whitespace and backslash-escaped newlines.
+        src = buf;
+        while (1) {
+            if (*src == '\\' && isspace(*(src + 1))) src += 2;
+            else if (isspace(*src)) ++src;
+            else break;
+        }
+
+        char* dst = *token;
+        char  quote = '\0';
+        int   len = cap;
+        while (*src) {
+            if (!quote) {
+                if (*src == '\'')  { quote = '\''; ++src; continue; }
+                if (*src ==  '"')  { quote =  '"'; ++src; continue; }
+                if (*src ==  ',')  { break; }
+                if (isspace(*src)) { break; }
+                if (*src == '\\' && isspace(*src)) { break; }
+            }
+            else if (*src == quote) { quote = '\0'; ++src; continue; }
+            else if (*src == '\\')  { ++src; }
+
+            if (len-- > 0)
+                *(dst++) = *(src++);
+            else
+                ++src;
+        }
+        if (quote != '\0') return -1;
+        if (len-- > 0) *dst = '\0';
+
+        // Skip trailing whitespace and backslash-escaped newlines.
+        while (1) {
+            if (*src == '\\' && isspace(*(src + 1))) src += 2;
+            else if (isspace(*src)) ++src;
+            else break;
+        }
+
+        if (len < -1) {
+            // Token buffer size is -len;
+            cap += -len;
+            *token = malloc(cap * sizeof(**token));
+            if (!*token)
+                return -1;
+        }
+        else if (len == -1) {
+            // Empty token.
+            *token = NULL;
+            break;
+        }
+        else break; // Loop exit.
+    }
+    return src - buf;
+}
+
+hrange_t* find_range(hsignature_t* sig, const char* name)
+{
+    for (int i = 0; i < sig->range_len; ++i)
+        if (strcmp(name, sig->range[i].name) == 0)
+            return &sig->range[i];
+
+    return NULL;
 }
