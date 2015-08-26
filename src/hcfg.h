@@ -57,12 +57,12 @@ long   hcfg_arr_int(const hcfg_t* cfg, const char* key, int idx);
 double hcfg_arr_real(const hcfg_t* cfg, const char* key, int idx);
 
 int    hcfg_set(hcfg_t* cfg, const char* key, const char* val);
-int    hcfg_parse(hcfg_t* cfg, const char* buf);
 int    hcfg_loadfile(hcfg_t* cfg, const char* filename);
 int    hcfg_write(const hcfg_t* cfg, const char* filename);
 
 int    hcfg_serialize(char** buf, int* buflen, const hcfg_t* cfg);
 int    hcfg_deserialize(hcfg_t* cfg, char* buf);
+int    hcfg_parse(hcfg_t* cfg, const char* buf, const char** errptr);
 
 #ifdef __cplusplus
 }

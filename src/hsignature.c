@@ -34,7 +34,8 @@ const hsignature_t HSIGNATURE_INITIALIZER = {0};
 /* Internal helper function prototypes. */
 static int       add_enum_string(str_bounds_t* bounds, char* str);
 static int       add_range(hsignature_t* sig, hrange_t* range);
-static int       copy_token(const char* buf, char **token);
+static int       copy_token(const char* buf, char **token,
+                            const char** errptr);
 static hrange_t* find_range(hsignature_t* sig, const char* name);
 
 /*
@@ -653,8 +654,14 @@ int hsignature_parse(hsignature_t* sig, const char* buf, const char** errptr)
     if (*buf == '\0')
         return 0;
 
-    sscanf(buf, " int %n%*[0-9A-Z_a-z]%n =%n", &id, &idlen, &bounds);
-    if (bounds && !isdigit(buf[id])) {
+    sscanf(buf, " int %n%*[^=]%n=%n", &id, &idlen, &bounds);
+    if (bounds) {
+        while (isspace(buf[idlen - 1])) --idlen;
+        if (!valid_id(&buf[id], idlen - id)) {
+            errstr = "Invalid variable name";
+            goto error;
+        }
+
         range.type = HVAL_INT;
         range.bounds.i = (int_bounds_t){LONG_MIN, LONG_MIN, 1};
 
@@ -673,8 +680,14 @@ int hsignature_parse(hsignature_t* sig, const char* buf, const char** errptr)
         goto found;
     }
 
-    sscanf(buf, " real %n%*[0-9A-Z_a-z]%n =%n", &id, &idlen, &bounds);
-    if (bounds && !isdigit(buf[id])) {
+    sscanf(buf, " real %n%*[^=]%n=%n", &id, &idlen, &bounds);
+    if (bounds) {
+        while (isspace(buf[idlen - 1])) --idlen;
+        if (!valid_id(&buf[id], idlen - id)) {
+            errstr = "Invalid variable name";
+            goto error;
+        }
+
         range.type = HVAL_REAL;
         range.bounds.r = (real_bounds_t){NAN, NAN, NAN};
 
@@ -695,20 +708,24 @@ int hsignature_parse(hsignature_t* sig, const char* buf, const char** errptr)
         goto found;
     }
 
-    sscanf(buf, " enum %n%*[0-9A-Z_a-z]%n =%n", &id, &idlen, &bounds);
-    if (bounds && !isdigit(buf[id])) {
+    sscanf(buf, " enum %n%*[^=]%n=%n", &id, &idlen, &bounds);
+    if (bounds) {
+        while (isspace(buf[idlen - 1])) --idlen;
+        if (!valid_id(&buf[id], idlen - id)) {
+            errstr = "Invalid variable name";
+            goto error;
+        }
+
         range.type = HVAL_STR;
         range.bounds.s = (str_bounds_t){NULL, 0, 0};
 
         while (buf[bounds]) {
             char* token;
-            int len = copy_token(buf + bounds, &token);
-            if (len == -1) {
-                errstr = "Enumerated-domain token parse error";
+            int len = copy_token(buf + bounds, &token, &errstr);
+            if (len == -1)
                 goto error;
-            }
-            bounds += len;
 
+            bounds += len;
             if (token && add_enum_string(&range.bounds.s, token) != 0) {
                 errstr = "Invalid enumerated-domain string value";
                 free(token);
@@ -719,6 +736,7 @@ int hsignature_parse(hsignature_t* sig, const char* buf, const char** errptr)
                 goto error;
             }
 
+            while (isspace(buf[bounds])) ++bounds;
             if (buf[bounds] == ',') ++bounds;
         }
         if (range.bounds.s.set_len == 0) {
@@ -791,55 +809,53 @@ int add_range(hsignature_t* sig, hrange_t* range)
     return 0;
 }
 
-int copy_token(const char* buf, char **token)
+int copy_token(const char* buf, char **token, const char** errptr)
 {
-    const char* src = buf;
+    const char* errstr;
+    const char* src;
     int cap = 0;
 
     while (1) {
-        // Skip leading whitespace and backslash-escaped newlines.
         src = buf;
-        while (1) {
-            if (*src == '\\' && isspace(*(src + 1))) src += 2;
-            else if (isspace(*src)) ++src;
-            else break;
-        }
+        // Skip leading whitespace.
+        while (isspace(*src)) ++src;
 
         char* dst = *token;
-        char  quote = '\0';
         int   len = cap;
+        char  quote = '\0';
         while (*src) {
             if (!quote) {
-                if (*src == '\'')  { quote = '\''; ++src; continue; }
-                if (*src ==  '"')  { quote =  '"'; ++src; continue; }
-                if (*src ==  ',')  { break; }
-                if (isspace(*src)) { break; }
-                if (*src == '\\' && isspace(*src)) { break; }
+                if      (*src == '\'')  { quote = '\''; ++src; continue; }
+                else if (*src ==  '"')  { quote =  '"'; ++src; continue; }
+                else if (*src ==  ',')  { break; }
+                else if (isspace(*src)) { break; }
             }
-            else if (*src == quote) { quote = '\0'; ++src; continue; }
-            else if (*src == '\\')  { ++src; }
+            else {
+                if      (*src == '\\')  { ++src; }
+                else if (*src == quote) { quote = '\0'; ++src; continue; }
+            }
 
             if (len-- > 0)
                 *(dst++) = *(src++);
             else
                 ++src;
         }
-        if (quote != '\0') return -1;
-        if (len-- > 0) *dst = '\0';
+        if (len-- > 0)
+            *dst = '\0';
 
-        // Skip trailing whitespace and backslash-escaped newlines.
-        while (1) {
-            if (*src == '\\' && isspace(*(src + 1))) src += 2;
-            else if (isspace(*src)) ++src;
-            else break;
+        if (quote != '\0') {
+            errstr = "Non-terminated quote detected";
+            goto error;
         }
 
         if (len < -1) {
             // Token buffer size is -len;
             cap += -len;
             *token = malloc(cap * sizeof(**token));
-            if (!*token)
-                return -1;
+            if (!*token) {
+                errstr = "Could not allocate a new configuration key/val pair";
+                goto error;
+            }
         }
         else if (len == -1) {
             // Empty token.
@@ -849,6 +865,11 @@ int copy_token(const char* buf, char **token)
         else break; // Loop exit.
     }
     return src - buf;
+
+  error:
+    if (errptr)
+        *errptr = errstr;
+    return -1;
 }
 
 hrange_t* find_range(hsignature_t* sig, const char* name)
