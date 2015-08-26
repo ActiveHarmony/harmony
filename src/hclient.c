@@ -228,6 +228,124 @@ void ah_fini(hdesc_t* hd)
  */
 
 /**
+ * \brief Load a tuning session description from a file.
+ *
+ * Opens and parses a file for configuration and tuning variable
+ * declarations.  The session name is copied from the filename.  If
+ * `filename` is the string "-", `stdin` will be used instead.
+ * To load a file named "-", include the path (e.g., "./-").
+ *
+ * The file is parsed line by line.  Each line may contain either a
+ * tuning variable or configuration variable definitions.  The line is
+ * considered a tuning variable declaration if it begins with a valid
+ * tuning variable type.
+ *
+ * Here are some examples of valid integer-domain variables:
+ *
+ *     int first_ivar = min:-10 max:10 step:2
+ *     int second_ivar = min:1 max:100 # Integers have a default step of 1.
+ *
+ * Here are some examples of valid real-domain variables:
+ *
+ *     real first_rvar = min:0 max:1 step:1e-4
+ *     real second_rvar = min:-0.5 max:0.5 step:0.001
+ *
+ * Here are some examples of valid enumerated-domain variables:
+ *
+ *     enum sort_algo   = bubble, insertion, quick, merge
+ *     enum search_algo = forward backward binary # Commas are optional.
+ *     enum quotes      = "Cogito ergo sum" \
+ *                        "To be, or not to be." \
+ *                        "What's up, doc?"
+ *
+ * Otherwise, the line is considered to be a configuration variable
+ * definition, like the following examples:
+ *
+ *     STRATEGY=pro.so
+ *     INIT_POINT = 1.41421, \
+ *                  2.71828, \
+ *                  3.14159
+ *     LAYERS=agg.so:log.so
+ *
+ *     AGG_TIMES=5
+ *     AGG_FUNC=median
+ *
+ *     LOG_FILE=/tmp/search.log
+ *     LOG_MODE=w
+ *
+ * Variable names must conform to C identifier rules.  Comments are
+ * preceded by the hash (#) character, and long lines may be joined
+ * with a backslash (\) character.
+ *
+ * Parsing stops immediately upon error and ah_error_string() may be
+ * used to determine the nature of the error.
+ *
+ * \param hd       Harmony descriptor returned from ah_init().
+ * \param filename Name to associate with this variable.
+ *
+ * \return Returns 0 on success, and -1 otherwise.
+ */
+int ah_load(hdesc_t* hd, const char* filename)
+{
+    FILE* fp;
+    int retval = 0;
+
+    if (hsignature_name(&hd->sess.sig, filename) != 0) {
+        hd->errstr = "Could not copy session name from filename";
+        return -1;
+    }
+
+    if (strcmp(filename, "-") == 0) {
+        fp = stdin;
+    }
+    else {
+        fp = fopen(filename, "r");
+        if (!fp) {
+            snprintf_grow(&hd->buf, &hd->buflen,
+                          "Could not open '%s' for reading", filename);
+            hd->errstr = hd->buf;
+            return -1;
+        }
+    }
+
+    char* buf = NULL;
+    int   cap = 0;
+    char* end = NULL;
+    int   linenum = 1;
+    while (1) {
+        char* line;
+        int   count = file_read_line(fp, &buf, &cap, &line, &end, &hd->errstr);
+        if (count <  0) goto error;
+        if (count == 0) break; // Loop exit.
+
+        if ((strncmp(line, "int",  3) == 0 && isspace(line[3])) ||
+            (strncmp(line, "real", 4) == 0 && isspace(line[4])) ||
+            (strncmp(line, "enum", 4) == 0 && isspace(line[4])))
+        {
+            if (hsignature_parse(&hd->sess.sig, line, &hd->errstr) == -1)
+                goto error;
+        }
+        else {
+            if (hcfg_parse(&hd->sess.cfg, line, &hd->errstr) == -1)
+                goto error;
+        }
+        linenum += count;
+    }
+    goto cleanup;
+
+  error:
+    snprintf_grow(&hd->buf, &hd->buflen, "Parse error at %s:%d: %s",
+                  filename, linenum, hd->errstr);
+    hd->errstr = hd->buf;
+    retval = -1;
+
+  cleanup:
+    fclose(fp);
+    free(buf);
+    return retval;
+}
+
+/**
  * \brief Add an integer-domain variable to the Harmony session.
  *
  * \param hd   Harmony descriptor returned from ah_init().

@@ -1,5 +1,6 @@
 client_api/chapel
 client_api/fortran
+client_api/loadfile
 client_api/minimal
 code_generation/gemm
 synth/synth

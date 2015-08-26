@@ -1,7 +1,12 @@
 TO_BASE=../..
 
-SRCS=minimal.c
-NO_INST_TGTS=minimal
+SRCS=loadfile.c \
+     minimal.c
+NO_INST_TGTS=loadfile \
+             minimal
+
+loadfile: REQ_CPPFLAGS+=-I$(TO_BASE)/src
+loadfile: $(TO_BASE)/src/libharmony.a
 
 minimal: REQ_CPPFLAGS+=-I$(TO_BASE)/src
 minimal: $(TO_BASE)/src/libharmony.a

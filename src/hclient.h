@@ -49,6 +49,7 @@ void     ah_fini(hdesc_t* hd);
 /* -------------------------------------------------------------------
  * Session setup functions.
  */
+int ah_load(hdesc_t* hd, const char* filename);
 int ah_int(hdesc_t* hd, const char* name,
            long min, long max, long step);
 int ah_real(hdesc_t* hd, const char* name,
