@@ -16,9 +16,10 @@ IMGS = images/feedback \
 all: $(addsuffix .pdf, $(DOCS))
 
 $(addsuffix .pdf, $(DOCS)): %.pdf: doxygen/Doxyfile.% doxygen/Doxyfile.base doxygen/%.dox doxygen/harmony.sty $(addsuffix .pdf, $(IMGS)) images/hserver1.png images/hserver2.png
-	$(DOXYGEN) $< && \
+	@echo Making the $*
+	@$(DOXYGEN) $< && \
 	./doxygen/postprocess.sh $* && \
-	$(MAKE) -C $*.latex && \
+	$(MAKE) -C $*.latex > /dev/null 2>&1 && \
 	cp $*.latex/refman.pdf $@
 
 $(addsuffix .pdf, $(IMGS)): %.pdf: %.svg
