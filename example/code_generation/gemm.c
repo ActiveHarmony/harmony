@@ -110,15 +110,6 @@ int main(int argc, char* argv[])
     MPI_Init(&argc, &argv);
     time_initial = MPI_Wtime();
 
-    /* Set the location where new code will arrive. */
-    if (argc < 2) {
-        fprintf(stderr, "Usage: %s <new_code_dir>"
-                " [KEY_1=VAL_1] .. [KEY_N=VAL_N]\n\n", argv[0]);
-        MPI_Finalize();
-        return -1;
-    }
-    new_code_path = argv[1];
-
     /* Get the rank and size of this MPI application. */
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &node_count);
@@ -133,7 +124,16 @@ int main(int argc, char* argv[])
         errprint("Failed to initialize a Harmony session.\n");
         goto cleanup;
     }
-    ah_args(hdesc, argc, argv);
+    ah_args(hdesc, &argc, argv);
+
+    /* Set the location where new code will arrive. */
+    if (argc < 2) {
+        fprintf(stderr, "Usage: %s <new_code_dir>"
+                " [KEY_1=VAL_1] .. [KEY_N=VAL_N]\n\n", argv[0]);
+        MPI_Finalize();
+        return -1;
+    }
+    new_code_path = argv[1];
 
     if (rank == 0) {
         /* We are the master rank.  Establish a new Harmony tuning session. */

@@ -60,7 +60,7 @@ int main(int argc, char* argv[])
         fprintf(stderr, "Error initializing a Harmony session");
         goto error;
     }
-    ah_args(hd, argc, argv);
+    ah_args(hd, &argc, argv);
 
     /* Load a session definition file. */
     if (ah_load(hd, "session.cfg") != 0) {

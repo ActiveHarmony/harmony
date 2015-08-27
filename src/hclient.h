@@ -43,7 +43,7 @@ typedef struct hdesc_t hdesc_t;
  * Harmony descriptor management functions.
  */
 hdesc_t* ah_init(void);
-int      ah_args(hdesc_t* hd, int argc, char** argv);
+int      ah_args(hdesc_t* hd, int* argc, char** argv);
 void     ah_fini(hdesc_t* hd);
 
 /* -------------------------------------------------------------------

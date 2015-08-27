@@ -151,40 +151,35 @@ hdesc_t* ah_init()
  * directives in the form NAME=VAL.  Any arguments matching this
  * pattern are added to the configuration and removed from `argv`.
  *
- * Iteration through the command-line arguments stops prematurely if
- * a double-dash ("--") token is found.  All non-directive arguments
- * are shifted to the front of `argv`.
+ * Iteration through the command-line arguments stops prematurely if a
+ * double-dash ("--") token is found.  All non-directive arguments are
+ * shifted to the front of `argv`.  Finally, `argc` is updated to
+ * reflect the remaining number of program arguments.
  *
  * \param hd   Harmony descriptor returned from ah_init().
- * \param argc Number of arguments contained in `argv`.
- * \param argv Array of command-line argument strings to search.
+ * \param argc Address of the `argc` variable.
+ * \param argv Address of the command-line argument array
+ *             (i.e., the value of `argv`).
  *
  * \return Returns the number of directives successfully taken from
  *         `argv`, or -1 on error.
  */
-int ah_args(hdesc_t* hd, int argc, char** argv)
+int ah_args(hdesc_t* hd, int* argc, char** argv)
 {
     int skip = 0;
     int tail = 0;
 
-    for (int i = 0; i < argc; ++i) {
+    for (int i = 0; i < *argc; ++i) {
         if (strcmp(argv[i], "--") == 0)
             skip = 1;
 
-        char* sep = strchr(argv[i], '=');
-        if (!skip && sep) {
-            *sep = '\0';
-            if (hcfg_set(&hd->sess.cfg, argv[i], sep + 1) != 0) {
-                *sep = '=';
-                sep = NULL;
-            }
-        }
-
-        if (!sep) {
+        if (skip || hcfg_parse(&hd->sess.cfg, argv[i], &hd->errstr) != 1)
             argv[tail++] = argv[i];
-        }
     }
-    return argc - tail;
+
+    int removed = *argc - tail;
+    *argc = tail;
+    return removed;
 }
 
 /**
@@ -1280,7 +1275,7 @@ hdesc_t* harmony_init(void)
 
 int harmony_parse_args(hdesc_t* hd, int argc, char** argv)
 {
-    return ah_args(hd, argc, argv);
+    return ah_args(hd, &argc, argv);
 }
 
 void harmony_fini(hdesc_t* hd)

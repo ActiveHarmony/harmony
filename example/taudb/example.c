@@ -182,7 +182,7 @@ int main(int argc, char* argv[])
         fprintf(stderr, "Failed to initialize a harmony session.\n");
         return -1;
     }
-    ah_args(hdesc, argc, argv);
+    ah_args(hdesc, &argc, argv);
 
     /* Set a unique id for ourselves */
     metadata = get_metadata();

@@ -81,7 +81,7 @@ int main(int argc, char* argv[])
         fprintf(stderr, "Failed to initialize a harmony session.\n");
         return -1;
     }
-    ah_args(hdesc, argc, argv);
+    ah_args(hdesc, &argc, argv);
 
     /* Process the program arguments. */
     name = "XML_example";
