@@ -20,4 +20,5 @@ INPUT = doxygen/Users_Guide.dox \
         ../src/plugins/layers/log.c \
         ../src/plugins/layers/TAUdb.c \
         ../src/plugins/layers/xmlWriter.c \
+        ../src/hclient.c \
         ../src/hclient.h

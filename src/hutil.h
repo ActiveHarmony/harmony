@@ -20,6 +20,7 @@
 #ifndef __HUTIL_H__
 #define __HUTIL_H__
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
 
@@ -30,6 +31,9 @@ extern "C" {
 int   file_exists(const char* filename);
 void* file_map(const char* filename, size_t* size);
 void  file_unmap(void* buf, size_t size);
+int   valid_id(const char* key, int len);
+int   file_read_line(FILE* fp, char** buf, int* cap,
+                     char** line, char** end, const char** errstr);
 char* search_path(const char* filename);
 int   array_grow(void* buf, int* capacity, int elem_size);
 char* stralloc(const char* in);

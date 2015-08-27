@@ -130,14 +130,14 @@ int main(int argc, char* argv[])
     double best_val = HUGE_VAL;
     hdesc_t* hdesc;
 
-    parse_opts(argc, argv);
-
-    hdesc = harmony_init();
+    hdesc = ah_init();
     if (!hdesc) {
         perror("Error allocating/initializing a Harmony descriptor");
         return -1;
     }
-    harmony_parse_args(hdesc, argc - optind, &argv[optind]);
+    ah_args(hdesc, &argc, argv);
+
+    parse_opts(argc, argv);
 
     if (perturb)
         fprintf(stdout, "Seed value: %ld\n", seed);
@@ -159,16 +159,16 @@ int main(int argc, char* argv[])
     }
 
     report = 8;
-    for (i = 0; !harmony_converged(hdesc); i++) {
+    for (i = 0; !ah_converged(hdesc); i++) {
         double cmp = 0.0;
 
         if (iterations && i >= iterations)
             break;
 
-        hresult = harmony_fetch(hdesc);
+        hresult = ah_fetch(hdesc);
         if (hresult < 0) {
             fprintf(stderr, "Error fetching values from session: %s\n",
-                    harmony_error_string(hdesc));
+                    ah_error_string(hdesc));
             retval = -1;
             goto cleanup;
         }
@@ -184,9 +184,9 @@ int main(int argc, char* argv[])
             memcpy(best, perf, sizeof(best));
         }
 
-        if (harmony_report(hdesc, perf) < 0) {
+        if (ah_report(hdesc, perf) < 0) {
             fprintf(stderr, "Error reporting performance to session: %s\n",
-                    harmony_error_string(hdesc));
+                    ah_error_string(hdesc));
             retval = -1;
             goto cleanup;
         }
@@ -198,10 +198,10 @@ int main(int argc, char* argv[])
         }
     }
 
-    hresult = harmony_best(hdesc);
+    hresult = ah_best(hdesc);
     if (hresult < 0) {
         fprintf(stderr, "Error setting best input values: %s\n",
-                harmony_error_string(hdesc));
+                ah_error_string(hdesc));
         goto cleanup;
     }
     else if (hresult == 1) {
@@ -239,7 +239,7 @@ int main(int argc, char* argv[])
         fprintf(stdout, "x[%d] = %*lf\n", i, maxwidth, point[i]);
 
   cleanup:
-    harmony_fini(hdesc);
+    ah_fini(hdesc);
     return retval;
 }
 
@@ -524,12 +524,6 @@ int start_harmony(hdesc_t* hdesc)
     snprintf(session_name, sizeof(session_name),
              "test_in%d_out%d.pid%d", i_cnt, o_cnt, getpid());
 
-    if (harmony_session_name(hdesc, session_name) != 0) {
-        fprintf(stderr, "Could not set session name: %s\n",
-                harmony_error_string(hdesc));
-        return -1;
-    }
-
     if (accuracy <= MAX_ACCURACY)
         step = pow(10.0, -accuracy);
     else
@@ -537,36 +531,31 @@ int start_harmony(hdesc_t* hdesc)
 
     for (i = 0; i < i_cnt; ++i) {
         snprintf(intbuf, sizeof(intbuf), "x%d", i + 1);
-        if (harmony_real(hdesc, intbuf, bound_min, bound_max, step) != 0) {
+        if (ah_real(hdesc, intbuf, bound_min, bound_max, step) != 0) {
             fprintf(stderr, "Error defining '%s' tuning variable: %s\n",
-                    intbuf, harmony_error_string(hdesc));
+                    intbuf, ah_error_string(hdesc));
             return -1;
         }
 
-        if (harmony_bind_real(hdesc, intbuf, &point[i]) != 0) {
+        if (ah_bind_real(hdesc, intbuf, &point[i]) != 0) {
             fprintf(stderr, "Failed to register variable %s: %s\n",
-                    intbuf, harmony_error_string(hdesc));
+                    intbuf, ah_error_string(hdesc));
             return -1;
         }
     }
 
     snprintf(intbuf, sizeof(intbuf), "%d", o_cnt);
-    harmony_setcfg(hdesc, CFGKEY_PERF_COUNT, intbuf);
+    ah_set_cfg(hdesc, CFGKEY_PERF_COUNT, intbuf);
 
     snprintf(intbuf, sizeof(intbuf), "%ld", seed);
-    harmony_setcfg(hdesc, CFGKEY_RANDOM_SEED, intbuf);
+    ah_set_cfg(hdesc, CFGKEY_RANDOM_SEED, intbuf);
 
-    if (harmony_launch(hdesc, NULL, 0) != 0) {
+    if (ah_launch(hdesc, NULL, 0, session_name) != 0) {
         fprintf(stderr, "Error launching tuning session: %s\n",
-                harmony_error_string(hdesc));
+                ah_error_string(hdesc));
         return -1;
     }
 
-    if (harmony_join(hdesc, NULL, 0, session_name) != 0) {
-        fprintf(stderr, "Error joining tuning session: %s\n",
-                harmony_error_string(hdesc));
-        return -1;
-    }
     return 0;
 }
 

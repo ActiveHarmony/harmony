@@ -158,7 +158,7 @@ int main(int argc, char* argv[])
 
     /* Variables to hold the application's runtime tunable parameters.
      * Once bound to a Harmony tuning session, these variables will be
-     * modified upon harmony_fetch() to a new testing configuration.
+     * modified upon ah_fetch() to a new testing configuration.
      */
     long param_1;
     long param_2;
@@ -177,17 +177,17 @@ int main(int argc, char* argv[])
     }
 
     /* Initialize a Harmony client. */
-    hdesc = harmony_init();
+    hdesc = ah_init();
     if (hdesc == NULL) {
         fprintf(stderr, "Failed to initialize a harmony session.\n");
         return -1;
     }
-    argc -= harmony_parse_args(hdesc, argc - 1, &argv[1]);
+    ah_args(hdesc, &argc, argv);
 
     /* Set a unique id for ourselves */
     metadata = get_metadata();
     printf("Metadata is %s\n", metadata);
-    if (harmony_id(hdesc, metadata) != 0) {
+    if (ah_id(hdesc, metadata) != 0) {
         perror("Error setting client id");
         return -1;
     }
@@ -208,65 +208,54 @@ int main(int argc, char* argv[])
      * reduce the overhead for taudb_save_trial())
      */
     errno = 0;
-    harmony_session_name(hdesc, name);
-    harmony_layers(hdesc, "TAUdb.so");
+    ah_layers(hdesc, "TAUdb.so");
 
-    harmony_setcfg(hdesc, CFGKEY_CLIENT_COUNT, "1");
-    harmony_setcfg(hdesc, CFGKEY_TAUDB_STORE_METHOD, "one_time");
-    harmony_setcfg(hdesc, CFGKEY_TAUDB_STORE_NUM, "150");
+    ah_set_cfg(hdesc, CFGKEY_CLIENT_COUNT, "1");
+    ah_set_cfg(hdesc, CFGKEY_TAUDB_STORE_METHOD, "one_time");
+    ah_set_cfg(hdesc, CFGKEY_TAUDB_STORE_NUM, "150");
     if (errno) {
         perror("Error during session setup");
         return -1;
     }
 
-    if (harmony_int(hdesc, "param_1", 1, 100, 1) < 0 ||
-        harmony_int(hdesc, "param_2", 1, 100, 1) < 0 ||
-        harmony_int(hdesc, "param_3", 1, 100, 1) < 0 ||
-        harmony_int(hdesc, "param_4", 1, 100, 1) < 0 ||
-        harmony_int(hdesc, "param_5", 1, 100, 1) < 0 ||
-        harmony_int(hdesc, "param_6", 1, 100, 1) < 0)
+    if (ah_int(hdesc, "param_1", 1, 100, 1) < 0 ||
+        ah_int(hdesc, "param_2", 1, 100, 1) < 0 ||
+        ah_int(hdesc, "param_3", 1, 100, 1) < 0 ||
+        ah_int(hdesc, "param_4", 1, 100, 1) < 0 ||
+        ah_int(hdesc, "param_5", 1, 100, 1) < 0 ||
+        ah_int(hdesc, "param_6", 1, 100, 1) < 0)
     {
         fprintf(stderr, "Failed to define tuning session\n");
         return -1;
     }
 
-    printf("Launching tuning session.\n");
-    if (harmony_launch(hdesc, NULL, 0) != 0) {
-        fprintf(stderr, "Could not launch tuning session: %s\n",
-                harmony_error_string(hdesc));
-        return -1;
-    }
-
-    printf("Starting Harmony...\n");
-
     /* Bind the session variables to local variables. */
-    if (harmony_bind_int(hdesc, "param_1", &param_1) < 0 ||
-        harmony_bind_int(hdesc, "param_2", &param_2) < 0 ||
-        harmony_bind_int(hdesc, "param_3", &param_3) < 0 ||
-        harmony_bind_int(hdesc, "param_4", &param_4) < 0 ||
-        harmony_bind_int(hdesc, "param_5", &param_5) < 0 ||
-        harmony_bind_int(hdesc, "param_6", &param_6) < 0)
+    if (ah_bind_int(hdesc, "param_1", &param_1) < 0 ||
+        ah_bind_int(hdesc, "param_2", &param_2) < 0 ||
+        ah_bind_int(hdesc, "param_3", &param_3) < 0 ||
+        ah_bind_int(hdesc, "param_4", &param_4) < 0 ||
+        ah_bind_int(hdesc, "param_5", &param_5) < 0 ||
+        ah_bind_int(hdesc, "param_6", &param_6) < 0)
     {
         fprintf(stderr, "Failed to register variable\n");
         retval = -1;
         goto cleanup;
     }
 
-    /* Join this client to the tuning session we established above. */
-    if (harmony_join(hdesc, NULL, 0, name) < 0) {
-        fprintf(stderr, "Could not connect to harmony server: %s\n",
-                harmony_error_string(hdesc));
-        retval = -1;
-        goto cleanup;
+    /* Begin a new tuning session. */
+    printf("Launching tuning session.\n");
+    if (ah_launch(hdesc, NULL, 0, name) != 0) {
+        fprintf(stderr, "Could not launch tuning session: %s\n",
+                ah_error_string(hdesc));
+        return -1;
     }
-    printf("Connected to harmony server.\n");
 
     /* main loop */
-    for (i = 0; !harmony_converged(hdesc) && i < loop; i++) {
-        int hresult = harmony_fetch(hdesc);
+    for (i = 0; !ah_converged(hdesc) && i < loop; i++) {
+        int hresult = ah_fetch(hdesc);
         if (hresult < 0) {
             fprintf(stderr, "Failed to fetch values from server: %s\n",
-                    harmony_error_string(hdesc));
+                    ah_error_string(hdesc));
             retval = -1;
             goto cleanup;
         }
@@ -305,7 +294,7 @@ int main(int argc, char* argv[])
         }
 
         /* Report the performance we've just measured. */
-        if (harmony_report(hdesc, &perf) < 0) {
+        if (ah_report(hdesc, &perf) < 0) {
             fprintf(stderr, "Failed to report performance to server.\n");
             retval = -1;
             goto cleanup;
@@ -313,12 +302,12 @@ int main(int argc, char* argv[])
     }
 
     /* Leave the session */
-    if (harmony_leave(hdesc) < 0) {
+    if (ah_leave(hdesc) < 0) {
         fprintf(stderr, "Failed to disconnect from harmony server.\n");
         retval = -1;
     }
 
   cleanup:
-    harmony_fini(hdesc);
+    ah_fini(hdesc);
     return retval;
 }

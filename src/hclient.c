@@ -35,6 +35,7 @@
 #include <ctype.h>
 #include <assert.h>
 #include <math.h>
+#include <limits.h>
 
 typedef enum harmony_state_t {
     HARMONY_STATE_UNKNOWN,
@@ -47,20 +48,22 @@ typedef enum harmony_state_t {
     HARMONY_STATE_MAX
 } harmony_state_t;
 
-#define MAX_HOSTNAME_STRLEN 64
-char default_id_buf[MAX_HOSTNAME_STRLEN + 32] = {0};
+typedef struct hvarloc_t {
+    void* ptr;
+    hval_t val;
+} hvarloc_t;
 
 struct hdesc_t {
     harmony_state_t state;
     int socket;
     char* id;
+    char default_id[HOST_NAME_MAX + 32];
 
     hsession_t sess;
     hmesg_t mesg;
 
-    void** ptr;
-    int ptr_len;
-    int ptr_cap;
+    hvarloc_t* varloc;
+    int varloc_cap;
 
     hperf_t* perf;
     hpoint_t curr, best;
@@ -73,653 +76,1423 @@ struct hdesc_t {
 /* ---------------------------------------------------
  * Forward declarations for internal helper functions.
  */
-char* default_id(int n);
-int   ptr_bind(hdesc_t* hdesc, const char* name, hval_type type, void* ptr);
-int   send_request(hdesc_t* hdesc, hmesg_type msg_type);
-int   update_best(hdesc_t* hdesc, const hpoint_t* pt);
-int   set_values(hdesc_t* hdesc, const hpoint_t* pt);
+void generate_id(hdesc_t* hd);
+int  extend_perf(hdesc_t* hd);
+int  extend_varloc(hdesc_t* hd);
+int  find_var(hdesc_t* hd, const char* name);
+int  send_request(hdesc_t* hd, hmesg_type msg_type);
+int  set_varloc(hdesc_t* hd, const char* name, void* ptr);
+int  write_values(hdesc_t* hd, const hpoint_t* pt);
+int  update_best(hdesc_t* hd, const hpoint_t* pt);
 
 static int debug_mode = 0;
 
 /* ----------------------------------
  * Public Client API Implementations.
  */
-hdesc_t* harmony_init()
+
+/**
+ * \defgroup api_desc Harmony Descriptor Management Functions
+ *
+ * A Harmony descriptor is an opaque structure that stores state
+ * associated with a particular tuning session.  The functions within
+ * this section allow the user to create and manage the resources
+ * controlled by the descriptor.
+ *
+ * @{
+ */
+
+/**
+ * \brief Allocate and initialize a new Harmony descriptor.
+ *
+ * All client API functions require a valid Harmony descriptor to
+ * function correctly.  The descriptor is designed to be used as an
+ * opaque type and no guarantees are made about the contents of its
+ * structure.
+ *
+ * Heap memory is allocated for the descriptor, so be sure to call
+ * ah_fini() when it is no longer needed.
+ *
+ * \return Returns Harmony descriptor upon success, and `NULL` otherwise.
+ */
+hdesc_t* ah_init()
 {
-    hdesc_t* hdesc = malloc( sizeof(*hdesc) );
-    if (!hdesc)
+    hdesc_t* hd = malloc( sizeof(*hd) );
+    if (!hd)
         return NULL;
 
-    hdesc->sess = HSESSION_INITIALIZER;
-    if (hcfg_init(&hdesc->sess.cfg) != 0)
+    hd->sess = HSESSION_INITIALIZER;
+    if (hcfg_init(&hd->sess.cfg) != 0)
         return NULL;
 
-    hdesc->mesg = HMESG_INITIALIZER;
-    hdesc->state = HARMONY_STATE_INIT;
+    hd->mesg = HMESG_INITIALIZER;
+    hd->state = HARMONY_STATE_INIT;
 
-    hdesc->ptr = NULL;
-    hdesc->ptr_len = hdesc->ptr_cap = 0;
+    hd->varloc = NULL;
+    hd->varloc_cap = 0;
 
-    hdesc->curr = HPOINT_INITIALIZER;
-    hdesc->best = HPOINT_INITIALIZER;
+    hd->curr = HPOINT_INITIALIZER;
+    hd->best = HPOINT_INITIALIZER;
 
-    hdesc->buf = NULL;
-    hdesc->buflen = 0;
-    hdesc->errstr = NULL;
+    hd->buf = NULL;
+    hd->buflen = 0;
+    hd->errstr = NULL;
 
-    hdesc->id = NULL;
+    hd->id = NULL;
 
-    return hdesc;
+    return hd;
 }
 
-int harmony_parse_args(hdesc_t* hdesc, int argc, char** argv)
+/**
+ * \brief Find configuration directives in the command-line arguments.
+ *
+ * This function iterates through the command-line arguments (as
+ * passed to the main() function) to search for Harmony configuration
+ * directives in the form NAME=VAL.  Any arguments matching this
+ * pattern are added to the configuration and removed from `argv`.
+ *
+ * Iteration through the command-line arguments stops prematurely if a
+ * double-dash ("--") token is found.  All non-directive arguments are
+ * shifted to the front of `argv`.  Finally, `argc` is updated to
+ * reflect the remaining number of program arguments.
+ *
+ * \param hd   Harmony descriptor returned from ah_init().
+ * \param argc Address of the `argc` variable.
+ * \param argv Address of the command-line argument array
+ *             (i.e., the value of `argv`).
+ *
+ * \return Returns the number of directives successfully taken from
+ *         `argv`, or -1 on error.
+ */
+int ah_args(hdesc_t* hd, int* argc, char** argv)
 {
     int skip = 0;
     int tail = 0;
 
-    for (int i = 0; i < argc; ++i) {
+    for (int i = 0; i < *argc; ++i) {
         if (strcmp(argv[i], "--") == 0)
             skip = 1;
 
-        char* sep = strchr(argv[i], '=');
-        if (!skip && sep) {
-            *sep = '\0';
-            if (hcfg_set(&hdesc->sess.cfg, argv[i], sep + 1) != 0) {
-                *sep = '=';
-                sep = NULL;
-            }
-        }
-
-        if (!sep) {
+        if (skip || hcfg_parse(&hd->sess.cfg, argv[i], &hd->errstr) != 1)
             argv[tail++] = argv[i];
+    }
+
+    int removed = *argc - tail;
+    *argc = tail;
+    return removed;
+}
+
+/**
+ * \brief Release all resources associated with a Harmony client descriptor.
+ *
+ * \param hd Harmony descriptor returned from ah_init().
+ */
+void ah_fini(hdesc_t* hd)
+{
+    if (hd) {
+        if (hd->state >= HARMONY_STATE_CONNECTED) {
+            if (close(hd->socket) != 0 && debug_mode)
+                perror("Error closing socket during ah_leave()");
+        }
+
+        hmesg_fini(&hd->mesg);
+        hsession_fini(&hd->sess);
+        hpoint_fini(&hd->curr);
+        hpoint_fini(&hd->best);
+        hperf_fini(hd->perf);
+
+        if (hd->id && hd->id != hd->default_id)
+            free(hd->id);
+
+        free(hd->buf);
+        free(hd->varloc);
+        free(hd);
+    }
+}
+
+/**
+ * @}
+ *
+ * \defgroup api_sess Session Setup Functions
+ *
+ * These functions are used to describe and establish new tuning
+ * sessions.  Valid sessions must define at least one tuning variable
+ * before they are launched.
+ *
+ * @{
+ */
+
+/**
+ * \brief Load a tuning session description from a file.
+ *
+ * Opens and parses a file for configuration and tuning variable
+ * declarations.  The session name is copied from the filename.  If
+ * `filename` is the string "-", `stdin` will be used instead.
+ * To load a file named "-", include the path (e.g., "./-").
+ *
+ * The file is parsed line by line.  Each line may contain either a
+ * tuning variable or configuration variable definitions.  The line is
+ * considered a tuning variable declaration if it begins with a valid
+ * tuning variable type.
+ *
+ * Here are some examples of valid integer-domain variables:
+ *
+ *     int first_ivar = min:-10 max:10 step:2
+ *     int second_ivar = min:1 max:100 # Integers have a default step of 1.
+ *
+ * Here are some examples of valid real-domain variables:
+ *
+ *     real first_rvar = min:0 max:1 step:1e-4
+ *     real second_rvar = min:-0.5 max:0.5 step:0.001
+ *
+ * Here are some examples of valid enumerated-domain variables:
+ *
+ *     enum sort_algo   = bubble, insertion, quick, merge
+ *     enum search_algo = forward backward binary # Commas are optional.
+ *     enum quotes      = "Cogito ergo sum" \
+ *                        "To be, or not to be." \
+ *                        "What's up, doc?"
+ *
+ * Otherwise, the line is considered to be a configuration variable
+ * definition, like the following examples:
+ *
+ *     STRATEGY=pro.so
+ *     INIT_POINT = 1.41421, \
+ *                  2.71828, \
+ *                  3.14159
+ *     LAYERS=agg.so:log.so
+ *
+ *     AGG_TIMES=5
+ *     AGG_FUNC=median
+ *
+ *     LOG_FILE=/tmp/search.log
+ *     LOG_MODE=w
+ *
+ * Variable names must conform to C identifier rules.  Comments are
+ * preceded by the hash (#) character, and long lines may be joined
+ * with a backslash (\) character.
+ *
+ * Parsing stops immediately upon error and ah_error_string() may be
+ * used to determine the nature of the error.
+ *
+ * \param hd       Harmony descriptor returned from ah_init().
+ * \param filename Name to associate with this variable.
+ *
+ * \return Returns 0 on success, and -1 otherwise.
+ */
+int ah_load(hdesc_t* hd, const char* filename)
+{
+    FILE* fp;
+    int retval = 0;
+
+    if (hsignature_name(&hd->sess.sig, filename) != 0) {
+        hd->errstr = "Could not copy session name from filename";
+        return -1;
+    }
+
+    if (strcmp(filename, "-") == 0) {
+        fp = stdin;
+    }
+    else {
+        fp = fopen(filename, "r");
+        if (!fp) {
+            snprintf_grow(&hd->buf, &hd->buflen,
+                          "Could not open '%s' for reading", filename);
+            hd->errstr = hd->buf;
+            return -1;
         }
     }
-    return argc - tail;
-}
 
-void harmony_fini(hdesc_t* hdesc)
-{
-    if (hdesc) {
-        hmesg_fini(&hdesc->mesg);
-        hsession_fini(&hdesc->sess);
-        hpoint_fini(&hdesc->curr);
-        hpoint_fini(&hdesc->best);
-        hperf_fini(hdesc->perf);
+    char* buf = NULL;
+    int   cap = 0;
+    char* end = NULL;
+    int   linenum = 1;
+    while (1) {
+        char* line;
+        int   count = file_read_line(fp, &buf, &cap, &line, &end, &hd->errstr);
+        if (count <  0) goto error;
+        if (count == 0) break; // Loop exit.
 
-        if (hdesc->id && hdesc->id != default_id_buf)
-            free(hdesc->id);
-
-        free(hdesc->buf);
-        free(hdesc->ptr);
-        free(hdesc);
+        if ((strncmp(line, "int",  3) == 0 && isspace(line[3])) ||
+            (strncmp(line, "real", 4) == 0 && isspace(line[4])) ||
+            (strncmp(line, "enum", 4) == 0 && isspace(line[4])))
+        {
+            if (hsignature_parse(&hd->sess.sig, line, &hd->errstr) == -1)
+                goto error;
+        }
+        else {
+            if (hcfg_parse(&hd->sess.cfg, line, &hd->errstr) == -1)
+                goto error;
+        }
+        linenum += count;
     }
+    goto cleanup;
+
+  error:
+    snprintf_grow(&hd->buf, &hd->buflen, "Parse error at %s:%d: %s",
+                  filename, linenum, hd->errstr);
+    hd->errstr = hd->buf;
+    retval = -1;
+
+  cleanup:
+    fclose(fp);
+    free(buf);
+    return retval;
 }
 
-/* -------------------------------------------------------------------
- * Session Establishment API Implementations
+/**
+ * \brief Add an integer-domain variable to the Harmony session.
+ *
+ * \param hd   Harmony descriptor returned from ah_init().
+ * \param name Name to associate with this variable.
+ * \param min  Minimum range value (inclusive).
+ * \param max  Maximum range value (inclusive).
+ * \param step Minimum search increment.
+ *
+ * \return Returns 0 on success, and -1 otherwise.
  */
-int harmony_session_name(hdesc_t* hdesc, const char* name)
+int ah_int(hdesc_t* hd, const char* name,
+           long min, long max, long step)
 {
-    return hsignature_name(&hdesc->sess.sig, name);
+    return hsignature_int(&hd->sess.sig, name, min, max, step);
 }
 
-int harmony_int(hdesc_t* hdesc, const char* name,
-                long min, long max, long step)
-{
-    return hsignature_int(&hdesc->sess.sig, name, min, max, step);
-}
-
-int harmony_real(hdesc_t* hdesc, const char* name,
+/**
+ * \brief Add a real-domain variable to the Harmony session.
+ *
+ * \param hd   Harmony descriptor returned from ah_init().
+ * \param name Name to associate with this variable.
+ * \param min  Minimum range value (inclusive).
+ * \param max  Maximum range value (inclusive).
+ * \param step Minimum search increment.
+ *
+ * \return Returns 0 on success, and -1 otherwise.
+ */
+int ah_real(hdesc_t* hd, const char* name,
                  double min, double max, double step)
 {
-    return hsignature_real(&hdesc->sess.sig, name, min, max, step);
+    return hsignature_real(&hd->sess.sig, name, min, max, step);
 }
 
-int harmony_enum(hdesc_t* hdesc, const char* name, const char* value)
+/**
+ * \brief Add an enumeration variable and append to the list of valid values
+ *        in this set.
+ *
+ * \param hd    Harmony descriptor returned from ah_init().
+ * \param name  Name to associate with this variable.
+ * \param value String that belongs in this enumeration.
+ *
+ * \return Returns 0 on success, and -1 otherwise.
+ */
+int ah_enum(hdesc_t* hd, const char* name, const char* value)
 {
-    return hsignature_enum(&hdesc->sess.sig, name, value);
+    return hsignature_enum(&hd->sess.sig, name, value);
 }
 
-int harmony_strategy(hdesc_t* hdesc, const char* strategy)
+/**
+ * \brief Specify the search strategy to use in the new Harmony session.
+ *
+ * \param hd       Harmony descriptor returned from ah_init().
+ * \param strategy Filename of the strategy plug-in to use in this session.
+ *
+ * \return Returns 0 on success, and -1 otherwise.
+ */
+int ah_strategy(hdesc_t* hd, const char* strategy)
 {
-    return hcfg_set(&hdesc->sess.cfg, CFGKEY_STRATEGY, strategy);
+    return hcfg_set(&hd->sess.cfg, CFGKEY_STRATEGY, strategy);
 }
 
-int harmony_layers(hdesc_t* hdesc, const char* list)
+/**
+ * \brief Specify the list of plug-ins to use in the new Harmony session.
+ *
+ * Plug-in layers are specified via a single string of filenames,
+ * separated by the colon character (`:`).  The layers are loaded in
+ * list order, with each successive layer placed further from the
+ * search strategy in the center.
+ *
+ * \param hd   Harmony descriptor returned from ah_init().
+ * \param list List of plug-ins to load with this session.
+ *
+ * \return Returns 0 on success, and -1 otherwise.
+ */
+int ah_layers(hdesc_t* hd, const char* list)
 {
-    return hcfg_set(&hdesc->sess.cfg, CFGKEY_LAYERS, list);
+    return hcfg_set(&hd->sess.cfg, CFGKEY_LAYERS, list);
 }
 
-int harmony_launch(hdesc_t* hdesc, const char* host, int port)
+/**
+ * \brief Instantiate a new Harmony tuning session.
+ *
+ * After using the session establishment routines (ah_int(),
+ * ah_strategy(), etc.) to specify a tuning session, this function
+ * launches a new tuning session.  It may either be started locally or
+ * on the Harmony Server located at *host*:*port*.
+ *
+ * If *host* is `NULL`, its value will be taken from the environment
+ * variable `HARMONY_HOST`.  If `HARMONY_HOST` is not defined, the
+ * environment variable `HARMONY_HOME` will be used to initiate a
+ * private tuning session, which will be available only to the local
+ * process.
+ *
+ * If *port* is 0, its value will be taken from the environment
+ * variable `HARMONY_PORT`, if defined.  Otherwise, its value will be
+ * taken from the src/defaults.h file.
+ *
+ * \param hd   Harmony descriptor returned from ah_init().
+ * \param host Host of the Harmony server (or `NULL`).
+ * \param port Port of the Harmony server.
+ * \param name Name to associate with this session instance.
+ *
+ * \return Returns 0 on success, and -1 otherwise.
+ */
+int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
 {
     /* Sanity check input */
-    if (hdesc->sess.sig.range_len < 1) {
-        hdesc->errstr = "No tuning variables defined";
+    if (hd->state > HARMONY_STATE_INIT) {
+        hd->errstr = "Descriptor already connected to another session";
         errno = EINVAL;
         return -1;
     }
 
-    if (!host) {
-        host = hcfg_get(&hdesc->sess.cfg, CFGKEY_HARMONY_HOST);
+    if (hd->sess.sig.range_len < 1) {
+        hd->errstr = "No tuning variables defined";
+        errno = EINVAL;
+        return -1;
     }
 
-    if (port == 0) {
-        port = hcfg_int(&hdesc->sess.cfg, CFGKEY_HARMONY_PORT);
-    }
+    if (extend_varloc(hd) != 0)
+        return -1;
+
+    if (extend_perf(hd) != 0)
+        return -1;
+
+    if (!host)
+        host = hcfg_get(&hd->sess.cfg, CFGKEY_HARMONY_HOST);
+
+    if (port == 0)
+        port = hcfg_int(&hd->sess.cfg, CFGKEY_HARMONY_PORT);
 
     if (!host) {
         char* path;
         const char* home;
 
-        /* Provide a default name, if one isn't defined. */
-        if (!hdesc->sess.sig.name) {
-            if (hsignature_name(&hdesc->sess.sig, "NONAME"))
-                return -1;
-        }
-
         /* Find the Active Harmony installation. */
-        home = hcfg_get(&hdesc->sess.cfg, CFGKEY_HARMONY_HOME);
+        home = hcfg_get(&hd->sess.cfg, CFGKEY_HARMONY_HOME);
         if (!home) {
-            hdesc->errstr = "No host or " CFGKEY_HARMONY_HOME " specified";
+            hd->errstr = "No host or " CFGKEY_HARMONY_HOME " specified";
+            errno = EINVAL;
             return -1;
         }
 
         /* Fork a local tuning session. */
         path = sprintf_alloc("%s/libexec/" SESSION_CORE_EXECFILE, home);
-        hdesc->socket = socket_launch(path, NULL, NULL);
+        hd->socket = socket_launch(path, NULL, NULL);
         free(path);
     }
     else {
-        hdesc->socket = tcp_connect(host, port);
+        hd->socket = tcp_connect(host, port);
     }
 
-    if (hdesc->socket < 0) {
-        hdesc->errstr = strerror(errno);
+    if (hd->socket < 0) {
+        hd->errstr = strerror(errno);
+        return -1;
+    }
+    generate_id(hd);
+
+    hd->state = HARMONY_STATE_CONNECTED;
+
+    /* Provide a default name, if necessary. */
+    if (!name && !hd->sess.sig.name)
+        name = hd->default_id;
+
+    if (name && hsignature_name(&hd->sess.sig, name) != 0) {
+        hd->errstr = "Error setting session name";
         return -1;
     }
 
     /* Prepare a default client id, if necessary. */
-    if (hdesc->id == NULL)
-        hdesc->id = default_id(hdesc->socket);
-    hdesc->state = HARMONY_STATE_CONNECTED;
+    if (hd->id == NULL)
+        hd->id = hd->default_id;
 
     /* Prepare a Harmony message. */
-    hmesg_scrub(&hdesc->mesg);
-    hdesc->mesg.data.session = HSESSION_INITIALIZER;
-    hsession_copy(&hdesc->mesg.data.session, &hdesc->sess);
+    hmesg_scrub(&hd->mesg);
+    hd->mesg.data.session = HSESSION_INITIALIZER;
+    hsession_copy(&hd->mesg.data.session, &hd->sess);
 
-    return send_request(hdesc, HMESG_SESSION);
+    if (send_request(hd, HMESG_SESSION) != 0)
+        return -1;
+
+    hd->state = HARMONY_STATE_READY;
+
+    return 0;
 }
 
-/* -------------------------------------------------------------------
- * Tuning Client Establishment API Implementations
+/**
+ * @}
+ *
+ * \defgroup api_client Tuning Client Setup Functions
+ *
+ * These functions prepare the client to join an established tuning
+ * session.  Specifically, variables within the client application
+ * must be bound to session variables.  This allows the client to
+ * change appropriately upon fetching new points from the session.
+ *
+ * @{
  */
-int harmony_id(hdesc_t* hdesc, const char* id)
+
+/**
+ * \brief Join an established Harmony tuning session.
+ *
+ * Establishes a connection with the Harmony Server on a specific host
+ * and port, and joins the named session.
+ *
+ * If *host* is `NULL`, its value will be taken from the environment
+ * variable `HARMONY_HOST`.  Either *host* or `HARMONY_HOST` must be
+ * defined for this function to succeed.
+ *
+ * If *port* is 0, its value will be taken from the environment
+ * variable `HARMONY_PORT`, if defined.  Otherwise, its value will be
+ * taken from the src/defaults.h file.
+ *
+ * Upon success, tuning variable information is retrieved from the
+ * server and may subsequently be bound to local memory via
+ * ah_bind_XXX().
+ *
+ * \param hd   Harmony descriptor returned from ah_init().
+ * \param host Host of the Harmony server.
+ * \param port Port of the Harmony server.
+ * \param name Name of an existing tuning session on the server.
+ *
+ * \return Returns 0 on success, and -1 otherwise.
+ */
+int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
 {
-    if (hdesc->id && hdesc->id != default_id_buf)
-        free(hdesc->id);
+    if (hd->state < HARMONY_STATE_CONNECTED) {
+        if (!host)
+            host = hcfg_get(&hd->sess.cfg, CFGKEY_HARMONY_HOST);
 
-    hdesc->id = stralloc(id);
-    if (!hdesc->id) {
-        hdesc->errstr = strerror(errno);
-        return -1;
-    }
-    return 0;
-}
+        if (port == 0)
+            port = hcfg_int(&hd->sess.cfg, CFGKEY_HARMONY_PORT);
 
-int harmony_bind_int(hdesc_t* hdesc, const char* name, long* ptr)
-{
-    return ptr_bind(hdesc, name, HVAL_INT, ptr);
-}
-
-int harmony_bind_real(hdesc_t* hdesc, const char* name, double* ptr)
-{
-    return ptr_bind(hdesc, name, HVAL_REAL, ptr);
-}
-
-int harmony_bind_enum(hdesc_t* hdesc, const char* name, const char** ptr)
-{
-    return ptr_bind(hdesc, name, HVAL_STR, (void*)ptr);
-}
-
-int ptr_bind(hdesc_t* hdesc, const char* name, hval_type type, void* ptr)
-{
-    int i;
-    hsignature_t* sig = &hdesc->sess.sig;
-
-    for (i = 0; i < sig->range_len; ++i) {
-        if (strcmp(sig->range[i].name, name) == 0)
-            break;
-    }
-    if (i == sig->range_cap) {
-        if (array_grow(&sig->range, &sig->range_cap, sizeof(hrange_t)) != 0)
-            return -1;
-    }
-
-    if (i == sig->range_len) {
-        sig->range[i].name = stralloc(name);
-        if (!sig->range[i].name)
-            return -1;
-
-        sig->range[i].type = type;
-        ++sig->range_len;
-    }
-
-    if (hdesc->ptr_cap < sig->range_cap) {
-        void** tmpbuf = realloc(hdesc->ptr, sig->range_cap * sizeof(void*));
-        if (!tmpbuf)
-            return -1;
-
-        hdesc->ptr = tmpbuf;
-        hdesc->ptr_cap = sig->range_cap;
-    }
-
-    hdesc->ptr[i] = ptr;
-    ++hdesc->ptr_len;
-
-    return 0;
-}
-
-int harmony_join(hdesc_t* hdesc, const char* host, int port, const char* name)
-{
-    int perf_len;
-    char* cfgval;
-
-    /* Verify that we have *at least* one variable bound, and that
-     * this descriptor isn't already associated with a tuning
-     * session.
-     */
-    if (hdesc->ptr_len == 0) {
-        hdesc->errstr = "No variables bound to Harmony session";
-        errno = EINVAL;
-        return -1;
-    }
-
-    if (hdesc->state >= HARMONY_STATE_READY) {
-        hdesc->errstr = "Descriptor already joined with an existing session";
-        errno = EINVAL;
-        return -1;
-    }
-
-    if (hdesc->state == HARMONY_STATE_INIT) {
         if (!host) {
-            host = hcfg_get(&hdesc->sess.cfg, CFGKEY_HARMONY_HOST);
-            hdesc->errstr = "Invalid value for " CFGKEY_HARMONY_HOST
-                            " configuration variable.";
-        }
-
-        if (port == 0) {
-            port = hcfg_int(&hdesc->sess.cfg, CFGKEY_HARMONY_PORT);
-        }
-
-        hdesc->socket = tcp_connect(host, port);
-        if (hdesc->socket < 0) {
-            hdesc->errstr = "Error establishing TCP connection with server";
+            hd->errstr = "No host specified";
+            errno = EINVAL;
             return -1;
         }
 
-        if (hdesc->id == NULL)
-            hdesc->id = default_id(hdesc->socket);
-        hdesc->state = HARMONY_STATE_CONNECTED;
+        hd->socket = tcp_connect(host, port);
+        if (hd->socket < 0) {
+            hd->errstr = "Error establishing TCP connection with server";
+            return -1;
+        }
+        generate_id(hd);
 
-        hdesc->sess.sig.name = stralloc(name);
-        if (!hdesc->sess.sig.name) {
-            hdesc->errstr = "Error allocating memory for signature name";
+        hd->state = HARMONY_STATE_CONNECTED;
+    }
+
+    if (hd->state < HARMONY_STATE_READY) {
+        if (!name) {
+            hd->errstr = "Invalid session name";
+            errno = EINVAL;
+            return -1;
+        }
+
+        if (hsignature_name(&hd->sess.sig, name) != 0) {
+            hd->errstr = "Error setting session name";
+            return -1;
+        }
+
+        if (hd->id == NULL)
+            hd->id = hd->default_id;
+
+        /* Prepare a Harmony message. */
+        hmesg_scrub(&hd->mesg);
+        hd->mesg.data.join = HSIGNATURE_INITIALIZER;
+        if (hsignature_copy(&hd->mesg.data.join, &hd->sess.sig) != 0) {
+            hd->errstr = "Internal error copying signature data";
+            return -1;
+        }
+
+        /* send the client registration message */
+        if (send_request(hd, HMESG_JOIN) != 0)
+            return -1;
+
+        if (hd->mesg.status != HMESG_STATUS_OK) {
+            hd->errstr = "Invalid message received";
+            errno = EINVAL;
+            return -1;
+        }
+
+        hsignature_fini(&hd->sess.sig);
+        if (hsignature_copy(&hd->sess.sig, &hd->mesg.data.join) != 0) {
+            hd->errstr = "Error copying received signature structure";
+            return -1;
+        }
+
+        if (extend_varloc(hd) != 0)
+            return -1;
+
+        if (extend_perf(hd) != 0)
+            return -1;
+
+        hd->state = HARMONY_STATE_READY;
+    }
+    else {
+        // Descriptor was already joined.  Make sure the session names match.
+        if (name && strcmp(hd->sess.sig.name, name) != 0) {
+            hd->errstr = "Descriptor already joined with an existing session";
+            errno = EINVAL;
             return -1;
         }
     }
-
-    /* Prepare a Harmony message. */
-    hmesg_scrub(&hdesc->mesg);
-    hdesc->mesg.data.join = HSIGNATURE_INITIALIZER;
-    if (hsignature_copy(&hdesc->mesg.data.join, &hdesc->sess.sig) != 0) {
-        hdesc->errstr = "Internal error copying signature data";
-        return -1;
-    }
-
-    /* send the client registration message */
-    if (send_request(hdesc, HMESG_JOIN) != 0)
-        return -1;
-
-    if (hdesc->mesg.status != HMESG_STATUS_OK) {
-        hdesc->errstr = "Invalid message received";
-        errno = EINVAL;
-        return -1;
-    }
-
-    hsignature_fini(&hdesc->sess.sig);
-    if (hsignature_copy(&hdesc->sess.sig, &hdesc->mesg.data.join) != 0) {
-        hdesc->errstr = "Error copying received signature structure";
-        return -1;
-    }
-
-    cfgval = harmony_getcfg(hdesc, CFGKEY_PERF_COUNT);
-    if (!cfgval) {
-        hdesc->errstr = "Error retrieving performance count.";
-        return -1;
-    }
-
-    perf_len = atoi(cfgval);
-    if (perf_len < 1) {
-        hdesc->errstr = "Invalid value for " CFGKEY_PERF_COUNT;
-        return -1;
-    }
-
-    hdesc->perf = hperf_alloc(perf_len);
-    if (!hdesc->perf) {
-        hdesc->errstr = "Error allocating performance array.";
-        return -1;
-    }
-
-    hdesc->state = HARMONY_STATE_READY;
-    return 0;
-}
-
-int harmony_leave(hdesc_t* hdesc)
-{
-    if (hdesc->state <= HARMONY_STATE_INIT) {
-        hdesc->errstr = "Descriptor not currently joined to any session.";
-        errno = EINVAL;
-        return -1;
-    }
-
-    hdesc->state = HARMONY_STATE_INIT;
-    if (close(hdesc->socket) != 0 && debug_mode)
-        perror("Error closing socket during harmony_leave()");
-
-    /* Reset the hsession_t to prepare for hdesc reuse. */
-    hsignature_fini(&hdesc->sess.sig);
-    hdesc->ptr_len = 0;
-    hdesc->best.id = -1;
 
     return 0;
 }
 
-char* harmony_getcfg(hdesc_t* hdesc, const char* key)
+/**
+ * \brief Assign an identifying string to this client.
+ *
+ * Set the client identification string.  All messages sent to the
+ * tuning session will be tagged with this string, allowing the
+ * framework to distinguish clients from one another.  As such, care
+ * should be taken to ensure this string is unique among all clients
+ * participating in a tuning session.
+ *
+ * By default, a string is generated from the hostname, process id,
+ * and socket descriptor.
+ *
+ * \param hd Harmony descriptor returned from ah_init().
+ * \param id Unique identification string.
+ *
+ * \return Returns 0 on success, and -1 otherwise.
+ */
+int ah_id(hdesc_t* hd, const char* id)
 {
-    if (hdesc->state < HARMONY_STATE_CONNECTED) {
-        hdesc->errstr = "Descriptor not currently joined to any session.";
+    if (hd->id && hd->id != hd->default_id)
+        free(hd->id);
+
+    hd->id = stralloc(id);
+    if (!hd->id) {
+        hd->errstr = strerror(errno);
+        return -1;
+    }
+    return 0;
+}
+
+/**
+ * \brief Bind a local variable of type `long` to an integer-domain
+ *        session variable.
+ *
+ * This function associates a local variable with a session variable
+ * declared using ah_int().  Upon ah_fetch(), the value
+ * chosen by the session will be stored at the address `ptr`.
+ *
+ * This function must be called for each integer-domain variable
+ * defined in the joining session.  Otherwise ah_join() will fail
+ * when called.
+ *
+ * \param hd   Harmony descriptor returned from ah_init().
+ * \param name Session variable defined using ah_int().
+ * \param ptr   Pointer to a local `long` variable that will
+ *              hold the current testing value.
+ *
+ * \return Returns a harmony descriptor on success, and -1 otherwise.
+ */
+int ah_bind_int(hdesc_t* hd, const char* name, long* ptr)
+{
+    return set_varloc(hd, name, ptr);
+}
+
+/**
+ * \brief Bind a local variable of type `double` to a real-domain
+ *        session variable.
+ *
+ * This function associates a local variable with a session variable
+ * declared using ah_real().  Upon ah_fetch(), the value
+ * chosen by the session will be stored at the address `ptr`.
+ *
+ * This function must be called for each real-domain variable defined
+ * in the joining session.  Otherwise ah_join() will fail when
+ * called.
+ *
+ * \param hd   Harmony descriptor returned from ah_init().
+ * \param name Session variable defined using ah_real().
+ * \param ptr  Pointer to a local `double` variable that will
+ *             hold the current testing value.
+ *
+ * \return Returns a harmony descriptor on success, and -1 otherwise.
+ */
+int ah_bind_real(hdesc_t* hd, const char* name, double* ptr)
+{
+    return set_varloc(hd, name, ptr);
+}
+
+/**
+ * \brief Bind a local variable of type `char*` to an enumerated
+ *        string-based session variable.
+ *
+ * This function associates a local variable with a session variable
+ * declared using ah_enum().  Upon ah_fetch(), the value
+ * chosen by the session will be stored at the address `ptr`.
+ *
+ * This function must be called for each string-based variable defined
+ * in the joining session.  Otherwise ah_join() will fail when
+ * called.
+ *
+ * \param hd   Harmony descriptor returned from ah_init().
+ * \param name Session variable defined using ah_enum().
+ * \param ptr  Pointer to a local `char*` variable that will
+ *             hold the current testing value.
+ *
+ * \return Returns a harmony descriptor on success, and -1 otherwise.
+ */
+int ah_bind_enum(hdesc_t* hd, const char* name, const char** ptr)
+{
+    return set_varloc(hd, name, ptr);
+}
+
+/**
+ * \brief Leave a Harmony tuning session.
+ *
+ * End participation in a Harmony tuning session.
+ *
+ * \param hd Harmony descriptor returned from ah_init().
+ *
+ * \return Returns 0 on success, and -1 otherwise.
+ */
+int ah_leave(hdesc_t* hd)
+{
+    if (hd->state <= HARMONY_STATE_INIT) {
+        hd->errstr = "Descriptor not currently joined to any session";
+        errno = EINVAL;
+        return -1;
+    }
+
+    hd->state = HARMONY_STATE_INIT;
+    if (close(hd->socket) != 0 && debug_mode)
+        perror("Error closing socket during ah_leave()");
+
+    /* Reset the hsession_t to prepare for harmony descriptor reuse. */
+    hsignature_fini(&hd->sess.sig);
+    hd->best.id = -1;
+
+    return 0;
+}
+
+/**
+ * @}
+ *
+ * \defgroup api_runtime Client/Session Interaction Functions
+ *
+ * These functions are used by the client after it has joined an
+ * established session.
+ *
+ * @{
+ */
+
+/**
+ * \brief Return the current value of an integer-domain session variable.
+ *
+ * Finds an integer-domain tuning variable given its name and returns
+ * its current value.
+ *
+ * \param hd   Harmony descriptor returned from ah_init().
+ * \param name Name of a tuning variable declared with ah_int().
+ *
+ * \return Returns the current value of a tuning variable, if the
+ *         given name matches an integer-domain session variable.
+ *         Otherwise, LONG_MIN is returned and errno is set
+ *         appropriately.
+ */
+long ah_get_int(hdesc_t* hd, const char* name)
+{
+    int idx = find_var(hd, name);
+
+    if (idx >= 0 && hd->sess.sig.range[idx].type == HVAL_INT) {
+        if (hd->varloc[idx].ptr)
+            return *(long*)hd->varloc[idx].ptr;
+        else
+            return hd->varloc[idx].val.value.i;
+    }
+
+    errno = EINVAL;
+    return LONG_MIN;
+}
+
+/**
+ * \brief Return the current value of a real-domain session variable.
+ *
+ * Finds a real-domain tuning variable given its name and returns its
+ * current value.
+ *
+ * \param hd   Harmony descriptor returned from ah_init().
+ * \param name Name of a tuning variable declared with ah_real().
+ *
+ * \return Returns the current value of a tuning variable, if the
+ *         given name matches a real-domain session variable.
+ *         Otherwise, NAN is returned and errno is set appropriately.
+ */
+double ah_get_real(hdesc_t* hd, const char* name)
+{
+    int idx = find_var(hd, name);
+
+    if (idx >= 0 && hd->sess.sig.range[idx].type == HVAL_REAL) {
+        if (hd->varloc[idx].ptr)
+            return *(double*)hd->varloc[idx].ptr;
+        else
+            return hd->varloc[idx].val.value.r;
+    }
+
+    errno = EINVAL;
+    return NAN;
+}
+
+/**
+ * \brief Return the current value of an enumerated-domain session variable.
+ *
+ * Finds an enumerated-domain tuning variable given its name and
+ * returns its current value.
+ *
+ * \param hd   Harmony descriptor returned from ah_init().
+ * \param name Name of a tuning variable declared with ah_enum().
+ *
+ * \return Returns the current value of a tuning variable, if the
+ *         given name matches an enumerated-domain session variable.
+ *         Otherwise, NULL is returned and errno is set appropriately.
+ */
+const char* ah_get_enum(hdesc_t* hd, const char* name)
+{
+    int idx = find_var(hd, name);
+
+    if (idx >= 0 && hd->sess.sig.range[idx].type == HVAL_STR) {
+        if (hd->varloc[idx].ptr)
+            return *(char**)hd->varloc[idx].ptr;
+        else
+            return hd->varloc[idx].val.value.s;
+    }
+
+    errno = EINVAL;
+    return NULL;
+}
+
+/**
+ * \brief Get a key value from the session's configuration.
+ *
+ * Searches the session's configuration system for key, and returns
+ * the string value associated with it if found.
+ *
+ * \param hd  Harmony descriptor returned from ah_init().
+ * \param key Config key to search for on the session.
+ *
+ * \return Returns a c-style string on success, and `NULL` otherwise.
+ */
+char* ah_get_cfg(hdesc_t* hd, const char* key)
+{
+    if (!key) {
+        hd->errstr = "Invalid key string";
         errno = EINVAL;
         return NULL;
+    }
+
+    if (hd->state < HARMONY_STATE_CONNECTED) {
+        // Use the local CFG environment.
+        return hcfg_get(&hd->sess.cfg, key);
     }
 
     /* Prepare a Harmony message. */
-    hmesg_scrub(&hdesc->mesg);
-    hdesc->mesg.data.string = key;
+    hmesg_scrub(&hd->mesg);
+    hd->mesg.data.string = key;
 
-    if (send_request(hdesc, HMESG_GETCFG) != 0)
+    if (send_request(hd, HMESG_GETCFG) != 0)
         return NULL;
 
-    if (hdesc->mesg.status != HMESG_STATUS_OK) {
-        hdesc->errstr = "Invalid message received from server.";
+    if (hd->mesg.status != HMESG_STATUS_OK) {
+        hd->errstr = "Invalid message received from server";
         errno = EINVAL;
         return NULL;
     }
 
-    snprintf_grow(&hdesc->buf, &hdesc->buflen, "%s", hdesc->mesg.data.string);
-    return hdesc->buf;
+    snprintf_grow(&hd->buf, &hd->buflen, "%s", hd->mesg.data.string);
+    if (hcfg_set(&hd->sess.cfg, key, hd->buf) != 0) {
+        hd->errstr = "Error setting local CFG cache";
+        return NULL;
+    }
+    return hd->buf;
 }
 
-char* harmony_setcfg(hdesc_t* hdesc, const char* key, const char* val)
+/**
+ * \brief Set a new key/value pair in the session's configuration.
+ *
+ * Writes the new key/value pair into the session's run-time
+ * configuration database.  If the key exists in the database, its
+ * value is overwritten.  If val is `NULL`, the key will be erased
+ * from the database.
+ *
+ * \param hd  Harmony descriptor returned from ah_init().
+ * \param key Config key to modify in the session.
+ * \param val Config value to associate with the key.
+ *
+ * \return Returns the original key value on success.  If the key did not
+ *         exist prior to this call, an empty string ("") is returned.
+ *         Otherwise, `NULL` is returned on error.
+ */
+char* ah_set_cfg(hdesc_t* hd, const char* key, const char* val)
 {
-    char* buf;
-    int retval;
+    if (!key) {
+        hd->errstr = "Invalid key string";
+        errno = EINVAL;
+        return NULL;
+    }
 
-    if (hdesc->state < HARMONY_STATE_CONNECTED) {
-        /* User must be preparing for a new session since we're not
-         * connected yet.  Store the key/value pair in a local cache.
-         */
-        const char* cfgval = hcfg_get(&hdesc->sess.cfg, key);
-        if (!cfgval) cfgval = "";
-        snprintf_grow(&hdesc->buf, &hdesc->buflen, "%s", cfgval);
+    if (hd->state >= HARMONY_STATE_READY) {
+        // Query the remote CFG environment.
+        char* buf = sprintf_alloc("%s=%s", key, val ? val : "");
+        int retval;
 
-        if (hcfg_set(&hdesc->sess.cfg, key, val) != 0) {
-            hdesc->errstr = "Error setting local environment variable.";
+        buf = sprintf_alloc("%s=%s", key, val ? val : "");
+        if (!buf) {
+            hd->errstr = "Internal memory allocation error";
             return NULL;
         }
-        return hdesc->buf;
+
+        /* Prepare a Harmony message. */
+        hmesg_scrub(&hd->mesg);
+        hd->mesg.data.string = buf;
+
+        retval = send_request(hd, HMESG_SETCFG);
+        free(buf);
+
+        if (retval != 0)
+            return NULL;
+
+        if (hd->mesg.status != HMESG_STATUS_OK) {
+            hd->errstr = "Invalid message received from server";
+            return NULL;
+        }
+        snprintf_grow(&hd->buf, &hd->buflen, "%s", hd->mesg.data.string);
+    }
+    else {
+        // Use the local CFG environment.
+        const char* cfgval = hcfg_get(&hd->sess.cfg, key);
+        if (!cfgval) cfgval = "";
+        snprintf_grow(&hd->buf, &hd->buflen, "%s", cfgval);
     }
 
-    if (!key) {
-        hdesc->errstr = "Invalid key string.";
-        errno = EINVAL;
+    if (hcfg_set(&hd->sess.cfg, key, val) != 0) {
+        hd->errstr = "Error setting local CFG cache";
         return NULL;
     }
 
-    buf = sprintf_alloc("%s=%s", key, val ? val : "");
-    if (!buf) {
-        hdesc->errstr = "Internal memory allocation error.";
-        return NULL;
-    }
-
-    /* Prepare a Harmony message. */
-    hmesg_scrub(&hdesc->mesg);
-    hdesc->mesg.data.string = buf;
-
-    retval = send_request(hdesc, HMESG_SETCFG);
-    free(buf);
-
-    if (retval != 0)
-        return NULL;
-
-    if (hdesc->mesg.status != HMESG_STATUS_OK) {
-        hdesc->errstr = "Invalid message received from server.";
-        errno = EINVAL;
-        return NULL;
-    }
-
-    snprintf_grow(&hdesc->buf, &hdesc->buflen, "%s", hdesc->mesg.data.string);
-    return hdesc->buf;
+    return hd->buf;
 }
 
-int harmony_fetch(hdesc_t* hdesc)
+/**
+ * \brief Fetch a new configuration from the Harmony session.
+ *
+ * If a new configuration is available, this function will update the
+ * values of all registered variables.  Otherwise, it will configure
+ * the system to run with the best known configuration thus far.
+ *
+ * \param hd Harmony descriptor returned from ah_init().
+ *
+ * \return Returns 0 if no registered variables were modified, 1 if
+ *         any registered variables were modified, and -1 otherwise.
+ */
+int ah_fetch(hdesc_t* hd)
 {
     int i;
 
-    if (hdesc->state < HARMONY_STATE_CONNECTED) {
-        hdesc->errstr = "Descriptor not currently joined to any session.";
+    if (hd->state < HARMONY_STATE_CONNECTED) {
+        hd->errstr = "Descriptor not currently joined to any session";
         errno = EINVAL;
         return -1;
     }
 
     /* Prepare a Harmony message. */
-    hmesg_scrub(&hdesc->mesg);
+    hmesg_scrub(&hd->mesg);
 
-    if (send_request(hdesc, HMESG_FETCH) != 0)
+    if (send_request(hd, HMESG_FETCH) != 0)
         return -1;
 
-    if (hdesc->mesg.status == HMESG_STATUS_BUSY) {
-        if (update_best(hdesc, &hdesc->mesg.data.point) != 0)
+    if (hd->mesg.status == HMESG_STATUS_BUSY) {
+        if (update_best(hd, &hd->mesg.data.point) != 0)
             return -1;
 
-        if (hdesc->best.id == -1) {
+        if (hd->best.id == -1) {
             /* No best point is available. Inform the user by returning 0. */
             return 0;
         }
 
         /* Set current point to best point. */
-        if (hpoint_copy(&hdesc->curr, &hdesc->best) != 0) {
-            hdesc->errstr = "Internal error copying point data.";
-            errno = EINVAL;
+        if (hpoint_copy(&hd->curr, &hd->best) != 0) {
+            hd->errstr = "Error copying best point data";
             return -1;
         }
     }
-    else if (hdesc->mesg.status == HMESG_STATUS_OK) {
-        if (hpoint_copy(&hdesc->curr, &hdesc->mesg.data.point) != 0) {
-            hdesc->errstr = "Internal error copying point data.";
-            errno = EINVAL;
+    else if (hd->mesg.status == HMESG_STATUS_OK) {
+        if (hpoint_copy(&hd->curr, &hd->mesg.data.point) != 0) {
+            hd->errstr = "Error copying current point data";
             return -1;
         }
     }
     else {
-        hdesc->errstr = "Invalid message received from server.";
+        hd->errstr = "Invalid message received from server";
         errno = EINVAL;
         return -1;
     }
 
     /* Update the variables from the content of the message. */
-    if (set_values(hdesc, &hdesc->curr) != 0)
+    if (write_values(hd, &hd->curr) != 0)
         return -1;
 
     /* Initialize our internal performance array. */
-    for (i = 0; i < hdesc->perf->n; ++i)
-        hdesc->perf->p[i] = NAN;
+    for (i = 0; i < hd->perf->n; ++i)
+        hd->perf->p[i] = NAN;
 
     /* Client variables were changed.  Inform the user by returning 1. */
-    hdesc->state = HARMONY_STATE_TESTING;
+    hd->state = HARMONY_STATE_TESTING;
     return 1;
 }
 
-int harmony_report(hdesc_t* hdesc, double* perf)
+/**
+ * \brief Report the performance of a configuration to the Harmony session.
+ *
+ * Sends a report of the tested performance to the Harmony session.
+ * The report will be analyzed by the session to produce values for
+ * the next set of calls to ah_fetch().
+ *
+ * The `value` parameter should point to a floating-point double.  For
+ * multi-objective tuning, where multiple performance values are
+ * required for a single test, `value` should point to an array of
+ * floating-point doubles.  Finally, `value` may be NULL, provided
+ * that all performance values have already been set via
+ * ah_report_one().
+ *
+ * Sends a complete performance report regarding the current
+ * configuration to the Harmony session.  For multi-objective search
+ * problems, the performance parameter should point to an array
+ * containing all performance values.
+ *
+ * If all performance values have been reported via
+ * ah_report_one(), then `NULL` may be passed as the performance
+ * pointer.  Unreported performance values will result in error.
+ *
+ * \param hd   Harmony descriptor returned from ah_init().
+ * \param perf Performance vector for the current configuration.
+ *
+ * \return Returns 0 on success, and -1 otherwise.
+ */
+int ah_report(hdesc_t* hd, double* perf)
 {
     int i;
 
-    if (hdesc->state < HARMONY_STATE_CONNECTED) {
-        hdesc->errstr = "Descriptor not currently joined to any session.";
+    if (hd->state < HARMONY_STATE_CONNECTED) {
+        hd->errstr = "Descriptor not currently joined to any session";
         errno = EINVAL;
         return -1;
     }
 
-    if (hdesc->state < HARMONY_STATE_TESTING)
+    if (hd->state < HARMONY_STATE_TESTING)
         return 0;
 
     if (perf)
-        memcpy(hdesc->perf->p, perf, sizeof(double) * hdesc->perf->n);
+        memcpy(hd->perf->p, perf, sizeof(double) * hd->perf->n);
 
-    for (i = 0; i < hdesc->perf->n; ++i) {
-        if (isnan(hdesc->perf->p[i])) {
-            hdesc->errstr = "Error: Performance report incomplete.";
+    for (i = 0; i < hd->perf->n; ++i) {
+        if (isnan(hd->perf->p[i])) {
+            hd->errstr = "Insufficient performance values to report";
             errno = EINVAL;
             return -1;
         }
     }
 
     /* Prepare a Harmony message. */
-    hmesg_scrub(&hdesc->mesg);
-    hdesc->mesg.data.report.cand_id = hdesc->curr.id;
-    hdesc->mesg.data.report.perf = hperf_clone(hdesc->perf);
-    if (!hdesc->mesg.data.report.perf) {
-        hdesc->errstr = "Error allocating performance array for message.";
+    hmesg_scrub(&hd->mesg);
+    hd->mesg.data.report.cand_id = hd->curr.id;
+    hd->mesg.data.report.perf = hperf_clone(hd->perf);
+    if (!hd->mesg.data.report.perf) {
+        hd->errstr = "Error allocating performance array for message";
         return -1;
     }
 
-    if (send_request(hdesc, HMESG_REPORT) != 0)
+    if (send_request(hd, HMESG_REPORT) != 0)
         return -1;
 
-    if (hdesc->mesg.status != HMESG_STATUS_OK) {
-        hdesc->errstr = "Invalid message received from server.";
-        errno = EINVAL;
+    if (hd->mesg.status != HMESG_STATUS_OK) {
+        hd->errstr = "Invalid message received from server";
         return -1;
     }
 
-    hdesc->state = HARMONY_STATE_READY;
+    hd->state = HARMONY_STATE_READY;
     return 0;
 }
 
-int harmony_report_one(hdesc_t* hdesc, int index, double value)
+/**
+ * \brief Report a single performance value for the current configuration.
+ *
+ * Allows performance values to be reported one at a time for
+ * multi-objective search problems.
+ *
+ * Note that this function only caches values to send to the Harmony
+ * session.  Once all values have been reported, ah_report() must
+ * be called (passing `NULL` as the performance argument).
+ *
+ * \param hd    Harmony descriptor returned from ah_init().
+ * \param index Objective index of the value to report.
+ * \param value Performance measured for the current configuration.
+ *
+ * \return Returns 0 on success, and -1 otherwise.
+ */
+int ah_report_one(hdesc_t* hd, int index, double value)
 {
-    if (hdesc->state < HARMONY_STATE_CONNECTED) {
-        hdesc->errstr = "Descriptor not currently joined to any session.";
+    if (hd->state < HARMONY_STATE_CONNECTED) {
+        hd->errstr = "Descriptor not currently joined to any session";
         errno = EINVAL;
         return -1;
     }
 
-    if (index != 0 || index >= hdesc->perf->n) {
-        hdesc->errstr = "Invalid performance index.";
+    if (index != 0 || index >= hd->perf->n) {
+        hd->errstr = "Invalid performance index";
         errno = EINVAL;
         return -1;
     }
 
-    if (hdesc->state == HARMONY_STATE_TESTING)
-        hdesc->perf->p[index] = value;
+    if (hd->state == HARMONY_STATE_TESTING)
+        hd->perf->p[index] = value;
 
     return 0;
 }
 
-int harmony_best(hdesc_t* hdesc)
+/**
+ * \brief Sets variables under Harmony's control to the best known
+ *        configuration.
+ *
+ * If the client is currently connected, the best known configuration
+ * is retrieved from the session.  Otherwise, the a local copy of the
+ * best known point is used.
+ *
+ * If no best configuration exists (e.g. before any configurations
+ * have been evaluated), this function will return an error.
+ *
+ * \param hd Harmony descriptor returned from ah_init().
+ *
+ * \return Returns 1 if a new best point was retrieved from the
+ *         session, 0 if a local copy was used, and -1 otherwise.
+ */
+int ah_best(hdesc_t* hd)
 {
     int retval = 0;
 
-    if (hdesc->state >= HARMONY_STATE_CONNECTED) {
+    if (hd->state >= HARMONY_STATE_CONNECTED) {
         /* Prepare a Harmony message. */
-        hmesg_scrub(&hdesc->mesg);
+        hmesg_scrub(&hd->mesg);
 
-        if (send_request(hdesc, HMESG_BEST) != 0)
+        if (send_request(hd, HMESG_BEST) != 0)
             return -1;
 
-        if (hdesc->mesg.status != HMESG_STATUS_OK) {
-            hdesc->errstr = "Invalid message received from server.";
-            errno = EINVAL;
+        if (hd->mesg.status != HMESG_STATUS_OK) {
+            hd->errstr = "Invalid message received from server";
             return -1;
         }
 
-        if (hdesc->best.id < hdesc->mesg.data.point.id) {
-            if (update_best(hdesc, &hdesc->mesg.data.point) != 0)
+        if (hd->best.id < hd->mesg.data.point.id) {
+            if (update_best(hd, &hd->mesg.data.point) != 0)
                 return -1;
             retval = 1;
         }
     }
 
     /* Make sure our best known point is valid. */
-    if (hdesc->best.id < 0) {
+    if (hd->best.id < 0) {
         errno = EINVAL;
         return -1;
     }
 
-    if (set_values(hdesc, &hdesc->best) != 0)
+    if (write_values(hd, &hd->best) != 0)
         return -1;
 
     return retval;
 }
 
-int harmony_converged(hdesc_t* hdesc)
+/**
+ * \brief Retrieve the convergence state of the current search.
+ *
+ * \param hd Harmony descriptor returned from ah_init().
+ *
+ * \return Returns 1 if the search has converged, 0 if it has not,
+ *         and -1 on error.
+ */
+int ah_converged(hdesc_t* hd)
 {
     int retval;
     char* str;
 
     retval = 0;
-    str = harmony_getcfg(hdesc, CFGKEY_CONVERGED);
+    str = ah_get_cfg(hd, CFGKEY_CONVERGED);
     if (str && str[0] == '1') {
-        hdesc->state = HARMONY_STATE_CONVERGED;
+        hd->state = HARMONY_STATE_CONVERGED;
         retval = 1;
     }
     return retval;
 }
 
-const char* harmony_error_string(hdesc_t* hdesc)
+/**
+ * \brief Access the current Harmony error string.
+ *
+ * \param hd Harmony descriptor returned from ah_init().
+ *
+ * \return Returns a pointer to a string that describes the latest
+ *         Harmony error, or `NULL` if no error has occurred since
+ *         the last call to ah_error_clear().
+ */
+const char* ah_error_string(hdesc_t* hd)
 {
-    return hdesc->errstr;
+    return hd->errstr;
 }
 
-void harmony_error_clear(hdesc_t* hdesc)
+/**
+ * \brief Clears the error status of the given Harmony descriptor.
+ *
+ * \param hd Harmony descriptor returned from ah_init().
+ */
+void ah_error_clear(hdesc_t* hd)
 {
-    hdesc->errstr = NULL;
+    hd->errstr = NULL;
 }
 
-char* default_id(int n)
-{
-    gethostname(default_id_buf, MAX_HOSTNAME_STRLEN);
-    default_id_buf[MAX_HOSTNAME_STRLEN] = '\0';
-    sprintf(default_id_buf + strlen(default_id_buf), "_%d_%d", getpid(), n);
+/**
+ * @}
+ */
 
-    return default_id_buf;
+/* ----------------------------------------
+ * Deprecated function implementations.
+ */
+
+hdesc_t* harmony_init(void)
+{
+    return ah_init();
 }
 
-int send_request(hdesc_t* hdesc, hmesg_type msg_type)
+int harmony_parse_args(hdesc_t* hd, int argc, char** argv)
 {
-    hdesc->mesg.type = msg_type;
-    hdesc->mesg.status = HMESG_STATUS_REQ;
-    hdesc->mesg.src_id = hdesc->id;
+    return ah_args(hd, &argc, argv);
+}
 
-    if (mesg_send(hdesc->socket, &hdesc->mesg) < 1) {
-        hdesc->errstr = "Error sending Harmony message to server.";
+void harmony_fini(hdesc_t* hd)
+{
+    ah_fini(hd);
+}
+
+int harmony_int(hdesc_t* hd, const char* name,
+                long min, long max, long step)
+{
+    return ah_int(hd, name, min, max, step);
+}
+
+int harmony_real(hdesc_t* hd, const char* name,
+                 double min, double max, double step)
+{
+    return ah_real(hd, name, min, max, step);
+}
+
+int harmony_enum(hdesc_t* hd, const char* name, const char* value)
+{
+    return ah_enum(hd, name, value);
+}
+
+int harmony_session_name(hdesc_t* hd, const char* name)
+{
+    return hsignature_name(&hd->sess.sig, name);
+}
+
+int harmony_strategy(hdesc_t* hd, const char* strategy)
+{
+    return ah_strategy(hd, strategy);
+}
+
+int harmony_layers(hdesc_t* hd, const char* list)
+{
+    return ah_layers(hd, list);
+}
+
+int harmony_launch(hdesc_t* hd, const char* host, int port)
+{
+    return ah_launch(hd, host, port, NULL);
+}
+
+int harmony_id(hdesc_t* hd, const char* id)
+{
+    return ah_id(hd, id);
+}
+
+int harmony_bind_int(hdesc_t* hd, const char* name, long* ptr)
+{
+    return ah_bind_int(hd, name, ptr);
+}
+
+int harmony_bind_real(hdesc_t* hd, const char* name, double* ptr)
+{
+    return ah_bind_real(hd, name, ptr);
+}
+
+int harmony_bind_enum(hdesc_t* hd, const char* name, const char** ptr)
+{
+    return ah_bind_enum(hd, name, ptr);
+}
+
+int harmony_join(hdesc_t* hd, const char* host, int port, const char* name)
+{
+    return ah_join(hd, host, port, name);
+}
+
+int harmony_leave(hdesc_t* hd)
+{
+    return ah_leave(hd);
+}
+
+long harmony_get_int(hdesc_t* hd, const char* name)
+{
+    return ah_get_int(hd, name);
+}
+
+double harmony_get_real(hdesc_t* hd, const char* name)
+{
+    return ah_get_real(hd, name);
+}
+
+const char* harmony_get_enum(hdesc_t* hd, const char* name)
+{
+    return ah_get_enum(hd, name);
+}
+
+char* harmony_getcfg(hdesc_t* hd, const char* key)
+{
+    return ah_get_cfg(hd, key);
+}
+
+char* harmony_setcfg(hdesc_t* hd, const char* key, const char* val)
+{
+    return ah_set_cfg(hd, key, val);
+}
+
+int harmony_fetch(hdesc_t* hd)
+{
+    return ah_fetch(hd);
+}
+
+int harmony_report(hdesc_t* hd, double* perf)
+{
+    return ah_report(hd, perf);
+}
+
+int harmony_report_one(hdesc_t* hd, int index, double value)
+{
+    return ah_report_one(hd, index, value);
+}
+
+int harmony_best(hdesc_t* hd)
+{
+    return ah_best(hd);
+}
+
+int harmony_converged(hdesc_t* hd)
+{
+    return ah_converged(hd);
+}
+
+const char* harmony_error_string(hdesc_t* hd)
+{
+    return ah_error_string(hd);
+}
+
+void harmony_error_clear(hdesc_t* hd)
+{
+    ah_error_clear(hd);
+}
+
+/* ----------------------------------------
+ * Private helper function implementations.
+ */
+int find_var(hdesc_t* hd, const char* name)
+{
+    int idx;
+
+    for (idx = 0; idx < hd->sess.sig.range_len; ++idx) {
+        if (strcmp(hd->sess.sig.range[idx].name, name) == 0)
+            return idx;
+    }
+    return -1;
+}
+
+int extend_perf(hdesc_t* hd)
+{
+    int perf_len;
+    char* cfgval;
+
+    cfgval = ah_get_cfg(hd, CFGKEY_PERF_COUNT);
+    if (!cfgval) {
+        hd->errstr = "Error retrieving performance count";
+        return -1;
+    }
+
+    perf_len = atoi(cfgval);
+    if (perf_len < 1) {
+        hd->errstr = "Invalid value for " CFGKEY_PERF_COUNT;
+        return -1;
+    }
+
+    hd->perf = hperf_alloc(perf_len);
+    if (!hd->perf) {
+        hd->errstr = "Error allocating performance array";
+        return -1;
+    }
+
+    return 0;
+}
+
+int extend_varloc(hdesc_t* hd)
+{
+    if (hd->varloc_cap < hd->sess.sig.range_cap) {
+        int i;
+        hvarloc_t* tmp = realloc(hd->varloc,
+                                 hd->sess.sig.range_cap * sizeof(*tmp));
+        if (!tmp)
+            return -1;
+
+        for (i = hd->varloc_cap; i < hd->sess.sig.range_cap; ++i)
+            tmp[i].ptr = NULL;
+
+        hd->varloc = tmp;
+        hd->varloc_cap = i;
+    }
+    return 0;
+}
+
+void generate_id(hdesc_t* hd)
+{
+    char* buf = hd->default_id;
+
+    gethostname(buf, HOST_NAME_MAX);
+    buf[HOST_NAME_MAX + 1] = '\0';
+    buf += strlen(buf);
+    sprintf(buf, "_%d_%d", getpid(), hd->socket);
+}
+
+int send_request(hdesc_t* hd, hmesg_type msg_type)
+{
+    hd->mesg.type = msg_type;
+    hd->mesg.status = HMESG_STATUS_REQ;
+    hd->mesg.src_id = hd->id;
+
+    if (mesg_send(hd->socket, &hd->mesg) < 1) {
+        hd->errstr = "Error sending Harmony message to server";
         errno = EIO;
         return -1;
     }
 
     do {
-        if (mesg_recv(hdesc->socket, &hdesc->mesg) < 1) {
-            hdesc->errstr = "Error retrieving Harmony message from server.";
+        if (mesg_recv(hd->socket, &hd->mesg) < 1) {
+            hd->errstr = "Error retrieving Harmony message from server";
             errno = EIO;
             return -1;
         }
@@ -728,56 +1501,76 @@ int send_request(hdesc_t* hdesc, hmesg_type msg_type)
          * it will generate extraneous messages where dest == -1.
          * Make sure to ignore these messages.
          */
-    } while (hdesc->mesg.dest == -1);
+    } while (hd->mesg.dest == -1);
 
-    if (hdesc->mesg.type != msg_type) {
-        hdesc->mesg.status = HMESG_STATUS_FAIL;
-        hdesc->errstr = "Internal error: Server response message mismatch.";
+    if (hd->mesg.type != msg_type) {
+        hd->mesg.status = HMESG_STATUS_FAIL;
+        hd->errstr = "Server response message mismatch";
         return -1;
     }
 
-    if (hdesc->mesg.status == HMESG_STATUS_FAIL) {
-        hdesc->errstr = hdesc->mesg.data.string;
+    if (hd->mesg.status == HMESG_STATUS_FAIL) {
+        hd->errstr = hd->mesg.data.string;
         return -1;
     }
     return 0;
 }
 
-int update_best(hdesc_t* hdesc, const hpoint_t* pt)
+int set_varloc(hdesc_t* hd, const char* name, void* ptr)
 {
-    if (hdesc->best.id >= pt->id)
+    int idx = find_var(hd, name);
+    if (idx < 0) {
+        hd->errstr = "Tuning variable not found";
+        errno = EINVAL;
+        return -1;
+    }
+
+    extend_varloc(hd);
+    hd->varloc[idx].ptr = ptr;
+    return 0;
+}
+
+int update_best(hdesc_t* hd, const hpoint_t* pt)
+{
+    if (hd->best.id >= pt->id)
         return 0;
 
-    if (hpoint_copy(&hdesc->best, pt) != 0) {
-        hdesc->errstr = "Internal error copying point data.";
+    if (hpoint_copy(&hd->best, pt) != 0) {
+        hd->errstr = "Error copying point data";
         errno = EINVAL;
         return -1;
     }
     return 0;
 }
 
-int set_values(hdesc_t* hdesc, const hpoint_t* pt)
+int write_values(hdesc_t* hd, const hpoint_t* pt)
 {
     int i;
 
-    if (hdesc->ptr_len != pt->n) {
-        hdesc->errstr = "Invalid internal point structure.";
-        errno = EINVAL;
+    if (hd->sess.sig.range_len != pt->n) {
+        hd->errstr = "Invalid internal point structure";
         return -1;
     }
 
     for (i = 0; i < pt->n; ++i) {
-        switch (pt->val[i].type) {
-        case HVAL_INT:
-            (*((       long*)hdesc->ptr[i])) = pt->val[i].value.i; break;
-        case HVAL_REAL:
-            (*((     double*)hdesc->ptr[i])) = pt->val[i].value.r; break;
-        case HVAL_STR:
-            (*((const char**)hdesc->ptr[i])) = pt->val[i].value.s; break;
-        default:
-            hdesc->errstr = "Internal error: Invalid signature value type.";
-            errno = EINVAL;
-            return -1;
+        if (hd->varloc[i].ptr == NULL) {
+            hd->varloc[i].val = pt->val[i];
+        }
+        else {
+            switch (pt->val[i].type) {
+            case HVAL_INT:
+                *(long*)hd->varloc[i].ptr = pt->val[i].value.i;
+                break;
+            case HVAL_REAL:
+                *(double*)hd->varloc[i].ptr = pt->val[i].value.r;
+                break;
+            case HVAL_STR:
+                *(const char**)hd->varloc[i].ptr = pt->val[i].value.s;
+                break;
+            default:
+                hd->errstr = "Invalid signature value type";
+                return -1;
+            }
         }
     }
     return 0;

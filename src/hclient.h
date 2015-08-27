@@ -39,452 +39,152 @@ typedef struct hdesc_t hdesc_t;
 
 #endif
 
-/**
- * \defgroup api_desc Harmony Descriptor Management Functions
- *
- * A Harmony descriptor is an opaque structure that stores state
- * associated with a particular tuning session.  The functions within
- * this section allow the user to create and manage the resources
- * controlled by the descriptor.
- *
- * @{
+/* -------------------------------------------------------------------
+ * Harmony descriptor management functions.
  */
+hdesc_t* ah_init(void);
+int      ah_args(hdesc_t* hd, int* argc, char** argv);
+void     ah_fini(hdesc_t* hd);
 
-/**
- * \brief Allocate and initialize a new Harmony descriptor.
- *
- * All client API functions require a valid Harmony descriptor to
- * function correctly.  The descriptor is designed to be used as an
- * opaque type and no guarantees are made about the contents of its
- * structure.
- *
- * Heap memory is allocated for the descriptor, so be sure to call
- * harmony_fini() when it is no longer needed.
- *
- * \return Returns Harmony descriptor upon success, and `NULL` otherwise.
+/* -------------------------------------------------------------------
+ * Session setup functions.
  */
+int ah_load(hdesc_t* hd, const char* filename);
+int ah_int(hdesc_t* hd, const char* name,
+           long min, long max, long step);
+int ah_real(hdesc_t* hd, const char* name,
+            double min, double max, double step);
+int ah_enum(hdesc_t* hd, const char* name, const char* value);
+int ah_strategy(hdesc_t* hd, const char* strategy);
+int ah_layers(hdesc_t* hd, const char* list);
+int ah_launch(hdesc_t* hd, const char* host, int port, const char* name);
+
+/* -------------------------------------------------------------------
+ * Client setup functions.
+ */
+int ah_join(hdesc_t* hd, const char* host, int port, const char* name);
+int ah_id(hdesc_t* hd, const char* id);
+int ah_bind_int(hdesc_t* hd, const char* name, long* ptr);
+int ah_bind_real(hdesc_t* hd, const char* name, double* ptr);
+int ah_bind_enum(hdesc_t* hd, const char* name, const char** ptr);
+int ah_leave(hdesc_t* hd);
+
+/* -------------------------------------------------------------------
+ * Client/Session interaction functions.
+ */
+long        ah_get_int(hdesc_t* hd, const char* name);
+double      ah_get_real(hdesc_t* hd, const char* name);
+const char* ah_get_enum(hdesc_t* hd, const char* name);
+char*       ah_get_cfg(hdesc_t* hd, const char* key);
+char*       ah_set_cfg(hdesc_t* hd, const char* key, const char* val);
+int         ah_fetch(hdesc_t* hd);
+int         ah_report(hdesc_t* hd, double* perf);
+int         ah_report_one(hdesc_t* hd, int index, double value);
+int         ah_best(hdesc_t* hd);
+int         ah_converged(hdesc_t* hd);
+const char* ah_error_string(hdesc_t* hd);
+void        ah_error_clear(hdesc_t* hd);
+
+/* -------------------------------------------------------------------
+ * Deprecated API functions.
+ *
+ * These functions are slated for removal in a future release.
+ */
+#ifndef DOXYGEN_SKIP
+
+#if defined(__GNUC__)
+#define DEPRECATED(message) __attribute__((__deprecated__(message)))
+#else
+#define DEPRECATED(message)
+#endif
+
+DEPRECATED("Use ah_init() instead")
 hdesc_t* harmony_init(void);
 
-/**
- * \brief Find configuration directives in the command-line arguments.
- *
- * This function iterates through the command-line arguments (as
- * passed to the main() function) to search for Harmony configuration
- * directives in the form NAME=VAL.  Any arguments matching this
- * pattern are added to the configuration and removed from `argv`.
- *
- * Iteration through the command-line arguments stops prematurely if
- * a double-dash ("--") token is found.  All non-directive arguments
- * are shifted to the front of `argv`.
- *
- * \param argc Number of arguments contained in `argv`.
- * \param argv Array of command-line argument strings to search.
- *
- * \return Returns the number of directives successfully taken from
- *         `argv`, or -1 on error.
- */
-int harmony_parse_args(hdesc_t* hdesc, int argc, char** argv);
+DEPRECATED("Use ah_args() instead")
+int harmony_parse_args(hdesc_t* hd, int argc, char** argv);
 
-/**
- * \brief Release all resources associated with a Harmony client descriptor.
- *
- * \param hdesc Harmony descriptor returned from harmony_init().
- */
-void harmony_fini(hdesc_t* hdesc);
+DEPRECATED("Use ah_fini() instead")
+void harmony_fini(hdesc_t* hd);
 
-/**
- * @}
- *
- * \defgroup api_sess Session Setup Functions
- *
- * These functions are used to describe and establish new tuning
- * sessions.  Valid sessions must define at least one tuning variable
- * before they are launched.
- *
- * @{
- */
+DEPRECATED("Use ah_int() instead")
+int harmony_int(hdesc_t* hd, const char* name,
+                long min, long max, long step);
 
-/**
- * \brief Specify a unique name for the Harmony session.
- *
- * \param hdesc Harmony descriptor returned from harmony_init().
- * \param name  Name to associate with this session.
- *
- * \return Returns 0 on success, and -1 otherwise.
- */
-int harmony_session_name(hdesc_t* hdesc, const char* name);
+DEPRECATED("Use ah_real() instead")
+int harmony_real(hdesc_t* hd, const char* name,
+                 double min, double max, double step);
 
-/**
- * \brief Add an integer-domain variable to the Harmony session.
- *
- * \param hdesc Harmony descriptor returned from harmony_init().
- * \param name  Name to associate with this variable.
- * \param min   Minimum range value (inclusive).
- * \param max   Maximum range value (inclusive).
- * \param step  Minimum search increment.
- *
- * \return Returns 0 on success, and -1 otherwise.
- */
-int harmony_int(hdesc_t* hdesc, const char* name,
-                 long min, long max, long step);
+DEPRECATED("Use ah_enum() instead")
+int harmony_enum(hdesc_t* hd, const char* name, const char* value);
 
-/**
- * \brief Add a real-domain variable to the Harmony session.
- *
- * \param hdesc Harmony descriptor returned from harmony_init().
- * \param name  Name to associate with this variable.
- * \param min   Minimum range value (inclusive).
- * \param max   Maximum range value (inclusive).
- * \param step  Minimum search increment.
- *
- * \return Returns 0 on success, and -1 otherwise.
- */
-int harmony_real(hdesc_t* hdesc, const char* name,
-                  double min, double max, double step);
+DEPRECATED("Pass name to ah_launch() instead")
+int harmony_session_name(hdesc_t* hd, const char* name);
 
-/**
- * \brief Add an enumeration variable and append to the list of valid values
- *        in this set.
- *
- * \param hdesc Harmony descriptor returned from harmony_init().
- * \param name  Name to associate with this variable.
- * \param value String that belongs in this enumeration.
- *
- * \return Returns 0 on success, and -1 otherwise.
- */
-int harmony_enum(hdesc_t* hdesc, const char* name, const char* value);
+DEPRECATED("Use ah_strategy() instead")
+int harmony_strategy(hdesc_t* hd, const char* strategy);
 
-/**
- * \brief Specify the search strategy to use in the new Harmony session.
- *
- * \param hdesc    Harmony descriptor returned from harmony_init().
- * \param strategy Filename of the strategy plug-in to use in this session.
- *
- * \return Returns 0 on success, and -1 otherwise.
- */
-int harmony_strategy(hdesc_t* hdesc, const char* strategy);
+DEPRECATED("Use ah_layers() instead")
+int harmony_layers(hdesc_t* hd, const char* list);
 
-/**
- * \brief Specify the list of plug-ins to use in the new Harmony session.
- *
- * Plug-in layers are specified via a single string of filenames,
- * separated by the colon character (`:`).  The layers are loaded in
- * list order, with each successive layer placed further from the
- * search strategy in the center.
- *
- * \param hdesc Harmony descriptor returned from harmony_init().
- * \param list  List of plug-ins to load with this session.
- *
- * \return Returns 0 on success, and -1 otherwise.
- */
-int harmony_layers(hdesc_t* hdesc, const char* list);
+DEPRECATED("Use ah_launch() or ah_start() instead")
+int harmony_launch(hdesc_t* hd, const char* host, int port);
 
-/**
- * \brief Instantiate a new Harmony tuning session.
- *
- * After using the session establishment routines (harmony_int,
- * harmony_name, etc.) to specify a tuning session, this function
- * launches a new tuning session.  It may either be started locally or
- * on the Harmony Server located at *host*:*port*.
- *
- * If *host* is `NULL`, its value will be taken from the environment
- * variable `HARMONY_S_HOST`.  If `HARMONY_S_HOST` is not defined, the
- * environment variable `HARMONY_HOME` will be used to initiate a
- * private tuning session, which will be available only to the local
- * process.
- *
- * If *port* is 0, its value will be taken from the environment
- * variable `HARMONY_S_PORT`, if defined.  Otherwise, its value will
- * be taken from the src/defaults.h file, if needed.
- *
- * \param hdesc Harmony descriptor returned from harmony_init().
- * \param host  Host of the Harmony server (or `NULL`).
- * \param port  Port of the Harmony server.
- *
- * \return Returns 0 on success, and -1 otherwise.
- */
-int harmony_launch(hdesc_t* hdesc, const char* host, int port);
+DEPRECATED("Use ah_id() instead")
+int harmony_id(hdesc_t* hd, const char* id);
 
-/**
- * @}
- *
- * \defgroup api_client Tuning Client Setup Functions
- *
- * These functions prepare the client to join an established tuning
- * session.  Specifically, variables within the client application
- * must be bound to session variables.  This allows the client to
- * change appropriately upon fetching new points from the session.
- *
- * @{
- */
+DEPRECATED("Use ah_bind_int() instead")
+int harmony_bind_int(hdesc_t* hd, const char* name, long* ptr);
 
-/**
- * \brief Assign an identifying string to this client.
- *
- * Set the client identification string.  All messages sent to the
- * tuning session will be tagged with this string, allowing the
- * framework to distinguish clients from one another.  As such, care
- * should be taken to ensure this string is unique among all clients
- * participating in a tuning session.
- *
- * By default, a string is generated from the hostname, process id,
- * and socket descriptor.
- *
- * \param hdesc Harmony descriptor returned from harmony_init().
- * \param id    Unique identification string.
- *
- * \return Returns 0 on success, and -1 otherwise.
- */
-int harmony_id(hdesc_t* hdesc, const char* id);
+DEPRECATED("Use ah_bind_real() instead")
+int harmony_bind_real(hdesc_t* hd, const char* name, double* ptr);
 
-/**
- * \brief Bind a local variable of type `long` to an integer-domain
- *        session variable.
- *
- * This function associates a local variable with a session variable
- * declared using harmony_int().  Upon harmony_fetch(), the value
- * chosen by the session will be stored at the address `ptr`.
- *
- * This function must be called for each integer-domain variable
- * defined in the joining session.  Otherwise harmony_join() will fail
- * when called.
- *
- * \param hdesc Harmony descriptor returned from harmony_init().
- * \param name  Session variable defined using harmony_int().
- * \param ptr   Pointer to a local `long` variable that will
- *              hold the current testing value.
- *
- * \return Returns a harmony descriptor on success, and -1 otherwise.
- */
-int harmony_bind_int(hdesc_t* hdesc, const char* name, long* ptr);
+DEPRECATED("Use ah_bind_enum() instead")
+int harmony_bind_enum(hdesc_t* hd, const char* name, const char** ptr);
 
-/**
- * \brief Bind a local variable of type `double` to a real-domain
- *        session variable.
- *
- * This function associates a local variable with a session variable
- * declared using harmony_real().  Upon harmony_fetch(), the value
- * chosen by the session will be stored at the address `ptr`.
- *
- * This function must be called for each real-domain variable defined
- * in the joining session.  Otherwise harmony_join() will fail when
- * called.
- *
- * \param hdesc Harmony descriptor returned from harmony_init().
- * \param name  Session variable defined using harmony_real().
- * \param ptr   Pointer to a local `double` variable that will
- *              hold the current testing value.
- *
- * \return Returns a harmony descriptor on success, and -1 otherwise.
- */
-int harmony_bind_real(hdesc_t* hdesc, const char* name, double* ptr);
+DEPRECATED("Use ah_join() instead")
+int harmony_join(hdesc_t* hd, const char* host, int port, const char* name);
 
-/**
- * \brief Bind a local variable of type `char*` to an enumerated
- *        string-based session variable.
- *
- * This function associates a local variable with a session variable
- * declared using harmony_enum().  Upon harmony_fetch(), the value
- * chosen by the session will be stored at the address `ptr`.
- *
- * This function must be called for each string-based variable defined
- * in the joining session.  Otherwise harmony_join() will fail when
- * called.
- *
- * \param hdesc Harmony descriptor returned from harmony_init().
- * \param name  Session variable defined using harmony_enum().
- * \param ptr   Pointer to a local `char*` variable that will
- *              hold the current testing value.
- *
- * \return Returns a harmony descriptor on success, and -1 otherwise.
- */
-int harmony_bind_enum(hdesc_t* hdesc, const char* name, const char** ptr);
+DEPRECATED("Use ah_leave() instead")
+int harmony_leave(hdesc_t* hd);
 
-/**
- * \brief Join an established Harmony tuning session.
- *
- * Establishes a connection with the Harmony Server on a specific
- * host and port, and joins the named session.  All variables must be
- * bound to local memory via harmony_bind_XXX() for this call to succeed.
- *
- * If `host` is `NULL` or `port` is 0, values from the environment
- * variable `HARMONY_S_HOST` or `HARMONY_S_PORT` will be used,
- * respectively.  If either environment variable is not defined,
- * values from defaults.h will be used as a last resort.
- *
- * \param hdesc Harmony descriptor returned from harmony_init().
- * \param host  Host of the Harmony server.
- * \param port  Port of the Harmony server.
- * \param sess  Name of an existing tuning session on the server.
- *
- * \return Returns 0 on success, and -1 otherwise.
- */
-int harmony_join(hdesc_t* hdesc, const char* host, int port, const char* sess);
+DEPRECATED("Use ah_get_int() instead")
+long harmony_get_int(hdesc_t* hd, const char* name);
 
-/**
- * \brief Leave a Harmony tuning session.
- *
- * End participation in a Harmony tuning session.
- *
- * \param hdesc Harmony descriptor returned from harmony_init().
- *
- * \return Returns 0 on success, and -1 otherwise.
- */
-int harmony_leave(hdesc_t* hdesc);
+DEPRECATED("Use ah_get_real() instead")
+double harmony_get_real(hdesc_t* hd, const char* name);
 
-/**
- * @}
- *
- * \defgroup api_runtime Client/Session Interaction Functions
- *
- * These functions are used by the client after it has joined an
- * established session.
- *
- * @{
- */
+DEPRECATED("Use ah_get_enum() instead")
+const char* harmony_get_enum(hdesc_t* hd, const char* name);
 
-/**
- * \brief Get a key value from the session's configuration.
- *
- * Searches the session's configuration system for key, and returns
- * the string value associated with it if found.
- *
- * \param hdesc Harmony descriptor returned from harmony_init().
- * \param key   Config key to search for on the session.
- *
- * \return Returns a c-style string on success, and `NULL` otherwise.
- */
-char* harmony_getcfg(hdesc_t* hdesc, const char* key);
+DEPRECATED("Use ah_get_cfg() instead")
+char* harmony_getcfg(hdesc_t* hd, const char* key);
 
-/**
- * \brief Set a new key/value pair in the session's configuration.
- *
- * Writes the new key/value pair into the session's run-time
- * configuration database.  If the key exists in the database, its
- * value is overwritten.  If val is `NULL`, the key will be erased
- * from the database.
- *
- * \param hdesc Harmony descriptor returned from harmony_init().
- * \param key   Config key to modify in the session.
- * \param val   Config value to associate with the key.
- *
- * \return Returns the original key value on success.  If the key did not
- *         exist prior to this call, an empty string ("") is returned.
- *         Otherwise, `NULL` is returned on error.
- */
-char* harmony_setcfg(hdesc_t* hdesc, const char* key, const char* val);
+DEPRECATED("Use ah_set_cfg() instead")
+char* harmony_setcfg(hdesc_t* hd, const char* key, const char* val);
 
-/**
- * \brief Fetch a new configuration from the Harmony session.
- *
- * If a new configuration is available, this function will update the
- * values of all registered variables.  Otherwise, it will configure
- * the system to run with the best known configuration thus far.
- *
- * \param hdesc Harmony descriptor returned from harmony_init().
- *
- * \return Returns 0 if no registered variables were modified, 1 if
- *         any registered variables were modified, and -1 otherwise.
- */
-int harmony_fetch(hdesc_t* hdesc);
+DEPRECATED("Use ah_fetch() instead")
+int harmony_fetch(hdesc_t* hd);
 
-/**
- * \brief Report the performance of a configuration to the Harmony session.
- *
- * Sends a report of the tested performance to the Harmony session.
- * The report will be analyzed by the session to produce values for
- * the next set of calls to harmony_fetch().
- *
- * The `value` parameter should point to a floating-point double.  For
- * multi-objective tuning, where multiple performance values are
- * required for a single test, `value` should point to an array of
- * floating-point doubles.  Finally, `value` may be NULL, provided
- * that all performance values have already been set via
- * harmony_single_perf().
- *
- * Sends a complete performance report regarding the current
- * configuration to the Harmony session.  For multi-objective search
- * problems, the performance parameter should point to an array
- * containing all performance values.
- *
- * If all performance values have been reported via
- * harmony_report_one(), then `NULL` may be passed as the performance
- * pointer.  Unreported performance values will result in error.
- *
- * \param hdesc Harmony descriptor returned from harmony_init().
- * \param perf  Performance vector for the current configuration.
- *
- * \return Returns 0 on success, and -1 otherwise.
- */
-int harmony_report(hdesc_t* hdesc, double* perf);
+DEPRECATED("Use ah_report() instead")
+int harmony_report(hdesc_t* hd, double* perf);
 
-/**
- * \brief Report a single performance value for the current configuration.
- *
- * Allows performance values to be reported one at a time for
- * multi-objective search problems.
- *
- * Note that this function only caches values to send to the Harmony
- * session.  Once all values have been reported, harmony_report() must
- * be called (passing `NULL` as the performance argument).
- *
- * \param hdesc Harmony descriptor returned from harmony_init().
- * \param index Objective index of the value to report.
- * \param value Performance measured for the current configuration.
- *
- * \return Returns 0 on success, and -1 otherwise.
- */
-int harmony_report_one(hdesc_t* hdesc, int index, double value);
+DEPRECATED("Use ah_report_one() instead")
+int harmony_report_one(hdesc_t* hd, int index, double value);
 
-/**
- * \brief Sets variables under Harmony's control to the best known
- *        configuration.
- *
- * If the client is currently connected, the best known configuration
- * is retrieved from the session.  Otherwise, the a local copy of the
- * best known point is used.
- *
- * If no best configuration exists (e.g. before any configurations
- * have been evaluated), this function will return an error.
- *
- * \param hdesc Harmony descriptor returned from harmony_init().
- *
- * \return Returns 1 if a new best point was retrieved from the
- *         session, 0 if a local copy was used, and -1 otherwise.
- */
-int harmony_best(hdesc_t* hdesc);
+DEPRECATED("Use ah_best() instead")
+int harmony_best(hdesc_t* hd);
 
-/**
- * \brief Retrieve the convergence state of the current search.
- *
- * \param hdesc Harmony descriptor returned from harmony_init().
- *
- * \return Returns 1 if the search has converged, 0 if it has not,
- *         and -1 on error.
- */
-int harmony_converged(hdesc_t* hdesc);
+DEPRECATED("Use ah_converged() instead")
+int harmony_converged(hdesc_t* hd);
 
-/**
- * \brief Access the current Harmony error string.
- *
- * \param hdesc Harmony descriptor returned from harmony_init().
- *
- * \return Returns a pointer to a string that describes the latest
- *         Harmony error, or `NULL` if no error has occurred since
- *         the last call to harmony_error_clear().
- */
-const char* harmony_error_string(hdesc_t* hdesc);
+DEPRECATED("Use ah_error_string() instead")
+const char* harmony_error_string(hdesc_t* hd);
 
-/**
- * \brief Clears the error status of the given Harmony descriptor.
- *
- * \param hdesc Harmony descriptor returned from harmony_init().
- */
-void harmony_error_clear(hdesc_t* hdesc);
+DEPRECATED("Use ah_error_clear() instead")
+void harmony_error_clear(hdesc_t* hd);
 
-/**
- * @}
- */
+#endif
 
 #ifdef __cplusplus
 }

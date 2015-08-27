@@ -21,6 +21,7 @@
 
 #include <stdio.h>
 #include <fcntl.h>
+#include <ctype.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -72,6 +73,155 @@ void file_unmap(void* buf, size_t size)
 {
     if (munmap(buf, size) != 0)
         fprintf(stderr, "Ignoring error on munmap(): %s\n", strerror(errno));
+}
+
+int valid_id(const char* key, int len)
+{
+    int span = -1;
+    sscanf(key, "%*[0-9A-Z_a-z]%n", &span);
+    return len > 0 && len == span && !isdigit(key[0]);
+}
+
+int line_unquote(char* buf)
+{
+    // Skip leading whitespace.
+    char* src = buf;
+    while (isspace(*src) && *src != '\n') ++src;
+
+    // Find first separating '=' character.
+    char* sep = strchr(buf, '=');
+    while (buf < sep && isspace(*(sep - 1))) --sep;
+
+    char* dst = buf;
+    char  quote = '\0';
+    while (*src) {
+        // Remove spaces around the separating '=' character.
+        if (src == sep) {
+            *(dst++) = '=';
+            while ((isspace(*src) && *src != '\n') || *src == '=') ++src;
+            continue;
+        }
+
+        // Remove unquoted backslash characters.
+        if (!quote) {
+            if      (*src == '\'') quote = '\'';
+            else if (*src ==  '"') quote =  '"';
+            else if (*src ==  '#') break;
+            else if (*src == '\n') break;
+            else if (*src == '\\' && *(src + 1)) ++src;
+        }
+        else {
+            if      (*src == '\\')  *(dst++) = *(src++);
+            else if (*src == quote) quote = '\0';
+        }
+
+        if (*src)
+            *(dst++) = *(src++);
+    }
+    if (quote)
+        return -1;
+
+    // Trim trailing whitespace.
+    while (buf < dst && isspace(*(dst - 1))) --dst;
+
+    // End line with '\0'.
+    *dst = '\0';
+    return 0;
+}
+
+int line_length(char* buf, int* linecnt)
+{
+    int  i = 0;
+    char quote = '\0';
+
+    *linecnt = 1;
+    while (buf[i]) {
+        if (buf[i] == '\\' && *(buf + 1)) ++i;
+        else if (!quote) {
+            if      (buf[i] == '\'') quote = '\'';
+            else if (buf[i] ==  '"') quote =  '"';
+            else if (buf[i] == '\n') break;
+            else if (buf[i] ==  '#') { i += strcspn(&buf[i], "\n"); break; }
+        }
+        else if (buf[i] == quote) quote = '\0';
+
+        if (buf[i] == '\n') ++(*linecnt);
+        if (buf[i] != '\0') ++i;
+    }
+
+
+    return i;
+}
+
+int file_read_line(FILE* fp, char** buf, int* cap,
+                   char** line, char** end, const char** errptr)
+{
+    int linecnt;
+    const char* errstr;
+
+    // Allocate an initial buffer if necessary.
+    if (*cap == 0) {
+        *cap = 1024;
+        *buf = malloc(*cap * sizeof(**buf));
+
+        if (!*buf) {
+            errstr = "Could not allocate configuration parse buffer";
+            goto error;
+        }
+        **buf = '\0';
+    }
+
+    *line = *buf;
+    if (*end)
+        *line = *end;
+
+    // Loop until end of line is found (or end of file).
+    int len;
+    while (1) {
+        len = line_length(*line, &linecnt);
+
+        if ((*line)[len] == '\0' && !feof(fp)) {
+            // Line is incomplete, but more data is available.
+
+            // Move partial line to beginning of buffer.
+            memmove(*buf, *line, len);
+
+            int remain = *cap - len - 2;
+            if (remain < 1) {
+                // Extend the line buffer.
+                if (array_grow(buf, cap, sizeof(**buf)) != 0) {
+                    errstr = "Could not grow config parsing buffer";
+                    goto error;
+                }
+                remain = *cap - len - 2;
+            }
+
+            // Read more data into the line buffer.
+            int tail = len + fread(*buf + len, sizeof(**buf), remain, fp);
+            (*buf)[tail] = '\0';
+            *line = *buf;
+        }
+        else break; // Loop exit.
+    }
+
+    // Mark where line buffer processing has ended.
+    if ((*line)[len] == '\n') ++len;
+    *end = *line + len;
+
+    // File and line buffer exhausted.
+    if (*line == *end)
+        return 0;
+
+    if (line_unquote(*line) != 0) {
+        errstr = "Non-terminated quote detected";
+        goto error;
+    }
+    return linecnt;
+
+  error:
+    if (errptr)
+        *errptr = errstr;
+    return -1;
 }
 
 int array_grow(void* buf, int* capacity, int elem_size)
