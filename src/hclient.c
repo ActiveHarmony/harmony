@@ -524,10 +524,9 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
     hd->mesg.data.session = HSESSION_INITIALIZER;
     hsession_copy(&hd->mesg.data.session, &hd->sess);
 
-    if (send_request(hd, HMESG_SESSION) != 0) {
-        hd->errstr = "Error sending/receiving initial session message";
+    if (send_request(hd, HMESG_SESSION) != 0)
         return -1;
-    }
+
     hd->state = HARMONY_STATE_READY;
 
     return 0;
