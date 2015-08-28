@@ -43,7 +43,6 @@ typedef enum harmony_state_t {
     HARMONY_STATE_CONNECTED,
     HARMONY_STATE_READY,
     HARMONY_STATE_TESTING,
-    HARMONY_STATE_CONVERGED,
 
     HARMONY_STATE_MAX
 } harmony_state_t;
@@ -1224,16 +1223,8 @@ int ah_best(hdesc_t* hd)
  */
 int ah_converged(hdesc_t* hd)
 {
-    int retval;
-    char* str;
-
-    retval = 0;
-    str = ah_get_cfg(hd, CFGKEY_CONVERGED);
-    if (str && str[0] == '1') {
-        hd->state = HARMONY_STATE_CONVERGED;
-        retval = 1;
-    }
-    return retval;
+    char* retval = ah_get_cfg(hd, CFGKEY_CONVERGED);
+    return (retval && retval[0] == '1');
 }
 
 /**
