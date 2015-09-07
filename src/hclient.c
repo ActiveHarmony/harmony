@@ -1007,37 +1007,41 @@ int ah_fetch(hdesc_t* hd)
         return -1;
     }
 
-    /* Prepare a Harmony message. */
-    hmesg_scrub(&hd->mesg);
 
-    if (send_request(hd, HMESG_FETCH) != 0)
-        return -1;
+    if (hd->state == HARMONY_STATE_READY) {
+        /* Prepare a Harmony message. */
+        hmesg_scrub(&hd->mesg);
 
-    if (hd->mesg.status == HMESG_STATUS_BUSY) {
-        if (update_best(hd, &hd->mesg.data.point) != 0)
+        if (send_request(hd, HMESG_FETCH) != 0)
             return -1;
 
-        if (hd->best.id == -1) {
-            /* No best point is available. Inform the user by returning 0. */
-            return 0;
-        }
+        if (hd->mesg.status == HMESG_STATUS_BUSY) {
+            /* No new data is ready. */
+            if (update_best(hd, &hd->mesg.data.point) != 0)
+                return -1;
 
-        /* Set current point to best point. */
-        if (hpoint_copy(&hd->curr, &hd->best) != 0) {
-            hd->errstr = "Error copying best point data";
+            if (hd->best.id == -1) {
+                /* No best point is available either.  Do not set values. */
+                return 0;
+            }
+
+            /* Set current point to best point. */
+            if (hpoint_copy(&hd->curr, &hd->best) != 0) {
+                hd->errstr = "Error copying best point data";
+                return -1;
+            }
+        }
+        else if (hd->mesg.status == HMESG_STATUS_OK) {
+            if (hpoint_copy(&hd->curr, &hd->mesg.data.point) != 0) {
+                hd->errstr = "Error copying current point data";
+                return -1;
+            }
+        }
+        else {
+            hd->errstr = "Invalid message received from server";
+            errno = EINVAL;
             return -1;
         }
-    }
-    else if (hd->mesg.status == HMESG_STATUS_OK) {
-        if (hpoint_copy(&hd->curr, &hd->mesg.data.point) != 0) {
-            hd->errstr = "Error copying current point data";
-            return -1;
-        }
-    }
-    else {
-        hd->errstr = "Invalid message received from server";
-        errno = EINVAL;
-        return -1;
     }
 
     /* Update the variables from the content of the message. */
