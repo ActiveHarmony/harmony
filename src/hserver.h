@@ -43,7 +43,7 @@ typedef struct session_state {
 
     /* Fields used by the HTTP server. */
     struct timeval start;
-    hsignature_t sig;
+    hsig_t sig;
     char* strategy;
     unsigned int status;
 

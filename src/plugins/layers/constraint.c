@@ -62,7 +62,7 @@
 #include <signal.h>
 
 #include "session-core.h"
-#include "hsignature.h"
+#include "hsig.h"
 #include "hpoint.h"
 #include "hutil.h"
 #include "hsockutil.h"
@@ -98,17 +98,17 @@ hcfg_info_t plugin_keyinfo[] = {
 #define MAX_TEXT_LEN 1024
 
 /* Forward function declarations. */
-int strategy_cfg(hsignature_t* sig);
-int build_vars_text(hsignature_t* sig);
-int build_bounds_text(hsignature_t* sig);
+int strategy_cfg(hsig_t* sig);
+int build_vars_text(hsig_t* sig);
+int build_bounds_text(hsig_t* sig);
 int build_user_text(void);
 int build_point_text(hpoint_t* point);
-int update_bounds(hsignature_t* sig);
+int update_bounds(hsig_t* sig);
 int check_validity(hpoint_t* point);
 char* call_omega_calc(const char* cmd);
 
 /* Keep copy of session information */
-hsignature_t local_sig;
+hsig_t local_sig;
 
 const char* omega_bin   = "oc";
 char constraints[MAX_TEXT_LEN];
@@ -121,10 +121,10 @@ char point_text[MAX_TEXT_LEN];
 /* Some global variables */
 int quiet;
 
-int constraint_init(hsignature_t* sig)
+int constraint_init(hsig_t* sig)
 {
     /* Make a copy of the signature. */
-    hsignature_copy(&local_sig, sig);
+    hsig_copy(&local_sig, sig);
 
     /* Initialize layer variables. */
     if (strategy_cfg(sig) != 0)
@@ -146,7 +146,7 @@ int constraint_init(hsignature_t* sig)
     return 0;
 }
 
-int strategy_cfg(hsignature_t* sig)
+int strategy_cfg(hsig_t* sig)
 {
     const char* cfgval;
 
@@ -236,11 +236,11 @@ int constraint_generate(hflow_t* flow, hpoint_t* point)
 
 int constraint_fini(void)
 {
-    hsignature_fini(&local_sig);
+    hsig_fini(&local_sig);
     return 0;
 }
 
-int build_vars_text(hsignature_t* sig)
+int build_vars_text(hsig_t* sig)
 {
     int i;
 
@@ -253,7 +253,7 @@ int build_vars_text(hsignature_t* sig)
     return 0;
 }
 
-int build_bounds_text(hsignature_t* sig)
+int build_bounds_text(hsig_t* sig)
 {
     int i;
     char* ptr = bounds_text;
@@ -354,7 +354,7 @@ int build_point_text(hpoint_t* point)
 /* XXX - We don't actually update the session signature just yet,
  * resulting in correct, but less optimal point generation.
  */
-int update_bounds(hsignature_t* sig)
+int update_bounds(hsig_t* sig)
 {
     char cmd[MAX_CMD_LEN];
     char* retstr;
@@ -414,7 +414,7 @@ int update_bounds(hsignature_t* sig)
     }
 
     if (!quiet) {
-        if (!hsignature_equal(sig, &local_sig)) {
+        if (!hsig_equal(sig, &local_sig)) {
             fprintf(stderr, "For the given constraints, we suggest re-running"
                     " the session with these bounds:\n");
 

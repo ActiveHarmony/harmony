@@ -19,7 +19,7 @@
 #define _XOPEN_SOURCE 500 // Needed for drand48().
 
 #include "libvertex.h"
-#include "hsignature.h"
+#include "hsig.h"
 #include "hpoint.h"
 #include "hperf.h"
 #include "session-core.h"
@@ -48,7 +48,7 @@ static vertex_t* vmin;
 static vertex_t* vmax;
 static long sizeof_vertex;
 
-int libvertex_init(hsignature_t* sig)
+int libvertex_init(hsig_t* sig)
 {
     if (range != sig->range) {
         range = sig->range;
@@ -363,7 +363,7 @@ int vertex_from_hpoint(const hpoint_t* pt, vertex_t* result)
     return 0;
 }
 
-int vertex_from_string(const char* str, hsignature_t* sig, vertex_t* result)
+int vertex_from_string(const char* str, hsig_t* sig, vertex_t* result)
 {
     int retval = 0;
     hpoint_t pt = HPOINT_INITIALIZER;

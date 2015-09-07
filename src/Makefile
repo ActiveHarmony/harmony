@@ -7,7 +7,7 @@ LIB_SRCS=hcfg.c \
          hpoint.c \
          hperf.c \
          hsession.c \
-         hsignature.c \
+         hsig.c \
          hsockutil.c \
          hutil.c \
          hval.c

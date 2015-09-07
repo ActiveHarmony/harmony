@@ -284,7 +284,7 @@ int ah_load(hdesc_t* hd, const char* filename)
     FILE* fp;
     int retval = 0;
 
-    if (hsignature_name(&hd->sess.sig, filename) != 0) {
+    if (hsig_name(&hd->sess.sig, filename) != 0) {
         hd->errstr = "Could not copy session name from filename";
         return -1;
     }
@@ -316,7 +316,7 @@ int ah_load(hdesc_t* hd, const char* filename)
             (strncmp(line, "real", 4) == 0 && isspace(line[4])) ||
             (strncmp(line, "enum", 4) == 0 && isspace(line[4])))
         {
-            if (hsignature_parse(&hd->sess.sig, line, &hd->errstr) == -1)
+            if (hsig_parse(&hd->sess.sig, line, &hd->errstr) == -1)
                 goto error;
         }
         else {
@@ -353,7 +353,7 @@ int ah_load(hdesc_t* hd, const char* filename)
 int ah_int(hdesc_t* hd, const char* name,
            long min, long max, long step)
 {
-    return hsignature_int(&hd->sess.sig, name, min, max, step);
+    return hsig_int(&hd->sess.sig, name, min, max, step);
 }
 
 /**
@@ -370,7 +370,7 @@ int ah_int(hdesc_t* hd, const char* name,
 int ah_real(hdesc_t* hd, const char* name,
                  double min, double max, double step)
 {
-    return hsignature_real(&hd->sess.sig, name, min, max, step);
+    return hsig_real(&hd->sess.sig, name, min, max, step);
 }
 
 /**
@@ -385,7 +385,7 @@ int ah_real(hdesc_t* hd, const char* name,
  */
 int ah_enum(hdesc_t* hd, const char* name, const char* value)
 {
-    return hsignature_enum(&hd->sess.sig, name, value);
+    return hsig_enum(&hd->sess.sig, name, value);
 }
 
 /**
@@ -504,7 +504,7 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
     if (!name && !hd->sess.sig.name)
         name = hd->default_id;
 
-    if (name && hsignature_name(&hd->sess.sig, name) != 0) {
+    if (name && hsig_name(&hd->sess.sig, name) != 0) {
         hd->errstr = "Error setting session name";
         return -1;
     }
@@ -596,7 +596,7 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
             return -1;
         }
 
-        if (hsignature_name(&hd->sess.sig, name) != 0) {
+        if (hsig_name(&hd->sess.sig, name) != 0) {
             hd->errstr = "Error setting session name";
             return -1;
         }
@@ -606,8 +606,8 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
 
         /* Prepare a Harmony message. */
         hmesg_scrub(&hd->mesg);
-        hd->mesg.data.join = HSIGNATURE_INITIALIZER;
-        if (hsignature_copy(&hd->mesg.data.join, &hd->sess.sig) != 0) {
+        hd->mesg.data.join = HSIG_INITIALIZER;
+        if (hsig_copy(&hd->mesg.data.join, &hd->sess.sig) != 0) {
             hd->errstr = "Internal error copying signature data";
             return -1;
         }
@@ -622,8 +622,8 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
             return -1;
         }
 
-        hsignature_fini(&hd->sess.sig);
-        if (hsignature_copy(&hd->sess.sig, &hd->mesg.data.join) != 0) {
+        hsig_fini(&hd->sess.sig);
+        if (hsig_copy(&hd->sess.sig, &hd->mesg.data.join) != 0) {
             hd->errstr = "Error copying received signature structure";
             return -1;
         }
@@ -772,7 +772,7 @@ int ah_leave(hdesc_t* hd)
         perror("Error closing socket during ah_leave()");
 
     /* Reset the hsession_t to prepare for harmony descriptor reuse. */
-    hsignature_fini(&hd->sess.sig);
+    hsig_fini(&hd->sess.sig);
     hd->best.id = -1;
 
     return 0;
@@ -1297,7 +1297,7 @@ int harmony_enum(hdesc_t* hd, const char* name, const char* value)
 
 int harmony_session_name(hdesc_t* hd, const char* name)
 {
-    return hsignature_name(&hd->sess.sig, name);
+    return hsig_name(&hd->sess.sig, name);
 }
 
 int harmony_strategy(hdesc_t* hd, const char* strategy)

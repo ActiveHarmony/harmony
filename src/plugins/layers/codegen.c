@@ -38,7 +38,7 @@
  * specify an absolute path.  For example:
  *
  *     dir:///tmp
- *     ssh://code.server.net:2222//tmp/codegen 
+ *     ssh://code.server.net:2222//tmp/codegen
  */
 
 #include "session-core.h"
@@ -117,7 +117,7 @@ int cglog_find(const hpoint_t* pt);
  *
  * This routine should return 0 on success, and -1 otherwise.
  */
-int codegen_init(hsignature_t* sig)
+int codegen_init(hsig_t* sig)
 {
     const char* url;
 
@@ -150,7 +150,7 @@ int codegen_init(hsignature_t* sig)
     mesg.type = HMESG_SESSION;
     mesg.status = HMESG_STATUS_REQ;
 
-    hsignature_copy(&mesg.data.session.sig, sig);
+    hsig_copy(&mesg.data.session.sig, sig);
     hcfg_copy(&mesg.data.session.cfg, session_cfg);
 
     /* Memory allocated for mesg is freed after mesg_send(). */

@@ -725,7 +725,7 @@ session_state_t* session_open(hmesg_t* mesg)
     }
 
     /* Initialize HTTP server fields. */
-    if (hsignature_copy(&sess->sig, &mesg->data.session.sig) != 0)
+    if (hsig_copy(&sess->sig, &mesg->data.session.sig) != 0)
         goto error;
 
     if (gettimeofday(&sess->start, NULL) < 0)
@@ -769,7 +769,7 @@ void session_close(session_state_t* sess)
             client_close(sess->client[i]);
     }
 
-    hsignature_fini(&sess->sig);
+    hsig_fini(&sess->sig);
 }
 
 void client_close(int fd)

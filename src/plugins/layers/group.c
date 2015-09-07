@@ -50,7 +50,7 @@
  */
 
 #include "session-core.h"
-#include "hsignature.h"
+#include "hsig.h"
 #include "hpoint.h"
 #include "hutil.h"
 #include "hcfg.h"
@@ -92,7 +92,7 @@ static int glist_len, glist_cap;
 static int glist_curr;
 static hpoint_t best;
 
-int group_init(hsignature_t* sig)
+int group_init(hsig_t* sig)
 {
     const char* ptr;
 

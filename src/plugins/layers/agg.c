@@ -28,7 +28,7 @@
  */
 
 #include "session-core.h"
-#include "hsignature.h"
+#include "hsig.h"
 #include "hpoint.h"
 #include "hperf.h"
 #include "hutil.h"
@@ -80,7 +80,7 @@ int trial_per_point;
 store_t* slist;
 int slist_len;
 
-int agg_init(hsignature_t* sig)
+int agg_init(hsig_t* sig)
 {
     const char* val;
 

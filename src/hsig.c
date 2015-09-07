@@ -17,7 +17,7 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "hsignature.h"
+#include "hsig.h"
 #include "hutil.h"
 
 #include <stdio.h>
@@ -29,14 +29,14 @@
 #include <limits.h>
 
 const hrange_t HRANGE_INITIALIZER = {0};
-const hsignature_t HSIGNATURE_INITIALIZER = {0};
+const hsig_t HSIG_INITIALIZER = {0};
 
 /* Internal helper function prototypes. */
 static int       add_enum_string(str_bounds_t* bounds, char* str);
-static int       add_range(hsignature_t* sig, hrange_t* range);
+static int       add_range(hsig_t* sig, hrange_t* range);
 static int       copy_token(const char* buf, char **token,
                             const char** errptr);
-static hrange_t* find_range(hsignature_t* sig, const char* name);
+static hrange_t* find_range(hsig_t* sig, const char* name);
 
 /*
  * Harmony range related function definitions.
@@ -369,11 +369,11 @@ int hrange_deserialize(hrange_t* range, char* buf)
 /*
  * Signature-related function definitions.
  */
-int hsignature_copy(hsignature_t* dst, const hsignature_t* src)
+int hsig_copy(hsig_t* dst, const hsig_t* src)
 {
     int i;
 
-    hsignature_fini(dst);
+    hsig_fini(dst);
 
     dst->range = malloc(sizeof(hrange_t) * src->range_len);
     if (!dst->range)
@@ -394,7 +394,7 @@ int hsignature_copy(hsignature_t* dst, const hsignature_t* src)
     return 0;
 }
 
-void hsignature_fini(hsignature_t* sig)
+void hsig_fini(hsig_t* sig)
 {
     int i;
 
@@ -403,10 +403,10 @@ void hsignature_fini(hsignature_t* sig)
 
     free(sig->range);
     free(sig->name);
-    *sig = HSIGNATURE_INITIALIZER;
+    *sig = HSIG_INITIALIZER;
 }
 
-int hsignature_equal(const hsignature_t* sig_a, const hsignature_t* sig_b)
+int hsig_equal(const hsig_t* sig_a, const hsig_t* sig_b)
 {
     int i, j;
 
@@ -454,7 +454,7 @@ int hsignature_equal(const hsignature_t* sig_a, const hsignature_t* sig_b)
     return 1;
 }
 
-int hsignature_match(const hsignature_t* sig_a, const hsignature_t* sig_b)
+int hsig_match(const hsig_t* sig_a, const hsig_t* sig_b)
 {
     int i;
 
@@ -473,7 +473,7 @@ int hsignature_match(const hsignature_t* sig_a, const hsignature_t* sig_b)
     return 1;
 }
 
-int hsignature_name(hsignature_t* sig, const char* name)
+int hsig_name(hsig_t* sig, const char* name)
 {
     if (sig->name)
         free(sig->name);
@@ -485,8 +485,7 @@ int hsignature_name(hsignature_t* sig, const char* name)
     return 0;
 }
 
-int hsignature_int(hsignature_t* sig, const char* name,
-                   long min, long max, long step)
+int hsig_int(hsig_t* sig, const char* name, long min, long max, long step)
 {
     if (max < min) {
         errno = EINVAL;
@@ -509,8 +508,8 @@ int hsignature_int(hsignature_t* sig, const char* name,
     return 0;
 }
 
-int hsignature_real(hsignature_t* sig, const char* name,
-                    double min, double max, double step)
+int hsig_real(hsig_t* sig, const char* name,
+              double min, double max, double step)
 {
     if (max < min) {
         errno = EINVAL;
@@ -533,7 +532,7 @@ int hsignature_real(hsignature_t* sig, const char* name,
     return 0;
 }
 
-int hsignature_enum(hsignature_t* sig, const char* name, const char* value)
+int hsig_enum(hsig_t* sig, const char* name, const char* value)
 {
     hrange_t* ptr = find_range(sig, name);
     if (ptr) {
@@ -571,7 +570,7 @@ int hsignature_enum(hsignature_t* sig, const char* name, const char* value)
     return 0;
 }
 
-int hsignature_serialize(char** buf, int* buflen, const hsignature_t* sig)
+int hsig_serialize(char** buf, int* buflen, const hsig_t* sig)
 {
     int i, count, total;
 
@@ -600,7 +599,7 @@ int hsignature_serialize(char** buf, int* buflen, const hsignature_t* sig)
     return -1;
 }
 
-int hsignature_deserialize(hsignature_t* sig, char* buf)
+int hsig_deserialize(hsig_t* sig, char* buf)
 {
     int i, count, total;
     char* strptr;
@@ -644,7 +643,7 @@ int hsignature_deserialize(hsignature_t* sig, char* buf)
     return -1;
 }
 
-int hsignature_parse(hsignature_t* sig, const char* buf, const char** errptr)
+int hsig_parse(hsig_t* sig, const char* buf, const char** errptr)
 {
     hrange_t range = HRANGE_INITIALIZER;
     int id, idlen, bounds = 0, tail = 0;
@@ -792,7 +791,7 @@ int add_enum_string(str_bounds_t* bounds, char* str)
     return 0;
 }
 
-int add_range(hsignature_t* sig, hrange_t* range)
+int add_range(hsig_t* sig, hrange_t* range)
 {
     if (find_range(sig, range->name) != NULL) {
         errno = EINVAL;
@@ -872,7 +871,7 @@ int copy_token(const char* buf, char **token, const char** errptr)
     return -1;
 }
 
-hrange_t* find_range(hsignature_t* sig, const char* name)
+hrange_t* find_range(hsig_t* sig, const char* name)
 {
     for (int i = 0; i < sig->range_len; ++i)
         if (strcmp(name, sig->range[i].name) == 0)

@@ -32,7 +32,7 @@
  */
 
 #include "session-core.h"
-#include "hsignature.h"
+#include "hsig.h"
 #include "hpoint.h"
 #include "hperf.h"
 #include "hutil.h"
@@ -89,7 +89,7 @@ static int buflen;
 /* Initialize global variables.  Also loads data into cache from a log
  * file if configuration variable CACHE_FILE is defined.
  */
-int cache_init(hsignature_t* sig)
+int cache_init(hsig_t* sig)
 {
     const char* filename;
 

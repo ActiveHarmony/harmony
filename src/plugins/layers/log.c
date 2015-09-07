@@ -25,7 +25,7 @@
  */
 
 #include "session-core.h"
-#include "hsignature.h"
+#include "hsig.h"
 #include "hpoint.h"
 #include "hperf.h"
 #include "hcfg.h"
@@ -56,7 +56,7 @@ hcfg_info_t plugin_keyinfo[] = {
 
 FILE* fd;
 
-int logger_init(hsignature_t* sig)
+int logger_init(hsig_t* sig)
 {
     const char* filename = hcfg_get(session_cfg, CFGKEY_LOG_FILE);
     const char* mode     = hcfg_get(session_cfg, CFGKEY_LOG_MODE);

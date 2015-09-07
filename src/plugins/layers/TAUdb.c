@@ -37,7 +37,7 @@
  */
 
 #include "session-core.h"
-#include "hsignature.h"
+#include "hsig.h"
 #include "hpoint.h"
 #include "hutil.h"
 #include "hcfg.h"
@@ -85,7 +85,7 @@ typedef struct cinfo {
 } cinfo_t;
 cinfo_t* client = NULL;
 
-hsignature_t sess_sig;
+hsig_t sess_sig;
 int param_max;
 int client_max;
 int save_counter = 0;
@@ -106,7 +106,7 @@ void harmony_taudb_get_secondary_metadata(TAUDB_THREAD* thread, char* opsys,
 /* Initialization of TAUdb
  * Return 0 for success, -1 for error
  */
-int TAUdb_init(hsignature_t* sig)
+int TAUdb_init(hsig_t* sig)
 {
     char* tmpstr;
 
@@ -166,8 +166,8 @@ int TAUdb_init(hsignature_t* sig)
     }
     memset(client, 0, client_max * sizeof(cinfo_t));
 
-    sess_sig = HSIGNATURE_INITIALIZER;
-    if (hsignature_copy(&sess_sig, sig) != 0) {
+    sess_sig = HSIG_INITIALIZER;
+    if (hsig_copy(&sess_sig, sig) != 0) {
         session_error("Internal error: Could not copy session signature");
         return -1;
     }

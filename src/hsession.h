@@ -25,7 +25,7 @@
 #ifndef __HSESSION_H__
 #define __HSESSION_H__
 
-#include "hsignature.h"
+#include "hsig.h"
 #include "hcfg.h"
 
 #ifdef __cplusplus
@@ -35,7 +35,7 @@ extern "C" {
 #ifndef DOXYGEN_SKIP
 
 typedef struct hsession {
-    hsignature_t sig;
+    hsig_t sig;
     hcfg_t cfg;
 } hsession_t;
 extern hsession_t HSESSION_INITIALIZER;

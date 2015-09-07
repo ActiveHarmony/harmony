@@ -39,7 +39,7 @@
 
 #include "strategy.h"
 #include "session-core.h"
-#include "hsignature.h"
+#include "hsig.h"
 #include "hperf.h"
 #include "hutil.h"
 #include "hcfg.h"
@@ -129,7 +129,7 @@ typedef enum simplex_state {
 } simplex_state_t;
 
 /* Forward function definitions. */
-int  strategy_cfg(hsignature_t* sig);
+int  strategy_cfg(hsig_t* sig);
 int  init_by_random(void);
 int  init_by_maxval(void);
 int  init_by_point(int fast);
@@ -171,7 +171,7 @@ int coords; /* number of coordinates for each vertex, from sig->range */
 /*
  * Invoked once on strategy load.
  */
-int strategy_init(hsignature_t* sig)
+int strategy_init(hsig_t* sig)
 {
     if (libvertex_init(sig) != 0) {
         session_error("Could not initialize vertex library.");
@@ -263,7 +263,7 @@ int strategy_init(hsignature_t* sig)
     return 0;
 }
 
-int strategy_cfg(hsignature_t* sig)
+int strategy_cfg(hsig_t* sig)
 {
     const char* cfgval;
 

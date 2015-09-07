@@ -17,8 +17,8 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef __HSIGNATURE_H__
-#define __HSIGNATURE_H__
+#ifndef __HSIG_H__
+#define __HSIG_H__
 
 #include "hval.h"
 
@@ -63,13 +63,13 @@ extern const hrange_t HRANGE_INITIALIZER;
  * Harmony session signature: Clients provide this on join to verify
  * compatibility with the session they wish to join.
  */
-typedef struct hsignature {
+typedef struct hsig {
     char* name;
     hrange_t* range;
     int range_len;
     int range_cap;
-} hsignature_t;
-extern const hsignature_t HSIGNATURE_INITIALIZER;
+} hsig_t;
+extern const hsig_t HSIG_INITIALIZER;
 
 /* Harmony range functions */
 unsigned long hrange_max_idx(hrange_t* range);
@@ -89,22 +89,22 @@ unsigned long hrange_str_index(str_bounds_t* bound, const char* val);
 const char*   hrange_str_value(str_bounds_t* bound, unsigned long idx);
 
 /* Harmony signature functions */
-int  hsignature_copy(hsignature_t* dst, const hsignature_t* src);
-void hsignature_fini(hsignature_t* sig);
-int  hsignature_equal(const hsignature_t* sig_a, const hsignature_t* sig_b);
-int  hsignature_match(const hsignature_t* sig_a, const hsignature_t* sig_b);
-int  hsignature_name(hsignature_t* sig, const char* name);
-int  hsignature_int(hsignature_t* sig, const char* name,
-                    long min, long max, long step);
-int  hsignature_real(hsignature_t* sig, const char* name,
-                     double min, double max, double step);
-int  hsignature_enum(hsignature_t* sig, const char* name, const char* value);
-int  hsignature_serialize(char** buf, int* buflen, const hsignature_t* sig);
-int  hsignature_deserialize(hsignature_t* sig, char* buf);
-int  hsignature_parse(hsignature_t* sig, const char* buf, const char** errptr);
+int  hsig_copy(hsig_t* dst, const hsig_t* src);
+void hsig_fini(hsig_t* sig);
+int  hsig_equal(const hsig_t* sig_a, const hsig_t* sig_b);
+int  hsig_match(const hsig_t* sig_a, const hsig_t* sig_b);
+int  hsig_name(hsig_t* sig, const char* name);
+int  hsig_int(hsig_t* sig, const char* name,
+              long min, long max, long step);
+int  hsig_real(hsig_t* sig, const char* name,
+               double min, double max, double step);
+int  hsig_enum(hsig_t* sig, const char* name, const char* value);
+int  hsig_serialize(char** buf, int* buflen, const hsig_t* sig);
+int  hsig_deserialize(hsig_t* sig, char* buf);
+int  hsig_parse(hsig_t* sig, const char* buf, const char** errptr);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __HSIGNATURE_H__ */
+#endif /* __HSIG_H__ */

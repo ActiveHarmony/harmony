@@ -87,7 +87,7 @@ int hpoint_copy(hpoint_t* copy, const hpoint_t* orig)
     return 0;
 }
 
-int hpoint_align(hpoint_t* pt, hsignature_t* sig)
+int hpoint_align(hpoint_t* pt, hsig_t* sig)
 {
     int i;
 
@@ -130,7 +130,7 @@ int hpoint_align(hpoint_t* pt, hsignature_t* sig)
     return 0;
 }
 
-int hpoint_parse(hpoint_t* pt, hsignature_t* sig, const char* buf)
+int hpoint_parse(hpoint_t* pt, hsig_t* sig, const char* buf)
 {
     int i, span;
 

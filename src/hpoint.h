@@ -21,7 +21,7 @@
 #define __HPOINT_H__
 
 #include "hval.h"
-#include "hsignature.h"
+#include "hsig.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -45,8 +45,8 @@ void hpoint_fini(hpoint_t* pt);
 int  hpoint_copy(hpoint_t* dst, const hpoint_t* src);
 int  hpoint_serialize(char** buf, int* buflen, const hpoint_t* pt);
 int  hpoint_deserialize(hpoint_t* pt, char* buf);
-int  hpoint_align(hpoint_t* pt, hsignature_t* sig);
-int  hpoint_parse(hpoint_t* pt, hsignature_t* sig, const char* buf);
+int  hpoint_align(hpoint_t* pt, hsig_t* sig);
+int  hpoint_parse(hpoint_t* pt, hsig_t* sig, const char* buf);
 
 #ifdef __cplusplus
 }

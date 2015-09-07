@@ -51,7 +51,7 @@
 #include <libxml/xmlwriter.h>
 
 #include "session-core.h"
-#include "hsignature.h"
+#include "hsig.h"
 #include "hpoint.h"
 #include "hutil.h"
 #include "hcfg.h"
@@ -73,7 +73,7 @@ hcfg_info_t plugin_keyinfo[] = {
 
 #define MY_ENCODING "ISO-8859-1"
 
-hsignature_t sess_sig;
+hsig_t sess_sig;
 /* clock_t file_create_time; */
 char filename[128];
 char create_time[128];
@@ -82,7 +82,7 @@ int paramNum;
 int harmony_xmlWriteAppName(const char* appName);
 int harmony_xmlWriteParamInfo(void);
 
-int xmlWriter_init(hsignature_t* sig)
+int xmlWriter_init(hsig_t* sig)
 {
     int rc;
     const char* tmpstr;
@@ -176,7 +176,7 @@ int xmlWriter_init(hsignature_t* sig)
     xmlFreeDoc(doc);
 
     /* Writing primary metadata */
-    hsignature_copy(&sess_sig, sig);
+    hsig_copy(&sess_sig, sig);
 
     /* Write appName */
     if (harmony_xmlWriteAppName(sig->name) != 0)

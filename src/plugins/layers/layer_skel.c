@@ -25,7 +25,7 @@
  */
 
 #include "session-core.h"
-#include "hsignature.h"
+#include "hsig.h"
 #include "hpoint.h"
 #include "hcfg.h"
 
@@ -54,7 +54,7 @@ hcfg_info_t plugin_keyinfo[] = {
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int <plugin>_init(hsignature_t* sig)
+int <plugin>_init(hsig_t* sig)
 {
     return 0;
 }

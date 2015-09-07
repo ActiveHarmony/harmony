@@ -21,7 +21,7 @@
 #define __SEARCH_STRATEGY_H__
 
 #include "session-core.h"
-#include "hsignature.h"
+#include "hsig.h"
 #include "hpoint.h"
 
 #ifdef __cplusplus
@@ -102,7 +102,7 @@ int strategy_best(hpoint_t* point);
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int strategy_init(hsignature_t* sig);
+int strategy_init(hsig_t* sig);
 
 /*
  * Invoked when a client joins the tuning session.

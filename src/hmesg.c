@@ -43,7 +43,7 @@ void hmesg_scrub(hmesg_t* mesg)
         if (mesg->status == HMESG_STATUS_REQ ||
             mesg->status == HMESG_STATUS_OK)
         {
-            hsignature_fini(&mesg->data.join);
+            hsig_fini(&mesg->data.join);
         }
         break;
 
@@ -140,7 +140,7 @@ int hmesg_serialize(hmesg_t* mesg)
             break;
 
         case HMESG_JOIN:
-            count = hsignature_serialize(&buf, &buflen, &mesg->data.join);
+            count = hsig_serialize(&buf, &buflen, &mesg->data.join);
             if (count < 0) goto error;
             total += count;
             break;
@@ -272,8 +272,8 @@ int hmesg_deserialize(hmesg_t* mesg)
             break;
 
         case HMESG_JOIN:
-            mesg->data.join = HSIGNATURE_INITIALIZER;
-            count = hsignature_deserialize(&mesg->data.join, buf + total);
+            mesg->data.join = HSIG_INITIALIZER;
+            count = hsig_deserialize(&mesg->data.join, buf + total);
             if (count < 0) goto error;
             total += count;
             break;

@@ -36,7 +36,7 @@ hsession_t HSESSION_INITIALIZER = {{0}};
  */
 int hsession_copy(hsession_t* dst, const hsession_t* src)
 {
-    if (hsignature_copy(&dst->sig, &src->sig) != 0)
+    if (hsig_copy(&dst->sig, &src->sig) != 0)
         return -1;
     if (hcfg_copy(&dst->cfg, &src->cfg) != 0)
         return -1;
@@ -45,7 +45,7 @@ int hsession_copy(hsession_t* dst, const hsession_t* src)
 
 void hsession_fini(hsession_t* sess)
 {
-    hsignature_fini(&sess->sig);
+    hsig_fini(&sess->sig);
     hcfg_fini(&sess->cfg);
 }
 
@@ -57,7 +57,7 @@ int hsession_serialize(char** buf, int* buflen, const hsession_t* sess)
     if (count < 0) goto invalid;
     total = count;
 
-    count = hsignature_serialize(buf, buflen, &sess->sig);
+    count = hsig_serialize(buf, buflen, &sess->sig);
     if (count < 0) goto error;
     total += count;
 
@@ -82,7 +82,7 @@ int hsession_deserialize(hsession_t* sess, char* buf)
         goto invalid;
     total = i + 8;
 
-    count = hsignature_deserialize(&sess->sig, buf + total);
+    count = hsig_deserialize(&sess->sig, buf + total);
     if (count < 0) goto error;
     total += count;
 

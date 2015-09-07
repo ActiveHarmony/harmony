@@ -593,12 +593,12 @@ int handle_join(hmesg_t* mesg)
     int i;
 
     /* Verify that client signature matches current session. */
-    if (!hsignature_match(&mesg->data.join, &sess->sig)) {
+    if (!hsig_match(&mesg->data.join, &sess->sig)) {
         errmsg = "Incompatible join signature.";
         return -1;
     }
 
-    if (hsignature_copy(&mesg->data.join, &sess->sig) < 0) {
+    if (hsig_copy(&mesg->data.join, &sess->sig) < 0) {
         errmsg = "Internal error: Could not copy signature.";
         return -1;
     }

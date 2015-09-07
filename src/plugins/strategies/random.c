@@ -31,7 +31,7 @@
 
 #include "strategy.h"
 #include "session-core.h"
-#include "hsignature.h"
+#include "hsig.h"
 #include "hperf.h"
 #include "hutil.h"
 #include "hcfg.h"
@@ -56,7 +56,7 @@ hpoint_t best;
 double   best_perf;
 
 /* Forward function definitions. */
-int strategy_cfg(hsignature_t* sig);
+int strategy_cfg(hsig_t* sig);
 
 /* Variables to track current search state. */
 vertex_t* curr;
@@ -64,7 +64,7 @@ vertex_t* curr;
 /*
  * Invoked once on strategy load.
  */
-int strategy_init(hsignature_t* sig)
+int strategy_init(hsig_t* sig)
 {
     if (libvertex_init(sig) != 0) {
         session_error("Could not initialize vertex library.");
@@ -98,7 +98,7 @@ int strategy_init(hsignature_t* sig)
     return 0;
 }
 
-int strategy_cfg(hsignature_t* sig)
+int strategy_cfg(hsig_t* sig)
 {
     const char* cfgval = hcfg_get(session_cfg, CFGKEY_INIT_POINT);
 

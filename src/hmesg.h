@@ -85,7 +85,7 @@ typedef struct {
 
     union {
         hsession_t session;
-        hsignature_t join;
+        hsig_t join;
         hpoint_t point;
         struct mesg_report {
             int cand_id;

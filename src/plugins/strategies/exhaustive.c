@@ -58,7 +58,7 @@ hpoint_t best;
 double   best_perf;
 
 /* Forward function definitions. */
-int strategy_cfg(hsignature_t* sig);
+int strategy_cfg(hsig_t* sig);
 int increment(void);
 
 /* Variables to track current search state. */
@@ -73,7 +73,7 @@ int outstanding_points = 0, final_point_received = 0;
 /*
  * Invoked once on strategy load.
  */
-int strategy_init(hsignature_t* sig)
+int strategy_init(hsig_t* sig)
 {
     N = sig->range_len;
     range = sig->range;
@@ -110,7 +110,7 @@ int strategy_init(hsignature_t* sig)
     return 0;
 }
 
-int strategy_cfg(hsignature_t* sig)
+int strategy_cfg(hsig_t* sig)
 {
     const char* cfgstr;
     int i;
