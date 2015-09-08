@@ -828,7 +828,7 @@ int load_strategy(const char* file)
 
 int load_layers(const char* list)
 {
-    const char* prefix = hcfg_get(cfg, CFGKEY_HARMONY_HOME);
+    const char* home = hcfg_get(cfg, CFGKEY_HARMONY_HOME);
     char* path = NULL;
     int path_len = 0;
     int retval = 0;
@@ -848,7 +848,7 @@ int load_layers(const char* list)
         }
 
         if (snprintf_grow(&path, &path_len, "%s/libexec/%.*s",
-                          prefix, end - list, list) < 0)
+                          home, end - list, list) < 0)
         {
             retval = -1;
             goto cleanup;
@@ -861,7 +861,7 @@ int load_layers(const char* list)
             goto cleanup;
         }
 
-        prefix = dlsym(lib, "harmony_layer_name");
+        const char* prefix = dlsym(lib, "harmony_layer_name");
         if (!prefix) {
             errmsg = dlerror();
             retval = -1;
