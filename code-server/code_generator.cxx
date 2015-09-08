@@ -42,6 +42,7 @@
 #include <arpa/inet.h>
 #include <sys/select.h>
 
+#include "hsig.h"
 #include "hcfg.h"
 #include "hmesg.h"
 #include "hpoint.h"
@@ -51,7 +52,8 @@
 /*
  * Session and configuration information from the Harmony Server.
  */
-hsession_t sess;
+hsig_t sig;
+hcfg_t cfg;
 
 using namespace std;
 
@@ -104,7 +106,7 @@ string appname, slave_path;
 url_t local_url, reply_url, target_url;
 
 /*
- * generators: These are the real work-horses. For each new configuration, we 
+ * generators: These are the real work-horses. For each new configuration, we
  *  fork a new process to generate code. These processes die after the code
  *  generation is complete. We block all the signals because we do not want to
  *  interrupt any code generation activity.
@@ -215,7 +217,8 @@ int main(int argc, char* argv[])
     local_url.path = argv[1];
     local_url.host.clear();
 
-    sess = HSESSION_INITIALIZER;
+    sig = HSIG_INITIALIZER;
+    cfg = HCFG_INITIALIZER;
 
     // main loop starts here
     // update the log file
@@ -325,10 +328,11 @@ int codeserver_init(string& filename)
         return -1;
     }
 
-    hsession_copy(&sess, &init_mesg.data.session);
-    appname = sess.sig.name;
+    hsig_copy(&sig, &init_mesg.data.session.sig);
+    hcfg_copy(&cfg, &init_mesg.data.session.cfg);
+    appname = sig.name;
 
-    cfgval = hcfg_get(&sess.cfg, CFGKEY_SERVER_URL);
+    cfgval = hcfg_get(&cfg, CFGKEY_SERVER_URL);
     if (!cfgval) {
         cerr << "Session does not define local URL.\n";
         return -1;
@@ -338,7 +342,7 @@ int codeserver_init(string& filename)
         return -1;
     }
 
-    cfgval = hcfg_get(&sess.cfg, CFGKEY_TARGET_URL);
+    cfgval = hcfg_get(&cfg, CFGKEY_TARGET_URL);
     if (!cfgval) {
         cerr << "Session does not define target URL.\n";
         return -1;
@@ -348,7 +352,7 @@ int codeserver_init(string& filename)
         return -1;
     }
 
-    cfgval = hcfg_get(&sess.cfg, CFGKEY_REPLY_URL);
+    cfgval = hcfg_get(&cfg, CFGKEY_REPLY_URL);
     if (!cfgval) {
         cerr << "Session does not define reply URL.\n";
         return -1;
@@ -358,7 +362,7 @@ int codeserver_init(string& filename)
         return -1;
     }
 
-    cfgval = hcfg_get(&sess.cfg, CFGKEY_SLAVE_LIST);
+    cfgval = hcfg_get(&cfg, CFGKEY_SLAVE_LIST);
     if (!cfgval) {
         cerr << "Session does not define slave list.\n";
         return -1;
@@ -369,7 +373,7 @@ int codeserver_init(string& filename)
         return -1;
     }
 
-    cfgval = hcfg_get(&sess.cfg, CFGKEY_SLAVE_PATH);
+    cfgval = hcfg_get(&cfg, CFGKEY_SLAVE_PATH);
     if (!cfgval) {
         cerr << "Session does not define slave directory.\n";
         return -1;
@@ -523,12 +527,12 @@ void logger(const string& message)
     string line;
     ofstream out_file;
     out_file.open(log_file.c_str(),ios::app);
-    if(!out_file) 
+    if(!out_file)
     {
         cerr << "Error file could not be opened \n";
         exit(1);
     }
-    
+
     out_file << message;
     out_file.flush();
     out_file.close();

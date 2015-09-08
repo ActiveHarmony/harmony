@@ -42,11 +42,11 @@
  */
 
 #include "session-core.h"
-#include "hsession.h"
+#include "hsig.h"
+#include "hcfg.h"
 #include "hmesg.h"
 #include "hpoint.h"
 #include "hutil.h"
-#include "hcfg.h"
 #include "hsockutil.h"
 
 #include <stdlib.h>

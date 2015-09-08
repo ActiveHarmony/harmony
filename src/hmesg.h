@@ -20,9 +20,10 @@
 #ifndef __HMESG_H__
 #define __HMESG_H__
 
+#include "hsig.h"
+#include "hcfg.h"
 #include "hpoint.h"
 #include "hperf.h"
-#include "hsession.h"
 
 /* Message header layout:
  *
@@ -84,7 +85,10 @@ typedef struct {
     const char* src_id;
 
     union {
-        hsession_t session;
+        struct mesg_session {
+            hsig_t sig;
+            hcfg_t cfg;
+        } session;
         hsig_t join;
         hpoint_t point;
         struct mesg_report {

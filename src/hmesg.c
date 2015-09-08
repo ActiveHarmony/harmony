@@ -18,7 +18,6 @@
  */
 
 #include "hmesg.h"
-#include "hsession.h"
 #include "hval.h"
 #include "hutil.h"
 #include "hsockutil.h"
@@ -35,8 +34,10 @@ void hmesg_scrub(hmesg_t* mesg)
 {
     switch (mesg->type) {
     case HMESG_SESSION:
-        if (mesg->status == HMESG_STATUS_REQ)
-            hsession_fini(&mesg->data.session);
+        if (mesg->status == HMESG_STATUS_REQ) {
+            hsig_fini(&mesg->data.session.sig);
+            hcfg_fini(&mesg->data.session.cfg);
+        }
         break;
 
     case HMESG_JOIN:
@@ -133,7 +134,11 @@ int hmesg_serialize(hmesg_t* mesg)
         switch (mesg->type) {
         case HMESG_SESSION:
             if (mesg->status == HMESG_STATUS_REQ) {
-                count = hsession_serialize(&buf, &buflen, &mesg->data.session);
+                count = hsig_serialize(&buf, &buflen, &mesg->data.session.sig);
+                if (count < 0) goto error;
+                total += count;
+
+                count = hcfg_serialize(&buf, &buflen, &mesg->data.session.cfg);
                 if (count < 0) goto error;
                 total += count;
             }
@@ -264,8 +269,11 @@ int hmesg_deserialize(hmesg_t* mesg)
         switch (mesg->type) {
         case HMESG_SESSION:
             if (mesg->status == HMESG_STATUS_REQ) {
-                mesg->data.session = HSESSION_INITIALIZER;
-                count = hsession_deserialize(&mesg->data.session, buf + total);
+                count = hsig_deserialize(&mesg->data.session.sig, buf + total);
+                if (count < 0) goto error;
+                total += count;
+
+                count = hcfg_deserialize(&mesg->data.session.cfg, buf + total);
                 if (count < 0) goto error;
                 total += count;
             }

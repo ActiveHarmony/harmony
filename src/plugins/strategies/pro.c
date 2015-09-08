@@ -30,7 +30,6 @@
 
 #include "strategy.h"
 #include "session-core.h"
-#include "hsession.h"
 #include "hutil.h"
 #include "hcfg.h"
 #include "libvertex.h"
