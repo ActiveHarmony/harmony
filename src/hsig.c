@@ -18,6 +18,7 @@
  */
 
 #include "hsig.h"
+#include "hrange.h"
 #include "hutil.h"
 
 #include <stdio.h>
@@ -28,351 +29,17 @@
 #include <math.h>
 #include <limits.h>
 
-const hrange_t HRANGE_INITIALIZER = {0};
 const hsig_t HSIG_INITIALIZER = {0};
 
 /* Internal helper function prototypes. */
-static int       add_enum_string(str_bounds_t* bounds, char* str);
 static int       add_range(hsig_t* sig, hrange_t* range);
-static int       copy_token(const char* buf, char **token,
-                            const char** errptr);
 static hrange_t* find_range(hsig_t* sig, const char* name);
 
 /*
- * Harmony range related function definitions.
- */
-unsigned long hrange_max_idx(hrange_t* range)
-{
-    switch (range->type) {
-    case HVAL_INT:  return hrange_int_max_idx(&range->bounds.i);
-    case HVAL_REAL: return hrange_real_max_idx(&range->bounds.r);
-    case HVAL_STR:  return hrange_str_max_idx(&range->bounds.s);
-    default:
-        return 0;
-    }
-}
-
-unsigned long hrange_int_max_idx(int_bounds_t* bound)
-{
-    return (bound->max - bound->min) / bound->step;
-}
-
-unsigned long hrange_int_index(int_bounds_t* bound, long val)
-{
-    unsigned long max_idx = hrange_int_max_idx(bound);
-    double idx;
-
-    idx  = val - bound->min;
-    idx /= bound->step;
-    idx += 0.5;
-
-    if (idx < 0.0)
-        idx = 0.0;
-    if (idx > max_idx)
-        idx = max_idx;
-
-    return (unsigned long)idx;
-}
-
-long hrange_int_value(int_bounds_t* bound, unsigned long idx)
-{
-    unsigned long max_idx = hrange_int_max_idx(bound);
-
-    if (idx > max_idx)
-        idx = max_idx;
-
-    return bound->min + idx * bound->step;
-}
-
-long hrange_int_nearest(int_bounds_t* bound, long val)
-{
-    return bound->min + hrange_int_index(bound, val) * bound->step;
-}
-
-unsigned long hrange_real_max_idx(real_bounds_t* bound)
-{
-    if (bound->step > 0.0)
-        return (unsigned long)((bound->max - bound->min) / bound->step);
-    return 0;
-}
-
-unsigned long hrange_real_index(real_bounds_t* bound, double val)
-{
-    unsigned long max_idx = hrange_real_max_idx(bound);
-    double idx;
-
-    idx  = val - bound->min;
-    idx /= bound->step;
-    idx += 0.5;
-
-    if (idx < 0.0)
-        idx = 0.0;
-    if (idx > max_idx)
-        idx = max_idx;
-
-    return (unsigned long)idx;
-}
-
-double hrange_real_value(real_bounds_t* bound, unsigned long idx)
-{
-    unsigned long max_idx = hrange_real_max_idx(bound);
-
-    if (idx > max_idx)
-        idx = max_idx;
-
-    return bound->min + idx * bound->step;
-}
-
-double hrange_real_nearest(real_bounds_t* bound, double val)
-{
-    if (bound->step > 0.0) {
-        val = bound->min + hrange_real_index(bound, val) * bound->step;
-    }
-    else {
-        if (val < bound->min)
-            val = bound->min;
-        if (val > bound->max)
-            val = bound->max;
-    }
-    return val;
-}
-
-unsigned long hrange_str_max_idx(str_bounds_t* bound)
-{
-    return bound->set_len - 1;
-}
-
-unsigned long hrange_str_index(str_bounds_t* bound, const char* val)
-{
-    unsigned long idx;
-
-    for (idx = 0; idx < bound->set_len; ++idx) {
-        if (strcmp(bound->set[idx], val) == 0)
-            break;
-    }
-    if (idx >= bound->set_len)
-        idx = 0;
-
-    return idx;
-}
-
-const char* hrange_str_value(str_bounds_t* bound, unsigned long idx)
-{
-    if (idx > bound->set_len - 1)
-        idx = bound->set_len - 1;
-
-    return bound->set[idx];
-}
-
-void hrange_fini(hrange_t* range)
-{
-    int i;
-
-    if (range->name)
-        free(range->name);
-
-    if (range->type == HVAL_STR) {
-        for (i = 0; i < range->bounds.s.set_len; ++i)
-            free(range->bounds.s.set[i]);
-        free(range->bounds.s.set);
-    }
-    *range = HRANGE_INITIALIZER;
-}
-
-int hrange_copy(hrange_t* dst, const hrange_t* src)
-{
-    int i;
-
-    hrange_fini(dst);
-
-    dst->name = stralloc(src->name);
-    if (!dst->name)
-        return -1;
-
-    dst->type = src->type;
-    switch (dst->type) {
-    case HVAL_INT:  memcpy(&dst->bounds.i, &src->bounds.i,
-                           sizeof(int_bounds_t)); break;
-    case HVAL_REAL: memcpy(&dst->bounds.r, &src->bounds.r,
-                           sizeof(real_bounds_t)); break;
-    case HVAL_STR:
-        dst->bounds.s.set = malloc(src->bounds.s.set_len * sizeof(char*));
-        if (!dst->bounds.s.set)
-            return -1;
-
-        dst->bounds.s.set_len = src->bounds.s.set_len;
-        dst->bounds.s.set_cap = src->bounds.s.set_len;
-        for (i = 0; i < dst->bounds.s.set_len; ++i) {
-            dst->bounds.s.set[i] = stralloc(src->bounds.s.set[i]);
-            if (!dst->bounds.s.set[i])
-                return -1;
-        }
-        break;
-
-    default:
-        errno = EINVAL;
-        return -1;
-    }
-    return 0;
-}
-
-int hrange_serialize(char** buf, int* buflen, const hrange_t* range)
-{
-    int i, count, total;
-    const char* type_str;
-
-    count = snprintf_serial(buf, buflen, "range: ");
-    if (count < 0) goto error;
-    total = count;
-
-    count = printstr_serial(buf, buflen, range->name);
-    if (count < 0) goto error;
-    total += count;
-
-    switch (range->type) {
-    case HVAL_INT:  type_str = "INT"; break;
-    case HVAL_REAL: type_str = "REL"; break;
-    case HVAL_STR:  type_str = "STR"; break;
-    default: goto invalid;
-    }
-
-    count = snprintf_serial(buf, buflen, "%s ", type_str);
-    if (count < 0) goto invalid;
-    total += count;
-
-    switch (range->type) {
-    case HVAL_INT:
-        count = snprintf_serial(buf, buflen, "%ld %ld %ld ",
-                                range->bounds.i.min,
-                                range->bounds.i.max,
-                                range->bounds.i.step);
-        if (count < 0) goto invalid;
-        total += count;
-        break;
-
-    case HVAL_REAL:
-        count = snprintf_serial(buf, buflen, "%la %la %la ",
-                                range->bounds.r.min,
-                                range->bounds.r.max,
-                                range->bounds.r.step);
-        if (count < 0) goto invalid;
-        total += count;
-        break;
-
-    case HVAL_STR:
-        count = snprintf_serial(buf, buflen, "%d ", range->bounds.s.set_len);
-        if (count < 0) goto invalid;
-        total += count;
-
-        for (i = 0; i < range->bounds.s.set_len; ++i) {
-            count = printstr_serial(buf, buflen, range->bounds.s.set[i]);
-            if (count < 0) goto invalid;
-            total += count;
-        }
-        break;
-
-    default:
-        goto invalid;
-    }
-    return total;
-
-  invalid:
-    errno = EINVAL;
-  error:
-    return -1;
-}
-
-int hrange_deserialize(hrange_t* range, char* buf)
-{
-    int i, count, total;
-    char** newbuf;
-    char* strptr;
-    char type_str[4];
-
-    for (i = 0; isspace(buf[i]); ++i);
-    if (strncmp("range:", buf + i, 6) != 0)
-        goto invalid;
-    total = i + 6;
-
-    count = scanstr_serial((const char**)&strptr, buf + total);
-    if (count < 0) goto invalid;
-    total += count;
-
-    range->name = stralloc(strptr);
-    if (!range->name) goto error;
-
-    if (sscanf(buf + total, " %3s%n", type_str, &count) < 1)
-        goto invalid;
-    total += count;
-
-    if      (strcmp(type_str, "INT") == 0) range->type = HVAL_INT;
-    else if (strcmp(type_str, "REL") == 0) range->type = HVAL_REAL;
-    else if (strcmp(type_str, "STR") == 0) range->type = HVAL_STR;
-    else goto invalid;
-
-    switch (range->type) {
-    case HVAL_INT:
-        if (sscanf(buf + total, " %ld %ld %ld%n",
-                   &range->bounds.i.min,
-                   &range->bounds.i.max,
-                   &range->bounds.i.step,
-                   &count) < 3)
-            goto invalid;
-        total += count;
-        break;
-
-    case HVAL_REAL:
-        if (sscanf(buf + total, " %la %la %la%n",
-                   &range->bounds.r.min,
-                   &range->bounds.r.max,
-                   &range->bounds.r.step,
-                   &count) < 3)
-            goto invalid;
-        total += count;
-        break;
-
-    case HVAL_STR:
-        if (sscanf(buf + total, " %d%n",
-                   &range->bounds.s.set_len, &count) < 1)
-            goto invalid;
-        total += count;
-
-        if (range->bounds.s.set_cap < range->bounds.s.set_len) {
-            newbuf = realloc(range->bounds.s.set,
-                             sizeof(char*) * range->bounds.s.set_len);
-            if (!newbuf) goto error;
-            range->bounds.s.set = newbuf;
-            range->bounds.s.set_cap = range->bounds.s.set_len;
-        }
-
-        for (i = 0; i < range->bounds.s.set_len; ++i) {
-            count = scanstr_serial((const char**)&strptr, buf + total);
-            if (count < 0) goto invalid;
-            total += count;
-
-            range->bounds.s.set[i] = stralloc(strptr);
-            if (!range->bounds.s.set[i]) goto error;
-        }
-        break;
-
-    default:
-        goto invalid;
-    }
-    return total;
-
-  invalid:
-    errno = EINVAL;
-  error:
-    return -1;
-}
-
-/*
- * Signature-related function definitions.
+ * Signature-related function implementations.
  */
 int hsig_copy(hsig_t* dst, const hsig_t* src)
 {
-    int i;
-
     hsig_fini(dst);
 
     dst->range = malloc(sizeof(hrange_t) * src->range_len);
@@ -386,7 +53,7 @@ int hsig_copy(hsig_t* dst, const hsig_t* src)
     if (!dst->name)
         return -1;
 
-    for (i = 0; i < dst->range_len; ++i) {
+    for (int i = 0; i < dst->range_len; ++i) {
         dst->range[i] = HRANGE_INITIALIZER;
         if (hrange_copy(&dst->range[i], &src->range[i]) != 0)
             return -1;
@@ -396,9 +63,7 @@ int hsig_copy(hsig_t* dst, const hsig_t* src)
 
 void hsig_fini(hsig_t* sig)
 {
-    int i;
-
-    for (i = 0; i < sig->range_len; ++i)
+    for (int i = 0; i < sig->range_len; ++i)
         hrange_fini(&sig->range[i]);
 
     free(sig->range);
@@ -408,15 +73,13 @@ void hsig_fini(hsig_t* sig)
 
 int hsig_equal(const hsig_t* sig_a, const hsig_t* sig_b)
 {
-    int i, j;
-
     if (strcmp(sig_a->name, sig_b->name) != 0)
         return 0;
 
     if (sig_a->range_len != sig_b->range_len)
         return 0;
 
-    for (i = 0; i < sig_a->range_len; ++i) {
+    for (int i = 0; i < sig_a->range_len; ++i) {
         hrange_t* range_a = &sig_a->range[i];
         hrange_t* range_b = &sig_b->range[i];
 
@@ -439,11 +102,11 @@ int hsig_equal(const hsig_t* sig_a, const hsig_t* sig_b)
                 return 0;
             break;
         case HVAL_STR:
-            if (range_a->bounds.s.set_len != range_b->bounds.s.set_len)
+            if (range_a->bounds.e.len != range_b->bounds.e.len)
                 return 0;
-            for (j = 0; j < range_a->bounds.s.set_len; ++j) {
-                if (strcmp(range_a->bounds.s.set[j],
-                           range_b->bounds.s.set[j]) != 0)
+            for (int j = 0; j < range_a->bounds.e.len; ++j) {
+                if (strcmp(range_a->bounds.e.set[j],
+                           range_b->bounds.e.set[j]) != 0)
                     return 0;
             }
             break;
@@ -487,7 +150,7 @@ int hsig_name(hsig_t* sig, const char* name)
 
 int hsig_int(hsig_t* sig, const char* name, long min, long max, long step)
 {
-    if (max < min) {
+    if (max < min || step < 1) {
         errno = EINVAL;
         return -1;
     }
@@ -511,7 +174,7 @@ int hsig_int(hsig_t* sig, const char* name, long min, long max, long step)
 int hsig_real(hsig_t* sig, const char* name,
               double min, double max, double step)
 {
-    if (max < min) {
+    if (max < min || step <= 0.0) {
         errno = EINVAL;
         return -1;
     }
@@ -544,9 +207,9 @@ int hsig_enum(hsig_t* sig, const char* name, const char* value)
     else {
         hrange_t range;
         range.type = HVAL_STR;
-        range.bounds.s.set = NULL;
-        range.bounds.s.set_len = 0;
-        range.bounds.s.set_cap = 0;
+        range.bounds.e.set = NULL;
+        range.bounds.e.len = 0;
+        range.bounds.e.cap = 0;
         range.name = stralloc(name);
         if (!range.name)
             return -1;
@@ -559,9 +222,9 @@ int hsig_enum(hsig_t* sig, const char* name, const char* value)
     }
 
     char* vcopy = stralloc(value);
-    if (!vcopy || add_enum_string(&ptr->bounds.s, vcopy) != 0) {
-        if (ptr->bounds.s.set_len == 0) {
-            free(ptr->bounds.s.set);
+    if (!vcopy || range_enum_add_string(&ptr->bounds.e, vcopy) != 0) {
+        if (ptr->bounds.e.len == 0) {
+            free(ptr->bounds.e.set);
             free(vcopy);
             --sig->range_len;
         }
@@ -655,103 +318,46 @@ int hsig_parse(hsig_t* sig, const char* buf, const char** errptr)
 
     sscanf(buf, " int %n%*[^=]%n=%n", &id, &idlen, &bounds);
     if (bounds) {
-        while (isspace(buf[idlen - 1])) --idlen;
-        if (!valid_id(&buf[id], idlen - id)) {
-            errstr = "Invalid variable name";
+        int len = range_int_parse(&range.bounds.i, buf + bounds, &errstr);
+        if (len == -1)
             goto error;
-        }
 
         range.type = HVAL_INT;
-        range.bounds.i = (int_bounds_t){LONG_MIN, LONG_MIN, 1};
-
-        sscanf(buf + bounds, " min: %ld max: %ld %nstep: %ld %n",
-               &range.bounds.i.min,
-               &range.bounds.i.max, &tail,
-               &range.bounds.i.step, &tail);
-
-        if (!tail) {
-            if (range.bounds.i.min == LONG_MIN)
-                errstr = "Invalid integer-domain minimum range value";
-            else
-                errstr = "Invalid integer-domain maximum range value";
-            goto error;
-        }
+        tail += len;
         goto found;
     }
 
     sscanf(buf, " real %n%*[^=]%n=%n", &id, &idlen, &bounds);
     if (bounds) {
-        while (isspace(buf[idlen - 1])) --idlen;
-        if (!valid_id(&buf[id], idlen - id)) {
-            errstr = "Invalid variable name";
+        int len = range_real_parse(&range.bounds.r, buf + bounds, &errstr);
+        if (len == -1)
             goto error;
-        }
 
         range.type = HVAL_REAL;
-        range.bounds.r = (real_bounds_t){NAN, NAN, NAN};
-
-        sscanf(buf + bounds, " min: %lf max: %lf step: %lf %n",
-               &range.bounds.r.min,
-               &range.bounds.r.max,
-               &range.bounds.r.step, &tail);
-
-        if (!tail) {
-            if (isnan(range.bounds.r.min))
-                errstr = "Invalid real-domain minimum range value";
-            else if (isnan(range.bounds.r.max))
-                errstr = "Invalid real-domain minimum range value";
-            else
-                errstr = "Invalid real-domain step value";
-            goto error;
-        }
+        tail += len;
         goto found;
     }
 
     sscanf(buf, " enum %n%*[^=]%n=%n", &id, &idlen, &bounds);
     if (bounds) {
-        while (isspace(buf[idlen - 1])) --idlen;
-        if (!valid_id(&buf[id], idlen - id)) {
-            errstr = "Invalid variable name";
+        int len = range_enum_parse(&range.bounds.e, buf + bounds, &errstr);
+        if (len == -1)
             goto error;
-        }
 
         range.type = HVAL_STR;
-        range.bounds.s = (str_bounds_t){NULL, 0, 0};
-
-        while (buf[bounds]) {
-            char* token;
-            int len = copy_token(buf + bounds, &token, &errstr);
-            if (len == -1)
-                goto error;
-
-            bounds += len;
-            if (token && add_enum_string(&range.bounds.s, token) != 0) {
-                errstr = "Invalid enumerated-domain string value";
-                free(token);
-                goto error;
-            }
-            if (!token && buf[bounds] != '\0') {
-                errstr = "Empty enumerated-domain value";
-                goto error;
-            }
-
-            while (isspace(buf[bounds])) ++bounds;
-            if (buf[bounds] == ',') ++bounds;
-        }
-        if (range.bounds.s.set_len == 0) {
-            errstr = "No enumerated string tokens found";
-            goto error;
-        }
+        tail += len;
         goto found;
     }
     errstr = "Unknown tuning variable type";
-
-  error:
-    hrange_fini(&range);
-    if (errptr) *errptr = errstr;
-    return -1;
+    goto error;
 
   found:
+    while (isspace(buf[idlen - 1])) --idlen;
+    if (!valid_id(&buf[id], idlen - id)) {
+        errstr = "Invalid variable name";
+        goto error;
+    }
+
     if (buf[bounds + tail] != '\0') {
         errstr = "Invalid trailing characters";
         goto error;
@@ -770,27 +376,17 @@ int hsig_parse(hsig_t* sig, const char* buf, const char** errptr)
 
     if (errptr) *errptr = NULL;
     return 1;
+
+  error:
+    hrange_fini(&range);
+    if (errptr) *errptr = errstr;
+    return -1;
+
 }
 
 /*
  * Internal helper function implementations.
  */
-int add_enum_string(str_bounds_t* bounds, char* str)
-{
-    for (int i = 0; i < bounds->set_len; ++i) {
-        if (strcmp(bounds->set[i], str) == 0)
-            return -1;
-    }
-
-    if (bounds->set_len == bounds->set_cap) {
-        if (array_grow(&bounds->set, &bounds->set_cap, sizeof(char*)) != 0)
-            return -1;
-    }
-    bounds->set[ bounds->set_len++ ] = str;
-
-    return 0;
-}
-
 int add_range(hsig_t* sig, hrange_t* range)
 {
     if (find_range(sig, range->name) != NULL) {
@@ -806,69 +402,6 @@ int add_range(hsig_t* sig, hrange_t* range)
     sig->range[ sig->range_len++ ] = *range;
 
     return 0;
-}
-
-int copy_token(const char* buf, char **token, const char** errptr)
-{
-    const char* errstr;
-    const char* src;
-    int cap = 0;
-
-    while (1) {
-        src = buf;
-        // Skip leading whitespace.
-        while (isspace(*src)) ++src;
-
-        char* dst = *token;
-        int   len = cap;
-        char  quote = '\0';
-        while (*src) {
-            if (!quote) {
-                if      (*src == '\'')  { quote = '\''; ++src; continue; }
-                else if (*src ==  '"')  { quote =  '"'; ++src; continue; }
-                else if (*src ==  ',')  { break; }
-                else if (isspace(*src)) { break; }
-            }
-            else {
-                if      (*src == '\\')  { ++src; }
-                else if (*src == quote) { quote = '\0'; ++src; continue; }
-            }
-
-            if (len-- > 0)
-                *(dst++) = *(src++);
-            else
-                ++src;
-        }
-        if (len-- > 0)
-            *dst = '\0';
-
-        if (quote != '\0') {
-            errstr = "Non-terminated quote detected";
-            goto error;
-        }
-
-        if (len < -1) {
-            // Token buffer size is -len;
-            cap += -len;
-            *token = malloc(cap * sizeof(**token));
-            if (!*token) {
-                errstr = "Could not allocate a new configuration key/val pair";
-                goto error;
-            }
-        }
-        else if (len == -1) {
-            // Empty token.
-            *token = NULL;
-            break;
-        }
-        else break; // Loop exit.
-    }
-    return src - buf;
-
-  error:
-    if (errptr)
-        *errptr = errstr;
-    return -1;
 }
 
 hrange_t* find_range(hsig_t* sig, const char* name)

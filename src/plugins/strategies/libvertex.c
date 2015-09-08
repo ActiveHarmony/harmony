@@ -32,9 +32,9 @@
 /* Forward definitions of internal helper functions. */
 int    internal_vertex_min(vertex_t* v);
 int    internal_vertex_max(vertex_t* v);
-long   max_int(int_bounds_t* b);
-double max_real(real_bounds_t* b);
-int    max_str(str_bounds_t* b);
+long   max_int(range_int_t* b);
+double max_real(range_real_t* b);
+int    max_str(range_enum_t* b);
 int    simplex_fit(simplex_t* s);
 void   unit_simplex(simplex_t* s);
 int    rotate_simplex(simplex_t* s);
@@ -145,18 +145,18 @@ int internal_vertex_max(vertex_t* v)
 
         switch (range[i].type) {
         case HVAL_INT:
-            v->term[i] = hrange_int_value(&range[i].bounds.i, idx);
+            v->term[i] = range_int_value(&range[i].bounds.i, idx);
             break;
 
         case HVAL_REAL:
             if (range[i].bounds.r.step > 0.0)
-                v->term[i] = hrange_real_value(&range[i].bounds.r, idx);
+                v->term[i] = range_real_value(&range[i].bounds.r, idx);
             else
                 v->term[i] = range[i].bounds.r.max;
             break;
 
         case HVAL_STR:
-            v->term[i] = range[i].bounds.s.set_len - 1;
+            v->term[i] = range[i].bounds.e.len - 1;
             break;
 
         default:
@@ -204,22 +204,22 @@ int vertex_rand_trim(vertex_t* v, double trim_percentage)
     for (i = 0; i < N; ++i) {
         switch (range[i].type) {
         case HVAL_INT: {
-            int_bounds_t* b = &range[i].bounds.i;
+            range_int_t* b = &range[i].bounds.i;
             rval = (b->max - b->min - v->term[i]) * drand48();
             rval += b->min + (v->term[i] / 2);
-            v->term[i] = hrange_int_nearest(b, (long)rval);
+            v->term[i] = range_int_nearest(b, (long)rval);
             break;
         }
         case HVAL_REAL: {
-            real_bounds_t* b = &range[i].bounds.r;
+            range_real_t* b = &range[i].bounds.r;
             rval = (b->max - b->min - v->term[i]) * drand48();
             rval += b->min + (v->term[i] / 2);
-            v->term[i] = hrange_real_nearest(b, rval);
+            v->term[i] = range_real_nearest(b, rval);
             break;
         }
         case HVAL_STR: {
-            str_bounds_t* b = &range[i].bounds.s;
-            rval = (b->set_len - 1 - v->term[i]) * drand48();
+            range_enum_t* b = &range[i].bounds.e;
+            rval = (b->len - 1 - v->term[i]) * drand48();
             rval += v->term[i] / 2;
             v->term[i] = rval;
             break;
@@ -282,19 +282,19 @@ int vertex_regrid(vertex_t* v)
     for (i = 0; i < N; ++i) {
         switch (range[i].type) {
         case HVAL_INT:
-            v->term[i] = hrange_int_nearest(&range[i].bounds.i,
+            v->term[i] = range_int_nearest(&range[i].bounds.i,
                                             (long)v->term[i]);
             break;
 
         case HVAL_REAL:
-            v->term[i] = hrange_real_nearest(&range[i].bounds.r, v->term[i]);
+            v->term[i] = range_real_nearest(&range[i].bounds.r, v->term[i]);
             break;
 
         case HVAL_STR:
             if (v->term[i] < 0.0)
                 v->term[i] = 0.0;
-            if (v->term[i] > range[i].bounds.s.set_len - 1)
-                v->term[i] = range[i].bounds.s.set_len - 1;
+            if (v->term[i] > range[i].bounds.e.len - 1)
+                v->term[i] = range[i].bounds.e.len - 1;
             v->term[i] = (unsigned long)(v->term[i] + 0.5);
             break;
 
@@ -318,18 +318,18 @@ int vertex_to_hpoint(const vertex_t* v, hpoint_t* result)
         val->type = range[i].type;
         switch (range[i].type) {
         case HVAL_INT:
-            val->value.i = hrange_int_nearest(&range[i].bounds.i,
-                                              (long)v->term[i]);
+            val->value.i = range_int_nearest(&range[i].bounds.i,
+                                             (long)v->term[i]);
             break;
         case HVAL_REAL:
-            val->value.r = hrange_real_nearest(&range[i].bounds.r, v->term[i]);
+            val->value.r = range_real_nearest(&range[i].bounds.r, v->term[i]);
             break;
         case HVAL_STR: {
             unsigned long idx = (unsigned long)(v->term[i] + 0.5);
-            if (idx > range[i].bounds.s.set_len - 1)
-                idx = range[i].bounds.s.set_len - 1;
+            if (idx > range[i].bounds.e.len - 1)
+                idx = range[i].bounds.e.len - 1;
 
-            val->value.s = hrange_str_value(&range[i].bounds.s, idx);
+            val->value.s = range_enum_value(&range[i].bounds.e, idx);
             break;
         }
         default:
@@ -350,8 +350,8 @@ int vertex_from_hpoint(const hpoint_t* pt, vertex_t* result)
         case HVAL_INT:  result->term[i] = pt->val[i].value.i; break;
         case HVAL_REAL: result->term[i] = pt->val[i].value.r; break;
         case HVAL_STR:
-            for (j = 0; j < range[i].bounds.s.set_len; ++j) {
-                if (strcmp(pt->val[i].value.s, range[i].bounds.s.set[j]) == 0)
+            for (j = 0; j < range[i].bounds.e.len; ++j) {
+                if (strcmp(pt->val[i].value.s, range[i].bounds.e.set[j]) == 0)
                     break;
             }
             result->term[i] = j;

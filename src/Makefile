@@ -6,6 +6,7 @@ LIB_SRCS=hcfg.c \
          hmesg.c \
          hpoint.c \
          hperf.c \
+         hrange.c \
          hsig.c \
          hsockutil.c \
          hutil.c \

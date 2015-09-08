@@ -247,12 +247,12 @@ int cache_fini(void)
  */
 int find_max_strlen(void)
 {
-    int i, j, len, max = 0;
+    int max = 0;
 
-    for (i = 0; i < i_cnt; ++i) {
+    for (int i = 0; i < i_cnt; ++i) {
         if (range[i].type == HVAL_STR) {
-            for (j = 0; j < range[i].bounds.s.set_len; ++j) {
-                len = strlen(range[i].bounds.s.set[j]) + 1;
+            for (int j = 0; j < range[i].bounds.e.len; ++j) {
+                int len = strlen(range[i].bounds.e.set[j]) + 1;
                 if (max < len)
                     max = len;
             }
@@ -357,7 +357,7 @@ int load_logger_file(const char* filename)
 int safe_scanstr(FILE* fp, int bounds_idx, const char** match)
 {
     int i;
-    str_bounds_t* str_bounds = &range[bounds_idx].bounds.s;
+    range_enum_t* bounds = &range[bounds_idx].bounds.e;
 
     SKIP_PATTERN(fp, " \"");
     for (i = 0; i < buflen; ++i) {
@@ -376,16 +376,16 @@ int safe_scanstr(FILE* fp, int bounds_idx, const char** match)
     }
     buf[i] = '\0';
 
-    for (i = 0; i < str_bounds->set_len; ++i) {
-        if (strcmp(buf, str_bounds->set[i]) == 0)
+    for (i = 0; i < bounds->len; ++i) {
+        if (strcmp(buf, bounds->set[i]) == 0)
             break;
     }
-    if (i == str_bounds->set_len) {
+    if (i == bounds->len) {
         session_error("Invalid HVAL_STR value");
         return 0;
     }
 
-    *match = str_bounds->set[i];
+    *match = bounds->set[i];
     return 1;
 }
 

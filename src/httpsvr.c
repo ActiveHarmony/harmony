@@ -698,9 +698,9 @@ int http_send_init(int fd, session_state_t* sess)
         total += count;
 
         if (range->type == HVAL_STR) {
-            for (j = 0; j < range->bounds.s.set_len; ++j) {
+            for (j = 0; j < range->bounds.e.len; ++j) {
                 count = snprintf_serial(&buf, &buflen, ";%s",
-                                        range->bounds.s.set[j]);
+                                        range->bounds.e.set[j]);
                 if (count < 0)
                     goto error;
                 total += count;
@@ -832,8 +832,8 @@ int report_append(char** buf, int* buflen, session_state_t* sess,
                 count = snprintf_serial(buf, buflen, "%.17lf,", val->value.r);
                 break;
             case HVAL_STR: {
-                str_bounds_t* bounds = &sess->sig.range[i].bounds.s;
-                unsigned long index = hrange_str_index(bounds, val->value.s);
+                range_enum_t* bounds = &sess->sig.range[i].bounds.e;
+                unsigned long index = range_enum_index(bounds, val->value.s);
                 count = snprintf_serial(buf, buflen, "%ld,", index);
                 break;
             }

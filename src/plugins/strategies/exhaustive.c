@@ -136,15 +136,15 @@ int strategy_cfg(hsig_t* sig)
         for (i = 0; i < sig->range_len; ++i) {
             switch (sig->range[i].type) {
             case HVAL_INT:
-                idx[i] = hrange_int_index(&sig->range[i].bounds.i,
-                                          curr.val[i].value.i);
+                idx[i] = range_int_index(&sig->range[i].bounds.i,
+                                         curr.val[i].value.i);
                 break;
             case HVAL_REAL:
-                idx[i] = hrange_real_index(&sig->range[i].bounds.r,
-                                           curr.val[i].value.r);
+                idx[i] = range_real_index(&sig->range[i].bounds.r,
+                                          curr.val[i].value.r);
                 break;
             case HVAL_STR:
-                idx[i] = hrange_str_index(&sig->range[i].bounds.s,
+                idx[i] = range_enum_index(&sig->range[i].bounds.e,
                                           curr.val[i].value.s);
                 break;
 
@@ -162,7 +162,7 @@ int strategy_cfg(hsig_t* sig)
             switch (range[i].type) {
             case HVAL_INT:  v->value.i = range[i].bounds.i.min; break;
             case HVAL_REAL: v->value.r = range[i].bounds.r.min; break;
-            case HVAL_STR:  v->value.s = range[i].bounds.s.set[0]; break;
+            case HVAL_STR:  v->value.s = range[i].bounds.e.set[0]; break;
             default:
                 session_error("Invalid range detected during strategy init.");
                 return -1;
@@ -328,12 +328,12 @@ int increment(void)
             break;
 
         case HVAL_STR:
-            if (idx[i] >= range[i].bounds.s.set_len) {
-                curr.val[i].value.s = range[i].bounds.s.set[0];
+            if (idx[i] >= range[i].bounds.e.len) {
+                curr.val[i].value.s = range[i].bounds.e.set[0];
                 idx[i] = 0;
                 continue;  // Overflow detected.
             }
-            curr.val[i].value.s = range[i].bounds.s.set[ idx[i] ];
+            curr.val[i].value.s = range[i].bounds.e.set[ idx[i] ];
             break;
 
         default:
@@ -359,7 +359,7 @@ int increment(void)
                 n_overflows++;
               break;
             case HVAL_STR:
-              if(idx[i] + 1 >= range[i].bounds.s.set_len)
+              if(idx[i] + 1 >= range[i].bounds.e.len)
                 n_overflows++;
               break;
             default:

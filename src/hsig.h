@@ -20,73 +20,23 @@
 #ifndef __HSIG_H__
 #define __HSIG_H__
 
-#include "hval.h"
+#include "hrange.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-typedef struct int_bounds {
-    long min;
-    long max;
-    long step;
-} int_bounds_t;
-
-typedef struct real_bounds {
-    double min;
-    double max;
-    double step;
-} real_bounds_t;
-
-typedef struct str_bounds {
-    char** set;
-    int set_len;
-    int set_cap;
-} str_bounds_t;
-
-/*
- * Bundle structure: Holds metadata about Harmony controlled variables
- * in the client application.
- */
-typedef struct hrange {
-    char* name;
-    hval_type type;
-    union {
-        int_bounds_t  i;
-        real_bounds_t r;
-        str_bounds_t  s;
-    } bounds;
-} hrange_t;
-extern const hrange_t HRANGE_INITIALIZER;
 
 /*
  * Harmony session signature: Clients provide this on join to verify
  * compatibility with the session they wish to join.
  */
 typedef struct hsig {
-    char* name;
+    char*     name;
     hrange_t* range;
-    int range_len;
-    int range_cap;
+    int       range_len;
+    int       range_cap;
 } hsig_t;
 extern const hsig_t HSIG_INITIALIZER;
-
-/* Harmony range functions */
-unsigned long hrange_max_idx(hrange_t* range);
-
-unsigned long hrange_int_max_idx(int_bounds_t* bound);
-unsigned long hrange_int_index(int_bounds_t* bound, long val);
-long          hrange_int_value(int_bounds_t* bound, unsigned long idx);
-long          hrange_int_nearest(int_bounds_t* bound, long val);
-
-unsigned long hrange_real_max_idx(real_bounds_t* bound);
-unsigned long hrange_real_index(real_bounds_t* bound, double val);
-double        hrange_real_value(real_bounds_t* bound, unsigned long idx);
-double        hrange_real_nearest(real_bounds_t* bound, double val);
-
-unsigned long hrange_str_max_idx(str_bounds_t* bound);
-unsigned long hrange_str_index(str_bounds_t* bound, const char* val);
-const char*   hrange_str_value(str_bounds_t* bound, unsigned long idx);
 
 /* Harmony signature functions */
 int  hsig_copy(hsig_t* dst, const hsig_t* src);

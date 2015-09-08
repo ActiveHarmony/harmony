@@ -102,22 +102,22 @@ int hpoint_align(hpoint_t* pt, hsig_t* sig)
 
         switch (sig->range[i].type) {
         case HVAL_INT:
-            val->value.i = hrange_int_nearest(&sig->range[i].bounds.i,
-                                              val->value.i);
+            val->value.i = range_int_nearest(&sig->range[i].bounds.i,
+                                             val->value.i);
             break;
 
         case HVAL_REAL:
-            val->value.r = hrange_real_nearest(&sig->range[i].bounds.r,
-                                               val->value.r);
+            val->value.r = range_real_nearest(&sig->range[i].bounds.r,
+                                              val->value.r);
             break;
 
         case HVAL_STR: {
-            unsigned long idx = hrange_str_index(&sig->range[i].bounds.s,
+            unsigned long idx = range_enum_index(&sig->range[i].bounds.e,
                                                  val->value.s);
             if (pt->memlevel == 1)
                 free((char*)val->value.s);
 
-            val->value.s = sig->range[i].bounds.s.set[idx];
+            val->value.s = sig->range[i].bounds.e.set[idx];
             break;
         }
 
