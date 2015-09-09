@@ -178,7 +178,13 @@ int agg_analyze(hflow_t* flow, htrial_t* trial)
 
 int agg_fini(void)
 {
+    for (int i = 0; i < slist_len; ++i) {
+        for (int j = 0; j < trial_per_point; ++j)
+            hperf_fini(slist[i].trial[j]);
+        free(slist[i].trial);
+    }
     free(slist);
+
     return 0;
 }
 
