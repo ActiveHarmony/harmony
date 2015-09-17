@@ -421,18 +421,6 @@ int mesg_read(int id)
     }
 
     msglen = sb.st_size + 1;
-    if (buflen < msglen) {
-        newbuf = realloc(buf, msglen);
-        if (!newbuf) {
-            mesg.data.string = "Could not allocate memory for message data.";
-            retval = -1;
-            goto cleanup;
-        }
-        buf = newbuf;
-        buflen = msglen;
-    }
-    buf[sb.st_size] = '\0';
-
     if (mesg.buflen < msglen) {
         newbuf = realloc(mesg.buf, msglen);
         if (!newbuf) {
@@ -445,7 +433,7 @@ int mesg_read(int id)
     }
     mesg.buf[sb.st_size] = '\0';
 
-    if (read_loop(fd, buf, sb.st_size) != 0) {
+    if (read_loop(fd, mesg.buf, sb.st_size) != 0) {
         errmsg = "Error reading message file.";
         goto retry;
     }
@@ -458,12 +446,13 @@ int mesg_read(int id)
     }
     fd = -1;
 
+    // Need to deserialize to make sure have read a valid (complete) message.
     if (hmesg_deserialize(&mesg) < 0) {
         errmsg = "Error decoding message file.";
         goto retry;
     }
 
-    if (socket_write(STDIN_FILENO, buf, sb.st_size) < 0) {
+    if (mesg_forward(STDIN_FILENO, &mesg) < 0) {
         mesg.data.string = "Error sending code completion message to session.";
         retval = -1;
         goto cleanup;

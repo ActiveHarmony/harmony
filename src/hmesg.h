@@ -33,14 +33,24 @@
  * |---------------------------------|
  * |          Message Length         |
  * |---------------------------------|
- * |  HMESG_VERSION |  Message Data  |
- * |-----------------                |
- * |  Message Data (cont.)           |
- * |                                 |
+ * |  HMESG_VERSION |   Origin ID    |
+ * |---------------------------------|
+ * |          Message Data           |
+ * |               ...               |
  */
 
+/* Offset and size of static header members in a byte-stream. */
+#define HMESG_MAGIC_OFFSET    0
+#define HMESG_MAGIC_SIZE      4
+#define HMESG_LENGTH_OFFSET   4
+#define HMESG_LENGTH_SIZE     4
+#define HMESG_VERSION_OFFSET  8
+#define HMESG_VERSION_SIZE    2
+#define HMESG_ORIGIN_OFFSET  10
+#define HMESG_ORIGIN_SIZE     2
+#define HMESG_HDR_SIZE       12
+
 /* Magic number for messages between the harmony server and its clients.    */
-#define HMESG_HDRLEN    10         /* int32 + char[4] + char[2]             */
 #define HMESG_OLD_MAGIC 0x5261793a /* Magic number for packets (pre v4.5).  */
 #define HMESG_MAGIC     0x5261797c /* Magic number for packet.              */
 #define HMESG_VERSION   0x05       /* Protocol version.                     */
@@ -79,7 +89,7 @@ typedef enum {
 /** \brief The hmesg_t structure.
  */
 typedef struct {
-    int dest;
+    int origin;
     hmesg_type type;
     hmesg_status status;
     const char* src_id;

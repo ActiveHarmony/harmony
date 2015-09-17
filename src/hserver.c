@@ -464,14 +464,14 @@ int handle_client_socket(int fd)
     if (retval < 0)
         goto error;
 
-    if (mesg_in.dest == -1) {
+    if (mesg_in.origin == -1) {
         /* Message was intended to be ignored. */
         return 0;
     }
 
     /* Sanity check input */
     if (mesg_in.type != HMESG_SESSION && mesg_in.type != HMESG_JOIN) {
-        idx = mesg_in.dest;
+        idx = mesg_in.origin;
         if (idx < 0 || idx >= slist_cap || slist[idx].name == NULL) {
             errno = EINVAL;
             goto error;
@@ -567,20 +567,29 @@ int handle_client_socket(int fd)
         goto error;
     }
 
-    mesg_out.dest = fd;
-    mesg_out.type = mesg_in.type;
-    mesg_out.status = mesg_in.status;
-    mesg_out.src_id = mesg_in.src_id;
-    mesg_out.data = mesg_in.data;
-    if (mesg_send(sess->fd, &mesg_out) < 1) {
-        perror("Error forwarding message to session");
-        FD_CLR(sess->fd, &listen_fds);
-        session_close(sess);
-        goto shutdown;
+    if (sess->modified) {
+        mesg_out.origin = fd;
+        mesg_out.type = mesg_in.type;
+        mesg_out.status = mesg_in.status;
+        mesg_out.src_id = mesg_in.src_id;
+        mesg_out.data = mesg_in.data;
+        if (mesg_send(sess->fd, &mesg_out) < 1) {
+            perror("Error sending message to session");
+            FD_CLR(sess->fd, &listen_fds);
+            session_close(sess);
+            goto shutdown;
+        }
+        /* mesg_in data was free()'ed along with mesg_out. */
+        mesg_in.type = HMESG_UNKNOWN;
+        sess->modified = 0;
     }
-    /* mesg_in data was free()'ed along with mesg_out. */
-    mesg_in.type = HMESG_UNKNOWN;
-
+    else {
+        mesg_in.origin = fd;
+        if (mesg_forward(sess->fd, &mesg_in) < 1) {
+            perror("Error forwarding message to session");
+            goto shutdown;
+        }
+    }
     return 0;
 
   error:
@@ -603,7 +612,7 @@ int handle_session_socket(int idx)
     if (mesg_recv(sess->fd, &mesg_in) < 1)
         goto error;
 
-    if (mesg_in.dest == -1) {
+    if (mesg_in.origin == -1) {
         if (mesg_in.status == HMESG_STATUS_REQ) {
             if (handle_http_info(sess, (char*)mesg_in.data.string) != 0) {
                 perror("Error handling http info message");
@@ -654,14 +663,11 @@ int handle_session_socket(int idx)
         goto error;
     }
 
-    mesg_out.dest = idx;
-    mesg_out.type = mesg_in.type;
-    mesg_out.status = mesg_in.status;
-    mesg_out.src_id = mesg_in.src_id;
-    mesg_out.data = mesg_in.data;
-    if (mesg_send(mesg_in.dest, &mesg_out) < 1) {
+    int dest = mesg_in.origin;
+    mesg_in.origin = idx;
+    if (mesg_forward(dest, &mesg_in) < 1) {
         perror("Error forwarding message to client");
-        client_close(mesg_in.dest);
+        client_close(dest);
     }
     /* mesg_in data was free()'ed along with mesg_out. */
     mesg_in.type = HMESG_UNKNOWN;
@@ -717,11 +723,16 @@ session_state_t* session_open(hmesg_t* mesg)
     cfgstr = hcfg_get(&mesg->data.session.cfg, CFGKEY_LAYERS);
     if (!cfgstr) {
         hcfg_set(&mesg->data.session.cfg, CFGKEY_LAYERS, HTTPINFO);
+        sess->modified = 1;
     }
     else if (strstr(cfgstr, HTTPINFO) == NULL) {
         char *buf = sprintf_alloc(HTTPINFO ":%s", cfgstr);
         hcfg_set(&mesg->data.session.cfg, CFGKEY_LAYERS, buf);
+        sess->modified = 1;
         free(buf);
+    }
+    else {
+        sess->modified = 0;
     }
 
     /* Initialize HTTP server fields. */
@@ -847,7 +858,7 @@ int session_setcfg(session_state_t* sess, const char* key, const char* val)
     char* buf = sprintf_alloc("%s=%s", key, val ? val : "");
     int retval = 0;
 
-    mesg.dest = -1;
+    mesg.origin = -1;
     mesg.type = HMESG_SETCFG;
     mesg.status = HMESG_STATUS_REQ;
     mesg.data.string = buf;
@@ -865,7 +876,7 @@ int session_restart(session_state_t* sess)
     hmesg_t mesg = HMESG_INITIALIZER;
     int retval = 0;
 
-    mesg.dest = -1;
+    mesg.origin = -1;
     mesg.type = HMESG_RESTART;
     mesg.status = HMESG_STATUS_REQ;
 

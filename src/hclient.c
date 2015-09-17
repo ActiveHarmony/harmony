@@ -1496,10 +1496,10 @@ int send_request(hdesc_t* hd, hmesg_type msg_type)
         }
 
         /* If the httpinfo layer is enabled during a stand-alone session,
-         * it will generate extraneous messages where dest == -1.
+         * it will generate extraneous messages where origin == -1.
          * Make sure to ignore these messages.
          */
-    } while (hd->mesg.dest == -1);
+    } while (hd->mesg.origin == -1);
 
     if (hd->mesg.type != msg_type) {
         hd->mesg.status = HMESG_STATUS_FAIL;

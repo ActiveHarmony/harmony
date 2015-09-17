@@ -79,21 +79,26 @@ int hmesg_serialize(hmesg_t* mesg)
 {
     const char* type_str;
     const char* status_str;
-    char hdr[HMESG_HDRLEN + 1];
     char* buf;
-    int buflen, count, total;
-    unsigned int magic;
+    int buflen;
+    int count, total;
+
+    if (mesg->origin < -1 || mesg->origin >= 255) {
+        fprintf(stderr, "Error: hmesg_serialize():"
+                "Origin (%d) is out of range [-1, 254]\n", mesg->origin);
+        return -1;
+    }
 
   top:
     buf = mesg->buf;
     buflen = mesg->buflen;
 
     /* Leave room for a header. */
-    buf += HMESG_HDRLEN;
-    buflen -= HMESG_HDRLEN;
+    buf += HMESG_HDR_SIZE;
+    buflen -= HMESG_HDR_SIZE;
     if (buflen < 0)
         buflen = 0;
-    total = HMESG_HDRLEN;
+    total = HMESG_HDR_SIZE;
 
     switch (mesg->type) {
     case HMESG_UNKNOWN: type_str = "UNK"; break;
@@ -116,8 +121,7 @@ int hmesg_serialize(hmesg_t* mesg)
     default: goto invalid;
     }
 
-    count = snprintf_serial(&buf, &buflen, ":%d:%s:%s:", mesg->dest,
-                            type_str, status_str);
+    count = snprintf_serial(&buf, &buflen, ":%s:%s:", type_str, status_str);
     if (count < 0) goto error;
     total += count;
 
@@ -199,10 +203,14 @@ int hmesg_serialize(hmesg_t* mesg)
         goto top;
     }
 
-    magic = htonl(HMESG_MAGIC);
-    snprintf(hdr, sizeof(hdr), "%04d%02x", total, HMESG_VERSION);
-    memcpy(mesg->buf, &magic, sizeof(magic));
-    memcpy(mesg->buf + sizeof(magic), hdr, HMESG_HDRLEN - sizeof(magic));
+    unsigned int magic = htonl(HMESG_MAGIC);
+    memcpy(mesg->buf, &magic, HMESG_MAGIC_SIZE);
+
+    char header_buf[HMESG_HDR_SIZE - HMESG_LENGTH_OFFSET + 1];
+    snprintf(header_buf, sizeof(header_buf), "%04d%02x%02x",
+             total, HMESG_VERSION, mesg->origin);
+    memcpy(mesg->buf + HMESG_LENGTH_OFFSET, header_buf,
+           HMESG_HDR_SIZE - HMESG_LENGTH_OFFSET);
 
     return total;
 
@@ -214,25 +222,29 @@ int hmesg_serialize(hmesg_t* mesg)
 
 int hmesg_deserialize(hmesg_t* mesg)
 {
-    char type_str[4], status_str[4];
     int count, total;
-    unsigned int magic, msgver;
     char* buf = mesg->buf;
 
     /* Verify HMESG_MAGIC and HMESG_VERSION */
+    unsigned int magic;
     memcpy(&magic, buf, sizeof(magic));
     if (ntohl(magic) != HMESG_MAGIC)
         goto invalid;
 
-    if (sscanf(buf + sizeof(magic), "%*4d%2x", &msgver) < 1)
+    unsigned int msgver;
+    if (sscanf(buf + HMESG_VERSION_OFFSET, "%2x%2x",
+               &msgver, &mesg->origin) < 2)
         goto invalid;
+    if (mesg->origin == 255)
+        mesg->origin = -1;
 
     if (msgver != HMESG_VERSION)
         goto invalid;
-    total = HMESG_HDRLEN;
+    total = HMESG_HDR_SIZE;
 
-    if (sscanf(buf + total, " :%d:%3s:%3s:%n", &mesg->dest,
-               type_str, status_str, &count) < 3)
+    char type_str[4];
+    char status_str[4];
+    if (sscanf(buf + total, " :%3s:%3s:%n", type_str, status_str, &count) < 2)
         goto invalid;
     total += count;
 

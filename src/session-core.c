@@ -209,7 +209,7 @@ int main(int argc, char* argv[])
         goto error;
 
     /* Send the initial session message acknowledgment. */
-    mesg.dest   = session_mesg.dest;
+    mesg.origin = session_mesg.origin;
     mesg.type   = session_mesg.type;
     mesg.status = HMESG_STATUS_OK;
     mesg.src_id = session_mesg.src_id;

@@ -48,7 +48,7 @@ int httpinfo_setcfg(const char* key, const char* val)
             return -1;
         }
 
-        mesg.dest = -1;
+        mesg.origin = -1;
         mesg.type = HMESG_SETCFG;
         mesg.status = HMESG_STATUS_REQ;
         mesg.data.string = buf;
