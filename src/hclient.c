@@ -56,7 +56,6 @@ struct hdesc_t {
     harmony_state_t state;
     int socket;
     char* id;
-    char default_id[HOST_NAME_MAX + 32];
 
     hsession_t sess;
     hmesg_t mesg;
@@ -75,14 +74,14 @@ struct hdesc_t {
 /* ---------------------------------------------------
  * Forward declarations for internal helper functions.
  */
-void generate_id(hdesc_t* hd);
-int  extend_perf(hdesc_t* hd);
-int  extend_varloc(hdesc_t* hd);
-int  find_var(hdesc_t* hd, const char* name);
-int  send_request(hdesc_t* hd, hmesg_type msg_type);
-int  set_varloc(hdesc_t* hd, const char* name, void* ptr);
-int  write_values(hdesc_t* hd, const hpoint_t* pt);
-int  update_best(hdesc_t* hd, const hpoint_t* pt);
+int generate_id(hdesc_t* hd);
+int extend_perf(hdesc_t* hd);
+int extend_varloc(hdesc_t* hd);
+int find_var(hdesc_t* hd, const char* name);
+int send_request(hdesc_t* hd, hmesg_type msg_type);
+int set_varloc(hdesc_t* hd, const char* name, void* ptr);
+int write_values(hdesc_t* hd, const hpoint_t* pt);
+int update_best(hdesc_t* hd, const hpoint_t* pt);
 
 static int debug_mode = 0;
 
@@ -200,7 +199,7 @@ void ah_fini(hdesc_t* hd)
         hpoint_fini(&hd->best);
         hperf_fini(hd->perf);
 
-        if (hd->id && hd->id != hd->default_id)
+        if (hd->id)
             free(hd->id);
 
         free(hd->buf);
@@ -496,22 +495,22 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
         hd->errstr = strerror(errno);
         return -1;
     }
-    generate_id(hd);
-
     hd->state = HARMONY_STATE_CONNECTED;
+
+    /* Prepare a default client id, if necessary. */
+    if (!hd->id && generate_id(hd) != 0) {
+        hd->errstr = "Could not generate default ID string";
+        return -1;
+    }
 
     /* Provide a default name, if necessary. */
     if (!name && !hd->sess.sig.name)
-        name = hd->default_id;
+        name = hd->id;
 
     if (name && hsignature_name(&hd->sess.sig, name) != 0) {
         hd->errstr = "Error setting session name";
         return -1;
     }
-
-    /* Prepare a default client id, if necessary. */
-    if (hd->id == NULL)
-        hd->id = hd->default_id;
 
     /* Prepare a Harmony message. */
     hmesg_scrub(&hd->mesg);
@@ -584,8 +583,6 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
             hd->errstr = "Error establishing TCP connection with server";
             return -1;
         }
-        generate_id(hd);
-
         hd->state = HARMONY_STATE_CONNECTED;
     }
 
@@ -601,8 +598,10 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
             return -1;
         }
 
-        if (hd->id == NULL)
-            hd->id = hd->default_id;
+        if (!hd->id && generate_id(hd) != 0) {
+            hd->errstr = "Could not generate default ID string";
+            return -1;
+        }
 
         /* Prepare a Harmony message. */
         hmesg_scrub(&hd->mesg);
@@ -667,12 +666,12 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
  */
 int ah_id(hdesc_t* hd, const char* id)
 {
-    if (hd->id && hd->id != hd->default_id)
+    if (hd->id)
         free(hd->id);
 
     hd->id = stralloc(id);
     if (!hd->id) {
-        hd->errstr = strerror(errno);
+        hd->errstr = strerror(id ? errno : EINVAL);
         return -1;
     }
     return 0;
@@ -1463,14 +1462,22 @@ int extend_varloc(hdesc_t* hd)
     return 0;
 }
 
-void generate_id(hdesc_t* hd)
+int generate_id(hdesc_t* hd)
 {
-    char* buf = hd->default_id;
+    int hostmax = sysconf(_SC_HOST_NAME_MAX);
 
-    gethostname(buf, HOST_NAME_MAX);
-    buf[HOST_NAME_MAX + 1] = '\0';
-    buf += strlen(buf);
-    sprintf(buf, "_%d_%d", getpid(), hd->socket);
+    if (hd->id)
+        free(hd->id);
+
+    hd->id = malloc((hostmax + 32) * sizeof(*hd->id));
+    if (!hd->id)
+        return -1;
+
+    gethostname(hd->id, hostmax);
+    hd->id[hostmax + 1] = '\0';
+    sprintf(hd->id + strlen(hd->id), "_%d_%d", getpid(), hd->socket);
+
+    return 0;
 }
 
 int send_request(hdesc_t* hd, hmesg_type msg_type)
