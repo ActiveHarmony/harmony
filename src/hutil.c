@@ -52,7 +52,7 @@ void* file_map(const char* filename, size_t* size)
         fprintf(stderr, "Error on fstat(%s): %s\n", filename, strerror(errno));
     }
     else {
-        retval = mmap(NULL, sb.st_size + 1, PROT_READ | PROT_WRITE,
+        retval = mmap(NULL, sb.st_size, PROT_READ | PROT_WRITE,
                       MAP_PRIVATE, fd, 0);
         if (retval == MAP_FAILED) {
             fprintf(stderr, "Error on mmap(%s): %s\n",
@@ -65,7 +65,7 @@ void* file_map(const char* filename, size_t* size)
                 filename, strerror(errno));
     }
 
-    *size = sb.st_size + 1;
+    *size = sb.st_size;
     return retval;
 }
 

@@ -31,8 +31,6 @@
 #include <errno.h>
 #include <limits.h>
 
-#include <sys/mman.h>
-#include <sys/stat.h>
 #include <sys/socket.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
