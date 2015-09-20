@@ -717,7 +717,6 @@ int file_type(const char* fileName)
 int mesg_read(const char* filename, hmesg_t* msg)
 {
     int msglen, fd, retries, retval;
-    char* newbuf;
     struct stat sb;
     struct timeval polltime;
 
@@ -739,19 +738,19 @@ int mesg_read(const char* filename, hmesg_t* msg)
     }
 
     msglen = sb.st_size + 1;
-    if (msg->buflen < msglen) {
-        newbuf = reinterpret_cast<char*>(realloc(msg->buf, msglen));
+    if (msg->recv_len < msglen) {
+        char* newbuf = reinterpret_cast<char*>(realloc(msg->recv_buf, msglen));
         if (!newbuf) {
             cerr << "Could not allocate memory for message data.\n";
             retval = -1;
             goto cleanup;
         }
-        msg->buf = newbuf;
-        msg->buflen = msglen;
+        msg->recv_buf = newbuf;
+        msg->recv_len = msglen;
     }
-    msg->buf[sb.st_size] = '\0';
+    msg->recv_buf[sb.st_size] = '\0';
 
-    if (read_loop(fd, msg->buf, sb.st_size) != 0) {
+    if (read_loop(fd, msg->recv_buf, sb.st_size) != 0) {
         cerr << "Error reading message file. Retrying.\n";
         goto retry;
     }
@@ -811,7 +810,7 @@ int mesg_write(hmesg_t& mesg, int step)
         return -1;
     }
 
-    if (write_loop(fd, mesg.buf, msglen) < 0)
+    if (write_loop(fd, mesg.send_buf, msglen) < 0)
         return -1;
 
     if (close(fd) < 0)

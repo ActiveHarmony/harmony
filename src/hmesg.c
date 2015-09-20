@@ -66,13 +66,13 @@ void hmesg_scrub(hmesg_t* mesg)
         break;
         /* All other cases have no heap memory to release. */
     }
-    mesg->type = HMESG_UNKNOWN;
 }
 
 void hmesg_fini(hmesg_t* mesg)
 {
     hmesg_scrub(mesg);
-    free(mesg->buf);
+    free(mesg->recv_buf);
+    free(mesg->send_buf);
 }
 
 int hmesg_serialize(hmesg_t* mesg)
@@ -90,8 +90,8 @@ int hmesg_serialize(hmesg_t* mesg)
     }
 
   top:
-    buf = mesg->buf;
-    buflen = mesg->buflen;
+    buf = mesg->send_buf;
+    buflen = mesg->send_len;
 
     /* Leave room for a header. */
     buf += HMESG_HDR_SIZE;
@@ -193,23 +193,23 @@ int hmesg_serialize(hmesg_t* mesg)
         }
     }
 
-    if (total >= mesg->buflen) {
-        buf = realloc(mesg->buf, total + 1);
+    if (total >= mesg->send_len) {
+        buf = realloc(mesg->send_buf, total + 1);
         if (!buf)
             goto error;
 
-        mesg->buf = buf;
-        mesg->buflen = total + 1;
+        mesg->send_buf = buf;
+        mesg->send_len = total + 1;
         goto top;
     }
 
     unsigned int magic = htonl(HMESG_MAGIC);
-    memcpy(mesg->buf, &magic, HMESG_MAGIC_SIZE);
+    memcpy(mesg->send_buf, &magic, HMESG_MAGIC_SIZE);
 
     char header_buf[HMESG_HDR_SIZE - HMESG_LENGTH_OFFSET + 1];
     snprintf(header_buf, sizeof(header_buf), "%04d%02x%02x",
              total, HMESG_VERSION, mesg->origin);
-    memcpy(mesg->buf + HMESG_LENGTH_OFFSET, header_buf,
+    memcpy(mesg->send_buf + HMESG_LENGTH_OFFSET, header_buf,
            HMESG_HDR_SIZE - HMESG_LENGTH_OFFSET);
 
     return total;
@@ -223,7 +223,7 @@ int hmesg_serialize(hmesg_t* mesg)
 int hmesg_deserialize(hmesg_t* mesg)
 {
     int count, total;
-    char* buf = mesg->buf;
+    char* buf = mesg->recv_buf;
 
     /* Verify HMESG_MAGIC and HMESG_VERSION */
     unsigned int magic;

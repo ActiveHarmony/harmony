@@ -72,9 +72,8 @@ int* http_fds, http_len, http_cap;
 
 char* harmony_dir;
 char* session_bin;
-hmesg_t mesg_in, mesg_out; /* Maintain two message structures
-                            * to avoid overwriting buffers.
-                            */
+hmesg_t mesg;
+
 session_state_t* slist;
 int slist_cap;
 
@@ -284,9 +283,7 @@ int vars_init(int argc, char* argv[])
                 CFGKEY_HARMONY_HOME "\n");
         return -1;
     }
-
-    mesg_in = HMESG_INITIALIZER;
-    mesg_out = HMESG_INITIALIZER;
+    mesg = HMESG_INITIALIZER;
 
     /*
      * Prepare the file descriptor lists.
@@ -458,20 +455,20 @@ int handle_client_socket(int fd)
     session_state_t* sess;
 
     sess = NULL;
-    retval = mesg_recv(fd, &mesg_in);
+    retval = mesg_recv(fd, &mesg);
     if (retval == 0)
         goto shutdown;
     if (retval < 0)
         goto error;
 
-    if (mesg_in.origin == -1) {
+    if (mesg.origin == -1) {
         /* Message was intended to be ignored. */
         return 0;
     }
 
     /* Sanity check input */
-    if (mesg_in.type != HMESG_SESSION && mesg_in.type != HMESG_JOIN) {
-        idx = mesg_in.origin;
+    if (mesg.type != HMESG_SESSION && mesg.type != HMESG_JOIN) {
+        idx = mesg.origin;
         if (idx < 0 || idx >= slist_cap || slist[idx].name == NULL) {
             errno = EINVAL;
             goto error;
@@ -479,7 +476,7 @@ int handle_client_socket(int fd)
         sess = &slist[idx];
     }
 
-    switch (mesg_in.type) {
+    switch (mesg.type) {
     case HMESG_GETCFG:
     case HMESG_SETCFG:
     case HMESG_BEST:
@@ -488,7 +485,7 @@ int handle_client_socket(int fd)
         break;
 
     case HMESG_SESSION:
-        sess = session_open(&mesg_in);
+        sess = session_open();
         if (!sess) {
             errno = EINVAL;
             goto error;
@@ -499,7 +496,7 @@ int handle_client_socket(int fd)
         for (idx = 0; idx < slist_cap; ++idx) {
             if (!slist[idx].name)
                 continue;
-            if (strcmp(slist[idx].name, mesg_in.data.join.name) == 0)
+            if (strcmp(slist[idx].name, mesg.data.join.name) == 0)
                 break;
         }
         if (idx == slist_cap) {
@@ -519,10 +516,10 @@ int handle_client_socket(int fd)
         break;
 
     case HMESG_REPORT:
-        perf = hperf_unify(mesg_in.data.report.perf);
+        perf = hperf_unify(mesg.data.report.perf);
 
         for (i = 0; i < sess->fetched_len; ++i) {
-            if (sess->fetched[i].id == mesg_in.data.report.cand_id)
+            if (sess->fetched[i].id == mesg.data.report.cand_id)
                 break;
         }
         if (i < sess->fetched_len) {
@@ -567,25 +564,18 @@ int handle_client_socket(int fd)
         goto error;
     }
 
+    mesg.origin = fd;
     if (sess->modified) {
-        mesg_out.origin = fd;
-        mesg_out.type = mesg_in.type;
-        mesg_out.status = mesg_in.status;
-        mesg_out.src_id = mesg_in.src_id;
-        mesg_out.data = mesg_in.data;
-        if (mesg_send(sess->fd, &mesg_out) < 1) {
+        if (mesg_send(sess->fd, &mesg) < 1) {
             perror("Error sending message to session");
             FD_CLR(sess->fd, &listen_fds);
             session_close(sess);
             goto shutdown;
         }
-        /* mesg_in data was free()'ed along with mesg_out. */
-        mesg_in.type = HMESG_UNKNOWN;
         sess->modified = 0;
     }
     else {
-        mesg_in.origin = fd;
-        if (mesg_forward(sess->fd, &mesg_in) < 1) {
+        if (mesg_forward(sess->fd, &mesg) < 1) {
             perror("Error forwarding message to session");
             goto shutdown;
         }
@@ -593,12 +583,11 @@ int handle_client_socket(int fd)
     return 0;
 
   error:
-    mesg_out.type = mesg_in.type;
-    if (mesg_out.status != HMESG_STATUS_FAIL) {
-        mesg_out.status = HMESG_STATUS_FAIL;
-        mesg_out.data.string = strerror(errno);
+    if (mesg.status != HMESG_STATUS_FAIL) {
+        mesg.status  = HMESG_STATUS_FAIL;
+        mesg.data.string = strerror(errno);
     }
-    mesg_send(fd, &mesg_out);
+    mesg_send(fd, &mesg);
 
   shutdown:
     return -1;
@@ -609,12 +598,12 @@ int handle_session_socket(int idx)
     session_state_t* sess;
 
     sess = &slist[idx];
-    if (mesg_recv(sess->fd, &mesg_in) < 1)
+    if (mesg_recv(sess->fd, &mesg) < 1)
         goto error;
 
-    if (mesg_in.origin == -1) {
-        if (mesg_in.status == HMESG_STATUS_REQ) {
-            if (handle_http_info(sess, (char*)mesg_in.data.string) != 0) {
+    if (mesg.origin == -1) {
+        if (mesg.status == HMESG_STATUS_REQ) {
+            if (handle_http_info(sess, (char*)mesg.data.string) != 0) {
                 perror("Error handling http info message");
                 goto error;
             }
@@ -622,7 +611,7 @@ int handle_session_socket(int idx)
         return 0;
     }
 
-    switch (mesg_in.type) {
+    switch (mesg.type) {
     case HMESG_SESSION:
     case HMESG_JOIN:
     case HMESG_SETCFG:
@@ -632,7 +621,7 @@ int handle_session_socket(int idx)
         break;
 
     case HMESG_FETCH:
-        if (mesg_in.status == HMESG_STATUS_OK) {
+        if (mesg.status == HMESG_STATUS_OK) {
             /* Log this point before we forward it to the client. */
             if (sess->fetched_len == sess->fetched_cap) {
                 if (array_grow(&sess->fetched, &sess->fetched_cap,
@@ -644,7 +633,7 @@ int handle_session_socket(int idx)
             }
 
             if (hpoint_copy(&sess->fetched[sess->fetched_len],
-                            &mesg_in.data.point) != 0)
+                            &mesg.data.point) != 0)
             {
                 perror("Internal error copying hpoint to HTTP log");
                 goto error;
@@ -654,7 +643,7 @@ int handle_session_socket(int idx)
         break;
 
     case HMESG_REPORT:
-        if (mesg_in.status == HMESG_STATUS_OK)
+        if (mesg.status == HMESG_STATUS_OK)
             ++sess->reported;
         break;
 
@@ -663,15 +652,12 @@ int handle_session_socket(int idx)
         goto error;
     }
 
-    int dest = mesg_in.origin;
-    mesg_in.origin = idx;
-    if (mesg_forward(dest, &mesg_in) < 1) {
+    int dest = mesg.origin;
+    mesg.origin = idx;
+    if (mesg_forward(dest, &mesg) < 1) {
         perror("Error forwarding message to client");
         client_close(dest);
     }
-    /* mesg_in data was free()'ed along with mesg_out. */
-    mesg_in.type = HMESG_UNKNOWN;
-
     return 0;
 
   error:
@@ -679,7 +665,7 @@ int handle_session_socket(int idx)
     return -1;
 }
 
-session_state_t* session_open(hmesg_t* mesg)
+session_state_t* session_open(void)
 {
     int i, idx = -1;
     session_state_t* sess;
@@ -692,9 +678,9 @@ session_state_t* session_open(hmesg_t* mesg)
             if (idx < 0)
                 idx = i;
         }
-        else if (strcmp(slist[i].name, mesg->data.session.sig.name) == 0) {
-            mesg_out.status = HMESG_STATUS_FAIL;
-            mesg_out.data.string = "Session name already exists.";
+        else if (strcmp(slist[i].name, mesg.data.session.sig.name) == 0) {
+            mesg.status = HMESG_STATUS_FAIL;
+            mesg.data.string = "Session name already exists.";
             return NULL;
         }
     }
@@ -707,7 +693,7 @@ session_state_t* session_open(hmesg_t* mesg)
     }
     sess = &slist[idx];
 
-    sess->name = stralloc(mesg->data.session.sig.name);
+    sess->name = stralloc(mesg.data.session.sig.name);
     if (!sess->name)
         return NULL;
 
@@ -716,18 +702,18 @@ session_state_t* session_open(hmesg_t* mesg)
     sess->best_perf = HUGE_VAL;
 
     /* Override any CFGKEY_HARMONY_HOME sent by remote client. */
-    hcfg_set(&mesg->data.session.cfg, CFGKEY_HARMONY_HOME, harmony_dir);
+    hcfg_set(&mesg.data.session.cfg, CFGKEY_HARMONY_HOME, harmony_dir);
 
     /* Force sessions to load the httpinfo plugin layer. */
     #define HTTPINFO "httpinfo.so"
-    cfgstr = hcfg_get(&mesg->data.session.cfg, CFGKEY_LAYERS);
+    cfgstr = hcfg_get(&mesg.data.session.cfg, CFGKEY_LAYERS);
     if (!cfgstr) {
-        hcfg_set(&mesg->data.session.cfg, CFGKEY_LAYERS, HTTPINFO);
+        hcfg_set(&mesg.data.session.cfg, CFGKEY_LAYERS, HTTPINFO);
         sess->modified = 1;
     }
     else if (strstr(cfgstr, HTTPINFO) == NULL) {
         char *buf = sprintf_alloc(HTTPINFO ":%s", cfgstr);
-        hcfg_set(&mesg->data.session.cfg, CFGKEY_LAYERS, buf);
+        hcfg_set(&mesg.data.session.cfg, CFGKEY_LAYERS, buf);
         sess->modified = 1;
         free(buf);
     }
@@ -736,13 +722,13 @@ session_state_t* session_open(hmesg_t* mesg)
     }
 
     /* Initialize HTTP server fields. */
-    if (hsig_copy(&sess->sig, &mesg->data.session.sig) != 0)
+    if (hsig_copy(&sess->sig, &mesg.data.session.sig) != 0)
         goto error;
 
     if (gettimeofday(&sess->start, NULL) < 0)
         goto error;
 
-    cfgstr = hcfg_get(&mesg->data.session.cfg, CFGKEY_STRATEGY);
+    cfgstr = hcfg_get(&mesg.data.session.cfg, CFGKEY_STRATEGY);
     sess->strategy = stralloc( cfgstr );
     sess->status = 0x0;
     sess->log_len = 0;
@@ -854,7 +840,6 @@ int append_http_log(session_state_t* sess, const hpoint_t* pt, double perf)
 
 int session_setcfg(session_state_t* sess, const char* key, const char* val)
 {
-    hmesg_t mesg = HMESG_INITIALIZER;
     char* buf = sprintf_alloc("%s=%s", key, val ? val : "");
     int retval = 0;
 
@@ -867,13 +852,11 @@ int session_setcfg(session_state_t* sess, const char* key, const char* val)
         retval = -1;
 
     free(buf);
-    hmesg_fini(&mesg);
     return retval;
 }
 
 int session_restart(session_state_t* sess)
 {
-    hmesg_t mesg = HMESG_INITIALIZER;
     int retval = 0;
 
     mesg.origin = -1;
@@ -883,6 +866,5 @@ int session_restart(session_state_t* sess)
     if (mesg_send(sess->fd, &mesg) < 1)
         retval = -1;
 
-    hmesg_fini(&mesg);
     return retval;
 }

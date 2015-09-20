@@ -52,13 +52,13 @@ int mesg_read(int id);
 int read_loop(int fd, char* readbuf, int readlen);
 int write_loop(int fd, char* writebuf, int writelen);
 
-hsig_t* sig;
-hcfg_t* cfg;
-hmesg_t session_mesg, mesg;
+hmesg_t mesg;
 char*   reply_dir;
 int     reply_dir_created, signal_caught;
 char*   scp_cmd;
 char*   scp_dst;
+char*   tmp_dir;
+char*   sess_name;
 
 char* buf;
 int   buflen;
@@ -192,24 +192,38 @@ int init_signals(void)
 int init_comm(void)
 {
     const char* cfgval;
+    hsig_t* sig = &mesg.data.session.sig;
+    hcfg_t* cfg = &mesg.data.session.cfg;
 
     mesg = HMESG_INITIALIZER;
-    session_mesg = HMESG_INITIALIZER;
 
     /* Read a session message from the codegen plugin */
-    if (mesg_recv(STDIN_FILENO, &session_mesg) < 1) {
+    if (mesg_recv(STDIN_FILENO, &mesg) < 1) {
         mesg.data.string = "Socket or deserialization error";
         return -1;
     }
 
-    if (session_mesg.type != HMESG_SESSION ||
-        session_mesg.status != HMESG_STATUS_REQ)
-    {
+    if (mesg.type != HMESG_SESSION || mesg.status != HMESG_STATUS_REQ) {
+        hmesg_scrub(&mesg);
         mesg.data.string = "Invalid initial message";
         return -1;
     }
-    sig = &session_mesg.data.session.sig;
-    cfg = &session_mesg.data.session.cfg;
+
+    cfgval = hcfg_get(cfg, CFGKEY_TMPDIR);
+    if (!cfgval)
+        cfgval = "";
+
+    tmp_dir = stralloc(cfgval);
+    if (!tmp_dir) {
+        mesg.data.string = "Could not copy " CFGKEY_TMPDIR " config var";
+        return -1;
+    }
+
+    sess_name = stralloc(sig->name);
+    if (!sess_name) {
+        mesg.data.string = "Could not copy session name";
+        return -1;
+    }
 
     /* Get the URL for the code generation server, and open a socket to it */
     cfgval = hcfg_get(cfg, CFGKEY_SERVER_URL);
@@ -238,9 +252,6 @@ int init_comm(void)
         }
     }
 
-    mesg.type = session_mesg.type;
-    mesg.status = session_mesg.status;
-    mesg.data.session = session_mesg.data.session;
     if (hmesg_serialize(&mesg) < 0) {
         mesg.data.string = "Could not allocate memory for initial message";
         return -1;
@@ -257,7 +268,6 @@ int url_parse(const char* url)
 {
     struct stat sb;
     const char* ptr;
-    const char* cfgval;
     const char* ssh_host;
     const char* ssh_port;
     const char* ssh_path;
@@ -293,9 +303,8 @@ int url_parse(const char* url)
          * First, create a local directory to temporarily hold outgoing
          * messages, and receive incoming messages.
          */
-        cfgval = hcfg_get(cfg, CFGKEY_TMPDIR);
         reply_dir = sprintf_alloc("%s/codegen-%s.%lx",
-                                  cfgval, sig->name, time(NULL));
+                                  tmp_dir, sess_name, time(NULL));
         if (!reply_dir) {
             mesg.data.string = "Could not allocate memory for temp directory";
             return -1;
@@ -421,23 +430,22 @@ int mesg_read(int id)
     }
 
     msglen = sb.st_size + 1;
-    if (mesg.buflen < msglen) {
-        newbuf = realloc(mesg.buf, msglen);
+    if (mesg.recv_len < msglen) {
+        newbuf = realloc(mesg.recv_buf, msglen);
         if (!newbuf) {
             mesg.data.string = "Could not allocate memory for message data.";
             retval = -1;
             goto cleanup;
         }
-        mesg.buf = newbuf;
-        mesg.buflen = msglen;
+        mesg.recv_buf = newbuf;
+        mesg.recv_len = msglen;
     }
-    mesg.buf[sb.st_size] = '\0';
+    mesg.recv_buf[sb.st_size] = '\0';
 
-    if (read_loop(fd, mesg.buf, sb.st_size) != 0) {
+    if (read_loop(fd, mesg.recv_buf, sb.st_size) != 0) {
         errmsg = "Error reading message file.";
         goto retry;
     }
-    memcpy(mesg.buf, buf, sb.st_size);
 
     if (close(fd) < 0) {
         mesg.data.string = "Error closing code completion message file.";
@@ -493,7 +501,6 @@ int mesg_read(int id)
 int mesg_write(int id)
 {
     static const char out_filename[] = "candidate";
-    unsigned long msglen;
     int fd, count;
 
     count = snprintf_grow(&buf, &buflen, "%s/%s.%d",
@@ -509,8 +516,16 @@ int mesg_write(int id)
         return -1;
     }
 
-    msglen = strlen(mesg.buf);
-    if (write_loop(fd, mesg.buf, msglen) != 0) {
+    int msglen;
+    if (sscanf(mesg.recv_buf + HMESG_LENGTH_OFFSET, "%4d", &msglen) < 1)
+        return -1;
+
+    for (int i = 0; i < msglen; ++i) {
+        if (mesg.recv_buf[i] == '\0')
+            mesg.recv_buf[i] = '"';
+    }
+
+    if (write_loop(fd, mesg.recv_buf, msglen) != 0) {
         mesg.data.string = strerror(errno);
         return -1;
     }

@@ -108,8 +108,10 @@ typedef struct {
         const char* string;
     } data;
 
-    char* buf;
-    int buflen;
+    char* recv_buf;
+    int   recv_len;
+    char* send_buf;
+    int   send_len;
 } hmesg_t;
 extern const hmesg_t HMESG_INITIALIZER;
 

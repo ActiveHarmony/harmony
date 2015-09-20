@@ -168,8 +168,8 @@ int mesg_send(int sock, hmesg_t* mesg)
     if (msglen < 0)
         return -1;
 
-    // fprintf(stderr, "(%2d)<<< '%s'\n", sock, mesg->buf);
-    if (socket_write(sock, mesg->buf, msglen) < msglen)
+    // fprintf(stderr, "(%2d)<<< '%s'\n", sock, mesg->send_buf);
+    if (socket_write(sock, mesg->send_buf, msglen) < msglen)
         return -1;
 
     hmesg_scrub(mesg);
@@ -193,20 +193,20 @@ int mesg_forward(int sock, hmesg_t* mesg)
     }
 
     int msglen;
-    if (sscanf(mesg->buf + HMESG_LENGTH_OFFSET, "%4d", &msglen) < 1)
+    if (sscanf(mesg->recv_buf + HMESG_LENGTH_OFFSET, "%4d", &msglen) < 1)
         return -1;
 
     for (int i = 0; i < msglen; ++i) {
-        if (mesg->buf[i] == '\0')
-            mesg->buf[i] = '"';
+        if (mesg->recv_buf[i] == '\0')
+            mesg->recv_buf[i] = '"';
     }
 
     char origin[HMESG_ORIGIN_SIZE + 1];
     snprintf(origin, sizeof(origin), "%02x", mesg->origin);
-    memcpy(mesg->buf + HMESG_ORIGIN_OFFSET, origin, HMESG_ORIGIN_SIZE);
+    memcpy(mesg->recv_buf + HMESG_ORIGIN_OFFSET, origin, HMESG_ORIGIN_SIZE);
 
     // fprintf(stderr, "(%2d)<<< '%s'\n", sock, mesg->buf);
-    if (socket_write(sock, mesg->buf, msglen) < msglen)
+    if (socket_write(sock, mesg->recv_buf, msglen) < msglen)
         return -1;
 
     hmesg_scrub(mesg);
@@ -233,26 +233,25 @@ int mesg_recv(int sock, hmesg_t* mesg)
         goto invalid;
 
     hdr[HMESG_HDR_SIZE] = '\0';
-    if (sscanf(hdr + HMESG_LENGTH_OFFSET, "%4d%2x%2x",
-               &msglen, &msgver, &mesg->origin) < 3)
+    if (sscanf(hdr + HMESG_LENGTH_OFFSET, "%4d%2x", &msglen, &msgver) < 2)
         goto invalid;
 
     if (msgver != HMESG_VERSION)
         goto invalid;
 
-    if (mesg->buflen <= msglen) {
-        newbuf = realloc(mesg->buf, msglen + 1);
+    if (mesg->recv_len <= msglen) {
+        newbuf = realloc(mesg->recv_buf, msglen + 1);
         if (!newbuf)
             goto error;
-        mesg->buf = newbuf;
-        mesg->buflen = msglen;
+        mesg->recv_buf = newbuf;
+        mesg->recv_len = msglen + 1;
     }
 
-    retval = socket_read(sock, mesg->buf, msglen);
+    retval = socket_read(sock, mesg->recv_buf, msglen);
     if (retval == 0) return 0;
     if (retval < msglen) goto error;
-    mesg->buf[retval] = '\0';  /* A strlen() safety net. */
-    // fprintf(stderr, "(%2d)>>> '%s'\n", sock, mesg->buf);
+    mesg->recv_buf[retval] = '\0';  /* A strlen() safety net. */
+    // fprintf(stderr, "(%2d)>>> '%s'\n", sock, mesg->recv_buf);
 
     hmesg_scrub(mesg);
     if (hmesg_deserialize(mesg) < 0)
