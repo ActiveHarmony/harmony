@@ -107,7 +107,7 @@ hcfg_info_t plugin_keyinfo[] = {
 };
 
 hpoint_t best = HPOINT_INITIALIZER;
-hperf_t* best_perf;
+hperf_t best_perf = HPERF_INITIALIZER;
 
 hpoint_t curr;
 
@@ -253,7 +253,7 @@ int angel_phase_incr(void)
             vertex_copy(base->vertex[idx], test);
         }
 
-        hperf_reset(best_perf);
+        hperf_reset(&best_perf);
         best.id = 0;
     }
 
@@ -281,7 +281,10 @@ int strategy_init(hsig_t* sig)
     if (strategy_cfg(sig) != 0)
         return -1;
 
-    best_perf = hperf_alloc(perf_n);
+    if (hperf_init(&best_perf, perf_n) != 0) {
+        session_error("Could not initialize performance structure.");
+        return -1;
+    }
 
     if (hpoint_init(&curr, simplex_size) != 0) {
         session_error("Could not initialize point structure.");
@@ -554,7 +557,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
              */
 
             for (i = 0; i < perf_n; ++i)
-                next->perf->p[i] = HUGE_VAL;
+                next->perf.obj[i] = HUGE_VAL;
 
             if (nm_algorithm() != 0) {
                 session_error("Internal error: Nelder-Mead"
@@ -595,26 +598,26 @@ int strategy_analyze(htrial_t* trial)
         session_error("Rouge points not supported.");
         return -1;
     }
-    hperf_copy(next->perf, trial->perf);
+    hperf_copy(&next->perf, &trial->perf);
 
     /* Update the observed value ranges. */
     for (i = 0; i < perf_n; ++i) {
-        if (range[i].min > next->perf->p[i])
-            range[i].min = next->perf->p[i];
+        if (range[i].min > next->perf.obj[i])
+            range[i].min = next->perf.obj[i];
 
-        if (range[i].max < next->perf->p[i] && next->perf->p[i] < HUGE_VAL)
-            range[i].max = next->perf->p[i];
+        if (range[i].max < next->perf.obj[i] && next->perf.obj[i] < HUGE_VAL)
+            range[i].max = next->perf.obj[i];
     }
 
     penalty = 0.0;
     penalty_base = 1.0;
     for (i = phase-1; i >= 0; --i) {
-        if (next->perf->p[i] > thresh[i]) {
+        if (next->perf.obj[i] > thresh[i]) {
             if (!loose) {
                 penalty += penalty_base;
             }
-            penalty += 1.0 / (1.0 - log((next->perf->p[i] - thresh[i]) /
-                                        (range[i].max     - thresh[i])));
+            penalty += 1.0 / (1.0 - log((next->perf.obj[i] - thresh[i]) /
+                                        (range[i].max      - thresh[i])));
         }
         penalty_base *= 2;
     }
@@ -623,13 +626,13 @@ int strategy_analyze(htrial_t* trial)
         if (loose) {
             penalty += 1.0;
         }
-        next->perf->p[phase] += penalty * (range[phase].max -
-                                           range[phase].min) * mult;
+        next->perf.obj[phase] += penalty * (range[phase].max -
+                                            range[phase].min) * mult;
     }
 
     /* Update the best performing point, if necessary. */
-    if (best_perf->p[phase] > next->perf->p[phase]) {
-        hperf_copy(best_perf, next->perf);
+    if (best_perf.obj[phase] > next->perf.obj[phase]) {
+        hperf_copy(&best_perf, &next->perf);
         if (hpoint_copy(&best, &trial->point) != 0) {
             session_error( strerror(errno) );
             return -1;
@@ -681,7 +684,7 @@ int nm_algorithm(void)
 
 int nm_state_transition(void)
 {
-    double perf = next->perf->p[phase];
+    double perf = next->perf.obj[phase];
 
     switch (state) {
     case SIMPLEX_STATE_INIT:
@@ -694,7 +697,7 @@ int nm_state_transition(void)
         break;
 
     case SIMPLEX_STATE_REFLECT:
-        if (perf < simplex_best->perf->p[phase]) {
+        if (perf < simplex_best->perf.obj[phase]) {
             /* Reflected test vertex has best known performance.
              * Replace the worst performing simplex vertex with the
              * reflected test vertex, and attempt expansion.
@@ -702,7 +705,7 @@ int nm_state_transition(void)
             vertex_copy(simplex_worst, test);
             state = SIMPLEX_STATE_EXPAND;
         }
-        else if (perf < simplex_worst->perf->p[phase]) {
+        else if (perf < simplex_worst->perf.obj[phase]) {
             /* Reflected test vertex performs better than the worst
              * known simplex vertex.  Replace the worst performing
              * simplex vertex with the reflected test vertex.
@@ -731,7 +734,7 @@ int nm_state_transition(void)
         break;
 
     case SIMPLEX_STATE_EXPAND:
-        if (perf < simplex_best->perf->p[phase]) {
+        if (perf < simplex_best->perf.obj[phase]) {
             /* Expanded test vertex has best known performance.
              * Replace the worst performing simplex vertex with the
              * test vertex, and attempt expansion.
@@ -744,7 +747,7 @@ int nm_state_transition(void)
         break;
 
     case SIMPLEX_STATE_CONTRACT:
-        if (perf < simplex_worst->perf->p[phase]) {
+        if (perf < simplex_worst->perf.obj[phase]) {
             /* Contracted test vertex performs better than the worst
              * known simplex vertex.  Replace the worst performing
              * simplex vertex with the test vertex.
@@ -831,10 +834,10 @@ void simplex_update_index(void)
     simplex_best = base->vertex[0];
     simplex_worst = base->vertex[0];
     for (i = 1; i < simplex_size; ++i) {
-        if (base->vertex[i]->perf->p[phase] < simplex_best->perf->p[phase])
+        if (base->vertex[i]->perf.obj[phase] < simplex_best->perf.obj[phase])
             simplex_best = base->vertex[i];
 
-        if (base->vertex[i]->perf->p[phase] > simplex_worst->perf->p[phase])
+        if (base->vertex[i]->perf.obj[phase] > simplex_worst->perf.obj[phase])
             simplex_worst = base->vertex[i];
     }
 }
@@ -873,10 +876,10 @@ void check_convergence(void)
         double fval_err, size_max, base_val;
 
         fval_err = 0;
-        base_val = centroid->perf->p[phase];
+        base_val = centroid->perf.obj[phase];
         for (i = 0; i < simplex_size; ++i) {
-            fval_err += ((base->vertex[i]->perf->p[phase] - base_val) *
-                         (base->vertex[i]->perf->p[phase] - base_val));
+            fval_err += ((base->vertex[i]->perf.obj[phase] - base_val) *
+                         (base->vertex[i]->perf.obj[phase] - base_val));
         }
         fval_err /= simplex_size;
 

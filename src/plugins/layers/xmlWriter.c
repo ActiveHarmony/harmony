@@ -213,7 +213,7 @@ int xmlWriter_generate(hflow_t* flow, htrial_t* trial)
              current->tm_min, current->tm_sec);
 
     char performance[32];
-    sprintf(performance, "%lf", hperf_unify(trial->perf));
+    sprintf(performance, "%lf", hperf_unify(&trial->perf));
 
     doc = xmlReadFile(filename, NULL, 0);
     if (doc == NULL) {

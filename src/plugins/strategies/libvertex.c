@@ -61,13 +61,13 @@ int libvertex_init(hsig_t* sig)
         vmin = vertex_alloc();
         if (!vmin || internal_vertex_min(vmin) != 0)
             return -1;
-        hperf_reset(vmin->perf);
+        hperf_reset(&vmin->perf);
 
         free(vmax);
         vmax = vertex_alloc();
         if (!vmax || internal_vertex_max(vmax) != 0)
             return -1;
-        hperf_reset(vmax->perf);
+        hperf_reset(&vmax->perf);
     }
     return 0;
 }
@@ -76,12 +76,10 @@ vertex_t* vertex_alloc()
 {
     vertex_t* v;
 
-    v = malloc(sizeof_vertex);
+    v = calloc(1, sizeof_vertex);
     if (!v)
         return NULL;
-    v->id = 0;
-    v->perf = hperf_alloc(P);
-    if (!v->perf) {
+    if (hperf_init(&v->perf, P) != 0) {
         free(v);
         return NULL;
     }
@@ -91,7 +89,7 @@ vertex_t* vertex_alloc()
 void vertex_reset(vertex_t* v)
 {
     v->id = 0;
-    hperf_reset(v->perf);
+    hperf_reset(&v->perf);
 }
 
 int vertex_copy(vertex_t* dst, const vertex_t* src)
@@ -99,14 +97,14 @@ int vertex_copy(vertex_t* dst, const vertex_t* src)
     if (dst != src) {
         dst->id = src->id;
         memcpy(dst->term, src->term, N * sizeof(double));
-        hperf_copy(dst->perf, src->perf);
+        hperf_copy(&dst->perf, &src->perf);
     }
     return 0;
 }
 
 void vertex_free(vertex_t* v)
 {
-    hperf_fini(v->perf);
+    hperf_fini(&v->perf);
     free(v);
 }
 
@@ -175,7 +173,7 @@ int vertex_center(vertex_t* v)
     for (i = 0; i < N; ++i)
         v->term[i] += (vmax->term[i] - vmin->term[i]) / 2;
 
-    hperf_reset(v->perf);
+    hperf_reset(&v->perf);
     return 0;
 }
 
@@ -185,7 +183,7 @@ int vertex_percent(vertex_t* v, double percent)
     for (i = 0; i < N; ++i)
         v->term[i] = (vmax->term[i] - vmin->term[i]) * percent;
 
-    hperf_reset(v->perf);
+    hperf_reset(&v->perf);
     return 0;
 }
 
@@ -229,7 +227,7 @@ int vertex_rand_trim(vertex_t* v, double trim_percentage)
             return -1;
         }
     }
-    hperf_reset(v->perf);
+    hperf_reset(&v->perf);
     return 0;
 }
 
@@ -253,7 +251,7 @@ void vertex_transform(const vertex_t* src, const vertex_t* wrt,
     for (i = 0; i < N; ++i)
         result->term[i] =
             coefficient * src->term[i] + (1.0 - coefficient) * wrt->term[i];
-    hperf_reset(result->perf);
+    hperf_reset(&result->perf);
 }
 
 int vertex_outofbounds(const vertex_t* v)
@@ -403,7 +401,6 @@ int vertex_from_string(const char* str, hsig_t* sig, vertex_t* result)
 
 simplex_t* simplex_alloc(int m)
 {
-    int i;
     simplex_t* s;
     vertex_t* buf;
 
@@ -415,11 +412,10 @@ simplex_t* simplex_alloc(int m)
         return NULL;
     s->len = m;
 
-    buf = malloc(m * sizeof_vertex);
-    for (i = 0; i < m; ++i) {
+    buf = calloc(m, sizeof_vertex);
+    for (int i = 0; i < m; ++i) {
         s->vertex[i] = buf + ((i * sizeof_vertex) / sizeof(*buf));
-        s->vertex[i]->perf = hperf_alloc(P);
-        if (!s->vertex[i]->perf)
+        if (hperf_init(&s->vertex[i]->perf, P) != 0)
             return NULL;
 
         vertex_reset(s->vertex[i]);
@@ -472,7 +468,7 @@ void simplex_centroid(const simplex_t* s, vertex_t* v)
 
     count = 0;
     memset(v->term, 0, N * sizeof(double));
-    memset(v->perf->p, 0, P * sizeof(double));
+    memset(v->perf.obj, 0, P * sizeof(double));
 
     for (i = 0; i < s->len; ++i) {
         if (s->vertex[i]->id < 0)
@@ -482,7 +478,7 @@ void simplex_centroid(const simplex_t* s, vertex_t* v)
             v->term[j] += s->vertex[i]->term[j];
 
         for (j = 0; j < P; ++j)
-            v->perf->p[j] += s->vertex[i]->perf->p[j];
+            v->perf.obj[j] += s->vertex[i]->perf.obj[j];
 
         ++count;
     }
@@ -491,7 +487,7 @@ void simplex_centroid(const simplex_t* s, vertex_t* v)
         v->term[j] /= count;
 
     for (j = 0; j < P; ++j)
-        v->perf->p[j] /= count;
+        v->perf.obj[j] /= count;
 }
 
 void simplex_transform(const simplex_t* src, const vertex_t* wrt,
@@ -649,7 +645,7 @@ void unit_simplex(simplex_t* s)
     for (i = 0; i < s->len; ++i) {
         s->vertex[i]->id = 0;
         memset(s->vertex[i]->term, 0, N * sizeof(double));
-        hperf_reset(s->vertex[i]->perf);
+        hperf_reset(&s->vertex[i]->perf);
     }
 
     // Calculate values for the first N+1 vertices.

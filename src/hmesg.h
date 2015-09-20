@@ -103,7 +103,7 @@ typedef struct hmesg {
         hpoint_t point;
         struct mesg_report {
             int cand_id;
-            hperf_t* perf;
+            hperf_t perf;
         } report;
         const char* string;
     } data;

@@ -47,7 +47,7 @@ typedef struct hflow {
 
 typedef struct htrial {
     const hpoint_t point;
-    hperf_t* perf;
+    hperf_t perf;
 } htrial_t;
 
 /* Generic plug-in event-hook signatures. */

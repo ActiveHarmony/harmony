@@ -30,7 +30,7 @@ extern "C" {
 
 typedef struct vertex {
     int id;
-    hperf_t* perf;
+    hperf_t perf;
     double term[];
 } vertex_t;
 

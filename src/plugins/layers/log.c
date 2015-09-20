@@ -106,15 +106,15 @@ int logger_analyze(hflow_t* flow, htrial_t* trial)
     }
     fprintf(fd, ") ");
 
-    if (trial->perf->len > 1) {
+    if (trial->perf.len > 1) {
         fprintf(fd, "=> (");
-        for (i = 0; i < trial->perf->len; ++i) {
+        for (i = 0; i < trial->perf.len; ++i) {
             if (i > 0) fprintf(fd, ",");
-            fprintf(fd, "%lf[%la]", trial->perf->p[i], trial->perf->p[i]);
+            fprintf(fd, "%lf[%la]", trial->perf.obj[i], trial->perf.obj[i]);
         }
         fprintf(fd, ") ");
     }
-    fprintf(fd, "=> %lf\n", hperf_unify(trial->perf));
+    fprintf(fd, "=> %lf\n", hperf_unify(&trial->perf));
     fflush(fd);
 
     flow->status = HFLOW_ACCEPT;

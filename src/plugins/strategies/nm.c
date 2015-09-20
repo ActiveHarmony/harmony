@@ -412,7 +412,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
             /* Apply an infinite penalty to the invalid point and
              * allow the algorithm to determine the next point to try.
              */
-            hperf_reset(next->perf);
+            hperf_reset(&next->perf);
             if (nm_algorithm() != 0) {
                 session_error("Internal error: Nelder-Mead"
                               " algorithm failure.");
@@ -445,12 +445,12 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
  */
 int strategy_analyze(htrial_t* trial)
 {
-    double perf = hperf_unify(trial->perf);
+    double perf = hperf_unify(&trial->perf);
 
     if (trial->point.id != next->id) {
         return 0;
     }
-    hperf_copy(next->perf, trial->perf);
+    hperf_copy(&next->perf, &trial->perf);
 
     if (nm_algorithm() != 0) {
         session_error("Internal error: Nelder-Mead algorithm failure.");
@@ -519,7 +519,7 @@ int nm_state_transition(void)
         break;
 
     case SIMPLEX_STATE_REFLECT:
-        if (hperf_cmp(test->perf, base->vertex[index_best]->perf) < 0) {
+        if (hperf_cmp(&test->perf, &base->vertex[index_best]->perf) < 0) {
             /* Reflected test vertex has best known performance.
              * Replace the worst performing simplex vertex with the
              * reflected test vertex, and attempt expansion.
@@ -527,7 +527,9 @@ int nm_state_transition(void)
             vertex_copy(base->vertex[index_worst], test);
             state = SIMPLEX_STATE_EXPAND;
         }
-        else if (hperf_cmp(test->perf, base->vertex[index_worst]->perf) < 0) {
+        else if (hperf_cmp(&test->perf,
+                           &base->vertex[index_worst]->perf) < 0)
+        {
             /* Reflected test vertex performs better than the worst
              * known simplex vertex.  Replace the worst performing
              * simplex vertex with the reflected test vertex.
@@ -555,7 +557,7 @@ int nm_state_transition(void)
         break;
 
     case SIMPLEX_STATE_EXPAND:
-        if (hperf_cmp(test->perf, base->vertex[index_best]->perf) < 0) {
+        if (hperf_cmp(&test->perf, &base->vertex[index_best]->perf) < 0) {
             /* Expanded test vertex has best known performance.
              * Replace the worst performing simplex vertex with the
              * test vertex, and attempt expansion.
@@ -567,7 +569,7 @@ int nm_state_transition(void)
         break;
 
     case SIMPLEX_STATE_CONTRACT:
-        if (hperf_cmp(test->perf, base->vertex[index_worst]->perf) < 0) {
+        if (hperf_cmp(&test->perf, &base->vertex[index_worst]->perf) < 0) {
             /* Contracted test vertex performs better than the worst
              * known simplex vertex.  Replace the worst performing
              * simplex vertex with the test vertex.
@@ -652,11 +654,11 @@ void simplex_update_index(void)
     index_best = 0;
     index_worst = 0;
     for (i = 0; i < simplex_size; ++i) {
-        if (hperf_cmp(base->vertex[i]->perf,
-                      base->vertex[index_best]->perf) < 0)
+        if (hperf_cmp(&base->vertex[i]->perf,
+                      &base->vertex[index_best]->perf) < 0)
             index_best = i;
-        if (hperf_cmp(base->vertex[i]->perf,
-                      base->vertex[index_worst]->perf) > 0)
+        if (hperf_cmp(&base->vertex[i]->perf,
+                      &base->vertex[index_worst]->perf) > 0)
             index_worst = i;
     }
 }
@@ -676,14 +678,14 @@ void check_convergence(void)
 {
     int i;
     double fval_err, size_max;
-    double avg_perf = hperf_unify(centroid->perf);
+    double avg_perf = hperf_unify(&centroid->perf);
 
     if (simplex_collapsed(base) == 1)
         goto converged;
 
     fval_err = 0.0;
     for (i = 0; i < simplex_size; ++i) {
-        double vert_perf = hperf_unify(base->vertex[i]->perf);
+        double vert_perf = hperf_unify(&base->vertex[i]->perf);
         fval_err += ((vert_perf - avg_perf) * (vert_perf - avg_perf));
     }
     fval_err /= simplex_size;

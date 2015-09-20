@@ -60,7 +60,7 @@ hcfg_info_t plugin_keyinfo[] = {
 
 typedef struct {
     hpoint_t point;
-    hperf_t* perf;
+    hperf_t perf;
 } cache_t;
 
 typedef struct {
@@ -158,7 +158,7 @@ int cache_generate(hflow_t* flow, htrial_t* trial)
     /* For now, we rely on a linear cache lookup. */
     for (i = 0; i < cache_len; ++i) {
         if (pt_equiv(&trial->point, &cache[i].point)) {
-            hperf_copy(trial->perf, cache[i].perf);
+            hperf_copy(&trial->perf, &cache[i].perf);
             skip = 1;
             flow->status = HFLOW_RETURN;
             pt_num++;
@@ -203,7 +203,7 @@ int cache_analyze(hflow_t* flow, htrial_t* trial)
 
         hpoint_init(&cache[cache_len].point, trial->point.len);
         hpoint_copy(&cache[cache_len].point, &trial->point);
-        cache[cache_len].perf = hperf_clone(trial->perf);
+        hperf_copy(&cache[cache_len].perf, &trial->perf);
         ++cache_len;
     }
     skip = 0;
@@ -235,7 +235,7 @@ int cache_fini(void)
 
     for (i = 0; i < cache_len; ++i) {
         hpoint_fini(&cache[i].point);
-        hperf_fini(cache[i].perf);
+        hperf_fini(&cache[i].perf);
     }
     free(cache);
 
@@ -300,8 +300,7 @@ int load_logger_file(const char* filename)
             }
         }
         hpoint_init(&cache[cache_len].point, i_cnt);
-        cache[cache_len].perf = hperf_alloc(o_cnt);
-        if (!cache[cache_len].perf) {
+        if (hperf_init(&cache[cache_len].perf, o_cnt) != 0) {
             session_error("Error allocating memory for performance in cache");
             return -1;
         }
@@ -332,7 +331,7 @@ int load_logger_file(const char* filename)
         SKIP_PATTERN(fp, " ) => (");
         for (i = 0; i < o_cnt; ++i) {
             if (i > 0) SKIP_PATTERN(fp, " ,");
-            if (fscanf(fp, " %*f[%la]", &cache[cache_len].perf->p[i]) != 1) {
+            if (fscanf(fp, " %*f[%la]", &cache[cache_len].perf.obj[i]) != 1) {
                 session_error("Error parsing performance data from logfile");
                 return -1;
             }

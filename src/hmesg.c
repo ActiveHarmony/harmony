@@ -59,7 +59,7 @@ void hmesg_scrub(hmesg_t* mesg)
 
     case HMESG_REPORT:
         if (mesg->status == HMESG_STATUS_REQ)
-            hperf_fini(mesg->data.report.perf);
+            hperf_fini(&mesg->data.report.perf);
         break;
 
     default:
@@ -185,7 +185,8 @@ int hmesg_serialize(hmesg_t* mesg)
                 if (count < 0) goto error;
                 total += count;
 
-                count = hperf_serialize(&buf, &buflen, mesg->data.report.perf);
+                count = hperf_serialize(&buf, &buflen,
+                                        &mesg->data.report.perf);
                 if (count < 0) goto error;
                 total += count;
             }
@@ -334,6 +335,7 @@ int hmesg_deserialize(hmesg_t* mesg)
                     goto invalid;
                 total += count;
 
+                mesg->data.report.perf = hperf_zero;
                 count = hperf_deserialize(&mesg->data.report.perf,
                                           buf + total);
                 if (count < 0) goto error;

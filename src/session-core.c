@@ -378,7 +378,7 @@ int generate_trial(void)
     }
 
     /* Reset the performance for this trial. */
-    hperf_reset(trial->perf);
+    hperf_reset(&trial->perf);
 
     /* Call strategy generation routine. */
     if (strategy_generate(&flow, (hpoint_t*)&trial->point) != 0)
@@ -722,7 +722,7 @@ int handle_report(hmesg_t* mesg)
     }
     if (idx == pending_cap) {
         if (mesg->data.report.cand_id == paused_id) {
-            hperf_fini(mesg->data.report.perf);
+            hperf_fini(&mesg->data.report.perf);
             mesg->status = HMESG_STATUS_OK;
             return 0;
         }
@@ -734,14 +734,14 @@ int handle_report(hmesg_t* mesg)
     paused_id = 0;
 
     /* Update performance in our local records. */
-    hperf_copy(trial->perf, mesg->data.report.perf);
+    hperf_copy(&trial->perf, &mesg->data.report.perf);
 
     /* Begin the workflow at the outermost analysis layer. */
     curr_layer = -lstack_len;
     if (plugin_workflow(idx) != 0)
         return -1;
 
-    hperf_fini(mesg->data.report.perf);
+    hperf_fini(&mesg->data.report.perf);
     mesg->status = HMESG_STATUS_OK;
     return 0;
 }
@@ -970,12 +970,6 @@ int extend_lists(int target_cap)
     for (i = orig_cap; i < pending_cap; ++i) {
         hpoint_t* point = (hpoint_t*) &pending[i].point;
         *point = hpoint_zero;
-        pending[i].perf = hperf_alloc(perf_count);
-        if (!pending[i].perf) {
-            pending_cap = orig_cap;
-            errmsg = "Internal error: Could not allocate perf structure.";
-            return -1;
-        }
         ready[i] = -1;
     }
     return 0;

@@ -247,8 +247,8 @@ int TAUdb_analyze(hflow_t* flow, htrial_t* ah_trial)
     taudb_add_timer_call_data_to_trial(taudb_trial, timer_call_data);
 
     timer_value->metric = metric;
-    timer_value->inclusive = hperf_unify(ah_trial->perf);
-    timer_value->exclusive = hperf_unify(ah_trial->perf);
+    timer_value->inclusive = hperf_unify(&ah_trial->perf);
+    timer_value->exclusive = hperf_unify(&ah_trial->perf);
     timer_value->inclusive_percentage = 100.0;
     timer_value->exclusive_percentage = 100.0;
     timer_value->sum_exclusive_squared = 0.0;

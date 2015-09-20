@@ -162,7 +162,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
  */
 int strategy_analyze(htrial_t* trial)
 {
-    double perf = hperf_unify(trial->perf);
+    double perf = hperf_unify(&trial->perf);
 
     if (best_perf > perf) {
         best_perf = perf;

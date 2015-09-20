@@ -27,48 +27,38 @@
 #include <string.h>
 #include <ctype.h>
 
-hperf_t* hperf_alloc(int len)
-{
-    hperf_t* retval;
+const hperf_t hperf_zero = HPERF_INITIALIZER;
 
-    retval = malloc(sizeof(hperf_t) + (len * sizeof(double)));
-    if (retval) {
-        retval->len = len;
-        hperf_reset(retval);
+int hperf_init(hperf_t* perf, int len)
+{
+    if (perf->len != len) {
+        double* newbuf = realloc(perf->obj, sizeof(*perf->obj) * len);
+        if (!newbuf)
+            return -1;
+
+        perf->obj = newbuf;
+        perf->len = len;
     }
-    return retval;
+    return 0;
 }
 
 void hperf_reset(hperf_t* perf)
 {
-    int i;
-    for (i = 0; i < perf->len; ++i)
-        perf->p[i] = HUGE_VAL;
+    for (int i = 0; i < perf->len; ++i)
+        perf->obj[i] = HUGE_VAL;
 }
 
 int hperf_copy(hperf_t* dst, const hperf_t* src)
 {
-    memcpy(dst, src, sizeof(hperf_t) + (src->len * sizeof(double)));
-
+    hperf_init(dst, src->len);
+    memcpy(dst->obj, src->obj, sizeof(*dst->obj) * src->len);
     return 0;
-}
-
-hperf_t* hperf_clone(const hperf_t* perf)
-{
-    int newsize = sizeof(hperf_t) + (perf->len * sizeof(double));
-    hperf_t* retval;
-
-    retval = malloc(newsize);
-    if (retval) {
-        memcpy(retval, perf, newsize);
-    }
-    return retval;
 }
 
 void hperf_fini(hperf_t* perf)
 {
-    if (perf)
-        free(perf);
+    free(perf->obj);
+    *perf = hperf_zero;
 }
 
 int hperf_cmp(const hperf_t* a, const hperf_t* b)
@@ -79,8 +69,8 @@ int hperf_cmp(const hperf_t* a, const hperf_t* b)
         return a->len - b->len;
 
     for (i = 0; i < a->len; ++i) {
-        sum_a += a->p[i];
-        sum_b += b->p[i];
+        sum_a += a->obj[i];
+        sum_b += b->obj[i];
     }
     return (sum_a > sum_b) - (sum_a < sum_b);
 }
@@ -91,7 +81,7 @@ double hperf_unify(const hperf_t* perf)
     double retval = 0.0;
 
     for (i = 0; i < perf->len; ++i)
-        retval += perf->p[i];
+        retval += perf->obj[i];
     return retval;
 }
 
@@ -104,7 +94,7 @@ int hperf_serialize(char** buf, int* buflen, const hperf_t* perf)
     total = count;
 
     for (i = 0; i < perf->len; ++i) {
-        count = snprintf_serial(buf, buflen, "%la ", perf->p[i]);
+        count = snprintf_serial(buf, buflen, "%la ", perf->obj[i]);
         if (count < 0) goto error;
         total += count;
     }
@@ -116,29 +106,22 @@ int hperf_serialize(char** buf, int* buflen, const hperf_t* perf)
     return -1;
 }
 
-int hperf_deserialize(hperf_t** perf, char* buf)
+int hperf_deserialize(hperf_t* perf, char* buf)
 {
-    int i, n, count, total;
+    int count, total, len;
 
-    for (i = 0; isspace(buf[i]); ++i);
-    if (strncmp("perf:", buf + i, 5) != 0)
+    if (sscanf(buf, " perf:%d%n", &len, &count) < 1)
         goto invalid;
-    total = i + 5;
+    total = count;
 
-    if (sscanf(buf + total, " %d%n", &n, &count) < 1)
-        goto invalid;
-    total += count;
-
-    *perf = hperf_alloc(n);
-    if (!*perf)
+    if (hperf_init(perf, len) != 0)
         goto error;
 
-    for (i = 0; i < n; ++i) {
-        if (sscanf(buf + total, " %la%n", &((*perf)->p[i]), &count) < 1)
+    for (int i = 0; i < len; ++i) {
+        if (sscanf(buf + total, " %la%n", &perf->obj[i], &count) < 1)
             goto invalid;
         total += count;
     }
-
     return total;
 
   invalid:

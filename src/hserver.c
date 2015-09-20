@@ -515,7 +515,7 @@ int handle_client_socket(int fd)
         break;
 
     case HMESG_REPORT:
-        perf = hperf_unify(mesg.data.report.perf);
+        perf = hperf_unify(&mesg.data.report.perf);
 
         for (i = 0; i < sess->fetched_len; ++i) {
             if (sess->fetched[i].id == mesg.data.report.cand_id)

@@ -65,7 +65,7 @@ struct hdesc_t {
     hvarloc_t* varloc;
     int varloc_cap;
 
-    hperf_t* perf;
+    hperf_t perf;
     hpoint_t curr, best;
 
     char* buf;
@@ -189,7 +189,7 @@ void ah_fini(hdesc_t* hd)
         hsig_fini(&hd->sig);
         hpoint_fini(&hd->curr);
         hpoint_fini(&hd->best);
-        hperf_fini(hd->perf);
+        hperf_fini(&hd->perf);
 
         if (hd->id && hd->id != hd->default_id)
             free(hd->id);
@@ -1040,8 +1040,8 @@ int ah_fetch(hdesc_t* hd)
         return -1;
 
     /* Initialize our internal performance array. */
-    for (i = 0; i < hd->perf->len; ++i)
-        hd->perf->p[i] = NAN;
+    for (i = 0; i < hd->perf.len; ++i)
+        hd->perf.obj[i] = NAN;
 
     /* Client variables were changed.  Inform the user by returning 1. */
     hd->state = HARMONY_STATE_TESTING;
@@ -1090,10 +1090,10 @@ int ah_report(hdesc_t* hd, double* perf)
         return 0;
 
     if (perf)
-        memcpy(hd->perf->p, perf, sizeof(double) * hd->perf->len);
+        memcpy(hd->perf.obj, perf, sizeof(*hd->perf.obj) * hd->perf.len);
 
-    for (i = 0; i < hd->perf->len; ++i) {
-        if (isnan(hd->perf->p[i])) {
+    for (i = 0; i < hd->perf.len; ++i) {
+        if (isnan(hd->perf.obj[i])) {
             hd->errstr = "Insufficient performance values to report";
             errno = EINVAL;
             return -1;
@@ -1103,8 +1103,8 @@ int ah_report(hdesc_t* hd, double* perf)
     /* Prepare a Harmony message. */
     hmesg_scrub(&hd->mesg);
     hd->mesg.data.report.cand_id = hd->curr.id;
-    hd->mesg.data.report.perf = hperf_clone(hd->perf);
-    if (!hd->mesg.data.report.perf) {
+    hd->mesg.data.report.perf = hperf_zero;
+    if (hperf_copy(&hd->mesg.data.report.perf, &hd->perf) != 0) {
         hd->errstr = "Error allocating performance array for message";
         return -1;
     }
@@ -1145,14 +1145,14 @@ int ah_report_one(hdesc_t* hd, int index, double value)
         return -1;
     }
 
-    if (index != 0 || index >= hd->perf->len) {
+    if (index != 0 || index >= hd->perf.len) {
         hd->errstr = "Invalid performance index";
         errno = EINVAL;
         return -1;
     }
 
     if (hd->state == HARMONY_STATE_TESTING)
-        hd->perf->p[index] = value;
+        hd->perf.obj[index] = value;
 
     return 0;
 }
@@ -1427,8 +1427,7 @@ int extend_perf(hdesc_t* hd)
         return -1;
     }
 
-    hd->perf = hperf_alloc(perf_len);
-    if (!hd->perf) {
+    if (hperf_init(&hd->perf, perf_len) != 0) {
         hd->errstr = "Error allocating performance array";
         return -1;
     }

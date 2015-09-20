@@ -224,22 +224,29 @@ int file_read_line(FILE* fp, char** buf, int* cap,
     return -1;
 }
 
-int array_grow(void* buf, int* capacity, int elem_size)
+int array_grow(void* oldbuf, int* oldcap, int size)
 {
-    void* new_buf;
-    int new_capacity = 8;
+    char* newbuf;
+    int   newcap = 8;
 
-    if (*capacity >= new_capacity)
-        new_capacity = *capacity << 1;
+    if (*oldcap >= newcap)
+        newcap = *oldcap << 1;
 
-    new_buf = realloc(*(void**)buf, new_capacity * elem_size);
-    if (new_buf == NULL)
-        return -1;
+    if (*(void**)oldbuf == NULL) {
+        newbuf = calloc(newcap, size);
+        if (!newbuf)
+            return -1;
+    }
+    else {
+        newbuf = realloc(*(void**)oldbuf, newcap * size);
+        if (!newbuf)
+            return -1;
 
-    memset(((char*)new_buf) + (*capacity * elem_size), 0,
-           (new_capacity - *capacity) * elem_size);
-    *(void**)buf = new_buf;
-    *capacity = new_capacity;
+        memset(newbuf + (*oldcap * size), 0, (newcap - *oldcap) * size);
+    }
+    *(void**)oldbuf = newbuf;
+    *oldcap = newcap;
+
     return 0;
 }
 
