@@ -33,19 +33,21 @@ extern "C" {
  */
 typedef struct hpoint {
     int id;
-    int n;
     hval_t* val;
-    int memlevel; /* 1 if *val has pointers to memory that must be freed. */
+    int len;
+
+    void* owner;
 } hpoint_t;
-#define HPOINT_INITIALIZER {-1, 0, NULL, 0}
+#define HPOINT_INITIALIZER {-1, NULL, 0, NULL}
 extern const hpoint_t hpoint_zero;
 
 int  hpoint_init(hpoint_t* pt, int n);
 void hpoint_fini(hpoint_t* pt);
 int  hpoint_copy(hpoint_t* dst, const hpoint_t* src);
+int  hpoint_align(hpoint_t* pt, hsig_t* sig);
 int  hpoint_serialize(char** buf, int* buflen, const hpoint_t* pt);
 int  hpoint_deserialize(hpoint_t* pt, char* buf);
-int  hpoint_align(hpoint_t* pt, hsig_t* sig);
+void hpoint_scrub(hpoint_t* pt);
 int  hpoint_parse(hpoint_t* pt, hsig_t* sig, const char* buf);
 
 #ifdef __cplusplus

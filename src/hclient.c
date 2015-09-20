@@ -1040,7 +1040,7 @@ int ah_fetch(hdesc_t* hd)
         return -1;
 
     /* Initialize our internal performance array. */
-    for (i = 0; i < hd->perf->n; ++i)
+    for (i = 0; i < hd->perf->len; ++i)
         hd->perf->p[i] = NAN;
 
     /* Client variables were changed.  Inform the user by returning 1. */
@@ -1090,9 +1090,9 @@ int ah_report(hdesc_t* hd, double* perf)
         return 0;
 
     if (perf)
-        memcpy(hd->perf->p, perf, sizeof(double) * hd->perf->n);
+        memcpy(hd->perf->p, perf, sizeof(double) * hd->perf->len);
 
-    for (i = 0; i < hd->perf->n; ++i) {
+    for (i = 0; i < hd->perf->len; ++i) {
         if (isnan(hd->perf->p[i])) {
             hd->errstr = "Insufficient performance values to report";
             errno = EINVAL;
@@ -1145,7 +1145,7 @@ int ah_report_one(hdesc_t* hd, int index, double value)
         return -1;
     }
 
-    if (index != 0 || index >= hd->perf->n) {
+    if (index != 0 || index >= hd->perf->len) {
         hd->errstr = "Invalid performance index";
         errno = EINVAL;
         return -1;
@@ -1533,12 +1533,12 @@ int write_values(hdesc_t* hd, const hpoint_t* pt)
 {
     int i;
 
-    if (hd->sig.range_len != pt->n) {
+    if (hd->sig.range_len != pt->len) {
         hd->errstr = "Invalid internal point structure";
         return -1;
     }
 
-    for (i = 0; i < pt->n; ++i) {
+    for (i = 0; i < pt->len; ++i) {
         if (hd->varloc[i].ptr == NULL) {
             hd->varloc[i].val = pt->val[i];
         }

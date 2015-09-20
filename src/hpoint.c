@@ -18,6 +18,7 @@
  */
 
 #include "hpoint.h"
+#include "hmesg.h"
 #include "hutil.h"
 
 #include <stdio.h>
@@ -28,61 +29,54 @@
 
 const hpoint_t hpoint_zero = HPOINT_INITIALIZER;
 
-void hpoint_scrub(hpoint_t* pt);
-
-int hpoint_init(hpoint_t* pt, int n)
+int hpoint_init(hpoint_t* pt, int len)
 {
     pt->id = 0;
-    pt->n = n;
-    pt->val = calloc(n, sizeof(hval_t));
+    pt->len = len;
+    pt->val = calloc(len, sizeof(hval_t));
     if (!pt->val)
         return -1;
-    pt->memlevel = 0;
 
     return 0;
 }
 
 void hpoint_fini(hpoint_t* pt)
 {
-    if (pt->n > 0) {
-        hpoint_scrub(pt);
-        free(pt->val);
+    for (int i = 0; i < pt->len; ++i) {
+        if (pt->val[i].type == HVAL_STR)
+            if (!hmesg_owner(pt->owner, pt->val[i].value.s))
+                free((char*)pt->val[i].value.s);
     }
+    free(pt->val);
     *pt = hpoint_zero;
 }
 
-int hpoint_copy(hpoint_t* copy, const hpoint_t* orig)
+int hpoint_copy(hpoint_t* dst, const hpoint_t* src)
 {
-    int i;
-    hval_t* newbuf;
-    char* newstr;
-
-    if (orig->id == -1) {
-        hpoint_fini(copy);
+    if (src->id == -1) {
+        hpoint_fini(dst);
         return 0;
     }
 
-    copy->id = orig->id;
-    hpoint_scrub(copy);
-    if (copy->n != orig->n) {
-        newbuf = realloc(copy->val, sizeof(hval_t) * orig->n);
+    hpoint_fini(dst);
+    dst->id = src->id;
+    if (dst->len != src->len) {
+        hval_t *newbuf = realloc(dst->val, sizeof(*src->val) * src->len);
         if (!newbuf)
             return -1;
-        copy->val = newbuf;
-        copy->n = orig->n;
+        dst->val = newbuf;
+        dst->len = src->len;
     }
 
-    copy->memlevel = 0;
-    memcpy(copy->val, orig->val, sizeof(hval_t) * orig->n);
-    for (i = 0; i < copy->n; ++i) {
-        if (copy->val[i].type == HVAL_STR) {
-            newstr = stralloc(copy->val[i].value.s);
-            if (!newstr)
+    memcpy(dst->val, src->val, sizeof(*src->val) * src->len);
+    for (int i = 0; i < dst->len; ++i) {
+        if (src->val[i].type == HVAL_STR) {
+            dst->val[i].value.s = stralloc(src->val[i].value.s);
+            if (!dst->val[i].value.s)
                 return -1;
-            copy->val[i].value.s = newstr;
-            copy->memlevel = 1;
         }
     }
+    dst->owner = NULL;
 
     return 0;
 }
@@ -91,10 +85,10 @@ int hpoint_align(hpoint_t* pt, hsig_t* sig)
 {
     int i;
 
-    if (pt->n != sig->range_len)
+    if (pt->len != sig->range_len)
         return -1;
 
-    for (i = 0; i < pt->n; ++i) {
+    for (i = 0; i < pt->len; ++i) {
         hval_t* val = &pt->val[i];
 
         if (val->type != sig->range[i].type)
@@ -114,10 +108,9 @@ int hpoint_align(hpoint_t* pt, hsig_t* sig)
         case HVAL_STR: {
             unsigned long idx = range_enum_index(&sig->range[i].bounds.e,
                                                  val->value.s);
-            if (pt->memlevel == 1)
+            if (!hmesg_owner(pt->owner, val->value.s))
                 free((char*)val->value.s);
-
-            val->value.s = sig->range[i].bounds.e.set[idx];
+            val->value.s = stralloc(sig->range[i].bounds.e.set[idx]);
             break;
         }
 
@@ -125,30 +118,23 @@ int hpoint_align(hpoint_t* pt, hsig_t* sig)
             return -1;
         }
     }
-
-    pt->memlevel = 0;
     return 0;
 }
 
 int hpoint_parse(hpoint_t* pt, hsig_t* sig, const char* buf)
 {
-    int i, span;
-
-    if (pt->n != sig->range_len) {
+    if (pt->len != sig->range_len) {
         hpoint_fini(pt);
         hpoint_init(pt, sig->range_len);
     }
 
-    for (i = 0; i < pt->n; ++i) {
+    for (int i = 0; i < pt->len; ++i) {
         pt->val[i].type = sig->range[i].type;
 
-        span = hval_parse(&pt->val[i], buf);
+        int span = hval_parse(&pt->val[i], buf);
         if (span < 0)
             return -1;
         buf += span;
-
-        if (pt->val[i].type == HVAL_STR)
-            pt->memlevel = 1;
 
         /* Skip whitespace and a single separator character. */
         while (isspace(*buf)) ++buf;
@@ -170,11 +156,11 @@ int hpoint_serialize(char** buf, int* buflen, const hpoint_t* pt)
     total = count;
 
     if (pt->id >= 0) {
-        count = snprintf_serial(buf, buflen, "%d ", pt->n);
+        count = snprintf_serial(buf, buflen, "%d ", pt->len);
         if (count < 0) goto invalid;
         total += count;
 
-        for (i = 0; i < pt->n; ++i) {
+        for (i = 0; i < pt->len; ++i) {
             count = hval_serialize(buf, buflen, &pt->val[i]);
             if (count < 0) goto error;
             total += count;
@@ -190,34 +176,32 @@ int hpoint_serialize(char** buf, int* buflen, const hpoint_t* pt)
 
 int hpoint_deserialize(hpoint_t* pt, char* buf)
 {
-    int i, count, total, new_n;
-    hval_t* newbuf;
+    int count, total;
 
     if (sscanf(buf, " hpoint:%d%n", &pt->id, &count) < 1)
         goto invalid;
     total = count;
 
     if (pt->id >= 0) {
-        if (sscanf(buf + total, " %d%n", &new_n, &count) < 1)
+        int newlen;
+        if (sscanf(buf + total, " %d%n", &newlen, &count) < 1)
             goto invalid;
         total += count;
 
-        if (pt->n != new_n) {
-            newbuf = realloc(pt->val, sizeof(hval_t) * new_n);
+        if (pt->len != newlen) {
+            hval_t* newbuf = realloc(pt->val, sizeof(*newbuf) * newlen);
             if (!newbuf)
                 goto error;
             pt->val = newbuf;
-            pt->n = new_n;
+            pt->len = newlen;
         }
 
-        for (i = 0; i < pt->n; ++i) {
+        for (int i = 0; i < pt->len; ++i) {
             count = hval_deserialize(&pt->val[i], buf + total);
             if (count < 0) goto error;
             total += count;
         }
     }
-
-    pt->memlevel = 0;
     return total;
 
   invalid:
@@ -228,13 +212,12 @@ int hpoint_deserialize(hpoint_t* pt, char* buf)
 
 void hpoint_scrub(hpoint_t* pt)
 {
-    int i;
-
-    if (pt->memlevel == 1) {
-        for (i = 0; i < pt->n; ++i) {
-            if (pt->val[i].type == HVAL_STR)
+    for (int i = 0; i < pt->len; ++i) {
+        if (pt->val[i].type == HVAL_STR) {
+            if (!hmesg_owner(pt->owner, pt->val[i].value.s))
                 free((char*)pt->val[i].value.s);
         }
-        pt->memlevel = 0;
     }
+    free(pt->val);
+    pt->val = NULL;
 }

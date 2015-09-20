@@ -215,7 +215,7 @@ int constraint_generate(hflow_t* flow, hpoint_t* point)
 
         if (!quiet) {
             fprintf(stderr, "Rejecting point: {");
-            for (i = 0; i < point->n; ++i) {
+            for (i = 0; i < point->len; ++i) {
                 hval_t* val = &point->val[i];
 
                 switch (val->type) {
@@ -225,7 +225,7 @@ int constraint_generate(hflow_t* flow, hpoint_t* point)
                 default:        fprintf(stderr, "<INV>");
                 }
 
-                if (i < point->n - 1)
+                if (i < point->len - 1)
                     fprintf(stderr, ", ");
             }
             fprintf(stderr, "}\n");
@@ -325,7 +325,7 @@ int build_point_text(hpoint_t* point)
     char* end = point_text + sizeof(point_text);
 
     point_text[0] = '\0';
-    for (i = 0; i < point->n; ++i) {
+    for (i = 0; i < point->len; ++i) {
         hval_t* val = &point->val[i];
 
         /* Fetch min and max according to variable type */
@@ -345,7 +345,7 @@ int build_point_text(hpoint_t* point)
             return -1;
         }
 
-        if (i < point->n - 1)
+        if (i < point->len - 1)
             ptr += snprintf(ptr, end - ptr, " && ");
     }
     return 0;

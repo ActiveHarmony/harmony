@@ -35,6 +35,8 @@ typedef struct hsig {
     hrange_t* range;
     int       range_len;
     int       range_cap;
+
+    void*     owner;
 } hsig_t;
 #define HSIG_INITIALIZER {0}
 extern const hsig_t hsig_zero;
@@ -52,6 +54,7 @@ int  hsig_real(hsig_t* sig, const char* name,
 int  hsig_enum(hsig_t* sig, const char* name, const char* value);
 int  hsig_serialize(char** buf, int* buflen, const hsig_t* sig);
 int  hsig_deserialize(hsig_t* sig, char* buf);
+void hsig_scrub(hsig_t* sig);
 int  hsig_parse(hsig_t* sig, const char* buf, const char** errptr);
 
 #ifdef __cplusplus

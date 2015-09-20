@@ -201,7 +201,7 @@ int cache_analyze(hflow_t* flow, htrial_t* trial)
             }
         }
 
-        hpoint_init(&cache[cache_len].point, trial->point.n);
+        hpoint_init(&cache[cache_len].point, trial->point.len);
         hpoint_copy(&cache[cache_len].point, &trial->point);
         cache[cache_len].perf = hperf_clone(trial->perf);
         ++cache_len;
@@ -218,7 +218,7 @@ int cache_analyze(hflow_t* flow, htrial_t* trial)
           visited = realloc(visited, sizeof(visited_t) * visited_cap);
       }
       memset(visited + visited_len, 0, sizeof(visited_t));
-      hpoint_init(&visited[visited_len].point, trial->point.n);
+      hpoint_init(&visited[visited_len].point, trial->point.len);
       hpoint_copy(&visited[visited_len].point, &trial->point);
       visited[visited_len].count = 2;  // looking for the 2nd occurance next time we get to generate
       visited_len++;
@@ -393,10 +393,10 @@ int pt_equiv(const hpoint_t* a, const hpoint_t* b)
 {
     int i;
 
-    if (a->n != b->n)
+    if (a->len != b->len)
         return 0;
 
-    for (i = 0; i < a->n; ++i) {
+    for (i = 0; i < a->len; ++i) {
         if (a->val[i].type != b->val[i].type)
             return 0;
 

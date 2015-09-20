@@ -27,13 +27,13 @@
 #include <string.h>
 #include <ctype.h>
 
-hperf_t* hperf_alloc(int n)
+hperf_t* hperf_alloc(int len)
 {
     hperf_t* retval;
 
-    retval = malloc(sizeof(hperf_t) + (n * sizeof(double)));
+    retval = malloc(sizeof(hperf_t) + (len * sizeof(double)));
     if (retval) {
-        retval->n = n;
+        retval->len = len;
         hperf_reset(retval);
     }
     return retval;
@@ -42,20 +42,20 @@ hperf_t* hperf_alloc(int n)
 void hperf_reset(hperf_t* perf)
 {
     int i;
-    for (i = 0; i < perf->n; ++i)
+    for (i = 0; i < perf->len; ++i)
         perf->p[i] = HUGE_VAL;
 }
 
 int hperf_copy(hperf_t* dst, const hperf_t* src)
 {
-    memcpy(dst, src, sizeof(hperf_t) + (src->n * sizeof(double)));
+    memcpy(dst, src, sizeof(hperf_t) + (src->len * sizeof(double)));
 
     return 0;
 }
 
 hperf_t* hperf_clone(const hperf_t* perf)
 {
-    int newsize = sizeof(hperf_t) + (perf->n * sizeof(double));
+    int newsize = sizeof(hperf_t) + (perf->len * sizeof(double));
     hperf_t* retval;
 
     retval = malloc(newsize);
@@ -75,10 +75,10 @@ int hperf_cmp(const hperf_t* a, const hperf_t* b)
 {
     int i;
     double sum_a = 0.0, sum_b = 0.0;
-    if (a->n != b->n)
-        return a->n - b->n;
+    if (a->len != b->len)
+        return a->len - b->len;
 
-    for (i = 0; i < a->n; ++i) {
+    for (i = 0; i < a->len; ++i) {
         sum_a += a->p[i];
         sum_b += b->p[i];
     }
@@ -90,7 +90,7 @@ double hperf_unify(const hperf_t* perf)
     int i;
     double retval = 0.0;
 
-    for (i = 0; i < perf->n; ++i)
+    for (i = 0; i < perf->len; ++i)
         retval += perf->p[i];
     return retval;
 }
@@ -99,11 +99,11 @@ int hperf_serialize(char** buf, int* buflen, const hperf_t* perf)
 {
     int i, count, total;
 
-    count = snprintf_serial(buf, buflen, "perf: %d ", perf->n);
+    count = snprintf_serial(buf, buflen, "perf: %d ", perf->len);
     if (count < 0) goto invalid;
     total = count;
 
-    for (i = 0; i < perf->n; ++i) {
+    for (i = 0; i < perf->len; ++i) {
         count = snprintf_serial(buf, buflen, "%la ", perf->p[i]);
         if (count < 0) goto error;
         total += count;

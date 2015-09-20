@@ -644,7 +644,7 @@ vector<long> values_of(hpoint_t* pt)
 {
     vector<long> retval;
 
-    for (int i = 0; i < pt->n; ++i) {
+    for (int i = 0; i < pt->len; ++i) {
         if (pt->val[i].type != HVAL_INT) {
             cerr << "Codeserver only implemented for int ranges for now.\n";
             retval.clear();

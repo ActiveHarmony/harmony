@@ -294,7 +294,7 @@ int cglog_insert(const hpoint_t* point)
 int cglog_find(const hpoint_t* point)
 {
     int i;
-    int len = point->n * sizeof(hval_t);
+    int len = point->len * sizeof(*point->val);
 
     for (i = 0; i < cglog_len; ++i) {
         if (memcmp(point->val, cglog[i].point.val, len) == 0)

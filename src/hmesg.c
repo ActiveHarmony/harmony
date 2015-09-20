@@ -35,8 +35,8 @@ void hmesg_scrub(hmesg_t* mesg)
     switch (mesg->type) {
     case HMESG_SESSION:
         if (mesg->status == HMESG_STATUS_REQ) {
-            hsig_fini(&mesg->data.session.sig);
-            hcfg_fini(&mesg->data.session.cfg);
+            hsig_scrub(&mesg->data.session.sig);
+            hcfg_scrub(&mesg->data.session.cfg);
         }
         break;
 
@@ -44,7 +44,7 @@ void hmesg_scrub(hmesg_t* mesg)
         if (mesg->status == HMESG_STATUS_REQ ||
             mesg->status == HMESG_STATUS_OK)
         {
-            hsig_fini(&mesg->data.join);
+            hsig_scrub(&mesg->data.join);
         }
         break;
 
@@ -53,7 +53,7 @@ void hmesg_scrub(hmesg_t* mesg)
         if (mesg->status == HMESG_STATUS_OK ||
             mesg->status == HMESG_STATUS_BUSY)
         {
-            hpoint_fini(&mesg->data.point);
+            hpoint_scrub(&mesg->data.point);
         }
         break;
 
@@ -73,6 +73,12 @@ void hmesg_fini(hmesg_t* mesg)
     hmesg_scrub(mesg);
     free(mesg->recv_buf);
     free(mesg->send_buf);
+}
+
+int hmesg_owner(hmesg_t* mesg, const void* ptr)
+{
+    return mesg && (ptr >= (void*)(mesg->recv_buf) &&
+                    ptr <  (void*)(mesg->recv_buf + mesg->recv_len));
 }
 
 int hmesg_serialize(hmesg_t* mesg)
@@ -281,10 +287,12 @@ int hmesg_deserialize(hmesg_t* mesg)
         switch (mesg->type) {
         case HMESG_SESSION:
             if (mesg->status == HMESG_STATUS_REQ) {
+                mesg->data.session.sig.owner = mesg;
                 count = hsig_deserialize(&mesg->data.session.sig, buf + total);
                 if (count < 0) goto error;
                 total += count;
 
+                mesg->data.session.cfg.owner = mesg;
                 count = hcfg_deserialize(&mesg->data.session.cfg, buf + total);
                 if (count < 0) goto error;
                 total += count;
@@ -293,6 +301,7 @@ int hmesg_deserialize(hmesg_t* mesg)
 
         case HMESG_JOIN:
             mesg->data.join = hsig_zero;
+            mesg->data.join.owner = mesg;
             count = hsig_deserialize(&mesg->data.join, buf + total);
             if (count < 0) goto error;
             total += count;
@@ -311,6 +320,7 @@ int hmesg_deserialize(hmesg_t* mesg)
                 mesg->status == HMESG_STATUS_BUSY)
             {
                 mesg->data.point = hpoint_zero;
+                mesg->data.point.owner = mesg;
                 count = hpoint_deserialize(&mesg->data.point, buf + total);
                 if (count < 0) goto error;
                 total += count;

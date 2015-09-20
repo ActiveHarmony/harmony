@@ -17,6 +17,7 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "hcfg.h"
+#include "hmesg.h"
 #include "hutil.h"
 
 #include <stdio.h>
@@ -121,14 +122,14 @@ int hcfg_copy(hcfg_t* dst, const hcfg_t* src)
         dst->env[i] = stralloc( src->env[i] );
         if (!dst->env[i]) return -1;
     }
+    dst->owner = NULL;
+
     return 0;
 }
 
 void hcfg_fini(hcfg_t* cfg)
 {
-    for (int i = 0; i < cfg->len; ++i)
-        free(cfg->env[i]);
-    free(cfg->env);
+    hcfg_scrub(cfg);
 }
 
 char* hcfg_get(const hcfg_t* cfg, const char* key)
@@ -281,18 +282,24 @@ int hcfg_deserialize(hcfg_t* cfg, char* buf)
     cfg->cap = cfg->len;
     cfg->env = malloc(cfg->len * sizeof(*cfg->env));
     for (int i = 0; i < cfg->len; ++i) {
-        const char* line;
-        int count = scanstr_serial((const char**)&line, buf + total);
+        int count = scanstr_serial((const char**)&cfg->env[i], buf + total);
         if (count < 0) goto invalid;
         total += count;
-
-        cfg->env[i] = stralloc(line);
     }
     return total;
 
   invalid:
     errno = EINVAL;
     return -1;
+}
+
+void hcfg_scrub(hcfg_t* cfg)
+{
+    for (int i = 0; i < cfg->len; ++i) {
+        if (!hmesg_owner(cfg->owner, cfg->env[i]))
+            free(cfg->env[i]);
+    }
+    free(cfg->env);
 }
 
 int hcfg_parse(hcfg_t* cfg, const char* buf, const char** errptr)
@@ -373,7 +380,8 @@ int key_add(hcfg_t* cfg, char* pair)
     int i = key_find(cfg, pair, NULL);
 
     if (i < cfg->len) {
-        free(cfg->env[i]);
+        if (!hmesg_owner(cfg->owner, cfg->env[i]))
+            free(cfg->env[i]);
     }
     else if (i == cfg->cap) {
         if (array_grow(&cfg->env, &cfg->cap, sizeof(*cfg->env)) != 0)
@@ -392,7 +400,8 @@ void key_del(hcfg_t* cfg, const char* key)
     int i = key_find(cfg, key, NULL);
 
     if (i < cfg->len) {
-        free(cfg->env[i]);
+        if (!hmesg_owner(cfg->owner, cfg->env[i]))
+            free(cfg->env[i]);
         --cfg->len;
     }
 }

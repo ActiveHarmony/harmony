@@ -180,7 +180,7 @@ int group_generate(hflow_t* flow, htrial_t* trial)
         /* If any values differ from our hint, reject it. */
         if (memcmp(hint_val, trial_val, sizeof(hval_t) * cap_max) != 0) {
             flow->point.id = 0;
-            flow->point.n = cap_max;
+            flow->point.len = cap_max;
             flow->point.val = hint_val;
             flow->status = HFLOW_REJECT;
             return 0;

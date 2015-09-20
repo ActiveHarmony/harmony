@@ -19,6 +19,7 @@
 
 #include "hsig.h"
 #include "hrange.h"
+#include "hmesg.h"
 #include "hutil.h"
 
 #include <stdio.h>
@@ -58,6 +59,8 @@ int hsig_copy(hsig_t* dst, const hsig_t* src)
         if (hrange_copy(&dst->range[i], &src->range[i]) != 0)
             return -1;
     }
+    dst->owner = NULL;
+
     return 0;
 }
 
@@ -138,7 +141,7 @@ int hsig_match(const hsig_t* sig_a, const hsig_t* sig_b)
 
 int hsig_name(hsig_t* sig, const char* name)
 {
-    if (sig->name)
+    if (sig->name && !hmesg_owner(sig->owner, sig->name))
         free(sig->name);
 
     sig->name = stralloc(name);
@@ -161,6 +164,7 @@ int hsig_int(hsig_t* sig, const char* name, long min, long max, long step)
     range.bounds.i.max = max;
     range.bounds.i.step = step;
     range.name = stralloc(name);
+    range.owner = NULL;
     if (!range.name)
         return -1;
 
@@ -185,6 +189,7 @@ int hsig_real(hsig_t* sig, const char* name,
     range.bounds.r.max = max;
     range.bounds.r.step = step;
     range.name = stralloc(name);
+    range.owner = NULL;
     if (!range.name)
         return -1;
 
@@ -211,6 +216,7 @@ int hsig_enum(hsig_t* sig, const char* name, const char* value)
         range.bounds.e.len = 0;
         range.bounds.e.cap = 0;
         range.name = stralloc(name);
+        range.owner = NULL;
         if (!range.name)
             return -1;
 
@@ -277,7 +283,7 @@ int hsig_deserialize(hsig_t* sig, char* buf)
     if (count < 0) goto invalid;
     total += count;
 
-    sig->name = stralloc(strptr);
+    sig->name = strptr;
     if (!sig->name) goto error;
 
     if (sscanf(buf + total, " %d%n", &sig->range_len, &count) < 1)
@@ -293,6 +299,7 @@ int hsig_deserialize(hsig_t* sig, char* buf)
 
     for (i = 0; i < sig->range_len; ++i) {
         sig->range[i] = hrange_zero;
+        sig->range[i].owner = sig->owner;
         count = hrange_deserialize(&sig->range[i], buf + total);
         if (count < 0) goto invalid;
         total += count;
@@ -304,6 +311,17 @@ int hsig_deserialize(hsig_t* sig, char* buf)
     errno = EINVAL;
   error:
     return -1;
+}
+
+void hsig_scrub(hsig_t* sig)
+{
+    if (!hmesg_owner(sig->owner, sig->name))
+        free(sig->name);
+
+    for (int i = 0; i < sig->range_len; ++i)
+        hrange_scrub(&sig->range[i]);
+    free(sig->range);
+    *sig = hsig_zero;
 }
 
 int hsig_parse(hsig_t* sig, const char* buf, const char** errptr)
@@ -368,6 +386,7 @@ int hsig_parse(hsig_t* sig, const char* buf, const char** errptr)
         errstr = "Cannot copy range name";
         goto error;
     }
+    range.owner = NULL;
 
     if (add_range(sig, &range) != 0) {
         errstr = "Invalid range name";

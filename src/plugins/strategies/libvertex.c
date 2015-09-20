@@ -24,6 +24,7 @@
 #include "hperf.h"
 #include "session-core.h"
 #include "hcfg.h"
+#include "hutil.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -329,7 +330,7 @@ int vertex_to_hpoint(const vertex_t* v, hpoint_t* result)
             if (idx > range[i].bounds.e.len - 1)
                 idx = range[i].bounds.e.len - 1;
 
-            val->value.s = range_enum_value(&range[i].bounds.e, idx);
+            val->value.s = stralloc(range_enum_value(&range[i].bounds.e, idx));
             break;
         }
         default:

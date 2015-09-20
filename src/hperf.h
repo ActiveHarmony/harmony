@@ -25,7 +25,7 @@ extern "C" {
 #endif
 
 typedef struct hperf {
-    int n;
+    int len;
 #ifdef __cplusplus
     /* XXX - Hack to allow flexible array member in C++. */
     double p[1];
@@ -35,7 +35,7 @@ typedef struct hperf {
 
 } hperf_t;
 
-hperf_t* hperf_alloc(int n);
+hperf_t* hperf_alloc(int len);
 void     hperf_reset(hperf_t* perf);
 int      hperf_copy(hperf_t* src, const hperf_t* dst);
 hperf_t* hperf_clone(const hperf_t* perf);

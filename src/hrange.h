@@ -82,6 +82,8 @@ typedef struct hrange {
         range_real_t r;
         range_enum_t e;
     } bounds;
+
+    void* owner;
 } hrange_t;
 #define HRANGE_INITIALIZER {0}
 extern const hrange_t hrange_zero;
@@ -91,8 +93,9 @@ void          hrange_fini(hrange_t* range);
 int           hrange_copy(hrange_t* dst, const hrange_t* src);
 unsigned long hrange_max_idx(hrange_t* range);
 
-int hrange_serialize(char** buf, int* buflen, const hrange_t* range);
-int hrange_deserialize(hrange_t* range, char* buf);
+int  hrange_serialize(char** buf, int* buflen, const hrange_t* range);
+int  hrange_deserialize(hrange_t* range, char* buf);
+void hrange_scrub(hrange_t* range);
 
 #ifdef __cplusplus
 }

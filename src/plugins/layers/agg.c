@@ -193,15 +193,15 @@ void perf_mean(hperf_t* dst, hperf_t* src[], int count)
     int i, j;
 
     /* Initialize the destination hperf_t. */
-    for (i = 0; i < dst->n; ++i)
+    for (i = 0; i < dst->len; ++i)
         dst->p[i] = 0.0;
 
     /* Calculate the mean of each objective individually. */
     for (j = 0; j < count; ++j)
-        for (i = 0; i < dst->n; ++i)
+        for (i = 0; i < dst->len; ++i)
             dst->p[i] += src[j]->p[i];
 
-    for (i = 0; i < dst->n; ++i)
+    for (i = 0; i < dst->len; ++i)
         dst->p[i] /= trial_per_point;
 }
 

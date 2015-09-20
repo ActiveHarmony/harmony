@@ -91,7 +91,7 @@ int logger_analyze(hflow_t* flow, htrial_t* trial)
     int i;
 
     fprintf(fd, "Point #%d: (", trial->point.id);
-    for (i = 0; i < trial->point.n; ++i) {
+    for (i = 0; i < trial->point.len; ++i) {
         hval_t* v = &trial->point.val[i];
         if (i > 0) fprintf(fd, ",");
 
@@ -106,9 +106,9 @@ int logger_analyze(hflow_t* flow, htrial_t* trial)
     }
     fprintf(fd, ") ");
 
-    if (trial->perf->n > 1) {
+    if (trial->perf->len > 1) {
         fprintf(fd, "=> (");
-        for (i = 0; i < trial->perf->n; ++i) {
+        for (i = 0; i < trial->perf->len; ++i) {
             if (i > 0) fprintf(fd, ",");
             fprintf(fd, "%lf[%la]", trial->perf->p[i], trial->perf->p[i]);
         }

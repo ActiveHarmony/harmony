@@ -598,7 +598,7 @@ int http_send_overview(int fd)
             total += count;
         }
         else {
-            for (j = 0; j < slist[i].best.n; ++j) {
+            for (j = 0; j < slist[i].best.len; ++j) {
                 if (j > 0) {
                     count = snprintf_serial(&buf, &buflen, " ");
                     if (count < 0)

@@ -18,6 +18,7 @@
  */
 
 #include "hsig.h"
+#include "hmesg.h"
 #include "hutil.h"
 
 #include <stdio.h>
@@ -238,16 +239,7 @@ int range_enum_parse(range_enum_t* bounds, const char* buf, const char** err)
  */
 void hrange_fini(hrange_t* range)
 {
-    int i;
-
-    if (range->name)
-        free(range->name);
-
-    if (range->type == HVAL_STR) {
-        for (i = 0; i < range->bounds.e.len; ++i)
-            free(range->bounds.e.set[i]);
-        free(range->bounds.e.set);
-    }
+    hrange_scrub(range);
     *range = hrange_zero;
 }
 
@@ -271,6 +263,8 @@ int hrange_copy(hrange_t* dst, const hrange_t* src)
     default:
         return -1;
     }
+    dst->owner = NULL;
+
     return 0;
 }
 
@@ -367,7 +361,7 @@ int hrange_deserialize(hrange_t* range, char* buf)
     if (count < 0) goto invalid;
     total += count;
 
-    range->name = stralloc(strptr);
+    range->name = strptr;
     if (!range->name) goto error;
 
     if (sscanf(buf + total, " %4s%n", type_str, &count) < 1)
@@ -419,7 +413,7 @@ int hrange_deserialize(hrange_t* range, char* buf)
             if (count < 0) goto invalid;
             total += count;
 
-            range->bounds.e.set[i] = stralloc(strptr);
+            range->bounds.e.set[i] = strptr;
             if (!range->bounds.e.set[i]) goto error;
         }
         break;
@@ -433,6 +427,21 @@ int hrange_deserialize(hrange_t* range, char* buf)
     errno = EINVAL;
   error:
     return -1;
+}
+
+void hrange_scrub(hrange_t* range)
+{
+    if (!hmesg_owner(range->owner, range->name))
+        free(range->name);
+
+    if (range->type == HVAL_STR) {
+        for (int i = 0; i < range->bounds.e.len; ++i) {
+            if (!hmesg_owner(range->owner, range->bounds.e.set[i]))
+                free(range->bounds.e.set[i]);
+        }
+        free(range->bounds.e.set);
+    }
+    *range = hrange_zero;
 }
 
 /*
