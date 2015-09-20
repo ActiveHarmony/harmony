@@ -26,7 +26,7 @@
 #include <string.h>
 #include <ctype.h>
 
-const hpoint_t HPOINT_INITIALIZER = {-1, 0, NULL, 0};
+const hpoint_t hpoint_zero = HPOINT_INITIALIZER;
 
 void hpoint_scrub(hpoint_t* pt);
 
@@ -48,7 +48,7 @@ void hpoint_fini(hpoint_t* pt)
         hpoint_scrub(pt);
         free(pt->val);
     }
-    *pt = HPOINT_INITIALIZER;
+    *pt = hpoint_zero;
 }
 
 int hpoint_copy(hpoint_t* copy, const hpoint_t* orig)

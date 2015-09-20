@@ -166,7 +166,6 @@ int TAUdb_init(hsig_t* sig)
     }
     memset(client, 0, client_max * sizeof(cinfo_t));
 
-    sess_sig = HSIG_INITIALIZER;
     if (hsig_copy(&sess_sig, sig) != 0) {
         session_error("Internal error: Could not copy session signature");
         return -1;

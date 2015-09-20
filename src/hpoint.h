@@ -37,8 +37,8 @@ typedef struct hpoint {
     hval_t* val;
     int memlevel; /* 1 if *val has pointers to memory that must be freed. */
 } hpoint_t;
-
-extern const hpoint_t HPOINT_INITIALIZER;
+#define HPOINT_INITIALIZER {-1, 0, NULL, 0}
+extern const hpoint_t hpoint_zero;
 
 int  hpoint_init(hpoint_t* pt, int n);
 void hpoint_fini(hpoint_t* pt);

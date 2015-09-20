@@ -36,7 +36,8 @@ typedef struct hsig {
     int       range_len;
     int       range_cap;
 } hsig_t;
-extern const hsig_t HSIG_INITIALIZER;
+#define HSIG_INITIALIZER {0}
+extern const hsig_t hsig_zero;
 
 /* Harmony signature functions */
 int  hsig_copy(hsig_t* dst, const hsig_t* src);

@@ -43,8 +43,8 @@
 /* --------------------------------
  * Session configuration variables.
  */
-hsig_t sig;
-hcfg_t cfg;
+hsig_t sig = HSIG_INITIALIZER;
+hcfg_t cfg = HCFG_INITIALIZER;
 const hcfg_t* session_cfg = &cfg;
 
 int perf_count;
@@ -198,13 +198,11 @@ int main(int argc, char* argv[])
     }
 
     /* Initialize the session. */
-    sig = HSIG_INITIALIZER;
     if (hsig_copy(&sig, &mesg.data.session.sig) != 0) {
         mesg.data.string = "Could not copy session data";
         goto error;
     }
 
-    cfg = HCFG_INITIALIZER;
     if (hcfg_copy(&cfg, &mesg.data.session.cfg) != 0) {
         mesg.data.string = "Could not copy configuration environment";
         goto error;
@@ -223,7 +221,7 @@ int main(int argc, char* argv[])
 
     while (1) {
         flow.status = HFLOW_ACCEPT;
-        flow.point  = HPOINT_INITIALIZER;
+        flow.point  = hpoint_zero;
 
         ready_fds = fds;
         retval = select(maxfd + 1, &ready_fds, NULL, NULL, (pending_len == pending_cap)?NULL:pollstate);
@@ -435,7 +433,7 @@ int plugin_workflow(int trial_idx)
 
         /* Remove point data from pending list. */
         hpoint_fini( (hpoint_t*)&trial->point );
-        *(hpoint_t*)&trial->point = HPOINT_INITIALIZER;
+        *(hpoint_t*)&trial->point = hpoint_zero;
         --pending_len;
 
         /* Point generation attempts may begin again. */
@@ -666,7 +664,7 @@ int handle_setcfg(hmesg_t* mesg)
 
 int handle_best(hmesg_t* mesg)
 {
-    mesg->data.point = HPOINT_INITIALIZER;
+    mesg->data.point = hpoint_zero;
     if (strategy_best(&mesg->data.point) != 0)
         return -1;
 
@@ -686,7 +684,7 @@ int handle_fetch(hmesg_t* mesg)
         /* Send the next point on the ready queue. */
         next = &pending[idx];
 
-        mesg->data.point = HPOINT_INITIALIZER;
+        mesg->data.point = hpoint_zero;
         if (hpoint_copy(&mesg->data.point, &next->point) != 0) {
             errmsg = "Internal error: Could not copy candidate point data.";
             return -1;
@@ -701,7 +699,7 @@ int handle_fetch(hmesg_t* mesg)
     else {
         /* Ready queue is empty, or session is paused.
          * Send the best known point. */
-        mesg->data.point = HPOINT_INITIALIZER;
+        mesg->data.point = hpoint_zero;
         if (strategy_best(&mesg->data.point) != 0)
             return -1;
 
@@ -971,7 +969,7 @@ int extend_lists(int target_cap)
 
     for (i = orig_cap; i < pending_cap; ++i) {
         hpoint_t* point = (hpoint_t*) &pending[i].point;
-        *point = HPOINT_INITIALIZER;
+        *point = hpoint_zero;
         pending[i].perf = hperf_alloc(perf_count);
         if (!pending[i].perf) {
             pending_cap = orig_cap;

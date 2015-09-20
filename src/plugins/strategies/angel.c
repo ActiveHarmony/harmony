@@ -106,7 +106,7 @@ hcfg_info_t plugin_keyinfo[] = {
     { NULL }
 };
 
-hpoint_t best;
+hpoint_t best = HPOINT_INITIALIZER;
 hperf_t* best_perf;
 
 hpoint_t curr;
@@ -281,7 +281,6 @@ int strategy_init(hsig_t* sig)
     if (strategy_cfg(sig) != 0)
         return -1;
 
-    best = HPOINT_INITIALIZER;
     best_perf = hperf_alloc(perf_n);
 
     if (hpoint_init(&curr, simplex_size) != 0) {

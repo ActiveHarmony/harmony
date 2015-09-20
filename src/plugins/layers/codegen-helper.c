@@ -52,7 +52,7 @@ int mesg_read(int id);
 int read_loop(int fd, char* readbuf, int readlen);
 int write_loop(int fd, char* writebuf, int writelen);
 
-hmesg_t mesg;
+hmesg_t mesg = HMESG_INITIALIZER;
 char*   reply_dir;
 int     reply_dir_created, signal_caught;
 char*   scp_cmd;
@@ -194,8 +194,6 @@ int init_comm(void)
     const char* cfgval;
     hsig_t* sig = &mesg.data.session.sig;
     hcfg_t* cfg = &mesg.data.session.cfg;
-
-    mesg = HMESG_INITIALIZER;
 
     /* Read a session message from the codegen plugin */
     if (mesg_recv(STDIN_FILENO, &mesg) < 1) {

@@ -29,7 +29,7 @@
 #include <math.h>
 #include <limits.h>
 
-const hsig_t HSIG_INITIALIZER = {0};
+const hsig_t hsig_zero = HSIG_INITIALIZER;
 
 /* Internal helper function prototypes. */
 static int       add_range(hsig_t* sig, hrange_t* range);
@@ -54,7 +54,7 @@ int hsig_copy(hsig_t* dst, const hsig_t* src)
         return -1;
 
     for (int i = 0; i < dst->range_len; ++i) {
-        dst->range[i] = HRANGE_INITIALIZER;
+        dst->range[i] = hrange_zero;
         if (hrange_copy(&dst->range[i], &src->range[i]) != 0)
             return -1;
     }
@@ -68,7 +68,7 @@ void hsig_fini(hsig_t* sig)
 
     free(sig->range);
     free(sig->name);
-    *sig = HSIG_INITIALIZER;
+    *sig = hsig_zero;
 }
 
 int hsig_equal(const hsig_t* sig_a, const hsig_t* sig_b)
@@ -292,7 +292,7 @@ int hsig_deserialize(hsig_t* sig, char* buf)
     }
 
     for (i = 0; i < sig->range_len; ++i) {
-        sig->range[i] = HRANGE_INITIALIZER;
+        sig->range[i] = hrange_zero;
         count = hrange_deserialize(&sig->range[i], buf + total);
         if (count < 0) goto invalid;
         total += count;

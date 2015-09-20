@@ -52,8 +52,8 @@
 /*
  * Session and configuration information from the Harmony Server.
  */
-hsig_t sig;
-hcfg_t cfg;
+hsig_t sig = HSIG_INITIALIZER;
+hcfg_t cfg = HCFG_INITIALIZER;
 
 using namespace std;
 
@@ -216,9 +216,6 @@ int main(int argc, char* argv[])
 
     local_url.path = argv[1];
     local_url.host.clear();
-
-    sig = HSIG_INITIALIZER;
-    cfg = HCFG_INITIALIZER;
 
     // main loop starts here
     // update the log file
@@ -560,7 +557,7 @@ int parse_slave_list(const char* hostlist)
     }
 
     newgen.pid = 0;
-    newgen.mesg = HMESG_INITIALIZER;
+    newgen.mesg = hmesg_zero;
 
     end = hostlist + strlen(hostlist);
     head = hostlist;

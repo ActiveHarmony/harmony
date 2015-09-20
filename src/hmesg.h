@@ -113,9 +113,9 @@ typedef struct {
     char* send_buf;
     int   send_len;
 } hmesg_t;
-extern const hmesg_t HMESG_INITIALIZER;
+#define HMESG_INITIALIZER {0}
+extern const hmesg_t hmesg_zero;
 
-void hmesg_init(hmesg_t* mesg);
 void hmesg_scrub(hmesg_t* mesg);
 void hmesg_fini(hmesg_t* mesg);
 int  hmesg_serialize(hmesg_t* mesg);

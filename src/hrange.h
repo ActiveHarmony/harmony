@@ -83,7 +83,8 @@ typedef struct hrange {
         range_enum_t e;
     } bounds;
 } hrange_t;
-extern const hrange_t HRANGE_INITIALIZER;
+#define HRANGE_INITIALIZER {0}
+extern const hrange_t hrange_zero;
 
 /* Harmony range functions */
 void          hrange_fini(hrange_t* range);

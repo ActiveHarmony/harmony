@@ -83,7 +83,7 @@ hcfg_info_t plugin_keyinfo[] = {
     { NULL }
 };
 
-hpoint_t best;
+hpoint_t best = HPOINT_INITIALIZER;
 double   best_perf;
 
 typedef enum simplex_init {
@@ -190,7 +190,6 @@ int strategy_init(hsig_t* sig)
         /* The best point and trial counter should only be initialized once,
          * and thus be retained across a restart.
          */
-        best = HPOINT_INITIALIZER;
         best_perf = HUGE_VAL;
         next_id = 1;
     }

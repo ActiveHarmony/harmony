@@ -29,7 +29,7 @@
 #include <ctype.h>
 #include <math.h> /* For NAN */
 
-const hcfg_t HCFG_INITIALIZER = {0};
+const hcfg_t hcfg_zero = HCFG_INITIALIZER;
 
 /* -------------------------------------------
  * Default values for configuration variables.

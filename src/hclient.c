@@ -117,29 +117,17 @@ static int debug_mode = 0;
  */
 hdesc_t* ah_init()
 {
-    hdesc_t* hd = malloc( sizeof(*hd) );
+    hdesc_t* hd = calloc(1, sizeof(*hd));
     if (!hd)
         return NULL;
 
-    hd->sig = HSIG_INITIALIZER;
-    hd->cfg = HCFG_INITIALIZER;
     if (hcfg_init(&hd->cfg) != 0)
         return NULL;
 
-    hd->mesg = HMESG_INITIALIZER;
     hd->state = HARMONY_STATE_INIT;
 
-    hd->varloc = NULL;
-    hd->varloc_cap = 0;
-
-    hd->curr = HPOINT_INITIALIZER;
-    hd->best = HPOINT_INITIALIZER;
-
-    hd->buf = NULL;
-    hd->buflen = 0;
-    hd->errstr = NULL;
-
-    hd->id = NULL;
+    hd->curr = hpoint_zero;
+    hd->best = hpoint_zero;
 
     return hd;
 }
@@ -516,9 +504,9 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
 
     /* Prepare a Harmony message. */
     hmesg_scrub(&hd->mesg);
-    hd->mesg.data.session.sig = HSIG_INITIALIZER;
+    hd->mesg.data.session.sig = hsig_zero;
     hsig_copy(&hd->mesg.data.session.sig, &hd->sig);
-    hd->mesg.data.session.cfg = HCFG_INITIALIZER;
+    hd->mesg.data.session.cfg = hcfg_zero;
     hcfg_copy(&hd->mesg.data.session.cfg, &hd->cfg);
 
     if (send_request(hd, HMESG_SESSION) != 0)
@@ -609,7 +597,7 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
 
         /* Prepare a Harmony message. */
         hmesg_scrub(&hd->mesg);
-        hd->mesg.data.join = HSIG_INITIALIZER;
+        hd->mesg.data.join = hsig_zero;
         if (hsig_copy(&hd->mesg.data.join, &hd->sig) != 0) {
             hd->errstr = "Internal error copying signature data";
             return -1;

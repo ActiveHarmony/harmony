@@ -37,7 +37,8 @@ typedef struct hcfg {
     int    len;
     int    cap;
 } hcfg_t;
-extern const hcfg_t HCFG_INITIALIZER;
+#define HCFG_INITIALIZER {0}
+extern const hcfg_t hcfg_zero;
 
 int    hcfg_init(hcfg_t* cfg);
 int    hcfg_reginfo(hcfg_t* cfg, const hcfg_info_t* info);

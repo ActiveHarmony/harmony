@@ -26,9 +26,9 @@
 #include <string.h>
 #include <ctype.h>
 
-int hval_parse_string(const char* buf, const char** newbuf);
+const hval_t hval_zero = HVAL_INITIALIZER;
 
-const hval_t HVAL_INITIALIZER = { HVAL_UNKNOWN };
+int hval_parse_string(const char* buf, const char** newbuf);
 
 int hval_parse(hval_t* val, const char* buf)
 {

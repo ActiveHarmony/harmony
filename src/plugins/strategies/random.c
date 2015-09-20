@@ -52,7 +52,7 @@ hcfg_info_t plugin_keyinfo[] = {
     { NULL }
 };
 
-hpoint_t best;
+hpoint_t best = HPOINT_INITIALIZER;
 double   best_perf;
 
 /* Forward function definitions. */
@@ -82,7 +82,6 @@ int strategy_init(hsig_t* sig)
         /* The best point and trial counter should only be initialized once,
          * and thus be retained across a restart.
          */
-        best = HPOINT_INITIALIZER;
         best_perf = HUGE_VAL;
         curr->id = 1;
     }

@@ -28,7 +28,7 @@
 #include <math.h>
 #include <limits.h>
 
-const hrange_t HRANGE_INITIALIZER = {0};
+const hrange_t hrange_zero = HRANGE_INITIALIZER;
 
 /* Internal helper function prototypes. */
 static int           range_enum_copy(range_enum_t* dst,
@@ -248,7 +248,7 @@ void hrange_fini(hrange_t* range)
             free(range->bounds.e.set[i]);
         free(range->bounds.e.set);
     }
-    *range = HRANGE_INITIALIZER;
+    *range = hrange_zero;
 }
 
 int hrange_copy(hrange_t* dst, const hrange_t* src)

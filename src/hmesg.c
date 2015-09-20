@@ -28,7 +28,7 @@
 #include <string.h>
 #include <arpa/inet.h>
 
-const hmesg_t HMESG_INITIALIZER = {0};
+const hmesg_t hmesg_zero = HMESG_INITIALIZER;
 
 void hmesg_scrub(hmesg_t* mesg)
 {
@@ -292,7 +292,7 @@ int hmesg_deserialize(hmesg_t* mesg)
             break;
 
         case HMESG_JOIN:
-            mesg->data.join = HSIG_INITIALIZER;
+            mesg->data.join = hsig_zero;
             count = hsig_deserialize(&mesg->data.join, buf + total);
             if (count < 0) goto error;
             total += count;
@@ -310,7 +310,7 @@ int hmesg_deserialize(hmesg_t* mesg)
             if (mesg->status == HMESG_STATUS_OK ||
                 mesg->status == HMESG_STATUS_BUSY)
             {
-                mesg->data.point = HPOINT_INITIALIZER;
+                mesg->data.point = hpoint_zero;
                 count = hpoint_deserialize(&mesg->data.point, buf + total);
                 if (count < 0) goto error;
                 total += count;

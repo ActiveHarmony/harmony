@@ -44,8 +44,8 @@ typedef struct hval {
         const char* s;
     } value;
 } hval_t;
-
-extern const hval_t HVAL_INITIALIZER;
+#define HVAL_INITIALIZER {HVAL_UNKNOWN}
+extern const hval_t hval_zero;
 
 int hval_parse(hval_t* val, const char* buf);
 int hval_serialize(char** buf, int* buflen, const hval_t* val);

@@ -72,7 +72,7 @@ int* http_fds, http_len, http_cap;
 
 char* harmony_dir;
 char* session_bin;
-hmesg_t mesg;
+hmesg_t mesg = HMESG_INITIALIZER;
 
 session_state_t* slist;
 int slist_cap;
@@ -283,7 +283,6 @@ int vars_init(int argc, char* argv[])
                 CFGKEY_HARMONY_HOME "\n");
         return -1;
     }
-    mesg = HMESG_INITIALIZER;
 
     /*
      * Prepare the file descriptor lists.
