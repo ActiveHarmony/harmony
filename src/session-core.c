@@ -198,12 +198,12 @@ int main(int argc, char* argv[])
     }
 
     /* Initialize the session. */
-    if (hsig_copy(&sig, &mesg.data.session.sig) != 0) {
+    if (hsig_copy(&sig, &mesg.data.sig) != 0) {
         mesg.data.string = "Could not copy session data";
         goto error;
     }
 
-    if (hcfg_copy(&cfg, &mesg.data.session.cfg) != 0) {
+    if (hcfg_copy(&cfg, &mesg.data.cfg) != 0) {
         mesg.data.string = "Could not copy configuration environment";
         goto error;
     }
@@ -598,12 +598,12 @@ int handle_join(hmesg_t* mesg)
     int i;
 
     /* Verify that client signature matches current session. */
-    if (!hsig_match(&mesg->data.join, &sig)) {
+    if (!hsig_match(&mesg->data.sig, &sig)) {
         errmsg = "Incompatible join signature.";
         return -1;
     }
 
-    if (hsig_copy(&mesg->data.join, &sig) < 0) {
+    if (hsig_copy(&mesg->data.sig, &sig) < 0) {
         errmsg = "Internal error: Could not copy signature.";
         return -1;
     }
@@ -717,12 +717,12 @@ int handle_report(hmesg_t* mesg)
     /* Find the associated trial in the pending list. */
     for (idx = 0; idx < pending_cap; ++idx) {
         trial = &pending[idx];
-        if (trial->point.id == mesg->data.report.cand_id)
+        if (trial->point.id == mesg->data.point.id)
             break;
     }
     if (idx == pending_cap) {
-        if (mesg->data.report.cand_id == paused_id) {
-            hperf_fini(&mesg->data.report.perf);
+        if (mesg->data.point.id == paused_id) {
+            hperf_fini(&mesg->data.perf);
             mesg->status = HMESG_STATUS_OK;
             return 0;
         }
@@ -734,14 +734,14 @@ int handle_report(hmesg_t* mesg)
     paused_id = 0;
 
     /* Update performance in our local records. */
-    hperf_copy(&trial->perf, &mesg->data.report.perf);
+    hperf_copy(&trial->perf, &mesg->data.perf);
 
     /* Begin the workflow at the outermost analysis layer. */
     curr_layer = -lstack_len;
     if (plugin_workflow(idx) != 0)
         return -1;
 
-    hperf_fini(&mesg->data.report.perf);
+    hperf_fini(&mesg->data.perf);
     mesg->status = HMESG_STATUS_OK;
     return 0;
 }

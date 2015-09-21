@@ -35,8 +35,8 @@ void hmesg_scrub(hmesg_t* mesg)
     switch (mesg->type) {
     case HMESG_SESSION:
         if (mesg->status == HMESG_STATUS_REQ) {
-            hsig_scrub(&mesg->data.session.sig);
-            hcfg_scrub(&mesg->data.session.cfg);
+            hsig_scrub(&mesg->data.sig);
+            hcfg_scrub(&mesg->data.cfg);
         }
         break;
 
@@ -44,7 +44,7 @@ void hmesg_scrub(hmesg_t* mesg)
         if (mesg->status == HMESG_STATUS_REQ ||
             mesg->status == HMESG_STATUS_OK)
         {
-            hsig_scrub(&mesg->data.join);
+            hsig_scrub(&mesg->data.sig);
         }
         break;
 
@@ -59,7 +59,7 @@ void hmesg_scrub(hmesg_t* mesg)
 
     case HMESG_REPORT:
         if (mesg->status == HMESG_STATUS_REQ)
-            hperf_fini(&mesg->data.report.perf);
+            hperf_fini(&mesg->data.perf);
         break;
 
     default:
@@ -144,18 +144,18 @@ int hmesg_serialize(hmesg_t* mesg)
         switch (mesg->type) {
         case HMESG_SESSION:
             if (mesg->status == HMESG_STATUS_REQ) {
-                count = hsig_serialize(&buf, &buflen, &mesg->data.session.sig);
+                count = hsig_serialize(&buf, &buflen, &mesg->data.sig);
                 if (count < 0) goto error;
                 total += count;
 
-                count = hcfg_serialize(&buf, &buflen, &mesg->data.session.cfg);
+                count = hcfg_serialize(&buf, &buflen, &mesg->data.cfg);
                 if (count < 0) goto error;
                 total += count;
             }
             break;
 
         case HMESG_JOIN:
-            count = hsig_serialize(&buf, &buflen, &mesg->data.join);
+            count = hsig_serialize(&buf, &buflen, &mesg->data.sig);
             if (count < 0) goto error;
             total += count;
             break;
@@ -181,12 +181,11 @@ int hmesg_serialize(hmesg_t* mesg)
         case HMESG_REPORT:
             if (mesg->status == HMESG_STATUS_REQ) {
                 count = snprintf_serial(&buf, &buflen, "%d ",
-                                        mesg->data.report.cand_id);
+                                        mesg->data.point.id);
                 if (count < 0) goto error;
                 total += count;
 
-                count = hperf_serialize(&buf, &buflen,
-                                        &mesg->data.report.perf);
+                count = hperf_serialize(&buf, &buflen, &mesg->data.perf);
                 if (count < 0) goto error;
                 total += count;
             }
@@ -288,22 +287,22 @@ int hmesg_deserialize(hmesg_t* mesg)
         switch (mesg->type) {
         case HMESG_SESSION:
             if (mesg->status == HMESG_STATUS_REQ) {
-                mesg->data.session.sig.owner = mesg;
-                count = hsig_deserialize(&mesg->data.session.sig, buf + total);
+                mesg->data.sig.owner = mesg;
+                count = hsig_deserialize(&mesg->data.sig, buf + total);
                 if (count < 0) goto error;
                 total += count;
 
-                mesg->data.session.cfg.owner = mesg;
-                count = hcfg_deserialize(&mesg->data.session.cfg, buf + total);
+                mesg->data.cfg.owner = mesg;
+                count = hcfg_deserialize(&mesg->data.cfg, buf + total);
                 if (count < 0) goto error;
                 total += count;
             }
             break;
 
         case HMESG_JOIN:
-            mesg->data.join = hsig_zero;
-            mesg->data.join.owner = mesg;
-            count = hsig_deserialize(&mesg->data.join, buf + total);
+            mesg->data.sig = hsig_zero;
+            mesg->data.sig.owner = mesg;
+            count = hsig_deserialize(&mesg->data.sig, buf + total);
             if (count < 0) goto error;
             total += count;
             break;
@@ -331,13 +330,11 @@ int hmesg_deserialize(hmesg_t* mesg)
         case HMESG_REPORT:
             if (mesg->status == HMESG_STATUS_REQ) {
                 if (sscanf(buf + total, " %d%n",
-                           &mesg->data.report.cand_id, &count) < 1)
+                           &mesg->data.point.id, &count) < 1)
                     goto invalid;
                 total += count;
 
-                mesg->data.report.perf = hperf_zero;
-                count = hperf_deserialize(&mesg->data.report.perf,
-                                          buf + total);
+                count = hperf_deserialize(&mesg->data.perf, buf + total);
                 if (count < 0) goto error;
                 total += count;
             }

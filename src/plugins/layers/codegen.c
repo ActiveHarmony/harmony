@@ -149,8 +149,8 @@ int codegen_init(hsig_t* sig)
     mesg.type = HMESG_SESSION;
     mesg.status = HMESG_STATUS_REQ;
 
-    hsig_copy(&mesg.data.session.sig, sig);
-    hcfg_copy(&mesg.data.session.cfg, session_cfg);
+    hsig_copy(&mesg.data.sig, sig);
+    hcfg_copy(&mesg.data.cfg, session_cfg);
 
     /* Memory allocated for mesg is freed after mesg_send(). */
     if (mesg_send(sockfd, &mesg) < 1)

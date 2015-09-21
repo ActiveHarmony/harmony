@@ -495,7 +495,7 @@ int handle_client_socket(int fd)
         for (idx = 0; idx < slist_cap; ++idx) {
             if (!slist[idx].name)
                 continue;
-            if (strcmp(slist[idx].name, mesg.data.join.name) == 0)
+            if (strcmp(slist[idx].name, mesg.data.sig.name) == 0)
                 break;
         }
         if (idx == slist_cap) {
@@ -515,10 +515,10 @@ int handle_client_socket(int fd)
         break;
 
     case HMESG_REPORT:
-        perf = hperf_unify(&mesg.data.report.perf);
+        perf = hperf_unify(&mesg.data.perf);
 
         for (i = 0; i < sess->fetched_len; ++i) {
-            if (sess->fetched[i].id == mesg.data.report.cand_id)
+            if (sess->fetched[i].id == mesg.data.point.id)
                 break;
         }
         if (i < sess->fetched_len) {
@@ -677,7 +677,7 @@ session_state_t* session_open(void)
             if (idx < 0)
                 idx = i;
         }
-        else if (strcmp(slist[i].name, mesg.data.session.sig.name) == 0) {
+        else if (strcmp(slist[i].name, mesg.data.sig.name) == 0) {
             mesg.status = HMESG_STATUS_FAIL;
             mesg.data.string = "Session name already exists.";
             return NULL;
@@ -692,7 +692,7 @@ session_state_t* session_open(void)
     }
     sess = &slist[idx];
 
-    sess->name = stralloc(mesg.data.session.sig.name);
+    sess->name = stralloc(mesg.data.sig.name);
     if (!sess->name)
         return NULL;
 
@@ -701,18 +701,18 @@ session_state_t* session_open(void)
     sess->best_perf = HUGE_VAL;
 
     /* Override any CFGKEY_HARMONY_HOME sent by remote client. */
-    hcfg_set(&mesg.data.session.cfg, CFGKEY_HARMONY_HOME, harmony_dir);
+    hcfg_set(&mesg.data.cfg, CFGKEY_HARMONY_HOME, harmony_dir);
 
     /* Force sessions to load the httpinfo plugin layer. */
     #define HTTPINFO "httpinfo.so"
-    cfgstr = hcfg_get(&mesg.data.session.cfg, CFGKEY_LAYERS);
+    cfgstr = hcfg_get(&mesg.data.cfg, CFGKEY_LAYERS);
     if (!cfgstr) {
-        hcfg_set(&mesg.data.session.cfg, CFGKEY_LAYERS, HTTPINFO);
+        hcfg_set(&mesg.data.cfg, CFGKEY_LAYERS, HTTPINFO);
         sess->modified = 1;
     }
     else if (strstr(cfgstr, HTTPINFO) == NULL) {
         char *buf = sprintf_alloc(HTTPINFO ":%s", cfgstr);
-        hcfg_set(&mesg.data.session.cfg, CFGKEY_LAYERS, buf);
+        hcfg_set(&mesg.data.cfg, CFGKEY_LAYERS, buf);
         sess->modified = 1;
         free(buf);
     }
@@ -721,13 +721,13 @@ session_state_t* session_open(void)
     }
 
     /* Initialize HTTP server fields. */
-    if (hsig_copy(&sess->sig, &mesg.data.session.sig) != 0)
+    if (hsig_copy(&sess->sig, &mesg.data.sig) != 0)
         goto error;
 
     if (gettimeofday(&sess->start, NULL) < 0)
         goto error;
 
-    cfgstr = hcfg_get(&mesg.data.session.cfg, CFGKEY_STRATEGY);
+    cfgstr = hcfg_get(&mesg.data.cfg, CFGKEY_STRATEGY);
     sess->strategy = stralloc( cfgstr );
     sess->status = 0x0;
     sess->log_len = 0;

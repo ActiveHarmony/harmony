@@ -94,17 +94,11 @@ typedef struct hmesg {
     hmesg_status status;
     const char* src_id;
 
-    union {
-        struct mesg_session {
-            hsig_t sig;
-            hcfg_t cfg;
-        } session;
-        hsig_t join;
-        hpoint_t point;
-        struct mesg_report {
-            int cand_id;
-            hperf_t perf;
-        } report;
+    struct hmesg_data {
+        hsig_t      sig;
+        hcfg_t      cfg;
+        hpoint_t    point;
+        hperf_t     perf;
         const char* string;
     } data;
 

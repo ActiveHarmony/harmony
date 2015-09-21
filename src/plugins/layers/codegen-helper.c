@@ -192,8 +192,8 @@ int init_signals(void)
 int init_comm(void)
 {
     const char* cfgval;
-    hsig_t* sig = &mesg.data.session.sig;
-    hcfg_t* cfg = &mesg.data.session.cfg;
+    hsig_t* sig = &mesg.data.sig;
+    hcfg_t* cfg = &mesg.data.cfg;
 
     /* Read a session message from the codegen plugin */
     if (mesg_recv(STDIN_FILENO, &mesg) < 1) {

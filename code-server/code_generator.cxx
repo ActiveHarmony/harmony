@@ -325,8 +325,8 @@ int codeserver_init(string& filename)
         return -1;
     }
 
-    hsig_copy(&sig, &init_mesg.data.session.sig);
-    hcfg_copy(&cfg, &init_mesg.data.session.cfg);
+    hsig_copy(&sig, &init_mesg.data.sig);
+    hcfg_copy(&cfg, &init_mesg.data.cfg);
     appname = sig.name;
 
     cfgval = hcfg_get(&cfg, CFGKEY_SERVER_URL);

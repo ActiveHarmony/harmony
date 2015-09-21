@@ -504,10 +504,10 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
 
     /* Prepare a Harmony message. */
     hmesg_scrub(&hd->mesg);
-    hd->mesg.data.session.sig = hsig_zero;
-    hsig_copy(&hd->mesg.data.session.sig, &hd->sig);
-    hd->mesg.data.session.cfg = hcfg_zero;
-    hcfg_copy(&hd->mesg.data.session.cfg, &hd->cfg);
+    hd->mesg.data.sig = hsig_zero;
+    hsig_copy(&hd->mesg.data.sig, &hd->sig);
+    hd->mesg.data.cfg = hcfg_zero;
+    hcfg_copy(&hd->mesg.data.cfg, &hd->cfg);
 
     if (send_request(hd, HMESG_SESSION) != 0)
         return -1;
@@ -597,8 +597,8 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
 
         /* Prepare a Harmony message. */
         hmesg_scrub(&hd->mesg);
-        hd->mesg.data.join = hsig_zero;
-        if (hsig_copy(&hd->mesg.data.join, &hd->sig) != 0) {
+        hd->mesg.data.sig = hsig_zero;
+        if (hsig_copy(&hd->mesg.data.sig, &hd->sig) != 0) {
             hd->errstr = "Internal error copying signature data";
             return -1;
         }
@@ -614,7 +614,7 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
         }
 
         hsig_fini(&hd->sig);
-        if (hsig_copy(&hd->sig, &hd->mesg.data.join) != 0) {
+        if (hsig_copy(&hd->sig, &hd->mesg.data.sig) != 0) {
             hd->errstr = "Error copying received signature structure";
             return -1;
         }
@@ -1102,9 +1102,8 @@ int ah_report(hdesc_t* hd, double* perf)
 
     /* Prepare a Harmony message. */
     hmesg_scrub(&hd->mesg);
-    hd->mesg.data.report.cand_id = hd->curr.id;
-    hd->mesg.data.report.perf = hperf_zero;
-    if (hperf_copy(&hd->mesg.data.report.perf, &hd->perf) != 0) {
+    hd->mesg.data.point.id = hd->curr.id;
+    if (hperf_copy(&hd->mesg.data.perf, &hd->perf) != 0) {
         hd->errstr = "Error allocating performance array for message";
         return -1;
     }
