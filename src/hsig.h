@@ -31,6 +31,7 @@ extern "C" {
  * compatibility with the session they wish to join.
  */
 typedef struct hsig {
+    unsigned  id;
     char*     name;
     hrange_t* range;
     int       range_len;

@@ -84,6 +84,7 @@ int hsig_copy(hsig_t* dst, const hsig_t* src)
 
 void hsig_scrub(hsig_t* sig)
 {
+    sig->id = 0;
     if (!hmesg_owner(sig->owner, sig->name)) {
         free(sig->name);
         sig->name = NULL;
@@ -198,6 +199,8 @@ int hsig_int(hsig_t* sig, const char* name, long min, long max, long step)
         free(range.name);
         return -1;
     }
+
+    ++sig->id;
     return 0;
 }
 
@@ -223,6 +226,8 @@ int hsig_real(hsig_t* sig, const char* name,
         free(range.name);
         return -1;
     }
+
+    ++sig->id;
     return 0;
 }
 
@@ -262,6 +267,8 @@ int hsig_enum(hsig_t* sig, const char* name, const char* value)
         }
         return -1;
     }
+
+    ++sig->id;
     return 0;
 }
 
@@ -269,7 +276,7 @@ int hsig_serialize(char** buf, int* buflen, const hsig_t* sig)
 {
     int i, count, total;
 
-    count = snprintf_serial(buf, buflen, "sig: ");
+    count = snprintf_serial(buf, buflen, "sig: %u ", sig->id);
     if (count < 0) goto invalid;
     total = count;
 
@@ -296,21 +303,16 @@ int hsig_serialize(char** buf, int* buflen, const hsig_t* sig)
 
 int hsig_deserialize(hsig_t* sig, char* buf)
 {
-    int i, count, total;
-    char* strptr;
+    int count, total;
     hrange_t* newbuf;
 
-    for (i = 0; isspace(buf[i]); ++i);
-    if (strncmp("sig:", buf + i, 4) != 0)
+    if (sscanf(buf, " sig: %u%n", &sig->id, &count) < 1)
         goto invalid;
-    total = i + 4;
+    total = count;
 
-    count = scanstr_serial((const char**)&strptr, buf + total);
+    count = scanstr_serial((const char**)&sig->name, buf + total);
     if (count < 0) goto invalid;
     total += count;
-
-    sig->name = strptr;
-    if (!sig->name) goto error;
 
     if (sscanf(buf + total, " %d%n", &sig->range_len, &count) < 1)
         goto invalid;
@@ -323,14 +325,13 @@ int hsig_deserialize(hsig_t* sig, char* buf)
         sig->range_cap = sig->range_len;
     }
 
-    for (i = 0; i < sig->range_len; ++i) {
+    for (int i = 0; i < sig->range_len; ++i) {
         sig->range[i] = hrange_zero;
         sig->range[i].owner = sig->owner;
         count = hrange_deserialize(&sig->range[i], buf + total);
         if (count < 0) goto invalid;
         total += count;
     }
-
     return total;
 
   invalid:
@@ -408,6 +409,7 @@ int hsig_parse(hsig_t* sig, const char* buf, const char** errptr)
         goto error;
     }
 
+    ++sig->id;
     if (errptr) *errptr = NULL;
     return 1;
 
