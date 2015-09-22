@@ -624,7 +624,7 @@ int handle_session_socket(int idx)
             /* Log this point before we forward it to the client. */
             if (sess->fetched_len == sess->fetched_cap) {
                 if (array_grow(&sess->fetched, &sess->fetched_cap,
-                               sizeof(hpoint_t*)) != 0)
+                               sizeof(*sess->fetched)) != 0)
                 {
                     perror("Could not grow fetch log");
                     goto error;
