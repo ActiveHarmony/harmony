@@ -239,14 +239,20 @@ int range_enum_parse(range_enum_t* bounds, const char* buf, const char** err)
  */
 void hrange_fini(hrange_t* range)
 {
-    hrange_scrub(range);
-    *range = hrange_zero;
+    if (!hmesg_owner(range->owner, range->name))
+        free(range->name);
+
+    if (range->type == HVAL_STR) {
+        for (int i = 0; i < range->bounds.e.len; ++i) {
+            if (!hmesg_owner(range->owner, range->bounds.e.set[i]))
+                free(range->bounds.e.set[i]);
+        }
+        free(range->bounds.e.set);
+    }
 }
 
 int hrange_copy(hrange_t* dst, const hrange_t* src)
 {
-    hrange_fini(dst);
-
     dst->name = stralloc(src->name);
     if (!dst->name)
         return -1;
@@ -429,32 +435,17 @@ int hrange_deserialize(hrange_t* range, char* buf)
     return -1;
 }
 
-void hrange_scrub(hrange_t* range)
-{
-    if (!hmesg_owner(range->owner, range->name))
-        free(range->name);
-
-    if (range->type == HVAL_STR) {
-        for (int i = 0; i < range->bounds.e.len; ++i) {
-            if (!hmesg_owner(range->owner, range->bounds.e.set[i]))
-                free(range->bounds.e.set[i]);
-        }
-        free(range->bounds.e.set);
-    }
-    *range = hrange_zero;
-}
-
 /*
  * Internal helper function implementations.
  */
 int range_enum_copy(range_enum_t* dst, const range_enum_t* src)
 {
-    dst->set = malloc(src->len * sizeof(*dst->set));
+    dst->set = malloc(src->cap * sizeof(*dst->set));
     if (!dst->set)
         return -1;
 
     dst->len = src->len;
-    dst->cap = src->len;
+    dst->cap = src->cap;
     for (int i = 0; i < src->len; ++i) {
         dst->set[i] = stralloc(src->set[i]);
         if (!dst->set[i])

@@ -32,44 +32,25 @@ const hpoint_t hpoint_zero = HPOINT_INITIALIZER;
 int hpoint_init(hpoint_t* pt, int len)
 {
     pt->id = 0;
-    pt->len = len;
-    pt->val = calloc(len, sizeof(hval_t));
-    if (!pt->val)
-        return -1;
-
-    return 0;
-}
-
-void hpoint_fini(hpoint_t* pt)
-{
-    for (int i = 0; i < pt->len; ++i) {
-        if (pt->val[i].type == HVAL_STR)
-            if (!hmesg_owner(pt->owner, pt->val[i].value.s))
-                free((char*)pt->val[i].value.s);
+    if (pt->len != len) {
+        hval_t *newbuf = realloc(pt->val, sizeof(*pt->val) * len);
+        if (!newbuf)
+            return -1;
+        pt->val = newbuf;
+        pt->len = len;
     }
-    free(pt->val);
-    *pt = hpoint_zero;
+    return 0;
 }
 
 int hpoint_copy(hpoint_t* dst, const hpoint_t* src)
 {
-    if (src->id == -1) {
-        hpoint_fini(dst);
-        return 0;
-    }
+    hpoint_scrub(dst);
+    if (hpoint_init(dst, src->len) != 0)
+        return -1;
 
-    hpoint_fini(dst);
     dst->id = src->id;
-    if (dst->len != src->len) {
-        hval_t *newbuf = realloc(dst->val, sizeof(*src->val) * src->len);
-        if (!newbuf)
-            return -1;
-        dst->val = newbuf;
-        dst->len = src->len;
-    }
-
     memcpy(dst->val, src->val, sizeof(*src->val) * src->len);
-    for (int i = 0; i < dst->len; ++i) {
+    for (int i = 0; i < src->len; ++i) {
         if (src->val[i].type == HVAL_STR) {
             dst->val[i].value.s = stralloc(src->val[i].value.s);
             if (!dst->val[i].value.s)
@@ -79,6 +60,24 @@ int hpoint_copy(hpoint_t* dst, const hpoint_t* src)
     dst->owner = NULL;
 
     return 0;
+}
+
+void hpoint_scrub(hpoint_t* pt)
+{
+    for (int i = 0; i < pt->len; ++i) {
+        if (pt->val[i].type == HVAL_STR) {
+            if (!hmesg_owner(pt->owner, pt->val[i].value.s))
+                free((char*)pt->val[i].value.s);
+        }
+        pt->val[i].type = HVAL_UNKNOWN;
+    }
+    pt->len = 0;
+}
+
+void hpoint_fini(hpoint_t* pt)
+{
+    hpoint_scrub(pt);
+    free(pt->val);
 }
 
 int hpoint_align(hpoint_t* pt, hsig_t* sig)
@@ -208,16 +207,4 @@ int hpoint_deserialize(hpoint_t* pt, char* buf)
     errno = EINVAL;
   error:
     return -1;
-}
-
-void hpoint_scrub(hpoint_t* pt)
-{
-    for (int i = 0; i < pt->len; ++i) {
-        if (pt->val[i].type == HVAL_STR) {
-            if (!hmesg_owner(pt->owner, pt->val[i].value.s))
-                free((char*)pt->val[i].value.s);
-        }
-    }
-    free(pt->val);
-    pt->val = NULL;
 }

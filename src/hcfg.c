@@ -113,23 +113,51 @@ int hcfg_reginfo(hcfg_t* cfg, const hcfg_info_t* info)
 
 int hcfg_copy(hcfg_t* dst, const hcfg_t* src)
 {
-    dst->len = src->len;
-    dst->cap = src->len;
-    dst->env = malloc(dst->len * sizeof(*dst->env));
-    if (!dst->env) return -1;
+    int i = 0;
+    hcfg_scrub(dst);
 
-    for (int i = 0; i < dst->len; ++i) {
+    if (dst->cap != src->cap) {
+        char** newbuf = realloc(dst->env, src->cap * sizeof(*src->env));
+        if (!newbuf)
+            return -1;
+
+        dst->env = newbuf;
+        dst->cap = src->cap;
+    }
+    dst->len = src->len;
+
+    while (i < dst->len) {
         dst->env[i] = stralloc( src->env[i] );
-        if (!dst->env[i]) return -1;
+        if (!dst->env[i])
+            goto error;
+        ++i;
     }
     dst->owner = NULL;
 
     return 0;
+
+  error:
+    while (i > 0)
+        free(dst->env[--i]);
+    free(dst->env);
+    *dst = hcfg_zero;
+
+    return -1;
+}
+
+void hcfg_scrub(hcfg_t* cfg)
+{
+    for (int i = 0; i < cfg->len; ++i) {
+        if (!hmesg_owner(cfg->owner, cfg->env[i]))
+            free(cfg->env[i]);
+    }
+    cfg->len = 0;
 }
 
 void hcfg_fini(hcfg_t* cfg)
 {
     hcfg_scrub(cfg);
+    free(cfg->env);
 }
 
 char* hcfg_get(const hcfg_t* cfg, const char* key)
@@ -274,13 +302,19 @@ int hcfg_serialize(char** buf, int* buflen, const hcfg_t* cfg)
 int hcfg_deserialize(hcfg_t* cfg, char* buf)
 {
     int total = 0;
-
     sscanf(buf, " hcfg: %d%n", &cfg->len, &total);
     if (!total)
         goto invalid;
 
-    cfg->cap = cfg->len;
-    cfg->env = malloc(cfg->len * sizeof(*cfg->env));
+    if (cfg->cap < cfg->len) {
+        char** newbuf = realloc(cfg->env, cfg->len * sizeof(*cfg->env));
+        if (!newbuf)
+            return -1;
+
+        cfg->env = newbuf;
+        cfg->cap = cfg->len;
+    }
+
     for (int i = 0; i < cfg->len; ++i) {
         int count = scanstr_serial((const char**)&cfg->env[i], buf + total);
         if (count < 0) goto invalid;
@@ -291,15 +325,6 @@ int hcfg_deserialize(hcfg_t* cfg, char* buf)
   invalid:
     errno = EINVAL;
     return -1;
-}
-
-void hcfg_scrub(hcfg_t* cfg)
-{
-    for (int i = 0; i < cfg->len; ++i) {
-        if (!hmesg_owner(cfg->owner, cfg->env[i]))
-            free(cfg->env[i]);
-    }
-    free(cfg->env);
 }
 
 int hcfg_parse(hcfg_t* cfg, const char* buf, const char** errptr)

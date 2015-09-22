@@ -151,8 +151,6 @@ int codegen_init(hsig_t* sig)
 
     hsig_copy(&mesg.data.sig, sig);
     hcfg_copy(&mesg.data.cfg, session_cfg);
-
-    /* Memory allocated for mesg is freed after mesg_send(). */
     if (mesg_send(sockfd, &mesg) < 1)
         return -1;
 
@@ -196,10 +194,8 @@ int codegen_generate(hflow_t* flow, htrial_t* trial)
         return -1;
     }
 
-    mesg = hmesg_zero;
     mesg.type = HMESG_FETCH;
     mesg.status = HMESG_STATUS_OK;
-    mesg.data.point = hpoint_zero;
     hpoint_copy(&mesg.data.point, &trial->point);
 
     if (mesg_send(sockfd, &mesg) < 1) {
@@ -283,7 +279,6 @@ int cglog_insert(const hpoint_t* point)
         if (array_grow(&cglog, &cglog_cap, sizeof(codegen_log_t)) < 0)
             return -1;
 
-    cglog[cglog_len].point = hpoint_zero;
     hpoint_copy(&cglog[cglog_len].point, point);
     cglog[cglog_len].status = CODEGEN_STATUS_REQUESTED;
     ++cglog_len;

@@ -43,7 +43,9 @@ extern const hsig_t hsig_zero;
 
 /* Harmony signature functions */
 int  hsig_copy(hsig_t* dst, const hsig_t* src);
+void hsig_scrub(hsig_t* sig);
 void hsig_fini(hsig_t* sig);
+
 int  hsig_equal(const hsig_t* sig_a, const hsig_t* sig_b);
 int  hsig_match(const hsig_t* sig_a, const hsig_t* sig_b);
 int  hsig_name(hsig_t* sig, const char* name);
@@ -52,9 +54,9 @@ int  hsig_int(hsig_t* sig, const char* name,
 int  hsig_real(hsig_t* sig, const char* name,
                double min, double max, double step);
 int  hsig_enum(hsig_t* sig, const char* name, const char* value);
+
 int  hsig_serialize(char** buf, int* buflen, const hsig_t* sig);
 int  hsig_deserialize(hsig_t* sig, char* buf);
-void hsig_scrub(hsig_t* sig);
 int  hsig_parse(hsig_t* sig, const char* buf, const char** errptr);
 
 #ifdef __cplusplus

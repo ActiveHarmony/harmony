@@ -503,10 +503,7 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
         hd->id = hd->default_id;
 
     /* Prepare a Harmony message. */
-    hmesg_scrub(&hd->mesg);
-    hd->mesg.data.sig = hsig_zero;
     hsig_copy(&hd->mesg.data.sig, &hd->sig);
-    hd->mesg.data.cfg = hcfg_zero;
     hcfg_copy(&hd->mesg.data.cfg, &hd->cfg);
 
     if (send_request(hd, HMESG_SESSION) != 0)
@@ -596,8 +593,6 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
             hd->id = hd->default_id;
 
         /* Prepare a Harmony message. */
-        hmesg_scrub(&hd->mesg);
-        hd->mesg.data.sig = hsig_zero;
         if (hsig_copy(&hd->mesg.data.sig, &hd->sig) != 0) {
             hd->errstr = "Internal error copying signature data";
             return -1;
@@ -763,7 +758,7 @@ int ah_leave(hdesc_t* hd)
         perror("Error closing socket during ah_leave()");
 
     /* Reset the hsession_t to prepare for harmony descriptor reuse. */
-    hsig_fini(&hd->sig);
+    hsig_scrub(&hd->sig);
     hd->best.id = -1;
 
     return 0;
@@ -890,7 +885,6 @@ char* ah_get_cfg(hdesc_t* hd, const char* key)
     }
 
     /* Prepare a Harmony message. */
-    hmesg_scrub(&hd->mesg);
     hd->mesg.data.string = key;
 
     if (send_request(hd, HMESG_GETCFG) != 0)
@@ -946,7 +940,6 @@ char* ah_set_cfg(hdesc_t* hd, const char* key, const char* val)
         }
 
         /* Prepare a Harmony message. */
-        hmesg_scrub(&hd->mesg);
         hd->mesg.data.string = buf;
 
         retval = send_request(hd, HMESG_SETCFG);
@@ -1001,8 +994,6 @@ int ah_fetch(hdesc_t* hd)
 
     if (hd->state == HARMONY_STATE_READY) {
         /* Prepare a Harmony message. */
-        hmesg_scrub(&hd->mesg);
-
         if (send_request(hd, HMESG_FETCH) != 0)
             return -1;
 
@@ -1101,7 +1092,6 @@ int ah_report(hdesc_t* hd, double* perf)
     }
 
     /* Prepare a Harmony message. */
-    hmesg_scrub(&hd->mesg);
     hd->mesg.data.point.id = hd->curr.id;
     if (hperf_copy(&hd->mesg.data.perf, &hd->perf) != 0) {
         hd->errstr = "Error allocating performance array for message";
@@ -1178,8 +1168,6 @@ int ah_best(hdesc_t* hd)
 
     if (hd->state >= HARMONY_STATE_CONNECTED) {
         /* Prepare a Harmony message. */
-        hmesg_scrub(&hd->mesg);
-
         if (send_request(hd, HMESG_BEST) != 0)
             return -1;
 

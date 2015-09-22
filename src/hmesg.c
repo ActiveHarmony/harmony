@@ -32,45 +32,17 @@ const hmesg_t hmesg_zero = HMESG_INITIALIZER;
 
 void hmesg_scrub(hmesg_t* mesg)
 {
-    switch (mesg->type) {
-    case HMESG_SESSION:
-        if (mesg->status == HMESG_STATUS_REQ) {
-            hsig_scrub(&mesg->data.sig);
-            hcfg_scrub(&mesg->data.cfg);
-        }
-        break;
-
-    case HMESG_JOIN:
-        if (mesg->status == HMESG_STATUS_REQ ||
-            mesg->status == HMESG_STATUS_OK)
-        {
-            hsig_scrub(&mesg->data.sig);
-        }
-        break;
-
-    case HMESG_BEST:
-    case HMESG_FETCH:
-        if (mesg->status == HMESG_STATUS_OK ||
-            mesg->status == HMESG_STATUS_BUSY)
-        {
-            hpoint_scrub(&mesg->data.point);
-        }
-        break;
-
-    case HMESG_REPORT:
-        if (mesg->status == HMESG_STATUS_REQ)
-            hperf_fini(&mesg->data.perf);
-        break;
-
-    default:
-        break;
-        /* All other cases have no heap memory to release. */
-    }
+    hsig_scrub(&mesg->data.sig);
+    hcfg_scrub(&mesg->data.cfg);
+    hpoint_scrub(&mesg->data.point);
 }
 
 void hmesg_fini(hmesg_t* mesg)
 {
-    hmesg_scrub(mesg);
+    hsig_fini(&mesg->data.sig);
+    hcfg_fini(&mesg->data.cfg);
+    hpoint_fini(&mesg->data.point);
+    hperf_fini(&mesg->data.perf);
     free(mesg->recv_buf);
     free(mesg->send_buf);
 }
@@ -300,7 +272,6 @@ int hmesg_deserialize(hmesg_t* mesg)
             break;
 
         case HMESG_JOIN:
-            mesg->data.sig = hsig_zero;
             mesg->data.sig.owner = mesg;
             count = hsig_deserialize(&mesg->data.sig, buf + total);
             if (count < 0) goto error;
@@ -319,7 +290,6 @@ int hmesg_deserialize(hmesg_t* mesg)
             if (mesg->status == HMESG_STATUS_OK ||
                 mesg->status == HMESG_STATUS_BUSY)
             {
-                mesg->data.point = hpoint_zero;
                 mesg->data.point.owner = mesg;
                 count = hpoint_deserialize(&mesg->data.point, buf + total);
                 if (count < 0) goto error;

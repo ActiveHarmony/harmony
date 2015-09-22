@@ -172,8 +172,6 @@ int mesg_send(int sock, hmesg_t* mesg)
     if (socket_write(sock, mesg->send_buf, msglen) < msglen)
         return -1;
 
-    hmesg_scrub(mesg);
-    mesg->type = HMESG_UNKNOWN;
     return 1;
 }
 
@@ -209,8 +207,6 @@ int mesg_forward(int sock, hmesg_t* mesg)
     if (socket_write(sock, mesg->recv_buf, msglen) < msglen)
         return -1;
 
-    hmesg_scrub(mesg);
-    mesg->type = HMESG_UNKNOWN;
     return 1;
 }
 
@@ -224,6 +220,7 @@ int mesg_recv(int sock, hmesg_t* mesg)
     int msglen, retval;
     unsigned int magic, msgver;
 
+    hmesg_scrub(mesg);
     retval = recv(sock, hdr, HMESG_HDR_SIZE, MSG_PEEK);
     if (retval <  0) goto error;
     if (retval == 0) return 0;
@@ -253,7 +250,6 @@ int mesg_recv(int sock, hmesg_t* mesg)
     mesg->recv_buf[retval] = '\0';  /* A strlen() safety net. */
     // fprintf(stderr, "(%2d)>>> '%s'\n", sock, mesg->recv_buf);
 
-    hmesg_scrub(mesg);
     if (hmesg_deserialize(mesg) < 0)
         goto error;
 

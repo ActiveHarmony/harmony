@@ -697,7 +697,6 @@ session_state_t* session_open(void)
         return NULL;
 
     sess->client_len = 0;
-    hpoint_fini(&sess->best);
     sess->best_perf = HUGE_VAL;
 
     /* Override any CFGKEY_HARMONY_HOME sent by remote client. */

@@ -212,7 +212,6 @@ int main(int argc, char* argv[])
         goto error;
 
     /* Send the initial session message acknowledgment. */
-    hmesg_scrub(&mesg);
     mesg.status = HMESG_STATUS_OK;
     if (mesg_send(STDIN_FILENO, &mesg) < 1) {
         errmsg = mesg.data.string;
@@ -432,8 +431,8 @@ int plugin_workflow(int trial_idx)
             return -1;
 
         /* Remove point data from pending list. */
-        hpoint_fini( (hpoint_t*)&trial->point );
-        *(hpoint_t*)&trial->point = hpoint_zero;
+        hpoint_scrub( (hpoint_t*)&trial->point );
+        ((hpoint_t*)&trial->point)->id = -1;
         --pending_len;
 
         /* Point generation attempts may begin again. */
@@ -664,7 +663,6 @@ int handle_setcfg(hmesg_t* mesg)
 
 int handle_best(hmesg_t* mesg)
 {
-    mesg->data.point = hpoint_zero;
     if (strategy_best(&mesg->data.point) != 0)
         return -1;
 
@@ -684,7 +682,6 @@ int handle_fetch(hmesg_t* mesg)
         /* Send the next point on the ready queue. */
         next = &pending[idx];
 
-        mesg->data.point = hpoint_zero;
         if (hpoint_copy(&mesg->data.point, &next->point) != 0) {
             errmsg = "Internal error: Could not copy candidate point data.";
             return -1;
@@ -699,7 +696,6 @@ int handle_fetch(hmesg_t* mesg)
     else {
         /* Ready queue is empty, or session is paused.
          * Send the best known point. */
-        mesg->data.point = hpoint_zero;
         if (strategy_best(&mesg->data.point) != 0)
             return -1;
 
@@ -968,8 +964,7 @@ int extend_lists(int target_cap)
     }
 
     for (i = orig_cap; i < pending_cap; ++i) {
-        hpoint_t* point = (hpoint_t*) &pending[i].point;
-        *point = hpoint_zero;
+        *(hpoint_t*)&pending[i].point = hpoint_zero;
         ready[i] = -1;
     }
     return 0;

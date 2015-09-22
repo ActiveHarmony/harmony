@@ -32,9 +32,9 @@ extern "C" {
  *
  */
 typedef struct hpoint {
-    int id;
+    int     id;
     hval_t* val;
-    int len;
+    int     len;
 
     void* owner;
 } hpoint_t;
@@ -42,12 +42,14 @@ typedef struct hpoint {
 extern const hpoint_t hpoint_zero;
 
 int  hpoint_init(hpoint_t* pt, int n);
-void hpoint_fini(hpoint_t* pt);
 int  hpoint_copy(hpoint_t* dst, const hpoint_t* src);
+void hpoint_scrub(hpoint_t* pt);
+void hpoint_fini(hpoint_t* pt);
+
 int  hpoint_align(hpoint_t* pt, hsig_t* sig);
+
 int  hpoint_serialize(char** buf, int* buflen, const hpoint_t* pt);
 int  hpoint_deserialize(hpoint_t* pt, char* buf);
-void hpoint_scrub(hpoint_t* pt);
 int  hpoint_parse(hpoint_t* pt, hsig_t* sig, const char* buf);
 
 #ifdef __cplusplus

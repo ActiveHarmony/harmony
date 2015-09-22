@@ -202,7 +202,6 @@ int init_comm(void)
     }
 
     if (mesg.type != HMESG_SESSION || mesg.status != HMESG_STATUS_REQ) {
-        hmesg_scrub(&mesg);
         mesg.data.string = "Invalid initial message";
         return -1;
     }

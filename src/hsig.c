@@ -41,37 +41,63 @@ static hrange_t* find_range(hsig_t* sig, const char* name);
  */
 int hsig_copy(hsig_t* dst, const hsig_t* src)
 {
-    hsig_fini(dst);
+    int i = 0;
+    hsig_scrub(dst);
 
-    dst->range = malloc(sizeof(hrange_t) * src->range_len);
-    if (!dst->range)
-        return -1;
-
-    dst->range_len = src->range_len;
-    dst->range_cap = src->range_len;
-
+    dst->id = src->id;
     dst->name = stralloc(src->name);
     if (!dst->name)
-        return -1;
+        goto error;
 
-    for (int i = 0; i < dst->range_len; ++i) {
-        dst->range[i] = hrange_zero;
+    if (dst->range_cap != src->range_cap) {
+        hrange_t* newbuf = realloc(dst->range,
+                                   src->range_cap * sizeof(*src->range));
+        if (!newbuf)
+            goto error;
+
+        memset(newbuf + src->range_len, 0,
+               (src->range_cap - src->range_len) * sizeof(*src->range));
+
+        dst->range = newbuf;
+        dst->range_cap = src->range_cap;
+    }
+    dst->range_len = src->range_len;
+
+    while (i < src->range_len) {
         if (hrange_copy(&dst->range[i], &src->range[i]) != 0)
-            return -1;
+            goto error;
+        ++i;
     }
     dst->owner = NULL;
 
     return 0;
+
+  error:
+    while (i > 0)
+        hrange_fini(&dst->range[--i]);
+    free(dst->range);
+    free(dst->name);
+    *dst = hsig_zero;
+
+    return -1;
+}
+
+void hsig_scrub(hsig_t* sig)
+{
+    if (!hmesg_owner(sig->owner, sig->name)) {
+        free(sig->name);
+        sig->name = NULL;
+    }
+
+    for (int i = 0; i < sig->range_len; ++i)
+        hrange_fini(&sig->range[i]);
+    sig->range_len = 0;
 }
 
 void hsig_fini(hsig_t* sig)
 {
-    for (int i = 0; i < sig->range_len; ++i)
-        hrange_fini(&sig->range[i]);
-
+    hsig_scrub(sig);
     free(sig->range);
-    free(sig->name);
-    *sig = hsig_zero;
 }
 
 int hsig_equal(const hsig_t* sig_a, const hsig_t* sig_b)
@@ -311,17 +337,6 @@ int hsig_deserialize(hsig_t* sig, char* buf)
     errno = EINVAL;
   error:
     return -1;
-}
-
-void hsig_scrub(hsig_t* sig)
-{
-    if (!hmesg_owner(sig->owner, sig->name))
-        free(sig->name);
-
-    for (int i = 0; i < sig->range_len; ++i)
-        hrange_scrub(&sig->range[i]);
-    free(sig->range);
-    *sig = hsig_zero;
 }
 
 int hsig_parse(hsig_t* sig, const char* buf, const char** errptr)

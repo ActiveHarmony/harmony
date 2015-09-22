@@ -95,7 +95,6 @@ unsigned long hrange_max_idx(hrange_t* range);
 
 int  hrange_serialize(char** buf, int* buflen, const hrange_t* range);
 int  hrange_deserialize(hrange_t* range, char* buf);
-void hrange_scrub(hrange_t* range);
 
 #ifdef __cplusplus
 }

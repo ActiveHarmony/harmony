@@ -45,6 +45,7 @@ extern const hcfg_t hcfg_zero;
 int    hcfg_init(hcfg_t* cfg);
 int    hcfg_reginfo(hcfg_t* cfg, const hcfg_info_t* info);
 int    hcfg_copy(hcfg_t* dst, const hcfg_t* src);
+void   hcfg_scrub(hcfg_t* cfg);
 void   hcfg_fini(hcfg_t* cfg);
 
 char*  hcfg_get(const hcfg_t* cfg, const char* key);
@@ -65,7 +66,6 @@ int    hcfg_write(const hcfg_t* cfg, const char* filename);
 
 int    hcfg_serialize(char** buf, int* buflen, const hcfg_t* cfg);
 int    hcfg_deserialize(hcfg_t* cfg, char* buf);
-void   hcfg_scrub(hcfg_t* cfg);
 int    hcfg_parse(hcfg_t* cfg, const char* buf, const char** errptr);
 
 #ifdef __cplusplus
