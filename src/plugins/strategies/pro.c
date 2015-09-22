@@ -373,7 +373,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
         return -1;
     }
 
-    if (hint && hint->id != -1) {
+    if (hint && hint->id) {
         int orig_id = point->id;
 
         /* Update our state to include the hint point. */

@@ -460,7 +460,7 @@ void simplex_free(simplex_t* s)
  *
  *     sum(x1, x2, x3, ... , xN) / N
  *
- * This function will ignore any vertices with id < 0.
+ * This function will ignore any vertices with id == 0.
  */
 void simplex_centroid(const simplex_t* s, vertex_t* v)
 {
@@ -471,7 +471,7 @@ void simplex_centroid(const simplex_t* s, vertex_t* v)
     memset(v->perf.obj, 0, P * sizeof(double));
 
     for (i = 0; i < s->len; ++i) {
-        if (s->vertex[i]->id < 0)
+        if (!s->vertex[i]->id)
             continue;
 
         for (j = 0; j < N; ++j)

@@ -213,7 +213,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
     hpoint_t* hint = &flow->point;
     int orig_id = point->id;
 
-    if (hint && hint->id != -1) {
+    if (hint && hint->id) {
         if (hpoint_copy(point, hint) != 0) {
             session_error("Could not copy hint during reject.");
             return -1;

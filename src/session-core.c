@@ -368,7 +368,7 @@ int generate_trial(void)
     /* Find a free point. */
     for (idx = 0; idx < pending_cap; ++idx) {
         trial = &pending[idx];
-        if (trial->point.id == -1)
+        if (!trial->point.id)
             break;
     }
     if (idx == pending_cap) {
@@ -432,7 +432,7 @@ int plugin_workflow(int trial_idx)
 
         /* Remove point data from pending list. */
         hpoint_scrub( (hpoint_t*)&trial->point );
-        ((hpoint_t*)&trial->point)->id = -1;
+        ((hpoint_t*)&trial->point)->id = 0;
         --pending_len;
 
         /* Point generation attempts may begin again. */
@@ -963,10 +963,9 @@ int extend_lists(int target_cap)
         return -1;
     }
 
-    for (i = orig_cap; i < pending_cap; ++i) {
-        *(hpoint_t*)&pending[i].point = hpoint_zero;
+    for (i = orig_cap; i < pending_cap; ++i)
         ready[i] = -1;
-    }
+
     return 0;
 }
 

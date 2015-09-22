@@ -125,10 +125,6 @@ hdesc_t* ah_init()
         return NULL;
 
     hd->state = HARMONY_STATE_INIT;
-
-    hd->curr = hpoint_zero;
-    hd->best = hpoint_zero;
-
     return hd;
 }
 
@@ -759,7 +755,7 @@ int ah_leave(hdesc_t* hd)
 
     /* Reset the hsession_t to prepare for harmony descriptor reuse. */
     hsig_scrub(&hd->sig);
-    hd->best.id = -1;
+    hd->best.id = 0;
 
     return 0;
 }
@@ -1002,7 +998,7 @@ int ah_fetch(hdesc_t* hd)
             if (update_best(hd, &hd->mesg.data.point) != 0)
                 return -1;
 
-            if (hd->best.id == -1) {
+            if (!hd->best.id) {
                 /* No best point is available either.  Do not set values. */
                 return 0;
             }
@@ -1184,7 +1180,7 @@ int ah_best(hdesc_t* hd)
     }
 
     /* Make sure our best known point is valid. */
-    if (hd->best.id < 0) {
+    if (!hd->best.id) {
         errno = EINVAL;
         return -1;
     }

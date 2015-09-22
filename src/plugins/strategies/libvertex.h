@@ -29,7 +29,7 @@ extern "C" {
 #endif
 
 typedef struct vertex {
-    int id;
+    unsigned id;
     hperf_t perf;
     double term[];
 } vertex_t;

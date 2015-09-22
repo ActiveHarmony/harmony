@@ -591,7 +591,7 @@ int http_send_overview(int fd)
             return -1;
         total += count;
 
-        if (slist[i].best.id == -1) {
+        if (!slist[i].best.id) {
             count = snprintf_serial(&buf, &buflen, "&lt;unknown&gt;");
             if (count < 0)
                 return -1;
@@ -811,7 +811,7 @@ int report_append(char** buf, int* buflen, session_state_t* sess,
         total += count;
     }
 
-    if (pt->id == -1) {
+    if (!pt->id) {
         for (i = 0; i < sess->sig.range_len; ++i) {
             count = snprintf_serial(buf, buflen, ",");
             if (count < 0)

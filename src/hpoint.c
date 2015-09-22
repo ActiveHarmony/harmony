@@ -150,11 +150,11 @@ int hpoint_serialize(char** buf, int* buflen, const hpoint_t* pt)
 {
     int i, count, total;
 
-    count = snprintf_serial(buf, buflen, "hpoint:%d ", pt->id);
+    count = snprintf_serial(buf, buflen, "hpoint:%u ", pt->id);
     if (count < 0) goto invalid;
     total = count;
 
-    if (pt->id >= 0) {
+    if (pt->id) {
         count = snprintf_serial(buf, buflen, "%d ", pt->len);
         if (count < 0) goto invalid;
         total += count;
@@ -177,11 +177,11 @@ int hpoint_deserialize(hpoint_t* pt, char* buf)
 {
     int count, total;
 
-    if (sscanf(buf, " hpoint:%d%n", &pt->id, &count) < 1)
+    if (sscanf(buf, " hpoint:%u%n", &pt->id, &count) < 1)
         goto invalid;
     total = count;
 
-    if (pt->id >= 0) {
+    if (pt->id) {
         int newlen;
         if (sscanf(buf + total, " %d%n", &newlen, &count) < 1)
             goto invalid;

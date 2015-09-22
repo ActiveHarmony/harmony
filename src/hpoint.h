@@ -32,13 +32,13 @@ extern "C" {
  *
  */
 typedef struct hpoint {
-    int     id;
-    hval_t* val;
-    int     len;
+    unsigned id;
+    hval_t*  val;
+    int      len;
 
     void* owner;
 } hpoint_t;
-#define HPOINT_INITIALIZER {-1, NULL, 0, NULL}
+#define HPOINT_INITIALIZER {0}
 extern const hpoint_t hpoint_zero;
 
 int  hpoint_init(hpoint_t* pt, int n);
