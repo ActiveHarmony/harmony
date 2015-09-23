@@ -1004,6 +1004,7 @@ int ah_fetch(hdesc_t* hd)
                 hd->errstr = "Error copying current point data";
                 return -1;
             }
+            hd->state = HARMONY_STATE_TESTING;
         }
         else {
             hd->errstr = "Invalid message received from server";
@@ -1021,7 +1022,6 @@ int ah_fetch(hdesc_t* hd)
         hd->perf.obj[i] = NAN;
 
     /* Client variables were changed.  Inform the user by returning 1. */
-    hd->state = HARMONY_STATE_TESTING;
     return 1;
 }
 
