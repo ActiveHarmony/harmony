@@ -35,7 +35,7 @@ typedef struct http_log {
 
 typedef struct session_state {
     char* name;
-    int fd, old_fd;
+    int fd;
     int* client;
     int client_len, client_cap;
     hpoint_t best;
