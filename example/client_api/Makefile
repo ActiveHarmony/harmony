@@ -1,9 +1,14 @@
 TO_BASE=../..
 
-SRCS=loadfile.c \
+SRCS=join.c \
+     loadfile.c \
      minimal.c
-NO_INST_TGTS=loadfile \
+NO_INST_TGTS=join \
+             loadfile \
              minimal
+
+join: REQ_CPPFLAGS+=-I$(TO_BASE)/src
+join: $(TO_BASE)/src/libharmony.a
 
 loadfile: REQ_CPPFLAGS+=-I$(TO_BASE)/src
 loadfile: $(TO_BASE)/src/libharmony.a
