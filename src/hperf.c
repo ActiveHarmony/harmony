@@ -85,16 +85,16 @@ double hperf_unify(const hperf_t* perf)
     return retval;
 }
 
-int hperf_serialize(char** buf, int* buflen, const hperf_t* perf)
+int hperf_pack(char** buf, int* buflen, const hperf_t* perf)
 {
     int i, count, total;
 
-    count = snprintf_serial(buf, buflen, "perf: %d ", perf->len);
+    count = snprintf_serial(buf, buflen, " perf:%d", perf->len);
     if (count < 0) goto invalid;
     total = count;
 
     for (i = 0; i < perf->len; ++i) {
-        count = snprintf_serial(buf, buflen, "%la ", perf->obj[i]);
+        count = snprintf_serial(buf, buflen, " %la", perf->obj[i]);
         if (count < 0) goto error;
         total += count;
     }
@@ -106,7 +106,7 @@ int hperf_serialize(char** buf, int* buflen, const hperf_t* perf)
     return -1;
 }
 
-int hperf_deserialize(hperf_t* perf, char* buf)
+int hperf_unpack(hperf_t* perf, char* buf)
 {
     int count, total, len;
 

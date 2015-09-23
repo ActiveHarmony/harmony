@@ -39,8 +39,8 @@ void   hperf_fini(hperf_t* perf);
 int    hperf_cmp(const hperf_t* a, const hperf_t* b);
 double hperf_unify(const hperf_t* perf);
 
-int    hperf_serialize(char** buf, int* buflen, const hperf_t* perf);
-int    hperf_deserialize(hperf_t* perf, char* buf);
+int    hperf_pack(char** buf, int* buflen, const hperf_t* perf);
+int    hperf_unpack(hperf_t* perf, char* buf);
 
 #ifdef __cplusplus
 }

@@ -272,11 +272,11 @@ int hsig_enum(hsig_t* sig, const char* name, const char* value)
     return 0;
 }
 
-int hsig_serialize(char** buf, int* buflen, const hsig_t* sig)
+int hsig_pack(char** buf, int* buflen, const hsig_t* sig)
 {
     int count, total;
 
-    count = snprintf_serial(buf, buflen, "sig: %u ", sig->id);
+    count = snprintf_serial(buf, buflen, " sig:%u", sig->id);
     if (count < 0) goto invalid;
     total = count;
 
@@ -285,12 +285,12 @@ int hsig_serialize(char** buf, int* buflen, const hsig_t* sig)
         if (count < 0) goto error;
         total += count;
 
-        count = snprintf_serial(buf, buflen, "%d ", sig->range_len);
+        count = snprintf_serial(buf, buflen, " %d", sig->range_len);
         if (count < 0) goto invalid;
         total += count;
 
         for (int i = 0; i < sig->range_len; ++i) {
-            count = hrange_serialize(buf, buflen, &sig->range[i]);
+            count = hrange_pack(buf, buflen, &sig->range[i]);
             if (count < 0) goto error;
             total += count;
         }
@@ -303,12 +303,12 @@ int hsig_serialize(char** buf, int* buflen, const hsig_t* sig)
     return -1;
 }
 
-int hsig_deserialize(hsig_t* sig, char* buf)
+int hsig_unpack(hsig_t* sig, char* buf)
 {
     int count, total;
     hrange_t* newbuf;
 
-    if (sscanf(buf, " sig: %u%n", &sig->id, &count) < 1)
+    if (sscanf(buf, " sig:%u%n", &sig->id, &count) < 1)
         goto invalid;
     total = count;
 
@@ -331,7 +331,7 @@ int hsig_deserialize(hsig_t* sig, char* buf)
         for (int i = 0; i < sig->range_len; ++i) {
             sig->range[i] = hrange_zero;
             sig->range[i].owner = sig->owner;
-            count = hrange_deserialize(&sig->range[i], buf + total);
+            count = hrange_unpack(&sig->range[i], buf + total);
             if (count < 0) goto invalid;
             total += count;
         }

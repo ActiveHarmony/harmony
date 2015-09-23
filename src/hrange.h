@@ -93,8 +93,8 @@ void          hrange_fini(hrange_t* range);
 int           hrange_copy(hrange_t* dst, const hrange_t* src);
 unsigned long hrange_max_idx(hrange_t* range);
 
-int  hrange_serialize(char** buf, int* buflen, const hrange_t* range);
-int  hrange_deserialize(hrange_t* range, char* buf);
+int hrange_pack(char** buf, int* buflen, const hrange_t* range);
+int hrange_unpack(hrange_t* range, char* buf);
 
 #ifdef __cplusplus
 }

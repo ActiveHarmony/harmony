@@ -48,8 +48,8 @@ typedef struct hval {
 extern const hval_t hval_zero;
 
 int hval_parse(hval_t* val, const char* buf);
-int hval_serialize(char** buf, int* buflen, const hval_t* val);
-int hval_deserialize(hval_t* val, char* buf);
+int hval_pack(char** buf, int* buflen, const hval_t* val);
+int hval_unpack(hval_t* val, char* buf);
 
 #ifdef __cplusplus
 }

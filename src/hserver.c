@@ -56,6 +56,7 @@ int handle_client_socket(int fd);
 int handle_session_socket(int idx);
 int available_index(int** list, int* cap);
 void client_close(int fd);
+int update_state(session_state_t* sess);
 int append_http_log(session_state_t* sess, const hpoint_t* pt, double perf);
 
 /*
@@ -642,21 +643,9 @@ int handle_session_socket(int idx)
         goto error;
     }
 
-    if (mesg.state.best.id > sess->best.id) {
-        int i;
-        for (i = sess->log_len - 1; i >= 0; --i) {
-            if (sess->log[i].pt.id == mesg.state.best.id) {
-                sess->best_perf = sess->log[i].perf;
-                break;
-            }
-        }
-        if (i < 0)
-            sess->best_perf = NAN;
-
-        if (hpoint_copy(&sess->best, &mesg.state.best) != 0) {
-            perror("Internal error copying hpoint to best");
-            goto error;
-        }
+    if (update_state(sess) != 0) {
+        perror("Error updating session state from message");
+        goto error;
     }
 
     int dest = mesg.origin;
@@ -817,6 +806,35 @@ int available_index(int** list, int* cap)
 
     return orig_cap;
 }
+
+int update_state(session_state_t* sess)
+{
+    if (mesg.state.sig.id > sess->sig.id) {
+        if (hsig_copy(&sess->sig, &mesg.state.sig) != 0) {
+            perror("Could not copy session signature");
+            return -1;
+        }
+    }
+
+    if (mesg.state.best.id > sess->best.id) {
+        int i;
+        for (i = sess->log_len - 1; i >= 0; --i) {
+            if (sess->log[i].pt.id == mesg.state.best.id) {
+                sess->best_perf = sess->log[i].perf;
+                break;
+            }
+        }
+        if (i < 0)
+            sess->best_perf = NAN;
+
+        if (hpoint_copy(&sess->best, &mesg.state.best) != 0) {
+            perror("Internal error copying hpoint to best");
+            return -1;
+        }
+    }
+    return 0;
+}
+
 
 int append_http_log(session_state_t* sess, const hpoint_t* pt, double perf)
 {

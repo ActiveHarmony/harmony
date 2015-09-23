@@ -117,8 +117,8 @@ extern const hmesg_t hmesg_zero;
 void hmesg_scrub(hmesg_t* mesg);
 void hmesg_fini(hmesg_t* mesg);
 int  hmesg_owner(hmesg_t* mesg, const void* ptr);
-int  hmesg_serialize(hmesg_t* mesg);
-int  hmesg_deserialize(hmesg_t* mesg);
+int  hmesg_pack(hmesg_t* mesg);
+int  hmesg_unpack(hmesg_t* mesg);
 
 #ifdef __cplusplus
 }

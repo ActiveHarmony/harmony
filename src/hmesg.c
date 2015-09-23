@@ -31,10 +31,10 @@
 const hmesg_t hmesg_zero = HMESG_INITIALIZER;
 
 /* Internal helper function prototypes. */
-static int serialize_state(char** buf, int* buflen, const hmesg_t* mesg);
-static int deserialize_state(hmesg_t* mesg, char* buf);
-static int serialize_data(char** buf, int* buflen, const hmesg_t* mesg);
-static int deserialize_data(hmesg_t* mesg, char* buf);
+static int pack_state(char** buf, int* buflen, const hmesg_t* mesg);
+static int unpack_state(hmesg_t* mesg, char* buf);
+static int pack_data(char** buf, int* buflen, const hmesg_t* mesg);
+static int unpack_data(hmesg_t* mesg, char* buf);
 
 void hmesg_scrub(hmesg_t* mesg)
 {
@@ -61,7 +61,7 @@ int hmesg_owner(hmesg_t* mesg, const void* ptr)
                     ptr <  (void*)(mesg->recv_buf + mesg->recv_len));
 }
 
-int hmesg_serialize(hmesg_t* mesg)
+int hmesg_pack(hmesg_t* mesg)
 {
     const char* type_str;
     const char* status_str;
@@ -70,7 +70,7 @@ int hmesg_serialize(hmesg_t* mesg)
     int count, total;
 
     if (mesg->origin < -1 || mesg->origin >= 255) {
-        fprintf(stderr, "Error: hmesg_serialize():"
+        fprintf(stderr, "Error: hmesg_pack():"
                 "Origin (%d) is out of range [-1, 254]\n", mesg->origin);
         return -1;
     }
@@ -117,11 +117,11 @@ int hmesg_serialize(hmesg_t* mesg)
         total += count;
     }
     else {
-        count = serialize_state(&buf, &buflen, mesg);
+        count = pack_state(&buf, &buflen, mesg);
         if (count < 0) goto error;
         total += count;
 
-        count = serialize_data(&buf, &buflen, mesg);
+        count = pack_data(&buf, &buflen, mesg);
         if (count < 0) goto error;
         total += count;
     }
@@ -153,7 +153,7 @@ int hmesg_serialize(hmesg_t* mesg)
     return -1;
 }
 
-int hmesg_deserialize(hmesg_t* mesg)
+int hmesg_unpack(hmesg_t* mesg)
 {
     int count, total;
     char* buf = mesg->recv_buf;
@@ -204,11 +204,11 @@ int hmesg_deserialize(hmesg_t* mesg)
         total += count;
     }
     else {
-        count = deserialize_state(mesg, buf + total);
+        count = unpack_state(mesg, buf + total);
         if (count < 0) goto error;
         total += count;
 
-        count = deserialize_data(mesg, buf + total);
+        count = unpack_data(mesg, buf + total);
         if (count < 0) goto error;
         total += count;
     }
@@ -223,7 +223,7 @@ int hmesg_deserialize(hmesg_t* mesg)
 /*
  * Internal helper function implementations.
  */
-int serialize_state(char** buf, int* buflen, const hmesg_t* mesg)
+int pack_state(char** buf, int* buflen, const hmesg_t* mesg)
 {
     int count, total = 0;
 
@@ -234,7 +234,7 @@ int serialize_state(char** buf, int* buflen, const hmesg_t* mesg)
 
     switch (mesg->status) {
     case HMESG_STATUS_REQ:
-        count = snprintf_serial(buf, buflen, "state: %u %u ",
+        count = snprintf_serial(buf, buflen, " state:%u %u",
                                 mesg->state.sig.id, mesg->state.best.id);
         if (count < 0) return -1;
         total += count;
@@ -246,15 +246,15 @@ int serialize_state(char** buf, int* buflen, const hmesg_t* mesg)
 
     case HMESG_STATUS_OK:
     case HMESG_STATUS_BUSY:
-        count = snprintf_serial(buf, buflen, "state: ");
+        count = snprintf_serial(buf, buflen, " state:");
         if (count < 0) return -1;
         total += count;
 
-        count = hsig_serialize(buf, buflen, &mesg->state.sig);
+        count = hsig_pack(buf, buflen, &mesg->state.sig);
         if (count < 0) return -1;
         total += count;
 
-        count = hpoint_serialize(buf, buflen, &mesg->state.best);
+        count = hpoint_pack(buf, buflen, &mesg->state.best);
         if (count < 0) return -1;
         total += count;
         break;
@@ -268,7 +268,7 @@ int serialize_state(char** buf, int* buflen, const hmesg_t* mesg)
     return total;
 }
 
-int deserialize_state(hmesg_t* mesg, char* buf)
+int unpack_state(hmesg_t* mesg, char* buf)
 {
     int count = -1, total = 0;
 
@@ -279,7 +279,7 @@ int deserialize_state(hmesg_t* mesg, char* buf)
 
     switch (mesg->status) {
     case HMESG_STATUS_REQ:
-        if (sscanf(buf, "state: %u %u%n ", &mesg->state.sig.id,
+        if (sscanf(buf, " state:%u %u%n", &mesg->state.sig.id,
                    &mesg->state.best.id, &count) < 2)
             return -1;
         total += count;
@@ -291,17 +291,17 @@ int deserialize_state(hmesg_t* mesg, char* buf)
 
     case HMESG_STATUS_OK:
     case HMESG_STATUS_BUSY:
-        sscanf(buf, "state: %n", &count);
+        sscanf(buf, " state:%n", &count);
         if (count < 0) return -1;
         total += count;
 
         mesg->state.sig.owner = mesg;
-        count = hsig_deserialize(&mesg->state.sig, buf + total);
+        count = hsig_unpack(&mesg->state.sig, buf + total);
         if (count < 0) return -1;
         total += count;
 
         mesg->state.best.owner = mesg;
-        count = hpoint_deserialize(&mesg->state.best, buf + total);
+        count = hpoint_unpack(&mesg->state.best, buf + total);
         if (count < 0) return -1;
         total += count;
         break;
@@ -315,26 +315,26 @@ int deserialize_state(hmesg_t* mesg, char* buf)
     return total;
 }
 
-int serialize_data(char** buf, int* buflen, const hmesg_t* mesg)
+int pack_data(char** buf, int* buflen, const hmesg_t* mesg)
 {
     int count, total = 0;
 
-    // Serialize message data based on message type and status.
+    // Pack message data based on message type and status.
     switch (mesg->type) {
     case HMESG_SESSION:
         if (mesg->status == HMESG_STATUS_REQ) {
-            count = hsig_serialize(buf, buflen, &mesg->state.sig);
+            count = hsig_pack(buf, buflen, &mesg->state.sig);
             if (count < 0) return -1;
             total += count;
 
-            count = hcfg_serialize(buf, buflen, &mesg->data.cfg);
+            count = hcfg_pack(buf, buflen, &mesg->data.cfg);
             if (count < 0) return -1;
             total += count;
         }
         break;
 
     case HMESG_JOIN:
-        count = hsig_serialize(buf, buflen, &mesg->state.sig);
+        count = hsig_pack(buf, buflen, &mesg->state.sig);
         if (count < 0) return -1;
         total += count;
         break;
@@ -348,7 +348,7 @@ int serialize_data(char** buf, int* buflen, const hmesg_t* mesg)
 
     case HMESG_FETCH:
         if (mesg->status == HMESG_STATUS_OK) {
-            count = hpoint_serialize(buf, buflen, &mesg->data.point);
+            count = hpoint_pack(buf, buflen, &mesg->data.point);
             if (count < 0) return -1;
             total += count;
         }
@@ -356,11 +356,11 @@ int serialize_data(char** buf, int* buflen, const hmesg_t* mesg)
 
     case HMESG_REPORT:
         if (mesg->status == HMESG_STATUS_REQ) {
-            count = snprintf_serial(buf, buflen, "%d ", mesg->data.point.id);
+            count = snprintf_serial(buf, buflen, " %d", mesg->data.point.id);
             if (count < 0) return -1;
             total += count;
 
-            count = hperf_serialize(buf, buflen, &mesg->data.perf);
+            count = hperf_pack(buf, buflen, &mesg->data.perf);
             if (count < 0) return -1;
             total += count;
         }
@@ -376,7 +376,7 @@ int serialize_data(char** buf, int* buflen, const hmesg_t* mesg)
     return total;
 }
 
-int deserialize_data(hmesg_t* mesg, char* buf)
+int unpack_data(hmesg_t* mesg, char* buf)
 {
     int count, total = 0;
 
@@ -384,12 +384,12 @@ int deserialize_data(hmesg_t* mesg, char* buf)
     case HMESG_SESSION:
         if (mesg->status == HMESG_STATUS_REQ) {
             mesg->state.sig.owner = mesg;
-            count = hsig_deserialize(&mesg->state.sig, buf + total);
+            count = hsig_unpack(&mesg->state.sig, buf + total);
             if (count < 0) return -1;
             total += count;
 
             mesg->data.cfg.owner = mesg;
-            count = hcfg_deserialize(&mesg->data.cfg, buf + total);
+            count = hcfg_unpack(&mesg->data.cfg, buf + total);
             if (count < 0) return -1;
             total += count;
         }
@@ -397,7 +397,7 @@ int deserialize_data(hmesg_t* mesg, char* buf)
 
     case HMESG_JOIN:
         mesg->state.sig.owner = mesg;
-        count = hsig_deserialize(&mesg->state.sig, buf + total);
+        count = hsig_unpack(&mesg->state.sig, buf + total);
         if (count < 0) return -1;
         total += count;
         break;
@@ -412,7 +412,7 @@ int deserialize_data(hmesg_t* mesg, char* buf)
     case HMESG_FETCH:
         if (mesg->status == HMESG_STATUS_OK) {
             mesg->data.point.owner = mesg;
-            count = hpoint_deserialize(&mesg->data.point, buf + total);
+            count = hpoint_unpack(&mesg->data.point, buf + total);
             if (count < 0) return -1;
             total += count;
         }
@@ -425,7 +425,7 @@ int deserialize_data(hmesg_t* mesg, char* buf)
                 return -1;
             total += count;
 
-            count = hperf_deserialize(&mesg->data.perf, buf + total);
+            count = hperf_unpack(&mesg->data.perf, buf + total);
             if (count < 0) return -1;
             total += count;
         }

@@ -285,12 +285,12 @@ unsigned long hrange_max_idx(hrange_t* range)
     }
 }
 
-int hrange_serialize(char** buf, int* buflen, const hrange_t* range)
+int hrange_pack(char** buf, int* buflen, const hrange_t* range)
 {
     int i, count, total;
     const char* type_str;
 
-    count = snprintf_serial(buf, buflen, "range: ");
+    count = snprintf_serial(buf, buflen, " range:");
     if (count < 0) goto error;
     total = count;
 
@@ -305,13 +305,13 @@ int hrange_serialize(char** buf, int* buflen, const hrange_t* range)
     default: goto invalid;
     }
 
-    count = snprintf_serial(buf, buflen, "%s ", type_str);
+    count = snprintf_serial(buf, buflen, " %s", type_str);
     if (count < 0) goto invalid;
     total += count;
 
     switch (range->type) {
     case HVAL_INT:
-        count = snprintf_serial(buf, buflen, "%ld %ld %ld ",
+        count = snprintf_serial(buf, buflen, " %ld %ld %ld",
                                 range->bounds.i.min,
                                 range->bounds.i.max,
                                 range->bounds.i.step);
@@ -320,7 +320,7 @@ int hrange_serialize(char** buf, int* buflen, const hrange_t* range)
         break;
 
     case HVAL_REAL:
-        count = snprintf_serial(buf, buflen, "%la %la %la ",
+        count = snprintf_serial(buf, buflen, " %la %la %la",
                                 range->bounds.r.min,
                                 range->bounds.r.max,
                                 range->bounds.r.step);
@@ -329,7 +329,7 @@ int hrange_serialize(char** buf, int* buflen, const hrange_t* range)
         break;
 
     case HVAL_STR:
-        count = snprintf_serial(buf, buflen, "%d ", range->bounds.e.len);
+        count = snprintf_serial(buf, buflen, " %d", range->bounds.e.len);
         if (count < 0) goto invalid;
         total += count;
 
@@ -351,25 +351,20 @@ int hrange_serialize(char** buf, int* buflen, const hrange_t* range)
     return -1;
 }
 
-int hrange_deserialize(hrange_t* range, char* buf)
+int hrange_unpack(hrange_t* range, char* buf)
 {
-    int i, count, total;
-    char** newbuf;
-    char* strptr;
-    char type_str[5];
+    int count = -1, total;
 
-    for (i = 0; isspace(buf[i]); ++i);
-    if (strncmp("range:", buf + i, 6) != 0)
+    sscanf(buf, " range:%n", &count);
+    if (count < 0)
         goto invalid;
-    total = i + 6;
+    total = count;
 
-    count = scanstr_serial((const char**)&strptr, buf + total);
+    count = scanstr_serial((const char**)&range->name, buf + total);
     if (count < 0) goto invalid;
     total += count;
 
-    range->name = strptr;
-    if (!range->name) goto error;
-
+    char type_str[5];
     if (sscanf(buf + total, " %4s%n", type_str, &count) < 1)
         goto invalid;
     total += count;
@@ -407,20 +402,18 @@ int hrange_deserialize(hrange_t* range, char* buf)
         total += count;
 
         if (range->bounds.e.cap < range->bounds.e.len) {
-            newbuf = realloc(range->bounds.e.set,
-                             sizeof(char*) * range->bounds.e.len);
+            char** newbuf = realloc(range->bounds.e.set,
+                                    sizeof(char*) * range->bounds.e.len);
             if (!newbuf) goto error;
             range->bounds.e.set = newbuf;
             range->bounds.e.cap = range->bounds.e.len;
         }
 
-        for (i = 0; i < range->bounds.e.len; ++i) {
-            count = scanstr_serial((const char**)&strptr, buf + total);
+        for (int i = 0; i < range->bounds.e.len; ++i) {
+            count = scanstr_serial((const char**)&range->bounds.e.set[i],
+                                   buf + total);
             if (count < 0) goto invalid;
             total += count;
-
-            range->bounds.e.set[i] = strptr;
-            if (!range->bounds.e.set[i]) goto error;
         }
         break;
 

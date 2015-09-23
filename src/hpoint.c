@@ -146,21 +146,21 @@ int hpoint_parse(hpoint_t* pt, hsig_t* sig, const char* buf)
     return 0;
 }
 
-int hpoint_serialize(char** buf, int* buflen, const hpoint_t* pt)
+int hpoint_pack(char** buf, int* buflen, const hpoint_t* pt)
 {
     int i, count, total;
 
-    count = snprintf_serial(buf, buflen, "hpoint:%u ", pt->id);
+    count = snprintf_serial(buf, buflen, " point:%u", pt->id);
     if (count < 0) goto invalid;
     total = count;
 
     if (pt->id) {
-        count = snprintf_serial(buf, buflen, "%d ", pt->len);
+        count = snprintf_serial(buf, buflen, " %d", pt->len);
         if (count < 0) goto invalid;
         total += count;
 
         for (i = 0; i < pt->len; ++i) {
-            count = hval_serialize(buf, buflen, &pt->val[i]);
+            count = hval_pack(buf, buflen, &pt->val[i]);
             if (count < 0) goto error;
             total += count;
         }
@@ -173,13 +173,12 @@ int hpoint_serialize(char** buf, int* buflen, const hpoint_t* pt)
     return -1;
 }
 
-int hpoint_deserialize(hpoint_t* pt, char* buf)
+int hpoint_unpack(hpoint_t* pt, char* buf)
 {
     int count, total;
 
-    if (sscanf(buf, " hpoint:%u%n", &pt->id, &count) < 1)
+    if (sscanf(buf, " point:%u%n", &pt->id, &total) < 1)
         goto invalid;
-    total = count;
 
     if (pt->id) {
         int newlen;
@@ -196,7 +195,7 @@ int hpoint_deserialize(hpoint_t* pt, char* buf)
         }
 
         for (int i = 0; i < pt->len; ++i) {
-            count = hval_deserialize(&pt->val[i], buf + total);
+            count = hval_unpack(&pt->val[i], buf + total);
             if (count < 0) goto error;
             total += count;
         }

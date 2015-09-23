@@ -759,7 +759,7 @@ int mesg_read(const char* filename, hmesg_t* msg)
     }
     fd = -1;
 
-    if (hmesg_deserialize(msg) < 0) {
+    if (hmesg_unpack(msg) < 0) {
         cerr << "Error decoding message file. Retrying.\n";
         goto retry;
     }
@@ -801,7 +801,7 @@ int mesg_write(hmesg_t& mesg, int step)
         return -1;
 
     mesg.status = HMESG_STATUS_OK;
-    msglen = hmesg_serialize(&mesg);
+    msglen = hmesg_pack(&mesg);
     if (msglen < 0) {
         cerr << "Error encoding message file.\n";
         return -1;

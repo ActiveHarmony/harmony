@@ -164,7 +164,7 @@ int socket_launch(const char* path, char* const argv[], pid_t* return_pid)
  */
 int mesg_send(int sock, hmesg_t* mesg)
 {
-    int msglen = hmesg_serialize(mesg);
+    int msglen = hmesg_pack(mesg);
     if (msglen < 0)
         return -1;
 
@@ -178,8 +178,8 @@ int mesg_send(int sock, hmesg_t* mesg)
 /*
  * Forward a message to the given socket.
  *
- * If no changes were made to an hmesg_t after it was deserialized,
- * the original payload may be forwarded to a different destination by
+ * If no changes were made to an hmesg_t after it was unpacked, the
+ * original payload may be forwarded to a different destination by
  * replacing null bytes with the string delimiting character (").
  */
 int mesg_forward(int sock, hmesg_t* mesg)
@@ -250,7 +250,7 @@ int mesg_recv(int sock, hmesg_t* mesg)
     mesg->recv_buf[retval] = '\0';  /* A strlen() safety net. */
     // fprintf(stderr, "(%2d)>>> '%s'\n", sock, mesg->recv_buf);
 
-    if (hmesg_deserialize(mesg) < 0)
+    if (hmesg_unpack(mesg) < 0)
         goto error;
 
     return 1;

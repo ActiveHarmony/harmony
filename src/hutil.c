@@ -374,8 +374,8 @@ int snprintf_serial(char** buf, int* buflen, const char* fmt, ...)
 
 int printstr_serial(char** buf, int* buflen, const char* str)
 {
-    if (!str) return snprintf_serial(buf, buflen, "0\"0\" ");
-    return snprintf_serial(buf, buflen, "%u\"%s\" ", strlen(str), str);
+    if (!str) return snprintf_serial(buf, buflen, " 0\"0\"");
+    return snprintf_serial(buf, buflen, " %u\"%s\"", strlen(str), str);
 }
 
 int scanstr_serial(const char** str, char* buf)
@@ -383,7 +383,7 @@ int scanstr_serial(const char** str, char* buf)
     int count;
     unsigned int len;
 
-    if (sscanf(buf, "%u\"%n", &len, &count) < 1)
+    if (sscanf(buf, " %u\"%n", &len, &count) < 1)
         goto invalid;
     buf += count;
 

@@ -48,8 +48,8 @@ void hpoint_fini(hpoint_t* pt);
 
 int  hpoint_align(hpoint_t* pt, hsig_t* sig);
 
-int  hpoint_serialize(char** buf, int* buflen, const hpoint_t* pt);
-int  hpoint_deserialize(hpoint_t* pt, char* buf);
+int  hpoint_pack(char** buf, int* buflen, const hpoint_t* pt);
+int  hpoint_unpack(hpoint_t* pt, char* buf);
 int  hpoint_parse(hpoint_t* pt, hsig_t* sig, const char* buf);
 
 #ifdef __cplusplus

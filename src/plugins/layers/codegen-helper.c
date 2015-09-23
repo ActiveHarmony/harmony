@@ -197,7 +197,7 @@ int init_comm(void)
 
     /* Read a session message from the codegen plugin */
     if (mesg_recv(STDIN_FILENO, &mesg) < 1) {
-        mesg.data.string = "Socket or deserialization error";
+        mesg.data.string = "Socket or unpacking error";
         return -1;
     }
 
@@ -249,7 +249,7 @@ int init_comm(void)
         }
     }
 
-    if (hmesg_serialize(&mesg) < 0) {
+    if (hmesg_pack(&mesg) < 0) {
         mesg.data.string = "Could not allocate memory for initial message";
         return -1;
     }
@@ -451,8 +451,8 @@ int mesg_read(int id)
     }
     fd = -1;
 
-    // Need to deserialize to make sure have read a valid (complete) message.
-    if (hmesg_deserialize(&mesg) < 0) {
+    // Need to unpack to make sure have read a valid (complete) message.
+    if (hmesg_unpack(&mesg) < 0) {
         errmsg = "Error decoding message file.";
         goto retry;
     }

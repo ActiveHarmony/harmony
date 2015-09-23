@@ -91,7 +91,7 @@ int hval_parse_string(const char* buf, const char** newbuf)
     return span;
 }
 
-int hval_serialize(char** buf, int* buflen, const hval_t* val)
+int hval_pack(char** buf, int* buflen, const hval_t* val)
 {
     int count, total;
     const char* type_str;
@@ -103,19 +103,19 @@ int hval_serialize(char** buf, int* buflen, const hval_t* val)
     default: goto invalid;
     }
 
-    count = snprintf_serial(buf, buflen, "hval:%s ", type_str);
+    count = snprintf_serial(buf, buflen, " val:%s", type_str);
     if (count < 0) goto error;
     total = count;
 
     switch (val->type) {
     case HVAL_INT:
-        count = snprintf_serial(buf, buflen, "%ld ", val->value.i);
+        count = snprintf_serial(buf, buflen, " %ld", val->value.i);
         if (count < 0) goto error;
         total += count;
         break;
 
     case HVAL_REAL:
-        count = snprintf_serial(buf, buflen, "%la ", val->value.r);
+        count = snprintf_serial(buf, buflen, " %la", val->value.r);
         if (count < 0) goto error;
         total += count;
         break;
@@ -137,12 +137,12 @@ int hval_serialize(char** buf, int* buflen, const hval_t* val)
     return -1;
 }
 
-int hval_deserialize(hval_t* val, char* buf)
+int hval_unpack(hval_t* val, char* buf)
 {
     int count, total;
     char type_str[4];
 
-    if (sscanf(buf, " hval:%3s%n", type_str, &count) < 1)
+    if (sscanf(buf, " val:%3s%n", type_str, &count) < 1)
         goto invalid;
     total = count;
 

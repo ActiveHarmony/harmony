@@ -279,11 +279,11 @@ int hcfg_write(const hcfg_t* cfg, const char* filename)
     return 0;
 }
 
-int hcfg_serialize(char** buf, int* buflen, const hcfg_t* cfg)
+int hcfg_pack(char** buf, int* buflen, const hcfg_t* cfg)
 {
     int count, total;
 
-    count = snprintf_serial(buf, buflen, "hcfg: %d ", cfg->len);
+    count = snprintf_serial(buf, buflen, " cfg:%d", cfg->len);
     if (count < 0) goto invalid;
     total = count;
 
@@ -299,10 +299,10 @@ int hcfg_serialize(char** buf, int* buflen, const hcfg_t* cfg)
     return -1;
 }
 
-int hcfg_deserialize(hcfg_t* cfg, char* buf)
+int hcfg_unpack(hcfg_t* cfg, char* buf)
 {
     int total = 0;
-    sscanf(buf, " hcfg: %d%n", &cfg->len, &total);
+    sscanf(buf, " cfg:%d%n", &cfg->len, &total);
     if (!total)
         goto invalid;
 

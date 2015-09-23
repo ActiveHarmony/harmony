@@ -56,8 +56,8 @@ int  hsig_real(hsig_t* sig, const char* name,
                double min, double max, double step);
 int  hsig_enum(hsig_t* sig, const char* name, const char* value);
 
-int  hsig_serialize(char** buf, int* buflen, const hsig_t* sig);
-int  hsig_deserialize(hsig_t* sig, char* buf);
+int  hsig_pack(char** buf, int* buflen, const hsig_t* sig);
+int  hsig_unpack(hsig_t* sig, char* buf);
 int  hsig_parse(hsig_t* sig, const char* buf, const char** errptr);
 
 #ifdef __cplusplus
