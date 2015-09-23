@@ -83,7 +83,6 @@ int  find_var(hdesc_t* hd, const char* name);
 int  send_request(hdesc_t* hd, hmesg_type msg_type);
 int  set_varloc(hdesc_t* hd, const char* name, void* ptr);
 int  write_values(hdesc_t* hd, const hpoint_t* pt);
-int  update_best(hdesc_t* hd, const hpoint_t* pt);
 
 static int debug_mode = 0;
 
@@ -499,7 +498,7 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
         hd->id = hd->default_id;
 
     /* Prepare a Harmony message. */
-    hsig_copy(&hd->mesg.data.sig, &hd->sig);
+    hsig_copy(&hd->mesg.state.sig, &hd->sig);
     hcfg_copy(&hd->mesg.data.cfg, &hd->cfg);
 
     if (send_request(hd, HMESG_SESSION) != 0)
@@ -589,7 +588,7 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
             hd->id = hd->default_id;
 
         /* Prepare a Harmony message. */
-        if (hsig_copy(&hd->mesg.data.sig, &hd->sig) != 0) {
+        if (hsig_copy(&hd->mesg.state.sig, &hd->sig) != 0) {
             hd->errstr = "Internal error copying signature data";
             return -1;
         }
@@ -605,7 +604,7 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
         }
 
         hsig_fini(&hd->sig);
-        if (hsig_copy(&hd->sig, &hd->mesg.data.sig) != 0) {
+        if (hsig_copy(&hd->sig, &hd->mesg.state.sig) != 0) {
             hd->errstr = "Error copying received signature structure";
             return -1;
         }
@@ -987,19 +986,14 @@ int ah_fetch(hdesc_t* hd)
         return -1;
     }
 
-
     if (hd->state == HARMONY_STATE_READY) {
         /* Prepare a Harmony message. */
         if (send_request(hd, HMESG_FETCH) != 0)
             return -1;
 
         if (hd->mesg.status == HMESG_STATUS_BUSY) {
-            /* No new data is ready. */
-            if (update_best(hd, &hd->mesg.data.point) != 0)
-                return -1;
-
             if (!hd->best.id) {
-                /* No best point is available either.  Do not set values. */
+                /* No best point is available yet.  Do not set values. */
                 return 0;
             }
 
@@ -1171,12 +1165,7 @@ int ah_best(hdesc_t* hd)
             hd->errstr = "Invalid message received from server";
             return -1;
         }
-
-        if (hd->best.id < hd->mesg.data.point.id) {
-            if (update_best(hd, &hd->mesg.data.point) != 0)
-                return -1;
-            retval = 1;
-        }
+        retval = 1;
     }
 
     /* Make sure our best known point is valid. */
@@ -1450,7 +1439,10 @@ int send_request(hdesc_t* hd, hmesg_type msg_type)
 {
     hd->mesg.type = msg_type;
     hd->mesg.status = HMESG_STATUS_REQ;
-    hd->mesg.src_id = hd->id;
+
+    hd->mesg.state.sig.id = hd->sig.id;
+    hd->mesg.state.best.id = hd->best.id;
+    hd->mesg.state.client = hd->id;
 
     if (mesg_send(hd->socket, &hd->mesg) < 1) {
         hd->errstr = "Error sending Harmony message to server";
@@ -1481,6 +1473,21 @@ int send_request(hdesc_t* hd, hmesg_type msg_type)
         hd->errstr = hd->mesg.data.string;
         return -1;
     }
+    else {
+        // Update local state from server.
+        if (hd->sig.id < hd->mesg.state.sig.id) {
+            if (hsig_copy(&hd->sig, &hd->mesg.state.sig) != 0) {
+                hd->errstr = "Could not update session signature";
+                return -1;
+            }
+        }
+        if (hd->best.id < hd->mesg.state.best.id) {
+            if (hpoint_copy(&hd->best, &hd->mesg.state.best) != 0) {
+                hd->errstr = "Could not update best known point";
+                return -1;
+            }
+        }
+    }
     return 0;
 }
 
@@ -1495,19 +1502,6 @@ int set_varloc(hdesc_t* hd, const char* name, void* ptr)
 
     extend_varloc(hd);
     hd->varloc[idx].ptr = ptr;
-    return 0;
-}
-
-int update_best(hdesc_t* hd, const hpoint_t* pt)
-{
-    if (hd->best.id >= pt->id)
-        return 0;
-
-    if (hpoint_copy(&hd->best, pt) != 0) {
-        hd->errstr = "Error copying point data";
-        errno = EINVAL;
-        return -1;
-    }
     return 0;
 }
 

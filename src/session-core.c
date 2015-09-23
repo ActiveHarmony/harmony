@@ -119,6 +119,7 @@ int handle_report(hmesg_t* mesg);
 int handle_reject(int trial_idx);
 int handle_restart(hmesg_t* mesg);
 int handle_wait(int trial_idx);
+int update_state(hmesg_t* mesg);
 int load_strategy(const char* file);
 int load_layers(const char* list);
 int extend_lists(int target_cap);
@@ -198,7 +199,7 @@ int main(int argc, char* argv[])
     }
 
     /* Initialize the session. */
-    if (hsig_copy(&sig, &mesg.data.sig) != 0) {
+    if (hsig_copy(&sig, &mesg.state.sig) != 0) {
         mesg.data.string = "Could not copy session data";
         goto error;
     }
@@ -239,7 +240,7 @@ int main(int argc, char* argv[])
             if (retval == 0) goto cleanup;
             if (retval <  0) goto error;
 
-            hcfg_set(&cfg, CFGKEY_CURRENT_CLIENT, mesg.src_id);
+            hcfg_set(&cfg, CFGKEY_CURRENT_CLIENT, mesg.state.client);
             switch (mesg.type) {
             case HMESG_JOIN:    retval = handle_join(&mesg); break;
             case HMESG_GETCFG:  retval = handle_getcfg(&mesg); break;
@@ -248,6 +249,7 @@ int main(int argc, char* argv[])
             case HMESG_FETCH:   retval = handle_fetch(&mesg); break;
             case HMESG_REPORT:  retval = handle_report(&mesg); break;
             case HMESG_RESTART: retval = handle_restart(&mesg); break;
+
             default:
                 errmsg = "Internal error: Unknown message type.";
                 goto error;
@@ -255,8 +257,11 @@ int main(int argc, char* argv[])
             if (retval != 0)
                 goto error;
 
+            if (update_state(&mesg) != 0) {
+                errmsg = "Could not update session state in message";
+                goto error;
+            }
             hcfg_set(&cfg, CFGKEY_CURRENT_CLIENT, NULL);
-            mesg.src_id = NULL;
 
             if (mesg_send(STDIN_FILENO, &mesg) < 1)
                 goto error;
@@ -597,12 +602,12 @@ int handle_join(hmesg_t* mesg)
     int i;
 
     /* Verify that client signature matches current session. */
-    if (!hsig_match(&mesg->data.sig, &sig)) {
+    if (!hsig_match(&mesg->state.sig, &sig)) {
         errmsg = "Incompatible join signature.";
         return -1;
     }
 
-    if (hsig_copy(&mesg->data.sig, &sig) < 0) {
+    if (hsig_copy(&mesg->state.sig, &sig) < 0) {
         errmsg = "Internal error: Could not copy signature.";
         return -1;
     }
@@ -613,11 +618,11 @@ int handle_join(hmesg_t* mesg)
         return -1;
 
     /* Launch all join hooks defined in the plug-in stack. */
-    if (strategy_join && strategy_join(mesg->src_id) != 0)
+    if (strategy_join && strategy_join(mesg->state.client) != 0)
         return -1;
 
     for (i = 0; i < lstack_len; ++i) {
-        if (lstack[i].join && lstack[i].join(mesg->src_id) != 0)
+        if (lstack[i].join && lstack[i].join(mesg->state.client) != 0)
             return -1;
     }
 
@@ -663,9 +668,6 @@ int handle_setcfg(hmesg_t* mesg)
 
 int handle_best(hmesg_t* mesg)
 {
-    if (strategy_best(&mesg->data.point) != 0)
-        return -1;
-
     mesg->status = HMESG_STATUS_OK;
     return 0;
 }
@@ -696,7 +698,7 @@ int handle_fetch(hmesg_t* mesg)
     else {
         /* Ready queue is empty, or session is paused.
          * Send the best known point. */
-        if (strategy_best(&mesg->data.point) != 0)
+        if (strategy_best(&mesg->state.best) != 0)
             return -1;
 
         paused_id = mesg->data.point.id;
@@ -746,6 +748,26 @@ int handle_restart(hmesg_t* mesg)
 {
     session_restart();
     mesg->status = HMESG_STATUS_OK;
+    return 0;
+}
+
+int update_state(hmesg_t* mesg)
+{
+    if (mesg->state.sig.id < sig.id) {
+        if (hsig_copy(&mesg->state.sig, &sig) != 0)
+            return -1;
+    }
+    else {
+        mesg->state.sig.id = 0;
+    }
+
+    unsigned client_best = mesg->state.best.id;
+    if (strategy_best(&mesg->state.best) != 0) {
+        return -1;
+    }
+    else if (client_best == mesg->state.best.id) {
+        mesg->state.best.id = 0;
+    }
     return 0;
 }
 

@@ -30,16 +30,24 @@
 
 const hmesg_t hmesg_zero = HMESG_INITIALIZER;
 
+/* Internal helper function prototypes. */
+static int serialize_state(char** buf, int* buflen, const hmesg_t* mesg);
+static int deserialize_state(hmesg_t* mesg, char* buf);
+static int serialize_data(char** buf, int* buflen, const hmesg_t* mesg);
+static int deserialize_data(hmesg_t* mesg, char* buf);
+
 void hmesg_scrub(hmesg_t* mesg)
 {
-    hsig_scrub(&mesg->data.sig);
+    hsig_scrub(&mesg->state.sig);
+    hpoint_scrub(&mesg->state.best);
     hcfg_scrub(&mesg->data.cfg);
     hpoint_scrub(&mesg->data.point);
 }
 
 void hmesg_fini(hmesg_t* mesg)
 {
-    hsig_fini(&mesg->data.sig);
+    hsig_fini(&mesg->state.sig);
+    hpoint_fini(&mesg->state.best);
     hcfg_fini(&mesg->data.cfg);
     hpoint_fini(&mesg->data.point);
     hperf_fini(&mesg->data.perf);
@@ -103,72 +111,19 @@ int hmesg_serialize(hmesg_t* mesg)
     if (count < 0) goto error;
     total += count;
 
-    count = printstr_serial(&buf, &buflen, mesg->src_id);
-    if (count < 0) goto error;
-    total += count;
-
     if (mesg->status == HMESG_STATUS_FAIL) {
         count = printstr_serial(&buf, &buflen, mesg->data.string);
         if (count < 0) goto error;
         total += count;
     }
     else {
-        switch (mesg->type) {
-        case HMESG_SESSION:
-            if (mesg->status == HMESG_STATUS_REQ) {
-                count = hsig_serialize(&buf, &buflen, &mesg->data.sig);
-                if (count < 0) goto error;
-                total += count;
+        count = serialize_state(&buf, &buflen, mesg);
+        if (count < 0) goto error;
+        total += count;
 
-                count = hcfg_serialize(&buf, &buflen, &mesg->data.cfg);
-                if (count < 0) goto error;
-                total += count;
-            }
-            break;
-
-        case HMESG_JOIN:
-            count = hsig_serialize(&buf, &buflen, &mesg->data.sig);
-            if (count < 0) goto error;
-            total += count;
-            break;
-
-        case HMESG_GETCFG:
-        case HMESG_SETCFG:
-            count = printstr_serial(&buf, &buflen, mesg->data.string);
-            if (count < 0) goto error;
-            total += count;
-            break;
-
-        case HMESG_BEST:
-        case HMESG_FETCH:
-            if (mesg->status == HMESG_STATUS_OK ||
-                mesg->status == HMESG_STATUS_BUSY)
-            {
-                count = hpoint_serialize(&buf, &buflen, &mesg->data.point);
-                if (count < 0) goto error;
-                total += count;
-            }
-            break;
-
-        case HMESG_REPORT:
-            if (mesg->status == HMESG_STATUS_REQ) {
-                count = snprintf_serial(&buf, &buflen, "%d ",
-                                        mesg->data.point.id);
-                if (count < 0) goto error;
-                total += count;
-
-                count = hperf_serialize(&buf, &buflen, &mesg->data.perf);
-                if (count < 0) goto error;
-                total += count;
-            }
-            break;
-
-        case HMESG_RESTART:
-            break;
-
-        default:
-            goto invalid;
-        }
+        count = serialize_data(&buf, &buflen, mesg);
+        if (count < 0) goto error;
+        total += count;
     }
 
     if (total >= mesg->send_len) {
@@ -226,13 +181,6 @@ int hmesg_deserialize(hmesg_t* mesg)
         goto invalid;
     total += count;
 
-    count = scanstr_serial(&mesg->src_id, buf + total);
-    if (count < 0) goto invalid;
-    total += count;
-
-    /* Before we overwrite this message's type, make sure memory allocated
-     * from previous usage has been released.
-     */
     if      (strcmp(type_str, "UNK") == 0) mesg->type = HMESG_UNKNOWN;
     else if (strcmp(type_str, "SES") == 0) mesg->type = HMESG_SESSION;
     else if (strcmp(type_str, "JOI") == 0) mesg->type = HMESG_JOIN;
@@ -256,66 +204,13 @@ int hmesg_deserialize(hmesg_t* mesg)
         total += count;
     }
     else {
-        switch (mesg->type) {
-        case HMESG_SESSION:
-            if (mesg->status == HMESG_STATUS_REQ) {
-                mesg->data.sig.owner = mesg;
-                count = hsig_deserialize(&mesg->data.sig, buf + total);
-                if (count < 0) goto error;
-                total += count;
+        count = deserialize_state(mesg, buf + total);
+        if (count < 0) goto error;
+        total += count;
 
-                mesg->data.cfg.owner = mesg;
-                count = hcfg_deserialize(&mesg->data.cfg, buf + total);
-                if (count < 0) goto error;
-                total += count;
-            }
-            break;
-
-        case HMESG_JOIN:
-            mesg->data.sig.owner = mesg;
-            count = hsig_deserialize(&mesg->data.sig, buf + total);
-            if (count < 0) goto error;
-            total += count;
-            break;
-
-        case HMESG_GETCFG:
-        case HMESG_SETCFG:
-            count = scanstr_serial(&mesg->data.string, buf + total);
-            if (count < 0) goto error;
-            total += count;
-            break;
-
-        case HMESG_BEST:
-        case HMESG_FETCH:
-            if (mesg->status == HMESG_STATUS_OK ||
-                mesg->status == HMESG_STATUS_BUSY)
-            {
-                mesg->data.point.owner = mesg;
-                count = hpoint_deserialize(&mesg->data.point, buf + total);
-                if (count < 0) goto error;
-                total += count;
-            }
-            break;
-
-        case HMESG_REPORT:
-            if (mesg->status == HMESG_STATUS_REQ) {
-                if (sscanf(buf + total, " %d%n",
-                           &mesg->data.point.id, &count) < 1)
-                    goto invalid;
-                total += count;
-
-                count = hperf_deserialize(&mesg->data.perf, buf + total);
-                if (count < 0) goto error;
-                total += count;
-            }
-            break;
-
-        case HMESG_RESTART:
-            break;
-
-        default:
-            goto invalid;
-        }
+        count = deserialize_data(mesg, buf + total);
+        if (count < 0) goto error;
+        total += count;
     }
     return total;
 
@@ -323,4 +218,225 @@ int hmesg_deserialize(hmesg_t* mesg)
     errno = EINVAL;
   error:
     return -1;
+}
+
+/*
+ * Internal helper function implementations.
+ */
+int serialize_state(char** buf, int* buflen, const hmesg_t* mesg)
+{
+    int count, total = 0;
+
+    if (mesg->type == HMESG_SESSION) {
+        // Session state doesn't exist just yet.
+        return 0;
+    }
+
+    switch (mesg->status) {
+    case HMESG_STATUS_REQ:
+        count = snprintf_serial(buf, buflen, "state: %u %u ",
+                                mesg->state.sig.id, mesg->state.best.id);
+        if (count < 0) return -1;
+        total += count;
+
+        count = printstr_serial(buf, buflen, mesg->state.client);
+        if (count < 0) return -1;
+        total += count;
+        break;
+
+    case HMESG_STATUS_OK:
+    case HMESG_STATUS_BUSY:
+        count = snprintf_serial(buf, buflen, "state: ");
+        if (count < 0) return -1;
+        total += count;
+
+        count = hsig_serialize(buf, buflen, &mesg->state.sig);
+        if (count < 0) return -1;
+        total += count;
+
+        count = hpoint_serialize(buf, buflen, &mesg->state.best);
+        if (count < 0) return -1;
+        total += count;
+        break;
+
+    case HMESG_STATUS_FAIL:
+        break; // No need to send state.
+
+    default:
+        return -1;
+    }
+    return total;
+}
+
+int deserialize_state(hmesg_t* mesg, char* buf)
+{
+    int count = -1, total = 0;
+
+    if (mesg->type == HMESG_SESSION) {
+        // Session state doesn't exist just yet.
+        return 0;
+    }
+
+    switch (mesg->status) {
+    case HMESG_STATUS_REQ:
+        if (sscanf(buf, "state: %u %u%n ", &mesg->state.sig.id,
+                   &mesg->state.best.id, &count) < 2)
+            return -1;
+        total += count;
+
+        count = scanstr_serial(&mesg->state.client, buf + total);
+        if (count < 0) return -1;
+        total += count;
+        break;
+
+    case HMESG_STATUS_OK:
+    case HMESG_STATUS_BUSY:
+        sscanf(buf, "state: %n", &count);
+        if (count < 0) return -1;
+        total += count;
+
+        mesg->state.sig.owner = mesg;
+        count = hsig_deserialize(&mesg->state.sig, buf + total);
+        if (count < 0) return -1;
+        total += count;
+
+        mesg->state.best.owner = mesg;
+        count = hpoint_deserialize(&mesg->state.best, buf + total);
+        if (count < 0) return -1;
+        total += count;
+        break;
+
+    case HMESG_STATUS_FAIL:
+        break; // No need to send state.
+
+    default:
+        return -1;
+    }
+    return total;
+}
+
+int serialize_data(char** buf, int* buflen, const hmesg_t* mesg)
+{
+    int count, total = 0;
+
+    // Serialize message data based on message type and status.
+    switch (mesg->type) {
+    case HMESG_SESSION:
+        if (mesg->status == HMESG_STATUS_REQ) {
+            count = hsig_serialize(buf, buflen, &mesg->state.sig);
+            if (count < 0) return -1;
+            total += count;
+
+            count = hcfg_serialize(buf, buflen, &mesg->data.cfg);
+            if (count < 0) return -1;
+            total += count;
+        }
+        break;
+
+    case HMESG_JOIN:
+        count = hsig_serialize(buf, buflen, &mesg->state.sig);
+        if (count < 0) return -1;
+        total += count;
+        break;
+
+    case HMESG_GETCFG:
+    case HMESG_SETCFG:
+        count = printstr_serial(buf, buflen, mesg->data.string);
+        if (count < 0) return -1;
+        total += count;
+        break;
+
+    case HMESG_FETCH:
+        if (mesg->status == HMESG_STATUS_OK) {
+            count = hpoint_serialize(buf, buflen, &mesg->data.point);
+            if (count < 0) return -1;
+            total += count;
+        }
+        break;
+
+    case HMESG_REPORT:
+        if (mesg->status == HMESG_STATUS_REQ) {
+            count = snprintf_serial(buf, buflen, "%d ", mesg->data.point.id);
+            if (count < 0) return -1;
+            total += count;
+
+            count = hperf_serialize(buf, buflen, &mesg->data.perf);
+            if (count < 0) return -1;
+            total += count;
+        }
+        break;
+
+    case HMESG_BEST:
+    case HMESG_RESTART:
+        break;
+
+    default:
+        return -1;
+    }
+    return total;
+}
+
+int deserialize_data(hmesg_t* mesg, char* buf)
+{
+    int count, total = 0;
+
+    switch (mesg->type) {
+    case HMESG_SESSION:
+        if (mesg->status == HMESG_STATUS_REQ) {
+            mesg->state.sig.owner = mesg;
+            count = hsig_deserialize(&mesg->state.sig, buf + total);
+            if (count < 0) return -1;
+            total += count;
+
+            mesg->data.cfg.owner = mesg;
+            count = hcfg_deserialize(&mesg->data.cfg, buf + total);
+            if (count < 0) return -1;
+            total += count;
+        }
+        break;
+
+    case HMESG_JOIN:
+        mesg->state.sig.owner = mesg;
+        count = hsig_deserialize(&mesg->state.sig, buf + total);
+        if (count < 0) return -1;
+        total += count;
+        break;
+
+    case HMESG_GETCFG:
+    case HMESG_SETCFG:
+        count = scanstr_serial(&mesg->data.string, buf + total);
+        if (count < 0) return -1;
+        total += count;
+        break;
+
+    case HMESG_FETCH:
+        if (mesg->status == HMESG_STATUS_OK) {
+            mesg->data.point.owner = mesg;
+            count = hpoint_deserialize(&mesg->data.point, buf + total);
+            if (count < 0) return -1;
+            total += count;
+        }
+        break;
+
+    case HMESG_REPORT:
+        if (mesg->status == HMESG_STATUS_REQ) {
+            if (sscanf(buf + total, " %d%n",
+                       &mesg->data.point.id, &count) < 1)
+                return -1;
+            total += count;
+
+            count = hperf_deserialize(&mesg->data.perf, buf + total);
+            if (count < 0) return -1;
+            total += count;
+        }
+        break;
+
+    case HMESG_BEST:
+    case HMESG_RESTART:
+        break;
+
+    default:
+        return -1;
+    }
+    return total;
 }

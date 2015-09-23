@@ -325,7 +325,7 @@ int codeserver_init(string& filename)
         return -1;
     }
 
-    hsig_copy(&sig, &init_mesg.data.sig);
+    hsig_copy(&sig, &init_mesg.state.sig);
     hcfg_copy(&cfg, &init_mesg.data.cfg);
     appname = sig.name;
 

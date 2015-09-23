@@ -192,7 +192,7 @@ int init_signals(void)
 int init_comm(void)
 {
     const char* cfgval;
-    hsig_t* sig = &mesg.data.sig;
+    hsig_t* sig = &mesg.state.sig;
     hcfg_t* cfg = &mesg.data.cfg;
 
     /* Read a session message from the codegen plugin */

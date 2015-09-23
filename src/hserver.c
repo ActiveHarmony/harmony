@@ -495,7 +495,7 @@ int handle_client_socket(int fd)
         for (idx = 0; idx < slist_cap; ++idx) {
             if (!slist[idx].name)
                 continue;
-            if (strcmp(slist[idx].name, mesg.data.sig.name) == 0)
+            if (strcmp(slist[idx].name, mesg.state.sig.name) == 0)
                 break;
         }
         if (idx == slist_cap) {
@@ -528,15 +528,6 @@ int handle_client_socket(int fd)
             if (append_http_log(sess, pt, perf) != 0) {
                 perror("Internal error copying fetched point to HTTP log");
                 goto error;
-            }
-
-            /* Also update our best point data, if necessary. */
-            if (sess->best_perf > perf && sess->best.id != pt->id) {
-                sess->best_perf = perf;
-                if (hpoint_copy(&sess->best, pt) != 0) {
-                    perror("Internal error copying hpoint to best");
-                    goto error;
-                }
             }
 
             /* Remove point from fetched list. */
@@ -651,6 +642,23 @@ int handle_session_socket(int idx)
         goto error;
     }
 
+    if (mesg.state.best.id > sess->best.id) {
+        int i;
+        for (i = sess->log_len - 1; i >= 0; --i) {
+            if (sess->log[i].pt.id == mesg.state.best.id) {
+                sess->best_perf = sess->log[i].perf;
+                break;
+            }
+        }
+        if (i < 0)
+            sess->best_perf = NAN;
+
+        if (hpoint_copy(&sess->best, &mesg.state.best) != 0) {
+            perror("Internal error copying hpoint to best");
+            goto error;
+        }
+    }
+
     int dest = mesg.origin;
     mesg.origin = idx;
     if (mesg_forward(dest, &mesg) < 1) {
@@ -677,7 +685,7 @@ session_state_t* session_open(void)
             if (idx < 0)
                 idx = i;
         }
-        else if (strcmp(slist[i].name, mesg.data.sig.name) == 0) {
+        else if (strcmp(slist[i].name, mesg.state.sig.name) == 0) {
             mesg.status = HMESG_STATUS_FAIL;
             mesg.data.string = "Session name already exists.";
             return NULL;
@@ -692,7 +700,7 @@ session_state_t* session_open(void)
     }
     sess = &slist[idx];
 
-    sess->name = stralloc(mesg.data.sig.name);
+    sess->name = stralloc(mesg.state.sig.name);
     if (!sess->name)
         return NULL;
 
@@ -720,7 +728,7 @@ session_state_t* session_open(void)
     }
 
     /* Initialize HTTP server fields. */
-    if (hsig_copy(&sess->sig, &mesg.data.sig) != 0)
+    if (hsig_copy(&sess->sig, &mesg.state.sig) != 0)
         goto error;
 
     if (gettimeofday(&sess->start, NULL) < 0)

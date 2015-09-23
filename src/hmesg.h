@@ -92,10 +92,14 @@ typedef struct hmesg {
     int origin;
     hmesg_type type;
     hmesg_status status;
-    const char* src_id;
+
+    struct hmesg_state {
+        hsig_t      sig;
+        hpoint_t    best;
+        const char* client;
+    } state;
 
     struct hmesg_data {
-        hsig_t      sig;
         hcfg_t      cfg;
         hpoint_t    point;
         hperf_t     perf;

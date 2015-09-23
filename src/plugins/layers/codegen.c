@@ -149,7 +149,7 @@ int codegen_init(hsig_t* sig)
     mesg.type = HMESG_SESSION;
     mesg.status = HMESG_STATUS_REQ;
 
-    hsig_copy(&mesg.data.sig, sig);
+    hsig_copy(&mesg.state.sig, sig);
     hcfg_copy(&mesg.data.cfg, session_cfg);
     if (mesg_send(sockfd, &mesg) < 1)
         return -1;

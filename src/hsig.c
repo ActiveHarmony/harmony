@@ -274,24 +274,26 @@ int hsig_enum(hsig_t* sig, const char* name, const char* value)
 
 int hsig_serialize(char** buf, int* buflen, const hsig_t* sig)
 {
-    int i, count, total;
+    int count, total;
 
     count = snprintf_serial(buf, buflen, "sig: %u ", sig->id);
     if (count < 0) goto invalid;
     total = count;
 
-    count = printstr_serial(buf, buflen, sig->name);
-    if (count < 0) goto error;
-    total += count;
-
-    count = snprintf_serial(buf, buflen, "%d ", sig->range_len);
-    if (count < 0) goto invalid;
-    total += count;
-
-    for (i = 0; i < sig->range_len; ++i) {
-        count = hrange_serialize(buf, buflen, &sig->range[i]);
+    if (sig->id) {
+        count = printstr_serial(buf, buflen, sig->name);
         if (count < 0) goto error;
         total += count;
+
+        count = snprintf_serial(buf, buflen, "%d ", sig->range_len);
+        if (count < 0) goto invalid;
+        total += count;
+
+        for (int i = 0; i < sig->range_len; ++i) {
+            count = hrange_serialize(buf, buflen, &sig->range[i]);
+            if (count < 0) goto error;
+            total += count;
+        }
     }
     return total;
 
@@ -310,27 +312,29 @@ int hsig_deserialize(hsig_t* sig, char* buf)
         goto invalid;
     total = count;
 
-    count = scanstr_serial((const char**)&sig->name, buf + total);
-    if (count < 0) goto invalid;
-    total += count;
-
-    if (sscanf(buf + total, " %d%n", &sig->range_len, &count) < 1)
-        goto invalid;
-    total += count;
-
-    if (sig->range_cap < sig->range_len) {
-        newbuf = realloc(sig->range, sizeof(hrange_t) * sig->range_len);
-        if (!newbuf) goto error;
-        sig->range = newbuf;
-        sig->range_cap = sig->range_len;
-    }
-
-    for (int i = 0; i < sig->range_len; ++i) {
-        sig->range[i] = hrange_zero;
-        sig->range[i].owner = sig->owner;
-        count = hrange_deserialize(&sig->range[i], buf + total);
+    if (sig->id) {
+        count = scanstr_serial((const char**)&sig->name, buf + total);
         if (count < 0) goto invalid;
         total += count;
+
+        if (sscanf(buf + total, " %d%n", &sig->range_len, &count) < 1)
+            goto invalid;
+        total += count;
+
+        if (sig->range_cap < sig->range_len) {
+            newbuf = realloc(sig->range, sizeof(hrange_t) * sig->range_len);
+            if (!newbuf) goto error;
+            sig->range = newbuf;
+            sig->range_cap = sig->range_len;
+        }
+
+        for (int i = 0; i < sig->range_len; ++i) {
+            sig->range[i] = hrange_zero;
+            sig->range[i].owner = sig->owner;
+            count = hrange_deserialize(&sig->range[i], buf + total);
+            if (count < 0) goto invalid;
+            total += count;
+        }
     }
     return total;
 
