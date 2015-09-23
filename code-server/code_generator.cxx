@@ -42,7 +42,7 @@
 #include <arpa/inet.h>
 #include <sys/select.h>
 
-#include "hsig.h"
+#include "hspace.h"
 #include "hcfg.h"
 #include "hmesg.h"
 #include "hpoint.h"
@@ -52,7 +52,7 @@
 /*
  * Session and configuration information from the Harmony Server.
  */
-hsig_t sig = HSIG_INITIALIZER;
+hspace_t space = HSPACE_INITIALIZER;
 hcfg_t cfg = HCFG_INITIALIZER;
 
 using namespace std;
@@ -325,9 +325,9 @@ int codeserver_init(string& filename)
         return -1;
     }
 
-    hsig_copy(&sig, &init_mesg.state.sig);
+    hspace_copy(&space, &init_mesg.state.space);
     hcfg_copy(&cfg, &init_mesg.data.cfg);
-    appname = sig.name;
+    appname = space.name;
 
     cfgval = hcfg_get(&cfg, CFGKEY_SERVER_URL);
     if (!cfgval) {

@@ -19,7 +19,7 @@
 #define _XOPEN_SOURCE 500 // Needed for drand48().
 
 #include "libvertex.h"
-#include "hsig.h"
+#include "hspace.h"
 #include "hpoint.h"
 #include "hperf.h"
 #include "session-core.h"
@@ -44,16 +44,16 @@ int    rparam_sort(const void* _a, const void* _b);
 
 /* Global variables which must be set via libvertex_init(). */
 static int N, P;
-static hrange_t* range;
+static hrange_t* dim;
 static vertex_t* vmin;
 static vertex_t* vmax;
 static long sizeof_vertex;
 
-int libvertex_init(hsig_t* sig)
+int libvertex_init(hspace_t* space)
 {
-    if (range != sig->range) {
-        range = sig->range;
-        N = sig->range_len;
+    if (dim != space->dim) {
+        dim = space->dim;
+        N = space->len;
         P = hcfg_int(session_cfg, CFGKEY_PERF_COUNT);
         sizeof_vertex = sizeof(vertex_t) + N * sizeof(double);
 
@@ -119,9 +119,9 @@ int internal_vertex_min(vertex_t* v)
 
     vertex_reset(v);
     for (i = 0; i < N; ++i) {
-        switch (range[i].type) {
-        case HVAL_INT:  v->term[i] = range[i].bounds.i.min; break;
-        case HVAL_REAL: v->term[i] = range[i].bounds.r.min; break;
+        switch (dim[i].type) {
+        case HVAL_INT:  v->term[i] = dim[i].bounds.i.min; break;
+        case HVAL_REAL: v->term[i] = dim[i].bounds.r.min; break;
         case HVAL_STR:  v->term[i] = 0.0; break;
         default: return -1;
         }
@@ -140,22 +140,22 @@ int internal_vertex_max(vertex_t* v)
 
     vertex_reset(v);
     for (i = 0; i < N; ++i) {
-        int idx = hrange_max_idx(&range[i]);
+        int idx = hrange_max_idx(&dim[i]);
 
-        switch (range[i].type) {
+        switch (dim[i].type) {
         case HVAL_INT:
-            v->term[i] = range_int_value(&range[i].bounds.i, idx);
+            v->term[i] = range_int_value(&dim[i].bounds.i, idx);
             break;
 
         case HVAL_REAL:
-            if (range[i].bounds.r.step > 0.0)
-                v->term[i] = range_real_value(&range[i].bounds.r, idx);
+            if (dim[i].bounds.r.step > 0.0)
+                v->term[i] = range_real_value(&dim[i].bounds.r, idx);
             else
-                v->term[i] = range[i].bounds.r.max;
+                v->term[i] = dim[i].bounds.r.max;
             break;
 
         case HVAL_STR:
-            v->term[i] = range[i].bounds.e.len - 1;
+            v->term[i] = dim[i].bounds.e.len - 1;
             break;
 
         default:
@@ -201,23 +201,23 @@ int vertex_rand_trim(vertex_t* v, double trim_percentage)
         return -1;
 
     for (i = 0; i < N; ++i) {
-        switch (range[i].type) {
+        switch (dim[i].type) {
         case HVAL_INT: {
-            range_int_t* b = &range[i].bounds.i;
+            range_int_t* b = &dim[i].bounds.i;
             rval = (b->max - b->min - v->term[i]) * drand48();
             rval += b->min + (v->term[i] / 2);
             v->term[i] = range_int_nearest(b, (long)rval);
             break;
         }
         case HVAL_REAL: {
-            range_real_t* b = &range[i].bounds.r;
+            range_real_t* b = &dim[i].bounds.r;
             rval = (b->max - b->min - v->term[i]) * drand48();
             rval += b->min + (v->term[i] / 2);
             v->term[i] = range_real_nearest(b, rval);
             break;
         }
         case HVAL_STR: {
-            range_enum_t* b = &range[i].bounds.e;
+            range_enum_t* b = &dim[i].bounds.e;
             rval = (b->len - 1 - v->term[i]) * drand48();
             rval += v->term[i] / 2;
             v->term[i] = rval;
@@ -259,9 +259,9 @@ int vertex_outofbounds(const vertex_t* v)
     int i, out;
 
     for (i = 0; i < N; ++i) {
-        switch (range[i].type) {
-        case HVAL_INT:  out = (v->term[i] < range[i].bounds.i.min); break;
-        case HVAL_REAL: out = (v->term[i] < range[i].bounds.r.min); break;
+        switch (dim[i].type) {
+        case HVAL_INT:  out = (v->term[i] < dim[i].bounds.i.min); break;
+        case HVAL_REAL: out = (v->term[i] < dim[i].bounds.r.min); break;
         case HVAL_STR:  out = (v->term[i] < 0.0); break;
         default: return -1;
         }
@@ -279,21 +279,20 @@ int vertex_regrid(vertex_t* v)
         return -1;
 
     for (i = 0; i < N; ++i) {
-        switch (range[i].type) {
+        switch (dim[i].type) {
         case HVAL_INT:
-            v->term[i] = range_int_nearest(&range[i].bounds.i,
-                                            (long)v->term[i]);
+            v->term[i] = range_int_nearest(&dim[i].bounds.i, (long)v->term[i]);
             break;
 
         case HVAL_REAL:
-            v->term[i] = range_real_nearest(&range[i].bounds.r, v->term[i]);
+            v->term[i] = range_real_nearest(&dim[i].bounds.r, v->term[i]);
             break;
 
         case HVAL_STR:
             if (v->term[i] < 0.0)
                 v->term[i] = 0.0;
-            if (v->term[i] > range[i].bounds.e.len - 1)
-                v->term[i] = range[i].bounds.e.len - 1;
+            if (v->term[i] > dim[i].bounds.e.len - 1)
+                v->term[i] = dim[i].bounds.e.len - 1;
             v->term[i] = (unsigned long)(v->term[i] + 0.5);
             break;
 
@@ -314,21 +313,21 @@ int vertex_to_hpoint(const vertex_t* v, hpoint_t* result)
     for (i = 0; i < N; ++i) {
         hval_t* val = &result->val[i];
 
-        val->type = range[i].type;
-        switch (range[i].type) {
+        val->type = dim[i].type;
+        switch (dim[i].type) {
         case HVAL_INT:
-            val->value.i = range_int_nearest(&range[i].bounds.i,
+            val->value.i = range_int_nearest(&dim[i].bounds.i,
                                              (long)v->term[i]);
             break;
         case HVAL_REAL:
-            val->value.r = range_real_nearest(&range[i].bounds.r, v->term[i]);
+            val->value.r = range_real_nearest(&dim[i].bounds.r, v->term[i]);
             break;
         case HVAL_STR: {
             unsigned long idx = (unsigned long)(v->term[i] + 0.5);
-            if (idx > range[i].bounds.e.len - 1)
-                idx = range[i].bounds.e.len - 1;
+            if (idx > dim[i].bounds.e.len - 1)
+                idx = dim[i].bounds.e.len - 1;
 
-            val->value.s = stralloc(range_enum_value(&range[i].bounds.e, idx));
+            val->value.s = stralloc(range_enum_value(&dim[i].bounds.e, idx));
             break;
         }
         default:
@@ -345,12 +344,12 @@ int vertex_from_hpoint(const hpoint_t* pt, vertex_t* result)
     int i, j;
 
     for (i = 0; i < N; ++i) {
-        switch (range[i].type) {
+        switch (dim[i].type) {
         case HVAL_INT:  result->term[i] = pt->val[i].value.i; break;
         case HVAL_REAL: result->term[i] = pt->val[i].value.r; break;
         case HVAL_STR:
-            for (j = 0; j < range[i].bounds.e.len; ++j) {
-                if (strcmp(pt->val[i].value.s, range[i].bounds.e.set[j]) == 0)
+            for (j = 0; j < dim[i].bounds.e.len; ++j) {
+                if (strcmp(pt->val[i].value.s, dim[i].bounds.e.set[j]) == 0)
                     break;
             }
             result->term[i] = j;
@@ -362,7 +361,7 @@ int vertex_from_hpoint(const hpoint_t* pt, vertex_t* result)
     return 0;
 }
 
-int vertex_from_string(const char* str, hsig_t* sig, vertex_t* result)
+int vertex_from_string(const char* str, hspace_t* space, vertex_t* result)
 {
     int retval = 0;
     hpoint_t pt = HPOINT_INITIALIZER;
@@ -372,19 +371,19 @@ int vertex_from_string(const char* str, hsig_t* sig, vertex_t* result)
         return -1;
     }
 
-    if (hpoint_init(&pt, sig->range_len) != 0) {
+    if (hpoint_init(&pt, space->len) != 0) {
         session_error("Error initializing temporary hpoint");
         return -1;
     }
 
-    if (hpoint_parse(&pt, sig, str) != 0) {
+    if (hpoint_parse(&pt, space, str) != 0) {
         session_error("Error parsing point string");
         retval = -1;
         goto cleanup;
     }
 
-    if (hpoint_align(&pt, sig) != 0) {
-        session_error("Error aligning point to session signature");
+    if (hpoint_align(&pt, space) != 0) {
+        session_error("Error aligning point to session search space");
         retval = -1;
         goto cleanup;
     }

@@ -16,6 +16,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
+
 #include "hserver.h"
 #include "httpsvr.h"
 #include "hcfg.h"
@@ -674,7 +675,7 @@ session_state_t* session_open(void)
             if (idx < 0)
                 idx = i;
         }
-        else if (strcmp(slist[i].name, mesg.state.sig.name) == 0) {
+        else if (strcmp(slist[i].name, mesg.state.space.name) == 0) {
             mesg.status = HMESG_STATUS_FAIL;
             mesg.data.string = "Session name already exists.";
             return NULL;
@@ -689,7 +690,7 @@ session_state_t* session_open(void)
     }
     sess = &slist[idx];
 
-    sess->name = stralloc(mesg.state.sig.name);
+    sess->name = stralloc(mesg.state.space.name);
     if (!sess->name)
         return NULL;
 
@@ -717,7 +718,7 @@ session_state_t* session_open(void)
     }
 
     /* Initialize HTTP server fields. */
-    if (hsig_copy(&sess->sig, &mesg.state.sig) != 0)
+    if (hspace_copy(&sess->space, &mesg.state.space) != 0)
         goto error;
 
     if (gettimeofday(&sess->start, NULL) < 0)
@@ -761,7 +762,7 @@ void session_close(session_state_t* sess)
             client_close(sess->client[i]);
     }
 
-    hsig_fini(&sess->sig);
+    hspace_fini(&sess->space);
 }
 
 void client_close(int fd)
@@ -809,9 +810,9 @@ int available_index(int** list, int* cap)
 
 int update_state(session_state_t* sess)
 {
-    if (mesg.state.sig.id > sess->sig.id) {
-        if (hsig_copy(&sess->sig, &mesg.state.sig) != 0) {
-            perror("Could not copy session signature");
+    if (mesg.state.space.id > sess->space.id) {
+        if (hspace_copy(&sess->space, &mesg.state.space) != 0) {
+            perror("Could not copy session search space");
             return -1;
         }
     }

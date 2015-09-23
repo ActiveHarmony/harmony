@@ -17,7 +17,7 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "hsig.h"
+#include "hspace.h"
 #include "hrange.h"
 #include "hmesg.h"
 #include "hutil.h"
@@ -30,41 +30,40 @@
 #include <math.h>
 #include <limits.h>
 
-const hsig_t hsig_zero = HSIG_INITIALIZER;
+const hspace_t hspace_zero = HSPACE_INITIALIZER;
 
 /* Internal helper function prototypes. */
-static int       add_range(hsig_t* sig, hrange_t* range);
-static hrange_t* find_range(hsig_t* sig, const char* name);
+static int       add_dim(hspace_t* sig, hrange_t* dim);
+static hrange_t* find_dim(hspace_t* sig, const char* name);
 
 /*
- * Signature-related function implementations.
+ * Search space related function implementations.
  */
-int hsig_copy(hsig_t* dst, const hsig_t* src)
+int hspace_copy(hspace_t* dst, const hspace_t* src)
 {
     int i = 0;
-    hsig_scrub(dst);
+    hspace_scrub(dst);
 
     dst->id = src->id;
     dst->name = stralloc(src->name);
     if (!dst->name)
         goto error;
 
-    if (dst->range_cap != src->range_cap) {
-        hrange_t* newbuf = realloc(dst->range,
-                                   src->range_cap * sizeof(*src->range));
+    if (dst->cap != src->cap) {
+        hrange_t* newbuf = realloc(dst->dim, src->cap * sizeof(*src->dim));
         if (!newbuf)
             goto error;
 
-        memset(newbuf + src->range_len, 0,
-               (src->range_cap - src->range_len) * sizeof(*src->range));
+        memset(newbuf + src->len, 0,
+               (src->cap - src->len) * sizeof(*src->dim));
 
-        dst->range = newbuf;
-        dst->range_cap = src->range_cap;
+        dst->dim = newbuf;
+        dst->cap = src->cap;
     }
-    dst->range_len = src->range_len;
+    dst->len = src->len;
 
-    while (i < src->range_len) {
-        if (hrange_copy(&dst->range[i], &src->range[i]) != 0)
+    while (i < src->len) {
+        if (hrange_copy(&dst->dim[i], &src->dim[i]) != 0)
             goto error;
         ++i;
     }
@@ -74,44 +73,44 @@ int hsig_copy(hsig_t* dst, const hsig_t* src)
 
   error:
     while (i > 0)
-        hrange_fini(&dst->range[--i]);
-    free(dst->range);
+        hrange_fini(&dst->dim[--i]);
+    free(dst->dim);
     free(dst->name);
-    *dst = hsig_zero;
+    *dst = hspace_zero;
 
     return -1;
 }
 
-void hsig_scrub(hsig_t* sig)
+void hspace_scrub(hspace_t* space)
 {
-    sig->id = 0;
-    if (!hmesg_owner(sig->owner, sig->name)) {
-        free(sig->name);
-        sig->name = NULL;
+    space->id = 0;
+    if (!hmesg_owner(space->owner, space->name)) {
+        free(space->name);
+        space->name = NULL;
     }
 
-    for (int i = 0; i < sig->range_len; ++i)
-        hrange_fini(&sig->range[i]);
-    sig->range_len = 0;
+    for (int i = 0; i < space->len; ++i)
+        hrange_fini(&space->dim[i]);
+    space->len = 0;
 }
 
-void hsig_fini(hsig_t* sig)
+void hspace_fini(hspace_t* space)
 {
-    hsig_scrub(sig);
-    free(sig->range);
+    hspace_scrub(space);
+    free(space->dim);
 }
 
-int hsig_equal(const hsig_t* sig_a, const hsig_t* sig_b)
+int hspace_equal(const hspace_t* space_a, const hspace_t* space_b)
 {
-    if (strcmp(sig_a->name, sig_b->name) != 0)
+    if (strcmp(space_a->name, space_b->name) != 0)
         return 0;
 
-    if (sig_a->range_len != sig_b->range_len)
+    if (space_a->len != space_b->len)
         return 0;
 
-    for (int i = 0; i < sig_a->range_len; ++i) {
-        hrange_t* range_a = &sig_a->range[i];
-        hrange_t* range_b = &sig_b->range[i];
+    for (int i = 0; i < space_a->len; ++i) {
+        hrange_t* range_a = &space_a->dim[i];
+        hrange_t* range_b = &space_b->dim[i];
 
         if (strcmp(range_a->name, range_b->name) != 0)
             return 0;
@@ -147,19 +146,20 @@ int hsig_equal(const hsig_t* sig_a, const hsig_t* sig_b)
     return 1;
 }
 
-int hsig_name(hsig_t* sig, const char* name)
+int hspace_name(hspace_t* space, const char* name)
 {
-    if (sig->name && !hmesg_owner(sig->owner, sig->name))
-        free(sig->name);
+    if (space->name && !hmesg_owner(space->owner, space->name))
+        free(space->name);
 
-    sig->name = stralloc(name);
-    if (!sig->name)
+    space->name = stralloc(name);
+    if (!space->name)
         return -1;
 
     return 0;
 }
 
-int hsig_int(hsig_t* sig, const char* name, long min, long max, long step)
+int hspace_int(hspace_t* space, const char* name,
+               long min, long max, long step)
 {
     if (max < min || step < 1) {
         errno = EINVAL;
@@ -176,16 +176,16 @@ int hsig_int(hsig_t* sig, const char* name, long min, long max, long step)
     if (!range.name)
         return -1;
 
-    if (add_range(sig, &range) != 0) {
+    if (add_dim(space, &range) != 0) {
         free(range.name);
         return -1;
     }
 
-    ++sig->id;
+    ++space->id;
     return 0;
 }
 
-int hsig_real(hsig_t* sig, const char* name,
+int hspace_real(hspace_t* space, const char* name,
               double min, double max, double step)
 {
     if (max < min || step <= 0.0) {
@@ -203,18 +203,18 @@ int hsig_real(hsig_t* sig, const char* name,
     if (!range.name)
         return -1;
 
-    if (add_range(sig, &range) != 0) {
+    if (add_dim(space, &range) != 0) {
         free(range.name);
         return -1;
     }
 
-    ++sig->id;
+    ++space->id;
     return 0;
 }
 
-int hsig_enum(hsig_t* sig, const char* name, const char* value)
+int hspace_enum(hspace_t* space, const char* name, const char* value)
 {
-    hrange_t* ptr = find_range(sig, name);
+    hrange_t* ptr = find_dim(space, name);
     if (ptr) {
         if (ptr->type != HVAL_STR) {
             errno = EINVAL;
@@ -232,11 +232,11 @@ int hsig_enum(hsig_t* sig, const char* name, const char* value)
         if (!range.name)
             return -1;
 
-        if (add_range(sig, &range) != 0) {
+        if (add_dim(space, &range) != 0) {
             free(range.name);
             return -1;
         }
-        ptr = sig->range + sig->range_len - 1;
+        ptr = space->dim + space->len - 1;
     }
 
     char* vcopy = stralloc(value);
@@ -244,34 +244,34 @@ int hsig_enum(hsig_t* sig, const char* name, const char* value)
         if (ptr->bounds.e.len == 0) {
             free(ptr->bounds.e.set);
             free(vcopy);
-            --sig->range_len;
+            --space->len;
         }
         return -1;
     }
 
-    ++sig->id;
+    ++space->id;
     return 0;
 }
 
-int hsig_pack(char** buf, int* buflen, const hsig_t* sig)
+int hspace_pack(char** buf, int* buflen, const hspace_t* space)
 {
     int count, total;
 
-    count = snprintf_serial(buf, buflen, " sig:%u", sig->id);
+    count = snprintf_serial(buf, buflen, " space:%u", space->id);
     if (count < 0) goto invalid;
     total = count;
 
-    if (sig->id) {
-        count = printstr_serial(buf, buflen, sig->name);
+    if (space->id) {
+        count = printstr_serial(buf, buflen, space->name);
         if (count < 0) goto error;
         total += count;
 
-        count = snprintf_serial(buf, buflen, " %d", sig->range_len);
+        count = snprintf_serial(buf, buflen, " %d", space->len);
         if (count < 0) goto invalid;
         total += count;
 
-        for (int i = 0; i < sig->range_len; ++i) {
-            count = hrange_pack(buf, buflen, &sig->range[i]);
+        for (int i = 0; i < space->len; ++i) {
+            count = hrange_pack(buf, buflen, &space->dim[i]);
             if (count < 0) goto error;
             total += count;
         }
@@ -284,35 +284,35 @@ int hsig_pack(char** buf, int* buflen, const hsig_t* sig)
     return -1;
 }
 
-int hsig_unpack(hsig_t* sig, char* buf)
+int hspace_unpack(hspace_t* space, char* buf)
 {
     int count, total;
-    hrange_t* newbuf;
 
-    if (sscanf(buf, " sig:%u%n", &sig->id, &count) < 1)
+    if (sscanf(buf, " space:%u%n", &space->id, &count) < 1)
         goto invalid;
     total = count;
 
-    if (sig->id) {
-        count = scanstr_serial((const char**)&sig->name, buf + total);
+    if (space->id) {
+        count = scanstr_serial((const char**)&space->name, buf + total);
         if (count < 0) goto invalid;
         total += count;
 
-        if (sscanf(buf + total, " %d%n", &sig->range_len, &count) < 1)
+        if (sscanf(buf + total, " %d%n", &space->len, &count) < 1)
             goto invalid;
         total += count;
 
-        if (sig->range_cap < sig->range_len) {
-            newbuf = realloc(sig->range, sizeof(hrange_t) * sig->range_len);
+        if (space->cap < space->len) {
+            hrange_t* newbuf = realloc(space->dim,
+                                       space->len * sizeof(*space->dim));
             if (!newbuf) goto error;
-            sig->range = newbuf;
-            sig->range_cap = sig->range_len;
+            space->dim = newbuf;
+            space->cap = space->len;
         }
 
-        for (int i = 0; i < sig->range_len; ++i) {
-            sig->range[i] = hrange_zero;
-            sig->range[i].owner = sig->owner;
-            count = hrange_unpack(&sig->range[i], buf + total);
+        for (int i = 0; i < space->len; ++i) {
+            space->dim[i] = hrange_zero;
+            space->dim[i].owner = space->owner;
+            count = hrange_unpack(&space->dim[i], buf + total);
             if (count < 0) goto invalid;
             total += count;
         }
@@ -325,7 +325,7 @@ int hsig_unpack(hsig_t* sig, char* buf)
     return -1;
 }
 
-int hsig_parse(hsig_t* sig, const char* buf, const char** errptr)
+int hspace_parse(hspace_t* space, const char* buf, const char** errptr)
 {
     hrange_t range = HRANGE_INITIALIZER;
     int id, idlen, bounds = 0, tail = 0;
@@ -389,12 +389,12 @@ int hsig_parse(hsig_t* sig, const char* buf, const char** errptr)
     }
     range.owner = NULL;
 
-    if (add_range(sig, &range) != 0) {
+    if (add_dim(space, &range) != 0) {
         errstr = "Invalid range name";
         goto error;
     }
 
-    ++sig->id;
+    ++space->id;
     if (errptr) *errptr = NULL;
     return 1;
 
@@ -408,28 +408,28 @@ int hsig_parse(hsig_t* sig, const char* buf, const char** errptr)
 /*
  * Internal helper function implementations.
  */
-int add_range(hsig_t* sig, hrange_t* range)
+int add_dim(hspace_t* space, hrange_t* dim)
 {
-    if (find_range(sig, range->name) != NULL) {
+    if (find_dim(space, dim->name) != NULL) {
         errno = EINVAL;
         return -1;
     }
 
-    /* Grow range array, if needed. */
-    if (sig->range_len == sig->range_cap) {
-        if (array_grow(&sig->range, &sig->range_cap, sizeof(hrange_t)) < 0)
+    /* Grow dimension array, if needed. */
+    if (space->len == space->cap) {
+        if (array_grow(&space->dim, &space->cap, sizeof(*space->dim)) < 0)
             return -1;
     }
-    sig->range[ sig->range_len++ ] = *range;
+    space->dim[ space->len++ ] = *dim;
 
     return 0;
 }
 
-hrange_t* find_range(hsig_t* sig, const char* name)
+hrange_t* find_dim(hspace_t* space, const char* name)
 {
-    for (int i = 0; i < sig->range_len; ++i)
-        if (strcmp(name, sig->range[i].name) == 0)
-            return &sig->range[i];
+    for (int i = 0; i < space->len; ++i)
+        if (strcmp(name, space->dim[i].name) == 0)
+            return &space->dim[i];
 
     return NULL;
 }

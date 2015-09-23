@@ -116,7 +116,7 @@ typedef enum simplex_state {
 } simplex_state_t;
 
 /* Forward function definitions. */
-int  strategy_cfg(hsig_t* sig);
+int  strategy_cfg(hspace_t* space);
 int  init_by_random(void);
 int  init_by_point(int fast);
 int  init_by_specified_point(const char* str);
@@ -154,9 +154,9 @@ int coords;    /* number of coordinates per vertex */
 /*
  * Invoked once on strategy load.
  */
-int strategy_init(hsig_t* sig)
+int strategy_init(hspace_t* space)
 {
-    if (libvertex_init(sig) != 0) {
+    if (libvertex_init(space) != 0) {
         session_error("Could not initialize vertex library.");
         return -1;
     }
@@ -166,8 +166,8 @@ int strategy_init(hsig_t* sig)
 
         /* Make sure the simplex size is N+1 or greater. */
         simplex_size = hcfg_int(session_cfg, CFGKEY_SIMPLEX_SIZE);
-        if (simplex_size < sig->range_len + 1)
-            simplex_size = sig->range_len + 1;
+        if (simplex_size < space->len + 1)
+            simplex_size = space->len + 1;
 
         init_point = vertex_alloc();
         if (!init_point) {
@@ -200,9 +200,9 @@ int strategy_init(hsig_t* sig)
     simplex_reset(base);
     reported = 0;
     send_idx = 0;
-    coords = sig->range_len;
+    coords = space->len;
 
-    if (strategy_cfg(sig) != 0)
+    if (strategy_cfg(space) != 0)
         return -1;
 
     switch (init_method) {
@@ -216,7 +216,7 @@ int strategy_init(hsig_t* sig)
 
     case SIMPLEX_INIT_POINT:
         vertex_from_string(hcfg_get(session_cfg, CFGKEY_INIT_POINT),
-                           sig, init_point);
+                           space, init_point);
         break;
 
     default:
@@ -239,7 +239,7 @@ int strategy_init(hsig_t* sig)
     return 0;
 }
 
-int strategy_cfg(hsig_t* sig)
+int strategy_cfg(hspace_t* space)
 {
     const char* cfgval;
 

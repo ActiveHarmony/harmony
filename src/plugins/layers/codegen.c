@@ -42,7 +42,7 @@
  */
 
 #include "session-core.h"
-#include "hsig.h"
+#include "hspace.h"
 #include "hcfg.h"
 #include "hmesg.h"
 #include "hpoint.h"
@@ -117,7 +117,7 @@ int cglog_find(const hpoint_t* pt);
  *
  * This routine should return 0 on success, and -1 otherwise.
  */
-int codegen_init(hsig_t* sig)
+int codegen_init(hspace_t* space)
 {
     const char* url;
 
@@ -149,7 +149,7 @@ int codegen_init(hsig_t* sig)
     mesg.type = HMESG_SESSION;
     mesg.status = HMESG_STATUS_REQ;
 
-    hsig_copy(&mesg.state.sig, sig);
+    hspace_copy(&mesg.state.space, space);
     hcfg_copy(&mesg.data.cfg, session_cfg);
     if (mesg_send(sockfd, &mesg) < 1)
         return -1;

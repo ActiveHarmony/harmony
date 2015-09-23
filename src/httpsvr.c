@@ -669,14 +669,14 @@ int http_send_init(int fd, session_state_t* sess)
     int buflen = sizeof(sendbuf), total = 0;
     int i, j, count;
 
-    count = snprintf_serial(&buf, &buflen, "sig:");
+    count = snprintf_serial(&buf, &buflen, "space:");
     if (count < 0)
         goto error;
     total += count;
 
-    for (i = 0; i < sess->sig.range_len; ++i) {
+    for (i = 0; i < sess->space.len; ++i) {
         char type;
-        hrange_t* range = &sess->sig.range[i];
+        hrange_t* range = &sess->space.dim[i];
 
         if (i > 0) {
             count = snprintf_serial(&buf, &buflen, ",");
@@ -812,7 +812,7 @@ int report_append(char** buf, int* buflen, session_state_t* sess,
     }
 
     if (!pt->id) {
-        for (i = 0; i < sess->sig.range_len; ++i) {
+        for (i = 0; i < sess->space.len; ++i) {
             count = snprintf_serial(buf, buflen, ",");
             if (count < 0)
                 return -1;
@@ -820,7 +820,7 @@ int report_append(char** buf, int* buflen, session_state_t* sess,
         }
     }
     else {
-        for (i = 0; i < sess->sig.range_len; ++i) {
+        for (i = 0; i < sess->space.len; ++i) {
             hval_t* val;
 
             val = &pt->val[i];
@@ -832,7 +832,7 @@ int report_append(char** buf, int* buflen, session_state_t* sess,
                 count = snprintf_serial(buf, buflen, "%.17lf,", val->value.r);
                 break;
             case HVAL_STR: {
-                range_enum_t* bounds = &sess->sig.range[i].bounds.e;
+                range_enum_t* bounds = &sess->space.dim[i].bounds.e;
                 unsigned long index = range_enum_index(bounds, val->value.s);
                 count = snprintf_serial(buf, buflen, "%ld,", index);
                 break;

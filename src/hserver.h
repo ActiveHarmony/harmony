@@ -44,7 +44,7 @@ typedef struct session_state {
 
     /* Fields used by the HTTP server. */
     struct timeval start;
-    hsig_t sig;
+    hspace_t space;
     char* strategy;
     unsigned int status;
 

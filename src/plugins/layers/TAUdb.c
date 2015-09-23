@@ -37,7 +37,7 @@
  */
 
 #include "session-core.h"
-#include "hsig.h"
+#include "hspace.h"
 #include "hpoint.h"
 #include "hutil.h"
 #include "hcfg.h"
@@ -85,7 +85,7 @@ typedef struct cinfo {
 } cinfo_t;
 cinfo_t* client = NULL;
 
-hsig_t sess_sig;
+hspace_t sess_space;
 int param_max;
 int client_max;
 int save_counter = 0;
@@ -106,7 +106,7 @@ void harmony_taudb_get_secondary_metadata(TAUDB_THREAD* thread, char* opsys,
 /* Initialization of TAUdb
  * Return 0 for success, -1 for error
  */
-int TAUdb_init(hsig_t* sig)
+int TAUdb_init(hspace_t* space)
 {
     char* tmpstr;
 
@@ -123,7 +123,7 @@ int TAUdb_init(hsig_t* sig)
     taudb_check_connection(connection);
 
     /* Initializing Trial */
-    if (harmony_taudb_trial_init(sig->name, sig->name) != 0) {
+    if (harmony_taudb_trial_init(space->name, space->name) != 0) {
         session_error("Failed to create TAUdb trial");
         return -1;
     }
@@ -138,7 +138,7 @@ int TAUdb_init(hsig_t* sig)
     timer_group->name = taudb_strdup("Harmony Perf");
     taudb_add_timer_group_to_trial(taudb_trial, timer_group);
 
-    param_max = sig->range_len;
+    param_max = space->len;
     client_max = hcfg_int(session_cfg, CFGKEY_CLIENT_COUNT);
     taudb_trial->node_count = client_max;
 
@@ -166,8 +166,8 @@ int TAUdb_init(hsig_t* sig)
     }
     memset(client, 0, client_max * sizeof(cinfo_t));
 
-    if (hsig_copy(&sess_sig, sig) != 0) {
-        session_error("Internal error: Could not copy session signature");
+    if (hspace_copy(&sess_space, space) != 0) {
+        session_error("Could not copy session search space");
         return -1;
     }
     return 0;
@@ -333,7 +333,7 @@ int save_timer_parameter(TAUDB_TIMER* timer, htrial_t* trial)
 
     for (i = 0; i < param_max; i++) {
         /*Save name*/
-        param[i].name = taudb_strdup(sess_sig.range[i].name);
+        param[i].name = taudb_strdup(sess_space.dim[i].name);
 
         /*get value*/
         switch (trial->point.val[i].type) {

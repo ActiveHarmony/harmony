@@ -32,7 +32,7 @@
  */
 
 #include "session-core.h"
-#include "hsig.h"
+#include "hspace.h"
 #include "hpoint.h"
 #include "hperf.h"
 #include "hutil.h"
@@ -75,7 +75,7 @@ int safe_scanstr(FILE* fd, int bounds_idx, const char** match);
 int pt_equiv(const hpoint_t* a, const hpoint_t* b);
 visited_t* find_visited(const hpoint_t* a);
 
-static hrange_t* range;
+static hrange_t* dim;
 static cache_t* cache;
 static int cache_len, cache_cap;
 static visited_t* visited;
@@ -89,18 +89,18 @@ static int buflen;
 /* Initialize global variables.  Also loads data into cache from a log
  * file if configuration variable CACHE_FILE is defined.
  */
-int cache_init(hsig_t* sig)
+int cache_init(hspace_t* space)
 {
     const char* filename;
 
-    i_cnt = sig->range_len;
+    i_cnt = space->len;
     o_cnt = hcfg_int(session_cfg, CFGKEY_PERF_COUNT);
     if (o_cnt < 1) {
         session_error("Invalid value for " CFGKEY_PERF_COUNT
                       " configuration key.");
         return -1;
     }
-    range = sig->range;
+    dim = space->dim;
 
     cache = NULL;
     cache_len = cache_cap = 0;
@@ -250,9 +250,9 @@ int find_max_strlen(void)
     int max = 0;
 
     for (int i = 0; i < i_cnt; ++i) {
-        if (range[i].type == HVAL_STR) {
-            for (int j = 0; j < range[i].bounds.e.len; ++j) {
-                int len = strlen(range[i].bounds.e.set[j]) + 1;
+        if (dim[i].type == HVAL_STR) {
+            for (int j = 0; j < dim[i].bounds.e.len; ++j) {
+                int len = strlen(dim[i].bounds.e.set[j]) + 1;
                 if (max < len)
                     max = len;
             }
@@ -311,8 +311,8 @@ int load_logger_file(const char* filename)
 
             if (i > 0) SKIP_PATTERN(fp, " ,");
 
-            v->type = range[i].type;
-            switch (range[i].type) {
+            v->type = dim[i].type;
+            switch (dim[i].type) {
             case HVAL_INT:  ret = fscanf(fp, "%ld", &v->value.i); break;
             case HVAL_REAL: ret = fscanf(fp, "%*f[%la]", &v->value.r); break;
             case HVAL_STR:  ret = safe_scanstr(fp, i, &v->value.s); break;
@@ -356,7 +356,7 @@ int load_logger_file(const char* filename)
 int safe_scanstr(FILE* fp, int bounds_idx, const char** match)
 {
     int i;
-    range_enum_t* bounds = &range[bounds_idx].bounds.e;
+    range_enum_t* bounds = &dim[bounds_idx].bounds.e;
 
     SKIP_PATTERN(fp, " \"");
     for (i = 0; i < buflen; ++i) {

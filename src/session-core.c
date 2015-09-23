@@ -19,7 +19,7 @@
 #define _XOPEN_SOURCE 600 // Needed for srand48() and S_ISSOCK.
 
 #include "session-core.h"
-#include "hsig.h"
+#include "hspace.h"
 #include "hcfg.h"
 #include "hmesg.h"
 #include "hutil.h"
@@ -43,7 +43,7 @@
 /* --------------------------------
  * Session configuration variables.
  */
-hsig_t sig = HSIG_INITIALIZER;
+hspace_t space = HSPACE_INITIALIZER;
 hcfg_t cfg = HCFG_INITIALIZER;
 const hcfg_t* session_cfg = &cfg;
 
@@ -199,7 +199,7 @@ int main(int argc, char* argv[])
     }
 
     /* Initialize the session. */
-    if (hsig_copy(&sig, &mesg.state.sig) != 0) {
+    if (hspace_copy(&space, &mesg.state.space) != 0) {
         mesg.data.string = "Could not copy session data";
         goto error;
     }
@@ -289,7 +289,7 @@ int main(int argc, char* argv[])
     }
     hmesg_fini(&mesg);
     hcfg_fini(&cfg);
-    hsig_fini(&sig);
+    hspace_fini(&space);
     free(setcfg_buf);
 
     return retval;
@@ -601,8 +601,8 @@ int handle_join(hmesg_t* mesg)
 {
     int i;
 
-    if (hsig_copy(&mesg->state.sig, &sig) < 0) {
-        errmsg = "Internal error: Could not copy signature.";
+    if (hspace_copy(&mesg->state.space, &space) < 0) {
+        errmsg = "Could not copy search space to message";
         return -1;
     }
 
@@ -747,12 +747,12 @@ int handle_restart(hmesg_t* mesg)
 
 int update_state(hmesg_t* mesg)
 {
-    if (mesg->state.sig.id < sig.id) {
-        if (hsig_copy(&mesg->state.sig, &sig) != 0)
+    if (mesg->state.space.id < space.id) {
+        if (hspace_copy(&mesg->state.space, &space) != 0)
             return -1;
     }
     else if (mesg->type != HMESG_JOIN) {
-        mesg->state.sig.id = 0;
+        mesg->state.space.id = 0;
     }
 
     unsigned client_best = mesg->state.best.id;
@@ -835,7 +835,7 @@ int load_strategy(const char* file)
     }
 
     if (strategy_init)
-        return strategy_init(&sig);
+        return strategy_init(&space);
 
     return 0;
 }
@@ -929,7 +929,7 @@ int load_layers(const char* list)
 
         if (lstack[lstack_len].init) {
             curr_layer = lstack_len + 1;
-            if (lstack[lstack_len].init(&sig) < 0) {
+            if (lstack[lstack_len].init(&space) < 0) {
                 retval = -1;
                 goto cleanup;
             }
@@ -1074,11 +1074,11 @@ int session_restart(void)
         if (lstack[i].fini && lstack[i].fini() != 0)
             return -1;
 
-    if (strategy_init && strategy_init(&sig) != 0)
+    if (strategy_init && strategy_init(&space) != 0)
         return -1;
 
     for (i = 0; i < lstack_len; ++i)
-        if (lstack[i].init && lstack[i].init(&sig) != 0)
+        if (lstack[i].init && lstack[i].init(&space) != 0)
             return -1;
 
     return 0;

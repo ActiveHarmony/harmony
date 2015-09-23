@@ -20,7 +20,7 @@
 #ifndef __HMESG_H__
 #define __HMESG_H__
 
-#include "hsig.h"
+#include "hspace.h"
 #include "hcfg.h"
 #include "hpoint.h"
 #include "hperf.h"
@@ -94,7 +94,7 @@ typedef struct hmesg {
     hmesg_status status;
 
     struct hmesg_state {
-        hsig_t      sig;
+        hspace_t    space;
         hpoint_t    best;
         const char* client;
     } state;

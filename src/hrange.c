@@ -17,7 +17,6 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "hsig.h"
 #include "hmesg.h"
 #include "hutil.h"
 

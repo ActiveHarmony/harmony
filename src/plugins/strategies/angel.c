@@ -19,7 +19,7 @@
 
 #include "strategy.h"
 #include "session-core.h"
-#include "hsig.h"
+#include "hspace.h"
 #include "hperf.h"
 #include "hutil.h"
 #include "hcfg.h"
@@ -147,7 +147,7 @@ typedef enum simplex_state {
 
 /* Forward function definitions. */
 int angel_init_simplex(void);
-int strategy_cfg(hsig_t* sig);
+int strategy_cfg(hspace_t* space);
 int angel_phase_incr(void);
 void simplex_update_index(void);
 void simplex_update_centroid(void);
@@ -265,9 +265,9 @@ int angel_phase_incr(void)
 /*
  * Invoked once on strategy load.
  */
-int strategy_init(hsig_t* sig)
+int strategy_init(hspace_t* space)
 {
-    if (libvertex_init(sig) != 0) {
+    if (libvertex_init(space) != 0) {
         session_error("Could not initialize vertex library.");
         return -1;
     }
@@ -278,7 +278,7 @@ int strategy_init(hsig_t* sig)
         return -1;
     }
 
-    if (strategy_cfg(sig) != 0)
+    if (strategy_cfg(space) != 0)
         return -1;
 
     if (hperf_init(&best_perf, perf_n) != 0) {
@@ -337,7 +337,7 @@ int strategy_init(hsig_t* sig)
     return 0;
 }
 
-int strategy_cfg(hsig_t* sig)
+int strategy_cfg(hspace_t* space)
 {
     int i;
     const char* cfgval;
@@ -355,8 +355,8 @@ int strategy_cfg(hsig_t* sig)
 
     /* Make sure the simplex size is N+1 or greater. */
     simplex_size = hcfg_int(session_cfg, CFGKEY_SIMPLEX_SIZE);
-    if (simplex_size < sig->range_len + 1)
-        simplex_size = sig->range_len + 1;
+    if (simplex_size < space->len + 1)
+        simplex_size = space->len + 1;
 
     cfgval = hcfg_get(session_cfg, CFGKEY_INIT_METHOD);
     if (cfgval) {

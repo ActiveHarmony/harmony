@@ -25,7 +25,7 @@
  * input variables not in the current search group remain constant.
  *
  * Input variables are specified via a zero-based index, determined by
- * the order they are defined in the session signature.  For instance,
+ * the order they are defined in the session search space.  For instance,
  * the first variable defined via harmony_int(), harmony_real(), or
  * harmony_enum() can be referenced via the index 0.
  *
@@ -50,7 +50,7 @@
  */
 
 #include "session-core.h"
-#include "hsig.h"
+#include "hspace.h"
 #include "hpoint.h"
 #include "hutil.h"
 #include "hcfg.h"
@@ -92,7 +92,7 @@ static int glist_len, glist_cap;
 static int glist_curr;
 static hpoint_t best;
 
-int group_init(hsig_t* sig)
+int group_init(hspace_t* space)
 {
     const char* ptr;
 
@@ -109,7 +109,7 @@ int group_init(hsig_t* sig)
     }
 
     /* The maximum group size is the number of input ranges. */
-    cap_max = sig->range_len;
+    cap_max = space->len;
 
     locked_val = calloc(cap_max, sizeof(hval_t));
     if (!locked_val) {

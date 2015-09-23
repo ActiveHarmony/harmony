@@ -80,36 +80,36 @@ void hpoint_fini(hpoint_t* pt)
     free(pt->val);
 }
 
-int hpoint_align(hpoint_t* pt, hsig_t* sig)
+int hpoint_align(hpoint_t* pt, hspace_t* space)
 {
     int i;
 
-    if (pt->len != sig->range_len)
+    if (pt->len != space->len)
         return -1;
 
     for (i = 0; i < pt->len; ++i) {
         hval_t* val = &pt->val[i];
 
-        if (val->type != sig->range[i].type)
+        if (val->type != space->dim[i].type)
             return -1;
 
-        switch (sig->range[i].type) {
+        switch (space->dim[i].type) {
         case HVAL_INT:
-            val->value.i = range_int_nearest(&sig->range[i].bounds.i,
+            val->value.i = range_int_nearest(&space->dim[i].bounds.i,
                                              val->value.i);
             break;
 
         case HVAL_REAL:
-            val->value.r = range_real_nearest(&sig->range[i].bounds.r,
+            val->value.r = range_real_nearest(&space->dim[i].bounds.r,
                                               val->value.r);
             break;
 
         case HVAL_STR: {
-            unsigned long idx = range_enum_index(&sig->range[i].bounds.e,
+            unsigned long idx = range_enum_index(&space->dim[i].bounds.e,
                                                  val->value.s);
             if (!hmesg_owner(pt->owner, val->value.s))
                 free((char*)val->value.s);
-            val->value.s = stralloc(sig->range[i].bounds.e.set[idx]);
+            val->value.s = stralloc(space->dim[i].bounds.e.set[idx]);
             break;
         }
 
@@ -120,15 +120,15 @@ int hpoint_align(hpoint_t* pt, hsig_t* sig)
     return 0;
 }
 
-int hpoint_parse(hpoint_t* pt, hsig_t* sig, const char* buf)
+int hpoint_parse(hpoint_t* pt, hspace_t* space, const char* buf)
 {
-    if (pt->len != sig->range_len) {
+    if (pt->len != space->len) {
         hpoint_fini(pt);
-        hpoint_init(pt, sig->range_len);
+        hpoint_init(pt, space->len);
     }
 
     for (int i = 0; i < pt->len; ++i) {
-        pt->val[i].type = sig->range[i].type;
+        pt->val[i].type = space->dim[i].type;
 
         int span = hval_parse(&pt->val[i], buf);
         if (span < 0)

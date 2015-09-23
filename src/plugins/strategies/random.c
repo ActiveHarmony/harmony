@@ -31,7 +31,7 @@
 
 #include "strategy.h"
 #include "session-core.h"
-#include "hsig.h"
+#include "hspace.h"
 #include "hperf.h"
 #include "hutil.h"
 #include "hcfg.h"
@@ -56,7 +56,7 @@ hpoint_t best = HPOINT_INITIALIZER;
 double   best_perf;
 
 /* Forward function definitions. */
-int strategy_cfg(hsig_t* sig);
+int strategy_cfg(hspace_t* space);
 
 /* Variables to track current search state. */
 vertex_t* curr;
@@ -64,9 +64,9 @@ vertex_t* curr;
 /*
  * Invoked once on strategy load.
  */
-int strategy_init(hsig_t* sig)
+int strategy_init(hspace_t* space)
 {
-    if (libvertex_init(sig) != 0) {
+    if (libvertex_init(space) != 0) {
         session_error("Could not initialize vertex library.");
         return -1;
     }
@@ -87,7 +87,7 @@ int strategy_init(hsig_t* sig)
     }
 
     /* Initialization for subsequent calls to strategy_init(). */
-    if (strategy_cfg(sig) != 0)
+    if (strategy_cfg(space) != 0)
         return -1;
 
     if (session_setcfg(CFGKEY_CONVERGED, "0") != 0) {
@@ -97,12 +97,12 @@ int strategy_init(hsig_t* sig)
     return 0;
 }
 
-int strategy_cfg(hsig_t* sig)
+int strategy_cfg(hspace_t* space)
 {
     const char* cfgval = hcfg_get(session_cfg, CFGKEY_INIT_POINT);
 
     if (cfgval) {
-        if (vertex_from_string(cfgval, sig, curr) != 0)
+        if (vertex_from_string(cfgval, space, curr) != 0)
             return -1;
     }
     else {

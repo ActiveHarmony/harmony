@@ -7,8 +7,8 @@ LIB_SRCS=hcfg.c \
          hpoint.c \
          hperf.c \
          hrange.c \
-         hsig.c \
          hsockutil.c \
+         hspace.c \
          hutil.c \
          hval.c
 CLI_SRCS=hclient.c

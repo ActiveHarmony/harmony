@@ -19,7 +19,7 @@
 #define _XOPEN_SOURCE 600 // Needed for gethostname()
 
 #include "hclient.h"
-#include "hsig.h"
+#include "hspace.h"
 #include "hcfg.h"
 #include "hutil.h"
 #include "hmesg.h"
@@ -58,7 +58,7 @@ struct hdesc_t {
     char* id;
     char default_id[HOST_NAME_MAX + 32];
 
-    hsig_t sig;
+    hspace_t space;
     hcfg_t cfg;
     hmesg_t mesg;
 
@@ -181,7 +181,7 @@ void ah_fini(hdesc_t* hd)
 
         hmesg_fini(&hd->mesg);
         hcfg_fini(&hd->cfg);
-        hsig_fini(&hd->sig);
+        hspace_fini(&hd->space);
         hpoint_fini(&hd->curr);
         hpoint_fini(&hd->best);
         hperf_fini(&hd->perf);
@@ -270,7 +270,7 @@ int ah_load(hdesc_t* hd, const char* filename)
     FILE* fp;
     int retval = 0;
 
-    if (hsig_name(&hd->sig, filename) != 0) {
+    if (hspace_name(&hd->space, filename) != 0) {
         hd->errstr = "Could not copy session name from filename";
         return -1;
     }
@@ -302,7 +302,7 @@ int ah_load(hdesc_t* hd, const char* filename)
             (strncmp(line, "real", 4) == 0 && isspace(line[4])) ||
             (strncmp(line, "enum", 4) == 0 && isspace(line[4])))
         {
-            if (hsig_parse(&hd->sig, line, &hd->errstr) == -1)
+            if (hspace_parse(&hd->space, line, &hd->errstr) == -1)
                 goto error;
         }
         else {
@@ -338,7 +338,7 @@ int ah_load(hdesc_t* hd, const char* filename)
  */
 int ah_int(hdesc_t* hd, const char* name, long min, long max, long step)
 {
-    return hsig_int(&hd->sig, name, min, max, step);
+    return hspace_int(&hd->space, name, min, max, step);
 }
 
 /**
@@ -354,7 +354,7 @@ int ah_int(hdesc_t* hd, const char* name, long min, long max, long step)
  */
 int ah_real(hdesc_t* hd, const char* name, double min, double max, double step)
 {
-    return hsig_real(&hd->sig, name, min, max, step);
+    return hspace_real(&hd->space, name, min, max, step);
 }
 
 /**
@@ -369,7 +369,7 @@ int ah_real(hdesc_t* hd, const char* name, double min, double max, double step)
  */
 int ah_enum(hdesc_t* hd, const char* name, const char* value)
 {
-    return hsig_enum(&hd->sig, name, value);
+    return hspace_enum(&hd->space, name, value);
 }
 
 /**
@@ -437,7 +437,7 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
         return -1;
     }
 
-    if (hd->sig.range_len < 1) {
+    if (hd->space.len < 1) {
         hd->errstr = "No tuning variables defined";
         errno = EINVAL;
         return -1;
@@ -485,10 +485,10 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
     hd->state = HARMONY_STATE_CONNECTED;
 
     /* Provide a default name, if necessary. */
-    if (!name && !hd->sig.name)
+    if (!name && !hd->space.name)
         name = hd->default_id;
 
-    if (name && hsig_name(&hd->sig, name) != 0) {
+    if (name && hspace_name(&hd->space, name) != 0) {
         hd->errstr = "Error setting session name";
         return -1;
     }
@@ -498,7 +498,7 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
         hd->id = hd->default_id;
 
     /* Prepare a Harmony message. */
-    hsig_copy(&hd->mesg.state.sig, &hd->sig);
+    hspace_copy(&hd->mesg.state.space, &hd->space);
     hcfg_copy(&hd->mesg.data.cfg, &hd->cfg);
 
     if (send_request(hd, HMESG_SESSION) != 0)
@@ -579,7 +579,7 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
             return -1;
         }
 
-        if (hsig_name(&hd->sig, name) != 0) {
+        if (hspace_name(&hd->space, name) != 0) {
             hd->errstr = "Error setting session name";
             return -1;
         }
@@ -600,8 +600,8 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
             return -1;
         }
 
-        if (hsig_copy(&hd->sig, &hd->mesg.state.sig) != 0) {
-            hd->errstr = "Error copying received signature structure";
+        if (hspace_copy(&hd->space, &hd->mesg.state.space) != 0) {
+            hd->errstr = "Error copying received search space structure";
             return -1;
         }
 
@@ -615,7 +615,7 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
     }
     else {
         // Descriptor was already joined.  Make sure the session names match.
-        if (name && strcmp(hd->sig.name, name) != 0) {
+        if (name && strcmp(hd->space.name, name) != 0) {
             hd->errstr = "Descriptor already joined with an existing session";
             errno = EINVAL;
             return -1;
@@ -749,7 +749,7 @@ int ah_leave(hdesc_t* hd)
         perror("Error closing socket during ah_leave()");
 
     /* Reset the hsession_t to prepare for harmony descriptor reuse. */
-    hsig_scrub(&hd->sig);
+    hspace_scrub(&hd->space);
     hd->best.id = 0;
 
     return 0;
@@ -784,7 +784,7 @@ long ah_get_int(hdesc_t* hd, const char* name)
 {
     int idx = find_var(hd, name);
 
-    if (idx >= 0 && hd->sig.range[idx].type == HVAL_INT) {
+    if (idx >= 0 && hd->space.dim[idx].type == HVAL_INT) {
         if (hd->varloc[idx].ptr)
             return *(long*)hd->varloc[idx].ptr;
         else
@@ -812,7 +812,7 @@ double ah_get_real(hdesc_t* hd, const char* name)
 {
     int idx = find_var(hd, name);
 
-    if (idx >= 0 && hd->sig.range[idx].type == HVAL_REAL) {
+    if (idx >= 0 && hd->space.dim[idx].type == HVAL_REAL) {
         if (hd->varloc[idx].ptr)
             return *(double*)hd->varloc[idx].ptr;
         else
@@ -840,7 +840,7 @@ const char* ah_get_enum(hdesc_t* hd, const char* name)
 {
     int idx = find_var(hd, name);
 
-    if (idx >= 0 && hd->sig.range[idx].type == HVAL_STR) {
+    if (idx >= 0 && hd->space.dim[idx].type == HVAL_STR) {
         if (hd->varloc[idx].ptr)
             return *(char**)hd->varloc[idx].ptr;
         else
@@ -1256,7 +1256,7 @@ int harmony_enum(hdesc_t* hd, const char* name, const char* value)
 
 int harmony_session_name(hdesc_t* hd, const char* name)
 {
-    return hsig_name(&hd->sig, name);
+    return hspace_name(&hd->space, name);
 }
 
 int harmony_strategy(hdesc_t* hd, const char* strategy)
@@ -1371,8 +1371,8 @@ int find_var(hdesc_t* hd, const char* name)
 {
     int idx;
 
-    for (idx = 0; idx < hd->sig.range_len; ++idx) {
-        if (strcmp(hd->sig.range[idx].name, name) == 0)
+    for (idx = 0; idx < hd->space.len; ++idx) {
+        if (strcmp(hd->space.dim[idx].name, name) == 0)
             return idx;
     }
     return -1;
@@ -1405,14 +1405,13 @@ int extend_perf(hdesc_t* hd)
 
 int extend_varloc(hdesc_t* hd)
 {
-    if (hd->varloc_cap < hd->sig.range_cap) {
+    if (hd->varloc_cap < hd->space.cap) {
         int i;
-        hvarloc_t* tmp = realloc(hd->varloc,
-                                 hd->sig.range_cap * sizeof(*tmp));
+        hvarloc_t* tmp = realloc(hd->varloc, hd->space.cap * sizeof(*tmp));
         if (!tmp)
             return -1;
 
-        for (i = hd->varloc_cap; i < hd->sig.range_cap; ++i)
+        for (i = hd->varloc_cap; i < hd->space.cap; ++i)
             tmp[i].ptr = NULL;
 
         hd->varloc = tmp;
@@ -1436,7 +1435,7 @@ int send_request(hdesc_t* hd, hmesg_type msg_type)
     hd->mesg.type = msg_type;
     hd->mesg.status = HMESG_STATUS_REQ;
 
-    hd->mesg.state.sig.id = hd->sig.id;
+    hd->mesg.state.space.id = hd->space.id;
     hd->mesg.state.best.id = hd->best.id;
     hd->mesg.state.client = hd->id;
 
@@ -1471,9 +1470,9 @@ int send_request(hdesc_t* hd, hmesg_type msg_type)
     }
     else {
         // Update local state from server.
-        if (hd->sig.id < hd->mesg.state.sig.id) {
-            if (hsig_copy(&hd->sig, &hd->mesg.state.sig) != 0) {
-                hd->errstr = "Could not update session signature";
+        if (hd->space.id < hd->mesg.state.space.id) {
+            if (hspace_copy(&hd->space, &hd->mesg.state.space) != 0) {
+                hd->errstr = "Could not update session search space";
                 return -1;
             }
         }
@@ -1505,7 +1504,7 @@ int write_values(hdesc_t* hd, const hpoint_t* pt)
 {
     int i;
 
-    if (hd->sig.range_len != pt->len) {
+    if (hd->space.len != pt->len) {
         hd->errstr = "Invalid internal point structure";
         return -1;
     }
@@ -1526,7 +1525,7 @@ int write_values(hdesc_t* hd, const hpoint_t* pt)
                 *(const char**)hd->varloc[i].ptr = pt->val[i].value.s;
                 break;
             default:
-                hd->errstr = "Invalid signature value type";
+                hd->errstr = "Invalid space dimension value type";
                 return -1;
             }
         }

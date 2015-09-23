@@ -21,7 +21,7 @@
 #define __HPOINT_H__
 
 #include "hval.h"
-#include "hsig.h"
+#include "hspace.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -46,11 +46,11 @@ int  hpoint_copy(hpoint_t* dst, const hpoint_t* src);
 void hpoint_scrub(hpoint_t* pt);
 void hpoint_fini(hpoint_t* pt);
 
-int  hpoint_align(hpoint_t* pt, hsig_t* sig);
+int  hpoint_align(hpoint_t* pt, hspace_t* space);
 
 int  hpoint_pack(char** buf, int* buflen, const hpoint_t* pt);
 int  hpoint_unpack(hpoint_t* pt, char* buf);
-int  hpoint_parse(hpoint_t* pt, hsig_t* sig, const char* buf);
+int  hpoint_parse(hpoint_t* pt, hspace_t* space, const char* buf);
 
 #ifdef __cplusplus
 }

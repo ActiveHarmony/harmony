@@ -34,7 +34,7 @@
 #include <sys/socket.h>
 
 #include "hmesg.h"
-#include "hsig.h"
+#include "hspace.h"
 #include "hcfg.h"
 #include "hutil.h"
 #include "hsockutil.h"
@@ -192,7 +192,7 @@ int init_signals(void)
 int init_comm(void)
 {
     const char* cfgval;
-    hsig_t* sig = &mesg.state.sig;
+    hspace_t* space = &mesg.state.space;
     hcfg_t* cfg = &mesg.data.cfg;
 
     /* Read a session message from the codegen plugin */
@@ -216,7 +216,7 @@ int init_comm(void)
         return -1;
     }
 
-    sess_name = stralloc(sig->name);
+    sess_name = stralloc(space->name);
     if (!sess_name) {
         mesg.data.string = "Could not copy session name";
         return -1;
