@@ -601,12 +601,6 @@ int handle_join(hmesg_t* mesg)
 {
     int i;
 
-    /* Verify that client signature matches current session. */
-    if (!hsig_match(&mesg->state.sig, &sig)) {
-        errmsg = "Incompatible join signature.";
-        return -1;
-    }
-
     if (hsig_copy(&mesg->state.sig, &sig) < 0) {
         errmsg = "Internal error: Could not copy signature.";
         return -1;
@@ -757,7 +751,7 @@ int update_state(hmesg_t* mesg)
         if (hsig_copy(&mesg->state.sig, &sig) != 0)
             return -1;
     }
-    else {
+    else if (mesg->type != HMESG_JOIN) {
         mesg->state.sig.id = 0;
     }
 

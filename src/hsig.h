@@ -48,7 +48,6 @@ void hsig_scrub(hsig_t* sig);
 void hsig_fini(hsig_t* sig);
 
 int  hsig_equal(const hsig_t* sig_a, const hsig_t* sig_b);
-int  hsig_match(const hsig_t* sig_a, const hsig_t* sig_b);
 int  hsig_name(hsig_t* sig, const char* name);
 int  hsig_int(hsig_t* sig, const char* name,
               long min, long max, long step);

@@ -588,10 +588,7 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
             hd->id = hd->default_id;
 
         /* Prepare a Harmony message. */
-        if (hsig_copy(&hd->mesg.state.sig, &hd->sig) != 0) {
-            hd->errstr = "Internal error copying signature data";
-            return -1;
-        }
+        hd->mesg.data.string = name;
 
         /* send the client registration message */
         if (send_request(hd, HMESG_JOIN) != 0)
@@ -603,7 +600,6 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
             return -1;
         }
 
-        hsig_fini(&hd->sig);
         if (hsig_copy(&hd->sig, &hd->mesg.state.sig) != 0) {
             hd->errstr = "Error copying received signature structure";
             return -1;

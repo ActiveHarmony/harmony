@@ -227,7 +227,9 @@ int pack_state(char** buf, int* buflen, const hmesg_t* mesg)
 {
     int count, total = 0;
 
-    if (mesg->type == HMESG_SESSION) {
+    if (mesg->type == HMESG_SESSION ||
+        mesg->type == HMESG_JOIN)
+    {
         // Session state doesn't exist just yet.
         return 0;
     }
@@ -272,7 +274,9 @@ int unpack_state(hmesg_t* mesg, char* buf)
 {
     int count = -1, total = 0;
 
-    if (mesg->type == HMESG_SESSION) {
+    if (mesg->type == HMESG_SESSION ||
+        mesg->type == HMESG_JOIN)
+    {
         // Session state doesn't exist just yet.
         return 0;
     }
@@ -334,10 +338,17 @@ int pack_data(char** buf, int* buflen, const hmesg_t* mesg)
         break;
 
     case HMESG_JOIN:
-        count = hsig_pack(buf, buflen, &mesg->state.sig);
-        if (count < 0) return -1;
-        total += count;
-        break;
+        if (mesg->status == HMESG_STATUS_REQ) {
+            count = printstr_serial(buf, buflen, mesg->data.string);
+            if (count < 0) return -1;
+            total += count;
+            break;
+        }
+        else if (mesg->status == HMESG_STATUS_OK) {
+            count = hsig_pack(buf, buflen, &mesg->state.sig);
+            if (count < 0) return -1;
+            total += count;
+        }
 
     case HMESG_GETCFG:
     case HMESG_SETCFG:
@@ -396,10 +407,17 @@ int unpack_data(hmesg_t* mesg, char* buf)
         break;
 
     case HMESG_JOIN:
-        mesg->state.sig.owner = mesg;
-        count = hsig_unpack(&mesg->state.sig, buf + total);
-        if (count < 0) return -1;
-        total += count;
+        if (mesg->status == HMESG_STATUS_REQ) {
+            count = scanstr_serial(&mesg->data.string, buf + total);
+            if (count < 0) return -1;
+            total += count;
+        }
+        else if (mesg->status == HMESG_STATUS_OK) {
+            mesg->state.sig.owner = mesg;
+            count = hsig_unpack(&mesg->state.sig, buf + total);
+            if (count < 0) return -1;
+            total += count;
+        }
         break;
 
     case HMESG_GETCFG:

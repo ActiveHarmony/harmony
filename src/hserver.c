@@ -496,7 +496,7 @@ int handle_client_socket(int fd)
         for (idx = 0; idx < slist_cap; ++idx) {
             if (!slist[idx].name)
                 continue;
-            if (strcmp(slist[idx].name, mesg.state.sig.name) == 0)
+            if (strcmp(slist[idx].name, mesg.data.string) == 0)
                 break;
         }
         if (idx == slist_cap) {

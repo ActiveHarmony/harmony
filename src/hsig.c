@@ -147,25 +147,6 @@ int hsig_equal(const hsig_t* sig_a, const hsig_t* sig_b)
     return 1;
 }
 
-int hsig_match(const hsig_t* sig_a, const hsig_t* sig_b)
-{
-    int i;
-
-    if (strcmp(sig_a->name, sig_b->name) != 0)
-        return 0;
-
-    if (sig_a->range_len != sig_b->range_len)
-        return 0;
-
-    for (i = 0; i < sig_a->range_len; ++i) {
-        if (strcmp(sig_a->range[i].name, sig_b->range[i].name) != 0)
-            return 0;
-        if (sig_a->range[i].type != sig_b->range[i].type)
-            return 0;
-    }
-    return 1;
-}
-
 int hsig_name(hsig_t* sig, const char* name)
 {
     if (sig->name && !hmesg_owner(sig->owner, sig->name))
