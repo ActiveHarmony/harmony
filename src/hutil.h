@@ -42,6 +42,7 @@ int   snprintf_grow(char** buf, int* buflen, const char* fmt, ...);
 int   snprintf_serial(char** buf, int* buflen, const char* fmt, ...);
 int   printstr_serial(char** buf, int* buflen, const char* str);
 int   scanstr_serial(const char** str, char* buf);
+int   unquote_string(const char* buf, char** token, const char** errptr);
 
 #ifdef __cplusplus
 }

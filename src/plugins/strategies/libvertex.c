@@ -371,11 +371,6 @@ int vertex_from_string(const char* str, hspace_t* space, vertex_t* result)
         return -1;
     }
 
-    if (hpoint_init(&pt, space->len) != 0) {
-        session_error("Error initializing temporary hpoint");
-        return -1;
-    }
-
     if (hpoint_parse(&pt, space, str) != 0) {
         session_error("Error parsing point string");
         retval = -1;

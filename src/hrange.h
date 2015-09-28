@@ -38,8 +38,6 @@ typedef struct range_int {
 unsigned long range_int_index(range_int_t* bounds, long val);
 long          range_int_value(range_int_t* bounds, unsigned long idx);
 long          range_int_nearest(range_int_t* bounds, long val);
-int           range_int_parse(range_int_t* bounds, const char* buf,
-                              const char** err);
 
 /*
  * Real domain range type.
@@ -53,8 +51,6 @@ typedef struct range_real {
 unsigned long range_real_index(range_real_t* bounds, double val);
 double        range_real_value(range_real_t* bounds, unsigned long idx);
 double        range_real_nearest(range_real_t* bounds, double val);
-int           range_real_parse(range_real_t* bounds, const char* buf,
-                               const char** err);
 
 /*
  * Enumerated domain range type.
@@ -68,8 +64,8 @@ typedef struct range_enum {
 int           range_enum_add_string(range_enum_t* bounds, char* str);
 unsigned long range_enum_index(range_enum_t* bounds, const char* val);
 const char*   range_enum_value(range_enum_t* bounds, unsigned long idx);
-int           range_enum_parse(range_enum_t* bounds, const char* buf,
-                               const char** err);
+int           range_enum_copy_token(const char* buf, char **token,
+                                    const char** err);
 
 /*
  * Range type to describe a single dimension of the tuning search space.
@@ -95,6 +91,7 @@ unsigned long hrange_max_idx(hrange_t* range);
 
 int hrange_pack(char** buf, int* buflen, const hrange_t* range);
 int hrange_unpack(hrange_t* range, char* buf);
+int hrange_parse(hrange_t* range, const char* buf, const char** errptr);
 
 #ifdef __cplusplus
 }

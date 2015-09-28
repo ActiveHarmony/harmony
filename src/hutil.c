@@ -403,3 +403,62 @@ int scanstr_serial(const char** str, char* buf)
     errno = EINVAL;
     return -1;
 }
+
+int unquote_string(const char* buf, char** token, const char** errptr)
+{
+    const char* src;
+    int cap = 0;
+
+    while (1) {
+        src = buf;
+        // Skip leading whitespace.
+        while (isspace(*src)) ++src;
+
+        char* dst = *token;
+        int   len = cap;
+        char  quote = '\0';
+        while (*src) {
+            if (!quote) {
+                if      (*src == '\'')  { quote = '\''; ++src; continue; }
+                else if (*src ==  '"')  { quote =  '"'; ++src; continue; }
+                else if (*src ==  ',')  { break; }
+                else if (isspace(*src)) { break; }
+            }
+            else {
+                if      (*src == '\\')  { ++src; }
+                else if (*src == quote) { quote = '\0'; ++src; continue; }
+            }
+
+            if (len-- > 0)
+                *(dst++) = *(src++);
+            else
+                ++src;
+        }
+        if (len-- > 0)
+            *dst = '\0';
+
+        if (quote != '\0') {
+            if (errptr)
+                *errptr = "Non-terminated quote detected";
+            return -1;
+        }
+
+        if (len < -1) {
+            // Token buffer size is -len;
+            cap += -len;
+            *token = malloc(cap * sizeof(**token));
+            if (!*token) {
+                if (errptr)
+                    *errptr = "Could not allocate memory in unquote_string()";
+                return -1;
+            }
+        }
+        else if (len == -1) {
+            // Empty token.
+            *token = NULL;
+            break;
+        }
+        else break; // Loop exit.
+    }
+    return src - buf;
+}

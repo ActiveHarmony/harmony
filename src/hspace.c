@@ -19,6 +19,7 @@
 
 #include "hspace.h"
 #include "hrange.h"
+#include "hpoint.h"
 #include "hmesg.h"
 #include "hutil.h"
 
@@ -33,7 +34,7 @@
 const hspace_t hspace_zero = HSPACE_INITIALIZER;
 
 /* Internal helper function prototypes. */
-static int       add_dim(hspace_t* sig, hrange_t* dim);
+static int       add_dim(hspace_t* sig, hrange_t* dim, const char** errptr);
 static hrange_t* find_dim(hspace_t* sig, const char* name);
 
 /*
@@ -176,7 +177,7 @@ int hspace_int(hspace_t* space, const char* name,
     if (!range.name)
         return -1;
 
-    if (add_dim(space, &range) != 0) {
+    if (add_dim(space, &range, NULL) != 0) {
         free(range.name);
         return -1;
     }
@@ -203,7 +204,7 @@ int hspace_real(hspace_t* space, const char* name,
     if (!range.name)
         return -1;
 
-    if (add_dim(space, &range) != 0) {
+    if (add_dim(space, &range, NULL) != 0) {
         free(range.name);
         return -1;
     }
@@ -232,7 +233,7 @@ int hspace_enum(hspace_t* space, const char* name, const char* value)
         if (!range.name)
             return -1;
 
-        if (add_dim(space, &range) != 0) {
+        if (add_dim(space, &range, NULL) != 0) {
             free(range.name);
             return -1;
         }
@@ -327,102 +328,54 @@ int hspace_unpack(hspace_t* space, char* buf)
 
 int hspace_parse(hspace_t* space, const char* buf, const char** errptr)
 {
-    hrange_t range = HRANGE_INITIALIZER;
-    int id, idlen, bounds = 0, tail = 0;
     const char* errstr;
+    hrange_t range;
 
-    while (isspace(*buf)) ++buf;
-    if (*buf == '\0')
+    int retval = hrange_parse(&range, buf, &errstr);
+    if (retval < 0)
+        goto error;
+    if (retval == 0)
         return 0;
 
-    sscanf(buf, " int %n%*[^=]%n=%n", &id, &idlen, &bounds);
-    if (bounds) {
-        int len = range_int_parse(&range.bounds.i, buf + bounds, &errstr);
-        if (len == -1)
-            goto error;
-
-        range.type = HVAL_INT;
-        tail += len;
-        goto found;
-    }
-
-    sscanf(buf, " real %n%*[^=]%n=%n", &id, &idlen, &bounds);
-    if (bounds) {
-        int len = range_real_parse(&range.bounds.r, buf + bounds, &errstr);
-        if (len == -1)
-            goto error;
-
-        range.type = HVAL_REAL;
-        tail += len;
-        goto found;
-    }
-
-    sscanf(buf, " enum %n%*[^=]%n=%n", &id, &idlen, &bounds);
-    if (bounds) {
-        int len = range_enum_parse(&range.bounds.e, buf + bounds, &errstr);
-        if (len == -1)
-            goto error;
-
-        range.type = HVAL_STR;
-        tail += len;
-        goto found;
-    }
-    errstr = "Unknown tuning variable type";
-    goto error;
-
-  found:
-    while (isspace(buf[idlen - 1])) --idlen;
-    if (!valid_id(&buf[id], idlen - id)) {
-        errstr = "Invalid variable name";
-        goto error;
-    }
-
-    if (buf[bounds + tail] != '\0') {
-        errstr = "Invalid trailing characters";
-        goto error;
-    }
-
-    range.name = sprintf_alloc("%.*s", idlen - id, &buf[id]);
-    if (!range.name) {
-        errstr = "Cannot copy range name";
-        goto error;
-    }
-    range.owner = NULL;
-
-    if (add_dim(space, &range) != 0) {
-        errstr = "Invalid range name";
+    if (add_dim(space, &range, &errstr) != 0) {
+        hrange_fini(&range);
         goto error;
     }
 
     ++space->id;
-    if (errptr) *errptr = NULL;
     return 1;
 
   error:
-    hrange_fini(&range);
     if (errptr) *errptr = errstr;
     return -1;
-
 }
 
 /*
  * Internal helper function implementations.
  */
-int add_dim(hspace_t* space, hrange_t* dim)
+int add_dim(hspace_t* space, hrange_t* dim, const char** errptr)
 {
+    const char* errstr;
+
     if (find_dim(space, dim->name) != NULL) {
-        errno = EINVAL;
-        return -1;
+        errstr = "Search space dimension name conflict";
+        goto error;
     }
 
     /* Grow dimension array, if needed. */
     if (space->len == space->cap) {
-        if (array_grow(&space->dim, &space->cap, sizeof(*space->dim)) < 0)
-            return -1;
+        if (array_grow(&space->dim, &space->cap, sizeof(*space->dim)) < 0) {
+            errstr = strerror(errno);
+            goto error;
+        }
     }
-    space->dim[ space->len++ ] = *dim;
 
+    space->dim[ space->len++ ] = *dim;
     return 0;
+
+  error:
+    if (errptr) *errptr = errstr;
+    return -1;
 }
 
 hrange_t* find_dim(hspace_t* space, const char* name)

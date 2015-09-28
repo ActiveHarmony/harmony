@@ -28,69 +28,14 @@
 
 const hval_t hval_zero = HVAL_INITIALIZER;
 
-int hval_parse_string(const char* buf, const char** newbuf);
+// Internal helper function prototypes.
+static int parse_int(hval_t* val, const char* buf);
+static int parse_real(hval_t* val, const char* buf);
+static int parse_str(hval_t* val, const char* buf);
 
-int hval_parse(hval_t* val, const char* buf)
-{
-    int ret, cnt;
-
-    switch (val->type) {
-    case HVAL_INT:  ret = sscanf(buf, " %ld%n", &val->value.i, &cnt); break;
-    case HVAL_REAL: ret = sscanf(buf, " %lf%n", &val->value.r, &cnt); break;
-    case HVAL_STR:  ret = cnt = hval_parse_string(buf, &val->value.s); break;
-    default: return -1;
-    }
-    return (ret > 0) ? cnt : -1;
-}
-
-int hval_parse_string(const char* buf, const char** newbuf)
-{
-    const char* head;
-    const char* tail;
-    int len, span, quoted = 0;
-
-    /* Find the head. */
-    head = buf;
-    while (head && isspace(*head))
-        ++head;
-    if (!head)
-        return -1;
-    if (*head == '"') {
-        ++head;
-        quoted = 1;
-    }
-
-    /* Find tail, length, and span. */
-    len = 0;
-    tail = head;
-    while (tail && (quoted ? *tail == '"'
-                           : isspace(*tail)))
-    {
-        if (*tail == '\\')
-            tail += 2;
-        else
-            tail += 1;
-        ++len;
-    }
-    if (!tail)
-        return -1;
-    span = tail - buf + 1;
-
-    /* Allocate memory and copy an unescaped version of the string. */
-    if (newbuf) {
-        char* ptr = calloc(len + 1, sizeof(*ptr));
-        if (!ptr)
-            return -1;
-        *newbuf = ptr;
-
-        while (head < tail) {
-            if (*head == '\\') ++head;
-            *(ptr++) = *(head++);
-        }
-    }
-    return span;
-}
-
+//
+// Data transmission function implementation.
+//
 int hval_pack(char** buf, int* buflen, const hval_t* val)
 {
     int count, total;
@@ -178,4 +123,43 @@ int hval_unpack(hval_t* val, char* buf)
   invalid:
     errno = EINVAL;
     return -1;
+}
+
+int hval_parse(hval_t* val, const char* buf)
+{
+    int span;
+
+    switch (val->type) {
+    case HVAL_INT:  span = parse_int(val, buf);  break;
+    case HVAL_REAL: span = parse_real(val, buf); break;
+    case HVAL_STR:  span = parse_str(val, buf);  break;
+    default:        return -1;
+    }
+
+    return span;
+}
+
+//
+// Internal helper function implementations.
+//
+int parse_int(hval_t* val, const char* buf)
+{
+    int span = -1;
+    sscanf(buf, " %ld%n", &val->value.i, &span);
+    return span;
+}
+
+int parse_real(hval_t* val, const char* buf)
+{
+    int span = -1;
+    sscanf(buf, " %lf%n", &val->value.r, &span);
+    return span;
+}
+
+int parse_str(hval_t* val, const char* buf)
+{
+    char* token;
+    int span = unquote_string(buf, &token, NULL);
+    val->value.s = token;
+    return span;
 }
