@@ -29,14 +29,14 @@
 
 const hpoint_t hpoint_zero = HPOINT_INITIALIZER;
 
-int hpoint_init(hpoint_t* pt, int len)
+int hpoint_init(hpoint_t* point, int len)
 {
-    if (pt->len != len) {
-        hval_t *newbuf = realloc(pt->val, sizeof(*pt->val) * len);
+    if (point->len != len) {
+        hval_t *newbuf = realloc(point->val, sizeof(*point->val) * len);
         if (!newbuf)
             return -1;
-        pt->val = newbuf;
-        pt->len = len;
+        point->val = newbuf;
+        point->len = len;
     }
     return 0;
 }
@@ -61,33 +61,33 @@ int hpoint_copy(hpoint_t* dst, const hpoint_t* src)
     return 0;
 }
 
-void hpoint_scrub(hpoint_t* pt)
+void hpoint_scrub(hpoint_t* point)
 {
-    for (int i = 0; i < pt->len; ++i) {
-        if (pt->val[i].type == HVAL_STR) {
-            if (!hmesg_owner(pt->owner, pt->val[i].value.s))
-                free((char*)pt->val[i].value.s);
+    for (int i = 0; i < point->len; ++i) {
+        if (point->val[i].type == HVAL_STR) {
+            if (!hmesg_owner(point->owner, point->val[i].value.s))
+                free((char*)point->val[i].value.s);
         }
-        pt->val[i].type = HVAL_UNKNOWN;
+        point->val[i].type = HVAL_UNKNOWN;
     }
-    pt->len = 0;
+    point->len = 0;
 }
 
-void hpoint_fini(hpoint_t* pt)
+void hpoint_fini(hpoint_t* point)
 {
-    hpoint_scrub(pt);
-    free(pt->val);
+    hpoint_scrub(point);
+    free(point->val);
 }
 
-int hpoint_align(hpoint_t* pt, hspace_t* space)
+int hpoint_align(hpoint_t* point, hspace_t* space)
 {
     int i;
 
-    if (pt->len != space->len)
+    if (point->len != space->len)
         return -1;
 
-    for (i = 0; i < pt->len; ++i) {
-        hval_t* val = &pt->val[i];
+    for (i = 0; i < point->len; ++i) {
+        hval_t* val = &point->val[i];
 
         if (val->type != space->dim[i].type)
             return -1;
@@ -106,7 +106,7 @@ int hpoint_align(hpoint_t* pt, hspace_t* space)
         case HVAL_STR: {
             unsigned long idx = range_enum_index(&space->dim[i].bounds.e,
                                                  val->value.s);
-            if (!hmesg_owner(pt->owner, val->value.s))
+            if (!hmesg_owner(point->owner, val->value.s))
                 free((char*)val->value.s);
             val->value.s = stralloc(space->dim[i].bounds.e.set[idx]);
             break;
@@ -119,17 +119,17 @@ int hpoint_align(hpoint_t* pt, hspace_t* space)
     return 0;
 }
 
-int hpoint_parse(hpoint_t* pt, hspace_t* space, const char* buf)
+int hpoint_parse(hpoint_t* point, hspace_t* space, const char* buf)
 {
-    if (pt->len != space->len) {
-        hpoint_fini(pt);
-        hpoint_init(pt, space->len);
+    if (point->len != space->len) {
+        hpoint_fini(point);
+        hpoint_init(point, space->len);
     }
 
-    for (int i = 0; i < pt->len; ++i) {
-        pt->val[i].type = space->dim[i].type;
+    for (int i = 0; i < point->len; ++i) {
+        point->val[i].type = space->dim[i].type;
 
-        int span = hval_parse(&pt->val[i], buf);
+        int span = hval_parse(&point->val[i], buf);
         if (span < 0)
             return -1;
         buf += span;
@@ -145,21 +145,21 @@ int hpoint_parse(hpoint_t* pt, hspace_t* space, const char* buf)
     return 0;
 }
 
-int hpoint_pack(char** buf, int* buflen, const hpoint_t* pt)
+int hpoint_pack(char** buf, int* buflen, const hpoint_t* point)
 {
     int i, count, total;
 
-    count = snprintf_serial(buf, buflen, " point:%u", pt->id);
+    count = snprintf_serial(buf, buflen, " point:%u", point->id);
     if (count < 0) goto invalid;
     total = count;
 
-    if (pt->id) {
-        count = snprintf_serial(buf, buflen, " %d", pt->len);
+    if (point->id) {
+        count = snprintf_serial(buf, buflen, " %d", point->len);
         if (count < 0) goto invalid;
         total += count;
 
-        for (i = 0; i < pt->len; ++i) {
-            count = hval_pack(buf, buflen, &pt->val[i]);
+        for (i = 0; i < point->len; ++i) {
+            count = hval_pack(buf, buflen, &point->val[i]);
             if (count < 0) goto error;
             total += count;
         }
@@ -172,29 +172,29 @@ int hpoint_pack(char** buf, int* buflen, const hpoint_t* pt)
     return -1;
 }
 
-int hpoint_unpack(hpoint_t* pt, char* buf)
+int hpoint_unpack(hpoint_t* point, char* buf)
 {
     int count, total;
 
-    if (sscanf(buf, " point:%u%n", &pt->id, &total) < 1)
+    if (sscanf(buf, " point:%u%n", &point->id, &total) < 1)
         goto invalid;
 
-    if (pt->id) {
+    if (point->id) {
         int newlen;
         if (sscanf(buf + total, " %d%n", &newlen, &count) < 1)
             goto invalid;
         total += count;
 
-        if (pt->len != newlen) {
-            hval_t* newbuf = realloc(pt->val, sizeof(*newbuf) * newlen);
+        if (point->len != newlen) {
+            hval_t* newbuf = realloc(point->val, sizeof(*newbuf) * newlen);
             if (!newbuf)
                 goto error;
-            pt->val = newbuf;
-            pt->len = newlen;
+            point->val = newbuf;
+            point->len = newlen;
         }
 
-        for (int i = 0; i < pt->len; ++i) {
-            count = hval_unpack(&pt->val[i], buf + total);
+        for (int i = 0; i < point->len; ++i) {
+            count = hval_unpack(&point->val[i], buf + total);
             if (count < 0) goto error;
             total += count;
         }
