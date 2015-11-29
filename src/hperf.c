@@ -63,12 +63,11 @@ void hperf_fini(hperf_t* perf)
 
 int hperf_cmp(const hperf_t* a, const hperf_t* b)
 {
-    int i;
     double sum_a = 0.0, sum_b = 0.0;
     if (a->len != b->len)
-        return a->len - b->len;
+        return b->len - a->len;
 
-    for (i = 0; i < a->len; ++i) {
+    for (int i = 0; i < a->len; ++i) {
         sum_a += a->obj[i];
         sum_b += b->obj[i];
     }
