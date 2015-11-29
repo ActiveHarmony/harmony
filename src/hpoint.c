@@ -31,7 +31,6 @@ const hpoint_t hpoint_zero = HPOINT_INITIALIZER;
 
 int hpoint_init(hpoint_t* pt, int len)
 {
-    pt->id = 0;
     if (pt->len != len) {
         hval_t *newbuf = realloc(pt->val, sizeof(*pt->val) * len);
         if (!newbuf)
