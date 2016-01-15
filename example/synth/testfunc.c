@@ -285,12 +285,12 @@ double f_rosenbrock(int n, double x[], double option[])
     if (n == 2) {
         d1 = x[1] - (x[0] * x[0]);
         d2 = 1.0 - x[0];
-        d  = (100.0 * d1 * d1) + (d2 + d2);
+        d  = (100.0 * d1 * d1) + (d2 * d2);
     }
     else {
         d = 0.0;
-        for (i = 1; i < (n-1); ++i) {
-            d1 = x[i+1] - (x[i-1] * x[i-1]);
+        for (i = 1; i < n; ++i) {
+            d1 = x[i] - (x[i-1] * x[i-1]);
             d2 = 1.0 - x[i-1];
             d += (100.0 * d1 * d1) + (d2 * d2);
         }
@@ -334,7 +334,7 @@ double f_michalewicz(int n, double x[], double option[])
         m = option[0];
 
     for (i = 0; i < n; ++i) {
-        double d1 = i * x[i] * x[i];
+        double d1 = (i+1) * x[i] * x[i];
         double d2 = sin(d1 / M_PI);
 
         sum += sin(x[i]) * pow(d2, 2 * m);
