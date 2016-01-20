@@ -127,9 +127,7 @@ int hpoint_parse(hpoint_t* point, hspace_t* space, const char* buf)
     }
 
     for (int i = 0; i < point->len; ++i) {
-        point->val[i].type = space->dim[i].type;
-
-        int span = hval_parse(&point->val[i], buf);
+        int span = hval_parse(&point->val[i], space->dim[i].type, buf);
         if (span < 0)
             return -1;
         buf += span;

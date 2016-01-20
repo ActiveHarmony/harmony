@@ -60,7 +60,7 @@ struct strlist {
 typedef struct strlist strlist_t;
 
 typedef struct bundle_info {
-    hval_type type;
+    hval_type_t type;
     char* name;
     void* data;
     int used;
@@ -77,7 +77,7 @@ int prepare_client_argv();
 FILE* tuna_popen(const char*, char**, pid_t*);
 double tv_to_double(struct timeval*);
 int argv_add(char*);
-bundle_info_t* tuna_bundle_add(hval_type, char*);
+bundle_info_t* tuna_bundle_add(hval_type_t, char*);
 bundle_info_t* tuna_bundle_get(char**);
 int is_exec(const char* filename);
 char* find_exec(const char*);
@@ -144,7 +144,7 @@ int main(int argc, char* argv[])
 
     /* Use the Nelder-Mead search strategy by default. */
     ah_strategy(hdesc, "nm.so");
-    
+
     /* Sanity check before we attempt to connect to the server. */
     if (bcount < 1) {
         fprintf(stderr, "No tunable variables defined.\n");
@@ -839,7 +839,7 @@ int argv_add(char* str)
     return 0;
 }
 
-bundle_info_t* tuna_bundle_add(hval_type type, char* name)
+bundle_info_t* tuna_bundle_add(hval_type_t type, char* name)
 {
     void* data;
 

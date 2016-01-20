@@ -72,7 +72,7 @@ int           range_enum_copy_token(const char* buf, char **token,
  */
 typedef struct hrange {
     char* name;
-    hval_type type;
+    hval_type_t type;
     union {
         range_int_t  i;
         range_real_t r;
