@@ -832,8 +832,7 @@ int report_append(char** buf, int* buflen, session_state_t* sess,
                 count = snprintf_serial(buf, buflen, "%.17lf,", val->value.r);
                 break;
             case HVAL_STR: {
-                range_enum_t* bounds = &sess->space.dim[i].bounds.e;
-                unsigned long index = range_enum_index(bounds, val->value.s);
+                unsigned long index = hrange_index(&sess->space.dim[i], val);
                 count = snprintf_serial(buf, buflen, "%ld,", index);
                 break;
             }

@@ -132,26 +132,8 @@ int strategy_cfg(hspace_t* space)
             return -1;
         }
 
-        for (i = 0; i < space->len; ++i) {
-            switch (space->dim[i].type) {
-            case HVAL_INT:
-                idx[i] = range_int_index(&space->dim[i].bounds.i,
-                                         curr.val[i].value.i);
-                break;
-            case HVAL_REAL:
-                idx[i] = range_real_index(&space->dim[i].bounds.r,
-                                          curr.val[i].value.r);
-                break;
-            case HVAL_STR:
-                idx[i] = range_enum_index(&space->dim[i].bounds.e,
-                                          curr.val[i].value.s);
-                break;
-
-            default:
-                session_error("Invalid range detected in search space");
-                return -1;
-            }
-        }
+        for (i = 0; i < space->len; ++i)
+            idx[i] = hrange_index(&space->dim[i], &curr.val[i]);
     }
     else {
         for (i = 0; i < N; ++i) {

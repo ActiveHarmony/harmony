@@ -140,26 +140,11 @@ int internal_vertex_max(vertex_t* v)
 
     vertex_reset(v);
     for (i = 0; i < N; ++i) {
-        int idx = hrange_max_idx(&dim[i]);
-
         switch (dim[i].type) {
-        case HVAL_INT:
-            v->term[i] = range_int_value(&dim[i].bounds.i, idx);
-            break;
-
-        case HVAL_REAL:
-            if (dim[i].bounds.r.step > 0.0)
-                v->term[i] = range_real_value(&dim[i].bounds.r, idx);
-            else
-                v->term[i] = dim[i].bounds.r.max;
-            break;
-
-        case HVAL_STR:
-            v->term[i] = dim[i].bounds.e.len - 1;
-            break;
-
-        default:
-            return -1;
+        case HVAL_INT:  v->term[i] = dim[i].bounds.i.max; break;
+        case HVAL_REAL: v->term[i] = dim[i].bounds.r.min; break;
+        case HVAL_STR:  v->term[i] = dim[i].bounds.e.len - 1; break;
+        default: return -1;
         }
     }
     return 0;
@@ -201,21 +186,10 @@ int vertex_rand_trim(vertex_t* v, double trim_percentage)
         return -1;
 
     for (i = 0; i < N; ++i) {
+        hval_t val = hrange_random(&dim[i]);
         switch (dim[i].type) {
-        case HVAL_INT: {
-            range_int_t* b = &dim[i].bounds.i;
-            rval = (b->max - b->min - v->term[i]) * drand48();
-            rval += b->min + (v->term[i] / 2);
-            v->term[i] = range_int_nearest(b, (long)rval);
-            break;
-        }
-        case HVAL_REAL: {
-            range_real_t* b = &dim[i].bounds.r;
-            rval = (b->max - b->min - v->term[i]) * drand48();
-            rval += b->min + (v->term[i] / 2);
-            v->term[i] = range_real_nearest(b, rval);
-            break;
-        }
+        case HVAL_INT:  v->term[i] = val.value.i; break;
+        case HVAL_REAL: v->term[i] = val.value.r; break;
         case HVAL_STR: {
             range_enum_t* b = &dim[i].bounds.e;
             rval = (b->len - 1 - v->term[i]) * drand48();
@@ -279,13 +253,21 @@ int vertex_regrid(vertex_t* v)
         return -1;
 
     for (i = 0; i < N; ++i) {
+        hval_t val;
+
         switch (dim[i].type) {
         case HVAL_INT:
-            v->term[i] = range_int_nearest(&dim[i].bounds.i, (long)v->term[i]);
+            val.type    = HVAL_INT;
+            val.value.i = (long) v->term[i];
+            val = hrange_value(&dim[i], hrange_index(&dim[i], &val));
+            v->term[i] = val.value.i;
             break;
 
         case HVAL_REAL:
-            v->term[i] = range_real_nearest(&dim[i].bounds.r, v->term[i]);
+            val.type    = HVAL_REAL;
+            val.value.r = v->term[i];
+            val = hrange_value(&dim[i], hrange_index(&dim[i], &val));
+            v->term[i] = val.value.r;
             break;
 
         case HVAL_STR:
@@ -311,25 +293,31 @@ int vertex_to_hpoint(const vertex_t* v, hpoint_t* result)
 
     hpoint_init(result, N);
     for (i = 0; i < N; ++i) {
+        unsigned long index;
         hval_t* val = &result->val[i];
 
         val->type = dim[i].type;
         switch (dim[i].type) {
         case HVAL_INT:
-            val->value.i = range_int_nearest(&dim[i].bounds.i,
-                                             (long)v->term[i]);
+            val->value.i = (long) v->term[i];
+            index = hrange_index(&dim[i], val);
+            *val  = hrange_value(&dim[i], index);
             break;
-        case HVAL_REAL:
-            val->value.r = range_real_nearest(&dim[i].bounds.r, v->term[i]);
-            break;
-        case HVAL_STR: {
-            unsigned long idx = (unsigned long)(v->term[i] + 0.5);
-            if (idx > dim[i].bounds.e.len - 1)
-                idx = dim[i].bounds.e.len - 1;
 
-            val->value.s = stralloc(range_enum_value(&dim[i].bounds.e, idx));
+        case HVAL_REAL:
+            val->value.r = v->term[i];
+            index = hrange_index(&dim[i], val);
+            *val  = hrange_value(&dim[i], index);
             break;
-        }
+
+        case HVAL_STR:
+            index = (unsigned long) (v->term[i] + 0.5);
+            if (index > dim[i].bounds.e.len - 1)
+                index = dim[i].bounds.e.len - 1;
+
+            val->value.s = dim[i].bounds.e.set[index];
+            break;
+
         default:
             return -1;
         }

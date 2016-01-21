@@ -16,112 +16,46 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
+#define _XOPEN_SOURCE 500 // Needed for drand48().
 
+#include "hrange.h"
+#include "hval.h"
 #include "hmesg.h"
 #include "hutil.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <string.h>
-#include <ctype.h>
-#include <math.h>
-#include <limits.h>
+#include <string.h> // For strcmp().
+#include <ctype.h>  // For isspace().
+#include <math.h>   // For isnan() and NAN.
+#include <limits.h> // For LONG_MIN.
 
 const hrange_t hrange_zero = HRANGE_INITIALIZER;
 
-/* Internal helper function prototypes. */
+//
+// Internal helper function prototypes.
+//
 static int copy_enum(range_enum_t* dst, const range_enum_t* src);
-static int parse_enum(range_enum_t* bounds, const char* buf, const char** err);
 static int parse_int(range_int_t* bounds, const char* buf, const char** err);
 static int parse_real(range_real_t* bounds, const char* buf, const char** err);
-static unsigned long range_int_max_idx(range_int_t* bounds);
-static unsigned long range_real_max_idx(range_real_t* bounds);
-static unsigned long range_enum_max_idx(range_enum_t* bounds);
+static int parse_enum(range_enum_t* bounds, const char* buf, const char** err);
+static unsigned long index_of_int(const range_int_t* bounds, long val);
+static unsigned long index_of_real(const range_real_t* bounds, double val);
+static unsigned long index_of_enum(const range_enum_t* bounds,
+                                   const char* val);
+static unsigned long limit_of_int(const range_int_t* bounds);
+static unsigned long limit_of_real(const range_real_t* bounds);
+static unsigned long limit_of_enum(const range_enum_t* bounds);
+static unsigned long random_index(unsigned long limit);
+static hval_t random_int(const range_int_t* bounds);
+static hval_t random_real(const range_real_t* bounds);
+static hval_t random_enum(const range_enum_t* bounds);
+static hval_t value_of_int(const range_int_t* bounds, unsigned long idx);
+static hval_t value_of_real(const range_real_t* bounds, unsigned long idx);
+static hval_t value_of_enum(const range_enum_t* bounds, unsigned long idx);
 
-/*
- * Integer domain range related function implementations.
- */
-unsigned long range_int_index(range_int_t* bounds, long val)
-{
-    unsigned long max_idx = range_int_max_idx(bounds);
-    double idx;
-
-    idx  = val - bounds->min;
-    idx /= bounds->step;
-    idx += 0.5;
-
-    if (idx < 0.0)
-        idx = 0.0;
-    if (idx > max_idx)
-        idx = max_idx;
-
-    return (unsigned long)idx;
-}
-
-long range_int_value(range_int_t* bounds, unsigned long idx)
-{
-    unsigned long max_idx = range_int_max_idx(bounds);
-
-    if (idx > max_idx)
-        idx = max_idx;
-
-    return bounds->min + idx * bounds->step;
-}
-
-long range_int_nearest(range_int_t* bounds, long val)
-{
-    return bounds->min + range_int_index(bounds, val) * bounds->step;
-}
-
-/*
- * Real domain range related function implementations.
- */
-unsigned long range_real_index(range_real_t* bounds, double val)
-{
-    unsigned long max_idx = range_real_max_idx(bounds);
-    double idx;
-
-    idx  = val - bounds->min;
-    idx /= bounds->step;
-    idx += 0.5;
-
-    if (idx < 0.0)
-        idx = 0.0;
-    if (idx > max_idx)
-        idx = max_idx;
-
-    return (unsigned long)idx;
-}
-
-double range_real_value(range_real_t* bounds, unsigned long idx)
-{
-    unsigned long max_idx = range_real_max_idx(bounds);
-
-    if (idx > max_idx)
-        idx = max_idx;
-
-    return bounds->min + idx * bounds->step;
-}
-
-double range_real_nearest(range_real_t* bounds, double val)
-{
-    if (bounds->step > 0.0) {
-        val = bounds->min + range_real_index(bounds, val) * bounds->step;
-    }
-    else {
-        if (val < bounds->min)
-            val = bounds->min;
-        if (val > bounds->max)
-            val = bounds->max;
-    }
-    return val;
-}
-
-/*
- * Enumerated domain range related function implementations.
- */
-int range_enum_add_string(range_enum_t* bounds, char* str)
+//
+// Enumerated domain range structure utility interface implementation.
+//
+int range_enum_add_value(range_enum_t* bounds, char* str)
 {
     for (int i = 0; i < bounds->len; ++i) {
         if (strcmp(bounds->set[i], str) == 0)
@@ -132,50 +66,14 @@ int range_enum_add_string(range_enum_t* bounds, char* str)
         if (array_grow(&bounds->set, &bounds->cap, sizeof(*bounds->set)) != 0)
             return -1;
     }
-    bounds->set[ bounds->len++ ] = str;
 
+    bounds->set[ bounds->len++ ] = str;
     return 0;
 }
 
-unsigned long range_enum_index(range_enum_t* bounds, const char* val)
-{
-    unsigned long idx;
-
-    for (idx = 0; idx < bounds->len; ++idx) {
-        if (strcmp(bounds->set[idx], val) == 0)
-            break;
-    }
-    if (idx >= bounds->len)
-        idx = 0;
-
-    return idx;
-}
-
-const char* range_enum_value(range_enum_t* bounds, unsigned long idx)
-{
-    if (idx > bounds->len - 1)
-        idx = bounds->len - 1;
-
-    return bounds->set[idx];
-}
-
-/*
- * Overall range related function implementations.
- */
-void hrange_fini(hrange_t* range)
-{
-    if (!hmesg_owner(range->owner, range->name))
-        free(range->name);
-
-    if (range->type == HVAL_STR) {
-        for (int i = 0; i < range->bounds.e.len; ++i) {
-            if (!hmesg_owner(range->owner, range->bounds.e.set[i]))
-                free(range->bounds.e.set[i]);
-        }
-        free(range->bounds.e.set);
-    }
-}
-
+//
+// Base structure management implementation.
+//
 int hrange_copy(hrange_t* dst, const hrange_t* src)
 {
     dst->name = stralloc(src->name);
@@ -199,39 +97,93 @@ int hrange_copy(hrange_t* dst, const hrange_t* src)
     return 0;
 }
 
-unsigned long hrange_max_idx(hrange_t* range)
+void hrange_fini(hrange_t* range)
 {
-    switch (range->type) {
-    case HVAL_INT:  return range_int_max_idx(&range->bounds.i);
-    case HVAL_REAL: return range_real_max_idx(&range->bounds.r);
-    case HVAL_STR:  return range_enum_max_idx(&range->bounds.e);
-    default:
-        return 0;
+    if (!hmesg_owner(range->owner, range->name))
+        free(range->name);
+
+    if (range->type == HVAL_STR) {
+        for (int i = 0; i < range->bounds.e.len; ++i) {
+            if (!hmesg_owner(range->owner, range->bounds.e.set[i]))
+                free(range->bounds.e.set[i]);
+        }
+        free(range->bounds.e.set);
     }
 }
 
+//
+// Range value query implementation.
+//
+int hrange_finite(const hrange_t* range)
+{
+    return (range->type != HVAL_REAL || range->bounds.r.step > 0.0);
+}
+
+unsigned long hrange_index(const hrange_t* range, const hval_t* val)
+{
+    switch (range->type) {
+    case HVAL_INT:  return index_of_int(&range->bounds.i, val->value.i);
+    case HVAL_REAL: return index_of_real(&range->bounds.r, val->value.r);
+    case HVAL_STR:  return index_of_enum(&range->bounds.e, val->value.s);
+    default:        return 0;
+    }
+}
+
+unsigned long hrange_limit(const hrange_t* range)
+{
+    switch (range->type) {
+    case HVAL_INT:  return limit_of_int(&range->bounds.i);
+    case HVAL_REAL: return limit_of_real(&range->bounds.r);
+    case HVAL_STR:  return limit_of_enum(&range->bounds.e);
+    default:        return 0;
+    }
+}
+
+hval_t hrange_random(const hrange_t* range)
+{
+    switch (range->type) {
+    case HVAL_INT:  return random_int(&range->bounds.i);
+    case HVAL_REAL: return random_real(&range->bounds.r);
+    case HVAL_STR:  return random_enum(&range->bounds.e);
+    default:        return hval_zero;
+    }
+}
+
+hval_t hrange_value(const hrange_t* range, unsigned long idx)
+{
+    switch (range->type) {
+    case HVAL_INT:  return value_of_int(&range->bounds.i, idx);
+    case HVAL_REAL: return value_of_real(&range->bounds.r, idx);
+    case HVAL_STR:  return value_of_enum(&range->bounds.e, idx);
+    default:        return hval_zero;
+    }
+}
+
+//
+// Data transmission implementation.
+//
 int hrange_pack(char** buf, int* buflen, const hrange_t* range)
 {
     int i, count, total;
     const char* type_str;
 
     count = snprintf_serial(buf, buflen, " range:");
-    if (count < 0) goto error;
+    if (count < 0) return -1;
     total = count;
 
     count = printstr_serial(buf, buflen, range->name);
-    if (count < 0) goto error;
+    if (count < 0) return -1;
     total += count;
 
     switch (range->type) {
     case HVAL_INT:  type_str = "INT"; break;
     case HVAL_REAL: type_str = "REAL"; break;
     case HVAL_STR:  type_str = "ENUM"; break;
-    default: goto invalid;
+    default: return -1;
     }
 
     count = snprintf_serial(buf, buflen, " %s", type_str);
-    if (count < 0) goto invalid;
+    if (count < 0) return -1;
     total += count;
 
     switch (range->type) {
@@ -240,7 +192,7 @@ int hrange_pack(char** buf, int* buflen, const hrange_t* range)
                                 range->bounds.i.min,
                                 range->bounds.i.max,
                                 range->bounds.i.step);
-        if (count < 0) goto invalid;
+        if (count < 0) return -1;
         total += count;
         break;
 
@@ -249,31 +201,26 @@ int hrange_pack(char** buf, int* buflen, const hrange_t* range)
                                 range->bounds.r.min,
                                 range->bounds.r.max,
                                 range->bounds.r.step);
-        if (count < 0) goto invalid;
+        if (count < 0) return -1;
         total += count;
         break;
 
     case HVAL_STR:
         count = snprintf_serial(buf, buflen, " %d", range->bounds.e.len);
-        if (count < 0) goto invalid;
+        if (count < 0) return -1;
         total += count;
 
         for (i = 0; i < range->bounds.e.len; ++i) {
             count = printstr_serial(buf, buflen, range->bounds.e.set[i]);
-            if (count < 0) goto invalid;
+            if (count < 0) return -1;
             total += count;
         }
         break;
 
     default:
-        goto invalid;
+        return -1;
     }
     return total;
-
-  invalid:
-    errno = EINVAL;
-  error:
-    return -1;
 }
 
 int hrange_unpack(hrange_t* range, char* buf)
@@ -282,22 +229,22 @@ int hrange_unpack(hrange_t* range, char* buf)
 
     sscanf(buf, " range:%n", &count);
     if (count < 0)
-        goto invalid;
+        return -1;
     total = count;
 
     count = scanstr_serial((const char**)&range->name, buf + total);
-    if (count < 0) goto invalid;
+    if (count < 0) return -1;
     total += count;
 
     char type_str[5];
     if (sscanf(buf + total, " %4s%n", type_str, &count) < 1)
-        goto invalid;
+        return -1;
     total += count;
 
     if      (strcmp(type_str, "INT") == 0) range->type = HVAL_INT;
     else if (strcmp(type_str, "REAL") == 0) range->type = HVAL_REAL;
     else if (strcmp(type_str, "ENUM") == 0) range->type = HVAL_STR;
-    else goto invalid;
+    else return -1;
 
     switch (range->type) {
     case HVAL_INT:
@@ -306,7 +253,7 @@ int hrange_unpack(hrange_t* range, char* buf)
                    &range->bounds.i.max,
                    &range->bounds.i.step,
                    &count) < 3)
-            goto invalid;
+            return -1;
         total += count;
         break;
 
@@ -316,20 +263,20 @@ int hrange_unpack(hrange_t* range, char* buf)
                    &range->bounds.r.max,
                    &range->bounds.r.step,
                    &count) < 3)
-            goto invalid;
+            return -1;
         total += count;
         break;
 
     case HVAL_STR:
         if (sscanf(buf + total, " %d%n",
                    &range->bounds.e.len, &count) < 1)
-            goto invalid;
+            return -1;
         total += count;
 
         if (range->bounds.e.cap < range->bounds.e.len) {
             char** newbuf = realloc(range->bounds.e.set,
                                     sizeof(char*) * range->bounds.e.len);
-            if (!newbuf) goto error;
+            if (!newbuf) return -1;
             range->bounds.e.set = newbuf;
             range->bounds.e.cap = range->bounds.e.len;
         }
@@ -337,20 +284,15 @@ int hrange_unpack(hrange_t* range, char* buf)
         for (int i = 0; i < range->bounds.e.len; ++i) {
             count = scanstr_serial((const char**)&range->bounds.e.set[i],
                                    buf + total);
-            if (count < 0) goto invalid;
+            if (count < 0) return -1;
             total += count;
         }
         break;
 
     default:
-        goto invalid;
+        return -1;
     }
     return total;
-
-  invalid:
-    errno = EINVAL;
-  error:
-    return -1;
 }
 
 int hrange_parse(hrange_t* range, const char* buf, const char** errptr)
@@ -425,9 +367,9 @@ int hrange_parse(hrange_t* range, const char* buf, const char** errptr)
     return -1;
 }
 
-/*
- * Internal helper function implementations.
- */
+//
+// Internal helper function implementation.
+//
 int copy_enum(range_enum_t* dst, const range_enum_t* src)
 {
     dst->set = malloc(src->cap * sizeof(*dst->set));
@@ -444,38 +386,9 @@ int copy_enum(range_enum_t* dst, const range_enum_t* src)
     return 0;
 }
 
-int parse_enum(range_enum_t* bounds, const char* buf, const char** err)
-{
-    *bounds = (range_enum_t){NULL, 0, 0};
-
-    int tail = 0;
-    while (buf[tail]) {
-        char* token;
-        int len = unquote_string(buf + tail, &token, err);
-        if (len == -1)
-            return -1;
-
-        tail += len;
-        if (token && range_enum_add_string(bounds, token) != 0) {
-            *err = "Invalid enumerated-domain string value";
-            free(token);
-            return -1;
-        }
-        if (!token && buf[tail] != '\0') {
-            *err = "Empty enumerated-domain value";
-            return -1;
-        }
-
-        while (isspace(buf[tail])) ++tail;
-        if (buf[tail] == ',') ++tail;
-    }
-    if (bounds->len == 0) {
-        *err = "No enumerated string tokens found";
-        return -1;
-    }
-    return tail;
-}
-
+//
+// Range definition parsing implementation.
+//
 int parse_int(range_int_t* bounds, const char* buf, const char** err)
 {
     *bounds = (range_int_t){LONG_MIN, LONG_MIN, 1};
@@ -518,19 +431,197 @@ int parse_real(range_real_t* bounds, const char* buf, const char** err)
     return tail;
 }
 
-unsigned long range_int_max_idx(range_int_t* bounds)
+int parse_enum(range_enum_t* bounds, const char* buf, const char** err)
 {
-    return (bounds->max - bounds->min) / bounds->step;
+    *bounds = (range_enum_t){NULL, 0, 0};
+
+    int tail = 0;
+    while (buf[tail]) {
+        char* token;
+        int len = unquote_string(buf + tail, &token, err);
+        if (len == -1)
+            return -1;
+
+        tail += len;
+        if (token && range_enum_add_value(bounds, token) != 0) {
+            *err = "Invalid enumerated-domain string value";
+            free(token);
+            return -1;
+        }
+        if (!token && buf[tail] != '\0') {
+            *err = "Empty enumerated-domain value";
+            return -1;
+        }
+
+        while (isspace(buf[tail])) ++tail;
+        if (buf[tail] == ',') ++tail;
+    }
+    if (bounds->len == 0) {
+        *err = "No enumerated string tokens found";
+        return -1;
+    }
+    return tail;
 }
 
-unsigned long range_real_max_idx(range_real_t* bounds)
+//
+// Value to range index implementation.
+//
+unsigned long index_of_int(const range_int_t* bounds, long val)
 {
-    if (bounds->step > 0.0)
-        return (unsigned long)((bounds->max - bounds->min) / bounds->step);
+    if (val < bounds->min) return 0;
+    if (val > bounds->max) return limit_of_int(bounds) - 1;
+
+    val += bounds->step / 2; // To support proper integer rounding.
+    val -= bounds->min;
+    val /= bounds->step;
+    return (unsigned long) val;
+}
+
+unsigned long index_of_real(const range_real_t* bounds, double val)
+{
+    if (bounds->step > 0.0) {
+        if (val < bounds->min) return 0;
+        if (val > bounds->max) return limit_of_real(bounds) - 1;
+
+        val -= bounds->min;
+        val /= bounds->step;
+        val += 0.5; // To support proper integer rounding.
+        return (unsigned long) val;
+    }
     return 0;
 }
 
-unsigned long range_enum_max_idx(range_enum_t* bounds)
+unsigned long index_of_enum(const range_enum_t* bounds, const char* val)
 {
-    return bounds->len - 1;
+    int index;
+
+    for (index = 0; index < bounds->len; ++index) {
+        if (bounds->set[index] == val)
+            break;
+    }
+    return (unsigned long) index;
+}
+
+//
+// Count of range indexes implementation.
+//
+unsigned long limit_of_int(const range_int_t* bounds)
+{
+    unsigned long bins;
+
+    bins  = bounds->max;
+    bins -= bounds->min;
+    bins /= bounds->step;
+
+    return 1UL + bins;
+}
+
+unsigned long limit_of_real(const range_real_t* bounds)
+{
+    if (bounds->step > 0.0) {
+        double bins;
+
+        bins  = bounds->max;
+        bins -= bounds->min;
+        bins /= bounds->step;
+
+        return 1UL + (unsigned long) bins;
+    }
+    return 0;
+}
+
+unsigned long limit_of_enum(const range_enum_t* bounds)
+{
+    return (unsigned long) bounds->len;
+}
+
+unsigned long random_index(unsigned long limit)
+{
+    int index;
+    unsigned long bins = RAND_MAX / limit;
+
+    limit *= bins;
+    do {
+        index = random();
+    } while (index >= limit);
+
+    return index / bins;
+}
+
+//
+// Random range value implementation.
+//
+hval_t random_int(const range_int_t* bounds)
+{
+    return value_of_int(bounds, random_index( limit_of_int(bounds) ));
+}
+
+hval_t random_real(const range_real_t* bounds)
+{
+    if (bounds->step > 0.0) {
+        return value_of_real(bounds, random_index( limit_of_real(bounds) ));
+    }
+    else {
+        hval_t val;
+
+        val.type     = HVAL_REAL;
+        val.value.r  = bounds->max;
+        val.value.r -= bounds->min;
+        val.value.r *= drand48();
+        val.value.r += bounds->min;
+        val.buf      = NULL;
+
+        return val;
+    }
+}
+
+hval_t random_enum(const range_enum_t* bounds)
+{
+    return value_of_enum(bounds, random_index( limit_of_enum(bounds) ));
+}
+
+//
+// Index to range value implementation.
+//
+hval_t value_of_int(const range_int_t* bounds, unsigned long idx)
+{
+    hval_t val;
+
+    val.type     = HVAL_INT;
+    val.value.i  = bounds->step;
+    val.value.i *= idx;
+    val.value.i += bounds->min;
+    val.buf      = NULL;
+
+    return val;
+}
+
+hval_t value_of_real(const range_real_t* bounds, unsigned long idx)
+{
+    if (bounds->step > 0.0) {
+        hval_t val;
+
+        val.type     = HVAL_REAL;
+        val.value.r  = bounds->step;
+        val.value.r *= idx;
+        val.value.r += bounds->min;
+        val.buf      = NULL;
+
+        return val;
+    }
+    return hval_zero;
+}
+
+hval_t value_of_enum(const range_enum_t* bounds, unsigned long idx)
+{
+    if (idx < bounds->len) {
+        hval_t val;
+
+        val.type    = HVAL_STR;
+        val.value.s = bounds->set[ idx ];
+        val.buf     = NULL;
+
+        return val;
+    }
+    return hval_zero;
 }

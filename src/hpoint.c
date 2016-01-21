@@ -81,40 +81,17 @@ void hpoint_fini(hpoint_t* point)
 
 int hpoint_align(hpoint_t* point, hspace_t* space)
 {
-    int i;
-
     if (point->len != space->len)
         return -1;
 
-    for (i = 0; i < point->len; ++i) {
-        hval_t* val = &point->val[i];
+    for (int i = 0; i < point->len; ++i) {
+        unsigned long index;
 
-        if (val->type != space->dim[i].type)
+        index         = hrange_index(&space->dim[i], &point->val[i]);
+        point->val[i] = hrange_value(&space->dim[i], index);
+
+        if (point->val[i].type == HVAL_UNKNOWN)
             return -1;
-
-        switch (space->dim[i].type) {
-        case HVAL_INT:
-            val->value.i = range_int_nearest(&space->dim[i].bounds.i,
-                                             val->value.i);
-            break;
-
-        case HVAL_REAL:
-            val->value.r = range_real_nearest(&space->dim[i].bounds.r,
-                                              val->value.r);
-            break;
-
-        case HVAL_STR: {
-            unsigned long idx = range_enum_index(&space->dim[i].bounds.e,
-                                                 val->value.s);
-            if (!hmesg_owner(point->owner, val->value.s))
-                free((char*)val->value.s);
-            val->value.s = stralloc(space->dim[i].bounds.e.set[idx]);
-            break;
-        }
-
-        default:
-            return -1;
-        }
     }
     return 0;
 }

@@ -26,11 +26,13 @@
 extern "C" {
 #endif
 
-/*
- * Harmony search space: Multi-dimensional input space to be searched
- * for optimal performance values.  Each dimension is defined by a
- * range of possible values.
- */
+//
+// Harmony structure representing the search space.
+//
+// Also be referred to as the input, decision, or parameter space,
+// it describes the valid set of multi-dimensional input values an
+// optimization problem.
+//
 typedef struct hspace {
     unsigned  id;
     char*     name;
@@ -43,22 +45,26 @@ typedef struct hspace {
 #define HSPACE_INITIALIZER {0}
 extern const hspace_t hspace_zero;
 
-/* Harmony search space functions */
+// Base structure management interface.
 int  hspace_copy(hspace_t* dst, const hspace_t* src);
 void hspace_scrub(hspace_t* space);
 void hspace_fini(hspace_t* space);
 
-int  hspace_equal(const hspace_t* space_a, const hspace_t* space_b);
-int  hspace_name(hspace_t* space, const char* name);
-int  hspace_int(hspace_t* space, const char* name,
-                long min, long max, long step);
-int  hspace_real(hspace_t* space, const char* name,
-                 double min, double max, double step);
-int  hspace_enum(hspace_t* space, const char* name, const char* value);
+// Search space definition interface.
+int hspace_name(hspace_t* space, const char* name);
+int hspace_int(hspace_t* space, const char* name,
+               long min, long max, long step);
+int hspace_real(hspace_t* space, const char* name,
+                double min, double max, double step);
+int hspace_enum(hspace_t* space, const char* name, const char* value);
 
-int  hspace_pack(char** buf, int* buflen, const hspace_t* space);
-int  hspace_unpack(hspace_t* space, char* buf);
-int  hspace_parse(hspace_t* space, const char* buf, const char** errptr);
+// Search space comparison interface.
+int hspace_equal(const hspace_t* a, const hspace_t* b);
+
+// Data transmission interface.
+int hspace_pack(char** buf, int* buflen, const hspace_t* space);
+int hspace_unpack(hspace_t* space, char* buf);
+int hspace_parse(hspace_t* space, const char* buf, const char** errptr);
 
 #ifdef __cplusplus
 }
