@@ -1481,6 +1481,10 @@ int send_request(hdesc_t* hd, hmesg_type msg_type)
                 hd->errstr = "Could not update best known point";
                 return -1;
             }
+            if (hpoint_align(&hd->best, &hd->space) != 0) {
+                hd->errstr = "Could not align best point to search space";
+                return -1;
+            }
         }
     }
     return 0;
@@ -1511,18 +1515,18 @@ int write_values(hdesc_t* hd, const hpoint_t* pt)
 
     for (i = 0; i < pt->len; ++i) {
         if (hd->varloc[i].ptr == NULL) {
-            hd->varloc[i].val = pt->val[i];
+            hd->varloc[i].val = pt->term[i];
         }
         else {
-            switch (pt->val[i].type) {
+            switch (pt->term[i].type) {
             case HVAL_INT:
-                *(long*)hd->varloc[i].ptr = pt->val[i].value.i;
+                *(long*)hd->varloc[i].ptr = pt->term[i].value.i;
                 break;
             case HVAL_REAL:
-                *(double*)hd->varloc[i].ptr = pt->val[i].value.r;
+                *(double*)hd->varloc[i].ptr = pt->term[i].value.r;
                 break;
             case HVAL_STR:
-                *(const char**)hd->varloc[i].ptr = pt->val[i].value.s;
+                *(const char**)hd->varloc[i].ptr = pt->term[i].value.s;
                 break;
             default:
                 hd->errstr = "Invalid space dimension value type";

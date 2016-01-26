@@ -328,32 +328,34 @@ int client_idx(void)
 int save_timer_parameter(TAUDB_TIMER* timer, htrial_t* trial)
 {
     int i;
-    char value[32];
+    char buf[32];
     TAUDB_TIMER_PARAMETER* param = taudb_create_timer_parameters(param_max);
 
     for (i = 0; i < param_max; i++) {
+        const hval_t* val = &trial->point.term[i];
+
         /*Save name*/
         param[i].name = taudb_strdup(sess_space.dim[i].name);
 
         /*get value*/
-        switch (trial->point.val[i].type) {
+        switch (val->type) {
         case HVAL_INT:
-            snprintf(value, sizeof(value), "%ld", trial->point.val[i].value.i);
+            snprintf(buf, sizeof(buf), "%ld", val->value.i);
             break;
 
         case HVAL_REAL:
-            snprintf(value, sizeof(value), "%f", trial->point.val[i].value.r);
+            snprintf(buf, sizeof(buf), "%f", val->value.r);
             break;
 
         case HVAL_STR:
-            snprintf(value, sizeof(value), "%s", trial->point.val[i].value.s);
+            snprintf(buf, sizeof(buf), "%s", val->value.s);
             break;
 
         default:
             session_error("Invalid point value detected");
             return -1;
         }
-        param[i].value = taudb_strdup(value);
+        param[i].value = taudb_strdup(buf);
         taudb_add_timer_parameter_to_timer(timer, &param[i]);
     }
 

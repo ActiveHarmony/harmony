@@ -18,98 +18,160 @@
  */
 
 #include "hpoint.h"
-#include "hmesg.h"
+#include "hspace.h"
+#include "hrange.h"
 #include "hutil.h"
 
-#include <stdio.h>
-#include <errno.h>
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
+#include <stdlib.h> // For realloc().
+#include <string.h> // For memcpy() and memcmp().
+#include <assert.h> // For assert().
+#include <ctype.h>  // For isspace().
 
 const hpoint_t hpoint_zero = HPOINT_INITIALIZER;
 
-int hpoint_init(hpoint_t* point, int len)
+// Internal helper function prototypes.
+static int align_int(hval_t* val, const hrange_t* range);
+static int align_real(hval_t* val, const hrange_t* range);
+static int align_str(hval_t* val, const hrange_t* range);
+
+//
+// Base structure management implementation.
+//
+int hpoint_init(hpoint_t* point, int newlen)
 {
-    if (point->len != len) {
-        hval_t *newbuf = realloc(point->val, sizeof(*point->val) * len);
+    if (point->len != newlen) {
+        hval_t* oldbuf = point->term;
+        hval_t* newbuf = realloc(oldbuf, newlen * sizeof(*newbuf));
         if (!newbuf)
             return -1;
-        point->val = newbuf;
-        point->len = len;
+
+        memset(newbuf, 0, newlen * sizeof(*newbuf));
+        point->term = newbuf;
+        point->len  = newlen;
     }
     return 0;
 }
 
 int hpoint_copy(hpoint_t* dst, const hpoint_t* src)
 {
-    hpoint_scrub(dst);
-    if (hpoint_init(dst, src->len) != 0)
-        return -1;
-
-    dst->id = src->id;
-    memcpy(dst->val, src->val, sizeof(*src->val) * src->len);
-    for (int i = 0; i < src->len; ++i) {
-        if (src->val[i].type == HVAL_STR) {
-            dst->val[i].value.s = stralloc(src->val[i].value.s);
-            if (!dst->val[i].value.s)
-                return -1;
-        }
+    if (dst->len != src->len) {
+        if (hpoint_init(dst, src->len) != 0)
+            return -1;
     }
-    dst->owner = NULL;
+
+    for (int i = 0; i < src->len; ++i) {
+        if (hval_copy(&dst->term[i], &src->term[i]) != 0)
+            return -1;
+    }
+    dst->id = src->id;
 
     return 0;
-}
-
-void hpoint_scrub(hpoint_t* point)
-{
-    for (int i = 0; i < point->len; ++i) {
-        if (point->val[i].type == HVAL_STR) {
-            if (!hmesg_owner(point->owner, point->val[i].value.s))
-                free((char*)point->val[i].value.s);
-        }
-        point->val[i].type = HVAL_UNKNOWN;
-    }
-    point->len = 0;
 }
 
 void hpoint_fini(hpoint_t* point)
 {
-    hpoint_scrub(point);
-    free(point->val);
+    for (int i = 0; i < point->len; ++i)
+        hval_fini(&point->term[i]);
+    free(point->term);
 }
 
-int hpoint_align(hpoint_t* point, hspace_t* space)
+void hpoint_scrub(hpoint_t* point)
 {
-    if (point->len != space->len)
-        return -1;
+    free(point->term);
+}
 
-    for (int i = 0; i < point->len; ++i) {
-        unsigned long index;
+//
+// Point manipulation implementation.
+//
+int hpoint_align(hpoint_t* point, const hspace_t* space)
+{
+    if (!point->id)
+        return 0;
 
-        index         = hrange_index(&space->dim[i], &point->val[i]);
-        point->val[i] = hrange_value(&space->dim[i], index);
+    for (int i = 0; i < space->len; ++i) {
+        int retval;
+        hval_t* val = &point->term[i];
 
-        if (point->val[i].type == HVAL_UNKNOWN)
+        switch (space->dim[i].type) {
+        case HVAL_INT:  retval = align_int(val, &space->dim[i]); break;
+        case HVAL_REAL: retval = align_real(val, &space->dim[i]); break;
+        case HVAL_STR:  retval = align_str(val, &space->dim[i]); break;
+        default:        retval = -1;
+        }
+        if (retval != 0)
             return -1;
     }
     return 0;
 }
 
-int hpoint_parse(hpoint_t* point, hspace_t* space, const char* buf)
+int hpoint_cmp(const hpoint_t* a, const hpoint_t* b)
 {
-    if (point->len != space->len) {
-        hpoint_fini(point);
-        hpoint_init(point, space->len);
+    return (a->len == b->len
+            ? memcmp(a->term, b->term, a->len * sizeof(*a->term))
+            : a->len - b->len);
+}
+
+//
+// Data transmission implementation.
+//
+int hpoint_pack(char** buf, int* buflen, const hpoint_t* point)
+{
+    int total = snprintf_serial(buf, buflen, " pt:%u", point->id);
+    if (total < 0) return -1;
+
+    if (point->id) {
+        int count = snprintf_serial(buf, buflen, " %d", point->len);
+        if (count < 0) return -1;
+        total += count;
+
+        for (int i = 0; i < point->len; ++i) {
+            count = hval_pack(buf, buflen, &point->term[i]);
+            if (count < 0) return -1;
+            total += count;
+        }
     }
+    return total;
+}
 
-    for (int i = 0; i < point->len; ++i) {
-        int span = hval_parse(&point->val[i], space->dim[i].type, buf);
-        if (span < 0)
+int hpoint_unpack(hpoint_t* point, char* buf)
+{
+    int total;
+    if (sscanf(buf, " pt:%u%n", &point->id, &total) < 1)
+        return -1;
+
+    if (point->id) {
+        int newlen, count;
+
+        if (sscanf(buf + total, " %d%n", &newlen, &count) < 1)
             return -1;
-        buf += span;
+        total += count;
 
-        /* Skip whitespace and a single separator character. */
+        if (point->len != newlen) {
+            if (hpoint_init(point, newlen) != 0)
+                return -1;
+        }
+
+        for (int i = 0; i < point->len; ++i) {
+            count = hval_unpack(&point->term[i], buf + total);
+            if (count < 0) return -1;
+            total += count;
+        }
+    }
+    return total;
+}
+
+int hpoint_parse(hpoint_t* point, const char* buf, const hspace_t* space)
+{
+    if (point->len != space->len)
+        hpoint_init(point, space->len);
+
+    for (int i = 0; i < space->len; ++i) {
+        hval_t* val = &point->term[i];
+        int count = hval_parse(val, space->dim[i].type, buf);
+        if (count < 0) return -1;
+        buf += count;
+
+        // Skip whitespace and a single separator character.
         while (isspace(*buf)) ++buf;
         if (*buf == ',' || *buf == ';')
             ++buf;
@@ -120,64 +182,67 @@ int hpoint_parse(hpoint_t* point, hspace_t* space, const char* buf)
     return 0;
 }
 
-int hpoint_pack(char** buf, int* buflen, const hpoint_t* point)
+//
+// Internal helper function implementation.
+//
+int align_int(hval_t* val, const hrange_t* range)
 {
-    int i, count, total;
+    if (val->value.i < range->bounds.i.min)
+        val->value.i = range->bounds.i.min;
+    if (val->value.i > range->bounds.i.max)
+        val->value.i = range->bounds.i.max;
 
-    count = snprintf_serial(buf, buflen, " point:%u", point->id);
-    if (count < 0) goto invalid;
-    total = count;
+    long rank;
+    rank  = val->value.i;
+    rank += range->bounds.i.step / 2; // To support proper integer rounding.
+    rank -= range->bounds.i.min;
+    rank /= range->bounds.i.step;
 
-    if (point->id) {
-        count = snprintf_serial(buf, buflen, " %d", point->len);
-        if (count < 0) goto invalid;
-        total += count;
+    val->value.i  = range->bounds.i.step;
+    val->value.i *= rank;
+    val->value.i += range->bounds.i.min;
 
-        for (i = 0; i < point->len; ++i) {
-            count = hval_pack(buf, buflen, &point->val[i]);
-            if (count < 0) goto error;
-            total += count;
-        }
-    }
-    return total;
-
-  invalid:
-    errno = EINVAL;
-  error:
-    return -1;
+    return 0;
 }
 
-int hpoint_unpack(hpoint_t* point, char* buf)
+int align_real(hval_t* val, const hrange_t* range)
 {
-    int count, total;
+    if (val->value.r < range->bounds.r.min)
+        val->value.r = range->bounds.r.min;
+    if (val->value.r > range->bounds.r.max)
+        val->value.r = range->bounds.r.max;
 
-    if (sscanf(buf, " point:%u%n", &point->id, &total) < 1)
-        goto invalid;
+    if (range->bounds.r.step > 0.0) {
+        double rank;
+        rank  = val->value.r;
+        rank -= range->bounds.r.min;
+        rank /= range->bounds.r.step;
+        rank += 0.5; // To support proper integer rounding.
 
-    if (point->id) {
-        int newlen;
-        if (sscanf(buf + total, " %d%n", &newlen, &count) < 1)
-            goto invalid;
-        total += count;
+        val->value.r  = range->bounds.r.step;
+        val->value.r *= (long) rank;
+        val->value.r += range->bounds.r.min;
+    }
+    return 0;
+}
 
-        if (point->len != newlen) {
-            hval_t* newbuf = realloc(point->val, sizeof(*newbuf) * newlen);
-            if (!newbuf)
-                goto error;
-            point->val = newbuf;
-            point->len = newlen;
-        }
+int align_str(hval_t* val, const hrange_t* range)
+{
+    // First pass compare by address.
+    for (int i = 0; i < range->bounds.e.len; ++i)
+        if (val->value.s == range->bounds.e.set[i])
+            return 0;
 
-        for (int i = 0; i < point->len; ++i) {
-            count = hval_unpack(&point->val[i], buf + total);
-            if (count < 0) goto error;
-            total += count;
+    // Second pass compare by value.
+    for (int i = 0; i < range->bounds.e.len; ++i) {
+        if (strcmp(val->value.s, range->bounds.e.set[i]) == 0) {
+            val->value.s = range->bounds.e.set[i];
+            if (val->buf) {
+                free(val->buf);
+                val->buf = NULL;
+            }
+            return 0;
         }
     }
-    return total;
-
-  invalid:
-    errno = EINVAL;
-  error:
     return -1;
 }

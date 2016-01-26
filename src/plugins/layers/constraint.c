@@ -206,8 +206,6 @@ int strategy_cfg(hspace_t* space)
 
 int constraint_generate(hflow_t* flow, hpoint_t* point)
 {
-    int i;
-
     flow->status = HFLOW_ACCEPT;
     if (!check_validity(point)) {
         flow->status = HFLOW_REJECT;
@@ -215,16 +213,15 @@ int constraint_generate(hflow_t* flow, hpoint_t* point)
 
         if (!quiet) {
             fprintf(stderr, "Rejecting point: {");
-            for (i = 0; i < point->len; ++i) {
-                hval_t* val = &point->val[i];
+            for (int i = 0; i < point->len; ++i) {
+                const hval_t* val = &point->term[i];
 
-                switch (val->type) {
+                switch (local_space.dim[i].type) {
                 case HVAL_INT:  fprintf(stderr, "%ld", val->value.i); break;
-                case HVAL_REAL: fprintf(stderr, "%lf", val->value.r); break;
-                case HVAL_STR:  fprintf(stderr, "%s",  val->value.s); break;
+                case HVAL_REAL: fprintf(stderr, "%g", val->value.r); break;
+                case HVAL_STR:  fprintf(stderr, "%s", val->value.s); break;
                 default:        fprintf(stderr, "<INV>");
                 }
-
                 if (i < point->len - 1)
                     fprintf(stderr, ", ");
             }
@@ -326,18 +323,16 @@ int build_point_text(hpoint_t* point)
 
     point_text[0] = '\0';
     for (i = 0; i < point->len; ++i) {
-        hval_t* val = &point->val[i];
-
         /* Fetch min and max according to variable type */
-        switch (val->type) {
+        switch (local_space.dim[i].type) {
         case HVAL_INT:
             ptr += snprintf(ptr, end - ptr, "%s = %ld",
-                            local_space.dim[i].name, val->value.i);
+                            local_space.dim[i].name, point->term[i].value.i);
             break;
 
         case HVAL_REAL:
             ptr += snprintf(ptr, end - ptr, "%s = %f",
-                            local_space.dim[i].name, val->value.r);
+                            local_space.dim[i].name, point->term[i].value.r);
             break;
 
         case HVAL_STR:

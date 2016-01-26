@@ -645,12 +645,12 @@ vector<long> values_of(hpoint_t* pt)
     vector<long> retval;
 
     for (int i = 0; i < pt->len; ++i) {
-        if (pt->val[i].type != HVAL_INT) {
+        if (pt->term[i].type != HVAL_INT) {
             cerr << "Codeserver only implemented for int ranges for now.\n";
             retval.clear();
             break;
         }
-        retval.push_back(pt->val[i].value.i);
+        retval.push_back(pt->term[i].value.i);
     }
     return retval;
 }

@@ -122,7 +122,7 @@ int strategy_cfg(hspace_t* space)
 
     cfgstr = hcfg_get(session_cfg, CFGKEY_INIT_POINT);
     if (cfgstr) {
-        if (hpoint_parse(&curr, space, cfgstr) != 0) {
+        if (hpoint_parse(&curr, cfgstr, space) != 0) {
             session_error("Error parsing point from " CFGKEY_INIT_POINT ".");
             return -1;
         }
@@ -133,11 +133,11 @@ int strategy_cfg(hspace_t* space)
         }
 
         for (i = 0; i < space->len; ++i)
-            idx[i] = hrange_index(&space->dim[i], &curr.val[i]);
+            idx[i] = hrange_index(&space->dim[i], &curr.term[i]);
     }
     else {
         for (i = 0; i < N; ++i) {
-            hval_t* v = &curr.val[i];
+            hval_t* v = &curr.term[i];
 
             v->type = dim[i].type;
             switch (dim[i].type) {
@@ -283,9 +283,9 @@ int increment(void)
         ++idx[i];
         switch (dim[i].type) {
         case HVAL_INT:
-            curr.val[i].value.i += dim[i].bounds.i.step;
-            if (curr.val[i].value.i > dim[i].bounds.i.max) {
-                curr.val[i].value.i = dim[i].bounds.i.min;
+            curr.term[i].value.i += dim[i].bounds.i.step;
+            if (curr.term[i].value.i > dim[i].bounds.i.max) {
+                curr.term[i].value.i = dim[i].bounds.i.min;
                 idx[i] = 0;
                 continue;  // Overflow detected.
             }
@@ -294,27 +294,27 @@ int increment(void)
         case HVAL_REAL:
             next_r = (dim[i].bounds.r.step > 0.0)
                 ? dim[i].bounds.r.min + (idx[i] * dim[i].bounds.r.step)
-                : nextafter(curr.val[i].value.r, HUGE_VAL);
+                : nextafter(curr.term[i].value.r, HUGE_VAL);
 
             if (next_r > dim[i].bounds.r.max ||
-                next_r == curr.val[i].value.r)
+                next_r == curr.term[i].value.r)
             {
-                curr.val[i].value.r = dim[i].bounds.r.min;
+                curr.term[i].value.r = dim[i].bounds.r.min;
                 idx[i] = 0;
                 continue;  // Overflow detected.
             }
             else {
-                curr.val[i].value.r = next_r;
+                curr.term[i].value.r = next_r;
             }
             break;
 
         case HVAL_STR:
             if (idx[i] >= dim[i].bounds.e.len) {
-                curr.val[i].value.s = dim[i].bounds.e.set[0];
+                curr.term[i].value.s = dim[i].bounds.e.set[0];
                 idx[i] = 0;
                 continue;  // Overflow detected.
             }
-            curr.val[i].value.s = dim[i].bounds.e.set[ idx[i] ];
+            curr.term[i].value.s = dim[i].bounds.e.set[ idx[i] ];
             break;
 
         default:
@@ -327,16 +327,16 @@ int increment(void)
         for(i = 0, n_overflows = 0;i < N;i++) {
           switch (dim[i].type) {
             case HVAL_INT:
-              next_i = curr.val[i].value.i + dim[i].bounds.i.step;
+              next_i = curr.term[i].value.i + dim[i].bounds.i.step;
               if(next_i > dim[i].bounds.i.max)
                 n_overflows++;
               break;
             case HVAL_REAL:
               next_r = (dim[i].bounds.r.step > 0.0)
                 ? dim[i].bounds.r.min + (idx[i] * dim[i].bounds.r.step)
-                : nextafter(curr.val[i].value.r, HUGE_VAL);
+                : nextafter(curr.term[i].value.r, HUGE_VAL);
               if(next_r > dim[i].bounds.r.max ||
-                 next_r == curr.val[i].value.r)
+                 next_r == curr.term[i].value.r)
                 n_overflows++;
               break;
             case HVAL_STR:

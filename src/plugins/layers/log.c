@@ -88,13 +88,11 @@ int logger_join(const char* id)
 
 int logger_analyze(hflow_t* flow, htrial_t* trial)
 {
-    int i;
-
     fprintf(fd, "Point #%d: (", trial->point.id);
-    for (i = 0; i < trial->point.len; ++i) {
-        hval_t* v = &trial->point.val[i];
+    for (int i = 0; i < trial->point.len; ++i) {
         if (i > 0) fprintf(fd, ",");
 
+        const hval_t* v = &trial->point.term[i];
         switch (v->type) {
         case HVAL_INT:  fprintf(fd, "%ld", v->value.i); break;
         case HVAL_REAL: fprintf(fd, "%lf[%la]", v->value.r, v->value.r); break;
@@ -108,7 +106,7 @@ int logger_analyze(hflow_t* flow, htrial_t* trial)
 
     if (trial->perf.len > 1) {
         fprintf(fd, "=> (");
-        for (i = 0; i < trial->perf.len; ++i) {
+        for (int i = 0; i < trial->perf.len; ++i) {
             if (i > 0) fprintf(fd, ",");
             fprintf(fd, "%lf[%la]", trial->perf.obj[i], trial->perf.obj[i]);
         }

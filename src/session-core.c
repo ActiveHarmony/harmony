@@ -436,7 +436,6 @@ int plugin_workflow(int trial_idx)
             return -1;
 
         /* Remove point data from pending list. */
-        hpoint_scrub( (hpoint_t*)&trial->point );
         ((hpoint_t*)&trial->point)->id = 0;
         --pending_len;
 

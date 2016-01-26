@@ -20,37 +20,38 @@
 #ifndef __HPOINT_H__
 #define __HPOINT_H__
 
-#include "hval.h"
 #include "hspace.h"
+#include "hval.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* ----------------------------------------------------------------
- * Harmony structure that represents a point within a search space.
- *
- */
+// ----------------------------------------------------------------
+// Harmony structure that represents a point within a search space.
+//
 typedef struct hpoint {
     unsigned id;
-    hval_t*  val;
+    hval_t*  term;
     int      len;
-
-    void* owner;
 } hpoint_t;
+
 #define HPOINT_INITIALIZER {0}
 extern const hpoint_t hpoint_zero;
 
-int  hpoint_init(hpoint_t* point, int len);
+// Base structure management interface.
+int  hpoint_init(hpoint_t* point, int newlen);
 int  hpoint_copy(hpoint_t* dst, const hpoint_t* src);
-void hpoint_scrub(hpoint_t* point);
 void hpoint_fini(hpoint_t* point);
 
-int  hpoint_align(hpoint_t* point, hspace_t* space);
+// Point comparison interface.
+int hpoint_align(hpoint_t* point, const hspace_t* space);
+int hpoint_cmp(const hpoint_t* a, const hpoint_t* b);
 
-int  hpoint_pack(char** buf, int* buflen, const hpoint_t* point);
-int  hpoint_unpack(hpoint_t* point, char* buf);
-int  hpoint_parse(hpoint_t* point, hspace_t* space, const char* buf);
+// Data transmission interface.
+int hpoint_pack(char** buf, int* buflen, const hpoint_t* point);
+int hpoint_unpack(hpoint_t* point, char* buf);
+int hpoint_parse(hpoint_t* point, const char* buf, const hspace_t* space);
 
 #ifdef __cplusplus
 }

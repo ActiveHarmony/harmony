@@ -72,7 +72,6 @@ typedef struct {
 int find_max_strlen(void);
 int load_logger_file(const char* logger);
 int safe_scanstr(FILE* fd, int bounds_idx, const char** match);
-int pt_equiv(const hpoint_t* a, const hpoint_t* b);
 visited_t* find_visited(const hpoint_t* a);
 
 static hrange_t* dim;
@@ -157,7 +156,7 @@ int cache_generate(hflow_t* flow, htrial_t* trial)
 
     /* For now, we rely on a linear cache lookup. */
     for (i = 0; i < cache_len; ++i) {
-        if (pt_equiv(&trial->point, &cache[i].point)) {
+        if (hpoint_cmp(&trial->point, &cache[i].point) == 0) {
             hperf_copy(&trial->perf, &cache[i].perf);
             skip = 1;
             flow->status = HFLOW_RETURN;
@@ -307,7 +306,7 @@ int load_logger_file(const char* filename)
 
         /* Parse point data. */
         for (i = 0; i < i_cnt; ++i) {
-            hval_t* v = &cache[cache_len].point.val[i];
+            hval_t* v = &cache[cache_len].point.term[i];
 
             if (i > 0) SKIP_PATTERN(fp, " ,");
 
@@ -388,48 +387,12 @@ int safe_scanstr(FILE* fp, int bounds_idx, const char** match)
     return 1;
 }
 
-int pt_equiv(const hpoint_t* a, const hpoint_t* b)
-{
-    int i;
-
-    if (a->len != b->len)
-        return 0;
-
-    for (i = 0; i < a->len; ++i) {
-        if (a->val[i].type != b->val[i].type)
-            return 0;
-
-        switch (a->val[i].type) {
-        case HVAL_INT:
-            if (a->val[i].value.i != b->val[i].value.i)
-                return 0;
-            break;
-
-        case HVAL_REAL:
-            if (a->val[i].value.r < b->val[i].value.r ||
-                a->val[i].value.r > b->val[i].value.r)
-                return 0;
-            break;
-
-        case HVAL_STR:
-            if (strcmp(a->val[i].value.s, b->val[i].value.s))
-                return 0;
-            break;
-
-        default:
-            session_error("Invalid point value type");
-            return 0;
-        }
-    }
-    return 1;
-}
-
 visited_t *find_visited(const struct hpoint *a)
 {
     int i;
 
     for(i = 0;i < visited_len;i++) {
-        if(pt_equiv(a, &visited[i].point))
+        if(hpoint_cmp(a, &visited[i].point) == 0)
             return visited + i;
     }
 

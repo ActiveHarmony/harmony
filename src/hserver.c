@@ -630,6 +630,13 @@ int handle_session_socket(int idx)
                 perror("Internal error copying hpoint to HTTP log");
                 goto error;
             }
+
+            if (hpoint_align(&sess->fetched[sess->fetched_len],
+                             &sess->space) != 0)
+            {
+                perror("Could not align fetched point to search space");
+                goto error;
+            }
             ++sess->fetched_len;
         }
         break;
@@ -830,6 +837,11 @@ int update_state(session_state_t* sess)
 
         if (hpoint_copy(&sess->best, &mesg.state.best) != 0) {
             perror("Internal error copying hpoint to best");
+            return -1;
+        }
+
+        if (hpoint_align(&sess->best, &sess->space) != 0) {
+            perror("Could not align best point to search space");
             return -1;
         }
     }

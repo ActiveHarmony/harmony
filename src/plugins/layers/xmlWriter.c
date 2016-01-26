@@ -240,7 +240,7 @@ int xmlWriter_generate(hflow_t* flow, htrial_t* trial)
 
             /* Start adding param and corresponding config */
             for (i = 0; i < paramNum; i++) {
-                hval_t* val = &trial->point.val[i];
+                const hval_t* val = &trial->point.term[i];
 
                 snprintf(temp, sizeof(temp), "%s", sess_space.dim[i].name);
                 switch (val->type) {

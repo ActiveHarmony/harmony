@@ -39,9 +39,7 @@ static int unpack_data(hmesg_t* mesg, char* buf);
 void hmesg_scrub(hmesg_t* mesg)
 {
     hspace_scrub(&mesg->state.space);
-    hpoint_scrub(&mesg->state.best);
     hcfg_scrub(&mesg->data.cfg);
-    hpoint_scrub(&mesg->data.point);
 }
 
 void hmesg_fini(hmesg_t* mesg)
@@ -304,7 +302,6 @@ int unpack_state(hmesg_t* mesg, char* buf)
         if (count < 0) return -1;
         total += count;
 
-        mesg->state.best.owner = mesg;
         count = hpoint_unpack(&mesg->state.best, buf + total);
         if (count < 0) return -1;
         total += count;
@@ -429,7 +426,6 @@ int unpack_data(hmesg_t* mesg, char* buf)
 
     case HMESG_FETCH:
         if (mesg->status == HMESG_STATUS_OK) {
-            mesg->data.point.owner = mesg;
             count = hpoint_unpack(&mesg->data.point, buf + total);
             if (count < 0) return -1;
             total += count;

@@ -569,14 +569,14 @@ int http_send_overview(int fd)
 {
     char* buf;
     char* ptr;
-    int i, j, buflen, count, total;
+    int buflen, count, total;
 
     sendbuf[0] = '\0';
     buf = sendbuf;
     buflen = sizeof(sendbuf);
     total = 0;
 
-    for (i = 0; i < slist_cap; ++i) {
+    for (int i = 0; i < slist_cap; ++i) {
         if (!slist[i].name)
             continue;
 
@@ -587,56 +587,49 @@ int http_send_overview(int fd)
                                 slist[i].start.tv_usec/1000,
                                 slist[i].client_len,
                                 slist[i].reported);
-        if (count < 0)
-            return -1;
+        if (count < 0) return -1;
         total += count;
 
         if (!slist[i].best.id) {
             count = snprintf_serial(&buf, &buflen, "&lt;unknown&gt;");
-            if (count < 0)
-                return -1;
+            if (count < 0) return -1;
             total += count;
         }
         else {
-            for (j = 0; j < slist[i].best.len; ++j) {
+            hrange_t* dim = slist[i].space.dim;
+            for (int j = 0; j < slist[i].best.len; ++j) {
+                const hval_t* v = &slist[i].best.term[j];
+
                 if (j > 0) {
                     count = snprintf_serial(&buf, &buflen, " ");
-                    if (count < 0)
-                        return -1;
+                    if (count < 0) return -1;
                     total += count;
                 }
 
-                switch (slist[i].best.val[j].type) {
+                switch (dim[j].type) {
                 case HVAL_INT:
-                    count = snprintf_serial(&buf, &buflen, "%ld",
-                                            slist[i].best.val[j].value.i);
-                    if (count < 0)
-                        return -1;
+                    count = snprintf_serial(&buf, &buflen, "%ld", v->value.i);
+                    if (count < 0) return -1;
                     total += count;
                     break;
                 case HVAL_REAL:
-                    count = snprintf_serial(&buf, &buflen, "%lf",
-                                            slist[i].best.val[j].value.r);
-                    if (count < 0)
-                        return -1;
+                    count = snprintf_serial(&buf, &buflen, "%lf", v->value.r);
+                    if (count < 0) return -1;
                     total += count;
                     break;
                 case HVAL_STR:
-                    count = snprintf_serial(&buf, &buflen, "\"%s\"",
-                                            slist[i].best.val[j].value.s);
-                    if (count < 0)
-                        return -1;
+                    count = snprintf_serial(&buf, &buflen, "%s", v->value.s);
+                    if (count < 0) return -1;
                     total += count;
                     break;
                 default:
-                    break;
+                    return -1;
                 }
             }
         }
 
         count = snprintf_serial(&buf, &buflen, "|");
-        if (count < 0)
-            return -1;
+        if (count < 0) return -1;
         total += count;
 
         if (total >= sizeof(sendbuf)) {
@@ -667,14 +660,14 @@ int http_send_init(int fd, session_state_t* sess)
 {
     char* buf = sendbuf;
     int buflen = sizeof(sendbuf), total = 0;
-    int i, j, count;
+    int count;
 
     count = snprintf_serial(&buf, &buflen, "space:");
     if (count < 0)
         goto error;
     total += count;
 
-    for (i = 0; i < sess->space.len; ++i) {
+    for (int i = 0; i < sess->space.len; ++i) {
         char type;
         hrange_t* range = &sess->space.dim[i];
 
@@ -698,7 +691,7 @@ int http_send_init(int fd, session_state_t* sess)
         total += count;
 
         if (range->type == HVAL_STR) {
-            for (j = 0; j < range->bounds.e.len; ++j) {
+            for (int j = 0; j < range->bounds.e.len; ++j) {
                 count = snprintf_serial(&buf, &buflen, ";%s",
                                         range->bounds.e.set[j]);
                 if (count < 0)
@@ -801,7 +794,7 @@ int http_send_refresh(int fd, session_state_t* sess, const char* arg)
 int report_append(char** buf, int* buflen, session_state_t* sess,
                   struct timeval* tv, const hpoint_t* pt, const double perf)
 {
-    int i, count, total = 0;
+    int count, total = 0;
 
     if (tv) {
         count = snprintf_serial(buf, buflen, "%ld%03ld,",
@@ -812,42 +805,45 @@ int report_append(char** buf, int* buflen, session_state_t* sess,
     }
 
     if (!pt->id) {
-        for (i = 0; i < sess->space.len; ++i) {
+        for (int i = 0; i < sess->space.len; ++i) {
             count = snprintf_serial(buf, buflen, ",");
-            if (count < 0)
-                return -1;
+            if (count < 0) return -1;
             total += count;
         }
     }
     else {
-        for (i = 0; i < sess->space.len; ++i) {
-            hval_t* val;
+        hrange_t* dim = sess->space.dim;
+        for (int i = 0; i < sess->space.len; ++i) {
+            const hval_t* v = &pt->term[i];
 
-            val = &pt->val[i];
-            switch (val->type) {
+            switch (dim[i].type) {
             case HVAL_INT:
-                count = snprintf_serial(buf, buflen, "%ld,", val->value.i);
+                count = snprintf_serial(buf, buflen, "%ld,", v->value.i);
+                if (count < 0) return -1;
+                total += count;
                 break;
             case HVAL_REAL:
-                count = snprintf_serial(buf, buflen, "%.17lf,", val->value.r);
+                count = snprintf_serial(buf, buflen, "%lf,", v->value.r);
+                if (count < 0) return -1;
+                total += count;
                 break;
             case HVAL_STR: {
-                unsigned long index = hrange_index(&sess->space.dim[i], val);
+                unsigned long index = hrange_index(&sess->space.dim[i], v);
                 count = snprintf_serial(buf, buflen, "%ld,", index);
+                if (count < 0) return -1;
+                total += count;
                 break;
             }
             default:
                 return -1;
             }
 
-            if (count < 0)
-                return -1;
+            if (count < 0) return -1;
             total += count;
         }
 
         count = snprintf_serial(buf, buflen, "%lf", perf);
-        if (count < 0)
-            return -1;
+        if (count < 0) return -1;
         total += count;
     }
 

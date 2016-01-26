@@ -294,7 +294,7 @@ int vertex_to_hpoint(const vertex_t* v, hpoint_t* result)
     hpoint_init(result, N);
     for (i = 0; i < N; ++i) {
         unsigned long index;
-        hval_t* val = &result->val[i];
+        hval_t* val = &result->term[i];
 
         val->type = dim[i].type;
         switch (dim[i].type) {
@@ -333,11 +333,11 @@ int vertex_from_hpoint(const hpoint_t* pt, vertex_t* result)
 
     for (i = 0; i < N; ++i) {
         switch (dim[i].type) {
-        case HVAL_INT:  result->term[i] = pt->val[i].value.i; break;
-        case HVAL_REAL: result->term[i] = pt->val[i].value.r; break;
+        case HVAL_INT:  result->term[i] = pt->term[i].value.i; break;
+        case HVAL_REAL: result->term[i] = pt->term[i].value.r; break;
         case HVAL_STR:
             for (j = 0; j < dim[i].bounds.e.len; ++j) {
-                if (strcmp(pt->val[i].value.s, dim[i].bounds.e.set[j]) == 0)
+                if (strcmp(pt->term[i].value.s, dim[i].bounds.e.set[j]) == 0)
                     break;
             }
             result->term[i] = j;
@@ -359,7 +359,7 @@ int vertex_from_string(const char* str, hspace_t* space, vertex_t* result)
         return -1;
     }
 
-    if (hpoint_parse(&pt, space, str) != 0) {
+    if (hpoint_parse(&pt, str, space) != 0) {
         session_error("Error parsing point string");
         retval = -1;
         goto cleanup;
