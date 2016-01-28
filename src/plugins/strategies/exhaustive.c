@@ -32,9 +32,7 @@
 
 #include "strategy.h"
 #include "session-core.h"
-#include "hperf.h"
 #include "hutil.h"
-#include "hcfg.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -45,7 +43,7 @@
  * Configuration variables used in this plugin.
  * These will automatically be registered by session-core upon load.
  */
-hcfg_info_t plugin_keyinfo[] = {
+const hcfg_info_t plugin_keyinfo[] = {
     { CFGKEY_PASSES, "1",
       "Number of passes through the search space before the search "
       "is considered converged." },
@@ -57,101 +55,88 @@ hcfg_info_t plugin_keyinfo[] = {
 hpoint_t best = HPOINT_INITIALIZER;
 double   best_perf;
 
+//
+// Strategy specific structures.
+//
+typedef union unit {
+    unsigned long index;
+    double        value;
+} unit_u;
+
 /* Forward function definitions. */
-int strategy_cfg(hspace_t* space);
-int increment(void);
+int  config_strategy(void);
+void increment(void);
+int  make_hpoint(const unit_u* index, hpoint_t* point);
 
 /* Variables to track current search state. */
-int N;
-hrange_t* dim;
-hpoint_t curr;
-unsigned long* idx;
-int remaining_passes = 1;
+hspace_t* space;
+unit_u*   head;
+unit_u*   next;
+unsigned  next_id;
+unit_u*   wrap;
+
+int remaining_passes;
 int final_id = 0;
 int outstanding_points = 0, final_point_received = 0;
 
 /*
  * Invoked once on strategy load.
  */
-int strategy_init(hspace_t* space)
+int strategy_init(hspace_t* space_ptr)
 {
-    N = space->len;
-    dim = space->dim;
-
-    if (!idx) {
+    if (!space) {
         /* One time memory allocation and/or initialization. */
-        if (hpoint_init(&curr, N) != 0) {
-            session_error("Could not allocate memory candidate point.");
-            return -1;
-        }
-
-        idx = malloc(N * sizeof(unsigned long));
-        if (!idx) {
-            session_error("Could not allocate memory for index array.");
-            return -1;
-        }
 
         /* The best point and trial counter should only be initialized once,
          * and thus be retained across a restart.
          */
         best_perf = HUGE_VAL;
-        curr.id = 1;
+        next_id = 1;
     }
 
-    /* Initialization for subsequent calls to strategy_init(). */
-    if (strategy_cfg(space) != 0)
+    /* Initialization for every call to strategy_init(). */
+    if (space != space_ptr) {
+        if (next) free(next);
+        next = malloc(space_ptr->len * sizeof(*next));
+        if (!next) {
+            session_error("Could not allocate next index array");
+            return -1;
+        }
+
+        if (head) free(head);
+        head = malloc(space_ptr->len * sizeof(*head));
+        if (!head) {
+            session_error("Could not allocate head index array");
+            return -1;
+        }
+
+        if (wrap) free(wrap);
+        wrap = malloc(space_ptr->len * sizeof(*wrap));
+        if (!wrap) {
+            session_error("Could not allocate wrap index array");
+            return -1;
+        }
+        space = space_ptr;
+    }
+
+    if (config_strategy() != 0)
         return -1;
+
+    // Determine each search dimension's upper limit.
+    for (int i = 0; i < space->len; ++i) {
+        if (hrange_finite(&space->dim[i]))
+            wrap[i].index = hrange_limit(&space->dim[i]);
+        else
+            wrap[i].value = space->dim[i].bounds.r.max;
+    }
+
+    // Initialize the next point
+    memcpy(next, head, space->len * sizeof(*next));
 
     if (session_setcfg(CFGKEY_CONVERGED, "0") != 0) {
         session_error("Could not set " CFGKEY_CONVERGED " config variable.");
         return -1;
     }
-    return 0;
-}
-
-int strategy_cfg(hspace_t* space)
-{
-    const char* cfgstr;
-    int i;
-
-    remaining_passes = hcfg_int(session_cfg, CFGKEY_PASSES);
-    if (remaining_passes < 0) {
-        session_error("Invalid value for " CFGKEY_PASSES ".");
-        return -1;
-    }
-
-    cfgstr = hcfg_get(session_cfg, CFGKEY_INIT_POINT);
-    if (cfgstr) {
-        if (hpoint_parse(&curr, cfgstr, space) != 0) {
-            session_error("Error parsing point from " CFGKEY_INIT_POINT ".");
-            return -1;
-        }
-
-        if (hpoint_align(&curr, space) != 0) {
-            session_error("Error aligning point to parameter space.");
-            return -1;
-        }
-
-        for (i = 0; i < space->len; ++i)
-            idx[i] = hrange_index(&space->dim[i], &curr.term[i]);
-    }
-    else {
-        for (i = 0; i < N; ++i) {
-            hval_t* v = &curr.term[i];
-
-            v->type = dim[i].type;
-            switch (dim[i].type) {
-            case HVAL_INT:  v->value.i = dim[i].bounds.i.min; break;
-            case HVAL_REAL: v->value.r = dim[i].bounds.r.min; break;
-            case HVAL_STR:  v->value.s = dim[i].bounds.e.set[0]; break;
-            default:
-                session_error("Invalid range detected during strategy init.");
-                return -1;
-            }
-        }
-        memset(idx, 0, N * sizeof(unsigned long));
-    }
-
     return 0;
 }
 
@@ -161,14 +146,14 @@ int strategy_cfg(hspace_t* space)
 int strategy_generate(hflow_t* flow, hpoint_t* point)
 {
     if (remaining_passes > 0) {
-        if (hpoint_copy(point, &curr) != 0) {
-            session_error("Could not copy current point during generation.");
+        if (make_hpoint(next, point) != 0) {
+            session_error("Could not make point from index during generate");
             return -1;
         }
+        point->id = next_id;
 
-        if (increment() != 0)
-            return -1;
-        ++curr.id;
+        increment();
+        ++next_id;
     }
     else {
         if (hpoint_copy(point, &best) != 0) {
@@ -180,7 +165,7 @@ int strategy_generate(hflow_t* flow, hpoint_t* point)
     /* every time we send out a point that's before
        the final point, increment the numebr of points
        we're waiting for results from */
-    if(! final_id || curr.id <= final_id)
+    if(! final_id || next_id <= final_id)
       outstanding_points++;
 
     flow->status = HFLOW_ACCEPT;
@@ -192,25 +177,22 @@ int strategy_generate(hflow_t* flow, hpoint_t* point)
  */
 int strategy_rejected(hflow_t* flow, hpoint_t* point)
 {
-    hpoint_t* hint = &flow->point;
-    int orig_id = point->id;
+    if (flow->point.id) {
+        hpoint_t* hint = &flow->point;
 
-    if (hint && hint->id) {
+        hint->id = point->id;
         if (hpoint_copy(point, hint) != 0) {
             session_error("Could not copy hint during reject.");
             return -1;
         }
     }
     else {
-        if (hpoint_copy(point, &curr) != 0) {
-            session_error("Could not copy current point during reject.");
+        if (make_hpoint(next, point) != 0) {
+            session_error("Could not make point from index during reject");
             return -1;
         }
-
-        if (increment() != 0)
-            return -1;
+        increment();
     }
-    point->id = orig_id;
 
     flow->status = HFLOW_ACCEPT;
     return 0;
@@ -271,91 +253,88 @@ int strategy_best(hpoint_t* point)
     return 0;
 }
 
-int increment(void)
+//
+// Internal helper function implementation.
+//
+int config_strategy(void)
 {
-    int i, n_overflows, next_i;
-    double next_r;
+    const char* cfgstr;
 
-    if (remaining_passes <= 0)
-        return 0;
+    remaining_passes = hcfg_int(session_cfg, CFGKEY_PASSES);
+    if (remaining_passes < 0) {
+        session_error("Invalid value for " CFGKEY_PASSES ".");
+        return -1;
+    }
 
-    for (i = 0; i < N; ++i) {
-        ++idx[i];
-        switch (dim[i].type) {
-        case HVAL_INT:
-            curr.term[i].value.i += dim[i].bounds.i.step;
-            if (curr.term[i].value.i > dim[i].bounds.i.max) {
-                curr.term[i].value.i = dim[i].bounds.i.min;
-                idx[i] = 0;
-                continue;  // Overflow detected.
-            }
-            break;
+    cfgstr = hcfg_get(session_cfg, CFGKEY_INIT_POINT);
+    if (cfgstr) {
+        hpoint_t init;
 
-        case HVAL_REAL:
-            next_r = (dim[i].bounds.r.step > 0.0)
-                ? dim[i].bounds.r.min + (idx[i] * dim[i].bounds.r.step)
-                : nextafter(curr.term[i].value.r, HUGE_VAL);
-
-            if (next_r > dim[i].bounds.r.max ||
-                next_r == curr.term[i].value.r)
-            {
-                curr.term[i].value.r = dim[i].bounds.r.min;
-                idx[i] = 0;
-                continue;  // Overflow detected.
-            }
-            else {
-                curr.term[i].value.r = next_r;
-            }
-            break;
-
-        case HVAL_STR:
-            if (idx[i] >= dim[i].bounds.e.len) {
-                curr.term[i].value.s = dim[i].bounds.e.set[0];
-                idx[i] = 0;
-                continue;  // Overflow detected.
-            }
-            curr.term[i].value.s = dim[i].bounds.e.set[ idx[i] ];
-            break;
-
-        default:
-            session_error("Invalid range detected.");
+        if (hpoint_parse(&init, cfgstr, space) != 0) {
+            session_error("Error parsing point from " CFGKEY_INIT_POINT ".");
             return -1;
         }
 
-        // No overflow detected. Look ahead one point,
-        // to figure out the final point id before it's generated
-        for(i = 0, n_overflows = 0;i < N;i++) {
-          switch (dim[i].type) {
-            case HVAL_INT:
-              next_i = curr.term[i].value.i + dim[i].bounds.i.step;
-              if(next_i > dim[i].bounds.i.max)
-                n_overflows++;
-              break;
-            case HVAL_REAL:
-              next_r = (dim[i].bounds.r.step > 0.0)
-                ? dim[i].bounds.r.min + (idx[i] * dim[i].bounds.r.step)
-                : nextafter(curr.term[i].value.r, HUGE_VAL);
-              if(next_r > dim[i].bounds.r.max ||
-                 next_r == curr.term[i].value.r)
-                n_overflows++;
-              break;
-            case HVAL_STR:
-              if(idx[i] + 1 >= dim[i].bounds.e.len)
-                n_overflows++;
-              break;
-            default:
-              return -1;
-          }
+        if (!hpoint_align(&init, space) != 0) {
+            session_error("Could not align initial point to search space");
+            return -1;
         }
-        if(remaining_passes - 1 <= 0 && n_overflows >= N) {
-          final_id = curr.id;
+
+        for (int i = 0; i < space->len; ++i) {
+            if (hrange_finite(&space->dim[i]))
+                head[i].index = hrange_index(&space->dim[i], &init.term[i]);
+            else
+                head[i].value = init.term[i].value.r;
         }
-        return 0;
+        hpoint_fini(&init);
+    }
+    else {
+        memset(head, 0, space->len * sizeof(*head));
+    }
+    return 0;
+}
+
+void increment(void)
+{
+    if (remaining_passes <= 0)
+        return;
+
+    for (int i = 0; i < space->len; ++i) {
+        if (hrange_finite(&space->dim[i])) {
+            ++next[i].index;
+            if (next[i].index == wrap[i].index) {
+                next[i].index = 0;
+                continue; // Overflow detected.
+            }
+        }
+        else {
+            double nextval = nextafter(next[i].value, HUGE_VAL);
+            if (!(next[i].value < nextval)) {
+                next[i].value = space->dim[i].bounds.r.min;
+                continue; // Overflow detected.
+            }
+            next[i].value = nextval;
+        }
+        return; // No overflow detected.  Exit function.
     }
 
-    // We only reach this point if all values overflowed.
+    // All values overflowed.
     if (--remaining_passes <= 0)
-        final_id = curr.id - 1;
+        final_id = next_id;
+}
 
+int make_hpoint(const unit_u* unit, hpoint_t* point)
+{
+    if (point->len != space->len) {
+        if (hpoint_init(point, space->len) != 0)
+            return -1;
+    }
+
+    for (int i = 0; i < point->len; ++i) {
+        if (hrange_finite(&space->dim[i]))
+            point->term[i] = hrange_value(&space->dim[i], unit[i].index);
+        else
+            point->term[i].value.r = unit[i].value;
+    }
     return 0;
 }

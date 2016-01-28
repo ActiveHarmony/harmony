@@ -43,7 +43,7 @@
 /* --------------------------------
  * Session configuration variables.
  */
-hspace_t space = HSPACE_INITIALIZER;
+hspace_t session_space = HSPACE_INITIALIZER;
 hcfg_t cfg = HCFG_INITIALIZER;
 const hcfg_t* session_cfg = &cfg;
 
@@ -199,7 +199,7 @@ int main(int argc, char* argv[])
     }
 
     /* Initialize the session. */
-    if (hspace_copy(&space, &mesg.state.space) != 0) {
+    if (hspace_copy(&session_space, &mesg.state.space) != 0) {
         mesg.data.string = "Could not copy session data";
         goto error;
     }
@@ -289,7 +289,7 @@ int main(int argc, char* argv[])
     }
     hmesg_fini(&mesg);
     hcfg_fini(&cfg);
-    hspace_fini(&space);
+    hspace_fini(&session_space);
     free(setcfg_buf);
 
     return retval;
@@ -600,7 +600,7 @@ int handle_join(hmesg_t* mesg)
 {
     int i;
 
-    if (hspace_copy(&mesg->state.space, &space) < 0) {
+    if (hspace_copy(&mesg->state.space, &session_space) < 0) {
         errmsg = "Could not copy search space to message";
         return -1;
     }
@@ -746,8 +746,8 @@ int handle_restart(hmesg_t* mesg)
 
 int update_state(hmesg_t* mesg)
 {
-    if (mesg->state.space.id < space.id) {
-        if (hspace_copy(&mesg->state.space, &space) != 0)
+    if (mesg->state.space.id < session_space.id) {
+        if (hspace_copy(&mesg->state.space, &session_space) != 0)
             return -1;
     }
     else if (mesg->type != HMESG_JOIN) {
@@ -834,7 +834,7 @@ int load_strategy(const char* file)
     }
 
     if (strategy_init)
-        return strategy_init(&space);
+        return strategy_init(&session_space);
 
     return 0;
 }
@@ -928,7 +928,7 @@ int load_layers(const char* list)
 
         if (lstack[lstack_len].init) {
             curr_layer = lstack_len + 1;
-            if (lstack[lstack_len].init(&space) < 0) {
+            if (lstack[lstack_len].init(&session_space) < 0) {
                 retval = -1;
                 goto cleanup;
             }
@@ -1073,11 +1073,11 @@ int session_restart(void)
         if (lstack[i].fini && lstack[i].fini() != 0)
             return -1;
 
-    if (strategy_init && strategy_init(&space) != 0)
+    if (strategy_init && strategy_init(&session_space) != 0)
         return -1;
 
     for (i = 0; i < lstack_len; ++i)
-        if (lstack[i].init && lstack[i].init(&space) != 0)
+        if (lstack[i].init && lstack[i].init(&session_space) != 0)
             return -1;
 
     return 0;

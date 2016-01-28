@@ -21,7 +21,6 @@ angel.so: REQ_LDLIBS+=-lm
 angel.so: libvertex.o
 
 exhaustive.so: REQ_LDLIBS+=-lm
-exhaustive.so: libvertex.o
 
 nm.so: REQ_LDLIBS+=-lm
 nm.so: libvertex.o
