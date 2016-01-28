@@ -19,12 +19,13 @@
 #define _XOPEN_SOURCE 600 // Needed for gethostname()
 
 #include "hclient.h"
-#include "hspace.h"
 #include "hcfg.h"
-#include "hutil.h"
-#include "hmesg.h"
+#include "hspace.h"
 #include "hpoint.h"
 #include "hperf.h"
+#include "hval.h"
+#include "hmesg.h"
+#include "hutil.h"
 #include "hsockutil.h"
 
 #include <stdio.h>
@@ -47,11 +48,6 @@ typedef enum harmony_state_t {
     HARMONY_STATE_MAX
 } harmony_state_t;
 
-typedef struct hvarloc_t {
-    void* ptr;
-    hval_t val;
-} hvarloc_t;
-
 struct hdesc_t {
     harmony_state_t state;
     int socket;
@@ -62,11 +58,12 @@ struct hdesc_t {
     hcfg_t cfg;
     hmesg_t mesg;
 
-    hvarloc_t* varloc;
+    void** varloc;
     int varloc_cap;
 
     hperf_t perf;
-    hpoint_t curr, best;
+    hpoint_t test, best;
+    hpoint_t *curr;
 
     char* buf;
     int buflen;
@@ -82,7 +79,7 @@ int  extend_varloc(hdesc_t* hd);
 int  find_var(hdesc_t* hd, const char* name);
 int  send_request(hdesc_t* hd, hmesg_type msg_type);
 int  set_varloc(hdesc_t* hd, const char* name, void* ptr);
-int  write_values(hdesc_t* hd, const hpoint_t* pt);
+int  write_values(hdesc_t* hd);
 
 static int debug_mode = 0;
 
@@ -182,7 +179,7 @@ void ah_fini(hdesc_t* hd)
         hmesg_fini(&hd->mesg);
         hcfg_fini(&hd->cfg);
         hspace_fini(&hd->space);
-        hpoint_fini(&hd->curr);
+        hpoint_fini(&hd->test);
         hpoint_fini(&hd->best);
         hperf_fini(&hd->perf);
 
@@ -785,10 +782,10 @@ long ah_get_int(hdesc_t* hd, const char* name)
     int idx = find_var(hd, name);
 
     if (idx >= 0 && hd->space.dim[idx].type == HVAL_INT) {
-        if (hd->varloc[idx].ptr)
-            return *(long*)hd->varloc[idx].ptr;
+        if (hd->varloc[idx])
+            return *(long*)hd->varloc[idx];
         else
-            return hd->varloc[idx].val.value.i;
+            return hd->curr->term[idx].value.i;
     }
 
     errno = EINVAL;
@@ -813,10 +810,10 @@ double ah_get_real(hdesc_t* hd, const char* name)
     int idx = find_var(hd, name);
 
     if (idx >= 0 && hd->space.dim[idx].type == HVAL_REAL) {
-        if (hd->varloc[idx].ptr)
-            return *(double*)hd->varloc[idx].ptr;
+        if (hd->varloc[idx])
+            return *(double*)hd->varloc[idx];
         else
-            return hd->varloc[idx].val.value.r;
+            return hd->curr->term[idx].value.r;
     }
 
     errno = EINVAL;
@@ -841,10 +838,10 @@ const char* ah_get_enum(hdesc_t* hd, const char* name)
     int idx = find_var(hd, name);
 
     if (idx >= 0 && hd->space.dim[idx].type == HVAL_STR) {
-        if (hd->varloc[idx].ptr)
-            return *(char**)hd->varloc[idx].ptr;
+        if (hd->varloc[idx])
+            return *(const char**)hd->varloc[idx];
         else
-            return hd->varloc[idx].val.value.s;
+            return hd->curr->term[idx].value.s;
     }
 
     errno = EINVAL;
@@ -974,8 +971,6 @@ char* ah_set_cfg(hdesc_t* hd, const char* key, const char* val)
  */
 int ah_fetch(hdesc_t* hd)
 {
-    int i;
-
     if (hd->state < HARMONY_STATE_CONNECTED) {
         hd->errstr = "Descriptor not currently joined to any session";
         errno = EINVAL;
@@ -994,16 +989,14 @@ int ah_fetch(hdesc_t* hd)
             }
 
             /* Set current point to best point. */
-            if (hpoint_copy(&hd->curr, &hd->best) != 0) {
-                hd->errstr = "Error copying best point data";
-                return -1;
-            }
+            hd->curr = &hd->best;
         }
         else if (hd->mesg.status == HMESG_STATUS_OK) {
-            if (hpoint_copy(&hd->curr, &hd->mesg.data.point) != 0) {
+            if (hpoint_copy(&hd->test, &hd->mesg.data.point) != 0) {
                 hd->errstr = "Error copying current point data";
                 return -1;
             }
+            hd->curr = &hd->test;
             hd->state = HARMONY_STATE_TESTING;
         }
         else {
@@ -1014,11 +1007,11 @@ int ah_fetch(hdesc_t* hd)
     }
 
     /* Update the variables from the content of the message. */
-    if (write_values(hd, &hd->curr) != 0)
+    if (write_values(hd) != 0)
         return -1;
 
     /* Initialize our internal performance array. */
-    for (i = 0; i < hd->perf.len; ++i)
+    for (int i = 0; i < hd->perf.len; ++i)
         hd->perf.obj[i] = NAN;
 
     /* Client variables were changed.  Inform the user by returning 1. */
@@ -1078,7 +1071,7 @@ int ah_report(hdesc_t* hd, double* perf)
     }
 
     /* Prepare a Harmony message. */
-    hd->mesg.data.point.id = hd->curr.id;
+    hd->mesg.data.point.id = hd->test.id;
     if (hperf_copy(&hd->mesg.data.perf, &hd->perf) != 0) {
         hd->errstr = "Error allocating performance array for message";
         return -1;
@@ -1170,7 +1163,8 @@ int ah_best(hdesc_t* hd)
         return -1;
     }
 
-    if (write_values(hd, &hd->best) != 0)
+    hd->curr = &hd->best;
+    if (write_values(hd) != 0)
         return -1;
 
     return retval;
@@ -1406,16 +1400,8 @@ int extend_perf(hdesc_t* hd)
 int extend_varloc(hdesc_t* hd)
 {
     if (hd->varloc_cap < hd->space.cap) {
-        int i;
-        hvarloc_t* tmp = realloc(hd->varloc, hd->space.cap * sizeof(*tmp));
-        if (!tmp)
+        if (array_grow(&hd->varloc, &hd->varloc_cap, sizeof(*hd->varloc)) != 0)
             return -1;
-
-        for (i = hd->varloc_cap; i < hd->space.cap; ++i)
-            tmp[i].ptr = NULL;
-
-        hd->varloc = tmp;
-        hd->varloc_cap = i;
     }
     return 0;
 }
@@ -1499,35 +1485,28 @@ int set_varloc(hdesc_t* hd, const char* name, void* ptr)
         return -1;
     }
 
-    extend_varloc(hd);
-    hd->varloc[idx].ptr = ptr;
+    if (extend_varloc(hd) != 0)
+        return -1;
+
+    hd->varloc[idx] = ptr;
     return 0;
 }
 
-int write_values(hdesc_t* hd, const hpoint_t* pt)
+int write_values(hdesc_t* hd)
 {
-    int i;
-
-    if (hd->space.len != pt->len) {
+    if (hd->space.len != hd->curr->len) {
         hd->errstr = "Invalid internal point structure";
         return -1;
     }
 
-    for (i = 0; i < pt->len; ++i) {
-        if (hd->varloc[i].ptr == NULL) {
-            hd->varloc[i].val = pt->term[i];
-        }
-        else {
-            switch (pt->term[i].type) {
-            case HVAL_INT:
-                *(long*)hd->varloc[i].ptr = pt->term[i].value.i;
-                break;
-            case HVAL_REAL:
-                *(double*)hd->varloc[i].ptr = pt->term[i].value.r;
-                break;
-            case HVAL_STR:
-                *(const char**)hd->varloc[i].ptr = pt->term[i].value.s;
-                break;
+    for (int i = 0; i < hd->space.len; ++i) {
+        const hval_t* val = &hd->curr->term[i];
+
+        if (hd->varloc[i]) {
+            switch (hd->space.dim[i].type) {
+            case HVAL_INT:  *(long*)       hd->varloc[i] = val->value.i; break;
+            case HVAL_REAL: *(double*)     hd->varloc[i] = val->value.r; break;
+            case HVAL_STR:  *(const char**)hd->varloc[i] = val->value.s; break;
             default:
                 hd->errstr = "Invalid space dimension value type";
                 return -1;
