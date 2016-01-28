@@ -28,8 +28,5 @@ nm.so: libvertex.o
 pro.so: REQ_LDLIBS+=-lm
 pro.so: libvertex.o
 
-random.so: REQ_LDLIBS+=-lm
-random.so: libvertex.o
-
 # Active Harmony makefiles should always include this file last.
 include $(TO_BASE)/make/common.mk

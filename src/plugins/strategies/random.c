@@ -31,11 +31,11 @@
 
 #include "strategy.h"
 #include "session-core.h"
+#include "hcfg.h"
 #include "hspace.h"
+#include "hpoint.h"
 #include "hperf.h"
 #include "hutil.h"
-#include "hcfg.h"
-#include "libvertex.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -56,38 +56,38 @@ hpoint_t best = HPOINT_INITIALIZER;
 double   best_perf;
 
 /* Forward function definitions. */
-int strategy_cfg(hspace_t* space);
+int  config_strategy(void);
+void randomize(hpoint_t* point);
 
 /* Variables to track current search state. */
-vertex_t* curr;
+hspace_t* space;
+hpoint_t  next;
 
 /*
  * Invoked once on strategy load.
  */
-int strategy_init(hspace_t* space)
+int strategy_init(hspace_t* space_ptr)
 {
-    if (libvertex_init(space) != 0) {
-        session_error("Could not initialize vertex library.");
-        return -1;
-    }
-
-    if (!curr) {
+    if (!space) {
         /* One time memory allocation and/or initialization. */
-        curr = vertex_alloc();
-        if (!curr) {
-            session_error("Could not allocate memory for testing vertex.");
-            return -1;
-        }
 
         /* The best point and trial counter should only be initialized once,
          * and thus be retained across a restart.
          */
         best_perf = HUGE_VAL;
-        curr->id = 1;
+        next.id = 1;
     }
 
     /* Initialization for subsequent calls to strategy_init(). */
-    if (strategy_cfg(space) != 0)
+    if (space != space_ptr) {
+        if (hpoint_init(&next, space_ptr->len) != 0) {
+            session_error("Could not initialize point structure");
+            return -1;
+        }
+        space = space_ptr;
+    }
+
+    if (config_strategy() != 0)
         return -1;
 
     if (session_setcfg(CFGKEY_CONVERGED, "0") != 0) {
@@ -97,33 +97,19 @@ int strategy_init(hspace_t* space)
     return 0;
 }
 
-int strategy_cfg(hspace_t* space)
-{
-    const char* cfgval = hcfg_get(session_cfg, CFGKEY_INIT_POINT);
-
-    if (cfgval) {
-        if (vertex_from_string(cfgval, space, curr) != 0)
-            return -1;
-    }
-    else {
-        vertex_rand(curr);
-    }
-    return 0;
-}
-
 /*
  * Generate a new candidate configuration.
  */
 int strategy_generate(hflow_t* flow, hpoint_t* point)
 {
-    if (vertex_to_hpoint(curr, point) != 0) {
-        session_error("Internal error: Could not make point from vertex.");
+    if (hpoint_copy(point, &next) != 0) {
+        session_error("Could not copy point during generation.");
         return -1;
     }
-    ++curr->id;
 
     /* Prepare a new random vertex for the next call to strategy_generate. */
-    vertex_rand(curr);
+    randomize(&next);
+    ++next.id;
 
     flow->status = HFLOW_ACCEPT;
     return 0;
@@ -134,23 +120,17 @@ int strategy_generate(hflow_t* flow, hpoint_t* point)
  */
 int strategy_rejected(hflow_t* flow, hpoint_t* point)
 {
-    hpoint_t* hint = &flow->point;
+    if (flow->point.id) {
+        hpoint_t* hint = &flow->point;
 
-    if (hint && hint->id) {
-        int orig_id = point->id;
-
+        hint->id = point->id;
         if (hpoint_copy(point, hint) != 0) {
             session_error("Internal error: Could not copy point.");
             return -1;
         }
-        point->id = orig_id;
     }
     else {
-        vertex_rand(curr);
-        if (vertex_to_hpoint(curr, point) != 0) {
-            session_error("Internal error: Could not make point from vertex.");
-            return -1;
-        }
+        randomize(point);
     }
 
     flow->status = HFLOW_ACCEPT;
@@ -184,4 +164,33 @@ int strategy_best(hpoint_t* point)
         return -1;
     }
     return 0;
+}
+
+//
+// Internal helper function implementation.
+//
+int config_strategy(void)
+{
+    const char* cfgval = hcfg_get(session_cfg, CFGKEY_INIT_POINT);
+    if (cfgval) {
+        if (hpoint_parse(&next, cfgval, space) != 0) {
+            session_error("Error parsing point from " CFGKEY_INIT_POINT ".");
+            return -1;
+        }
+
+        if (hpoint_align(&next, space) != 0) {
+            session_error("Could not align initial point to search space");
+            return -1;
+        }
+    }
+    else {
+        randomize(&next);
+    }
+    return 0;
+}
+
+void randomize(hpoint_t* point)
+{
+    for (int i = 0; i < space->len; ++i)
+        point->term[i] = hrange_random(&space->dim[i]);
 }
