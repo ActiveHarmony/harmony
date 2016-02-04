@@ -466,7 +466,15 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
 
         /* Fork a local tuning session. */
         path = sprintf_alloc("%s/libexec/" SESSION_CORE_EXECFILE, home);
-        hd->socket = socket_launch(path, NULL, NULL);
+        if (!path) {
+            hd->errstr = "Could not allocate memory for session filename";
+            return -1;
+        }
+
+        char* const child_argv[] = {path,
+                                    (char*)home,
+                                    NULL};
+        hd->socket = socket_launch(path, child_argv, NULL);
         free(path);
     }
     else {

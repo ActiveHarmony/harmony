@@ -209,6 +209,12 @@ int main(int argc, char* argv[])
         goto error;
     }
 
+    // Overwrite CFGKEY_HARMONY_HOME, which was passed to session as argv[1].
+    if (hcfg_set(&cfg, CFGKEY_HARMONY_HOME, argv[1]) != 0) {
+        mesg.data.string = "Could not set " CFGKEY_HARMONY_HOME " for session";
+        goto error;
+    }
+
     if (init_session() != 0)
         goto error;
 

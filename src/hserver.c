@@ -673,7 +673,6 @@ session_state_t* session_open(void)
 {
     int i, idx = -1;
     session_state_t* sess;
-    char* child_argv[2];
     const char* cfgstr;
 
     /* check if session already exists, and return if it does */
@@ -703,9 +702,6 @@ session_state_t* session_open(void)
 
     sess->client_len = 0;
     sess->best_perf = HUGE_VAL;
-
-    /* Override any CFGKEY_HARMONY_HOME sent by remote client. */
-    hcfg_set(&mesg.data.cfg, CFGKEY_HARMONY_HOME, harmony_dir);
 
     /* Force sessions to load the httpinfo plugin layer. */
     #define HTTPINFO "httpinfo.so"
@@ -738,8 +734,9 @@ session_state_t* session_open(void)
     sess->reported = 0;
 
     /* Fork and exec a session handler. */
-    child_argv[0] = sess->name;
-    child_argv[1] = NULL;
+    char* const child_argv[] = {sess->name,
+                                harmony_dir,
+                                NULL};
     sess->fd = socket_launch(session_bin, child_argv, NULL);
     if (sess->fd < 0)
         goto error;
