@@ -203,7 +203,7 @@ int mesg_forward(int sock, hmesg_t* mesg)
     snprintf(origin, sizeof(origin), "%02x", mesg->origin);
     memcpy(mesg->recv_buf + HMESG_ORIGIN_OFFSET, origin, HMESG_ORIGIN_SIZE);
 
-    // fprintf(stderr, "(%2d)<<< '%s'\n", sock, mesg->buf);
+    // fprintf(stderr, "(%2d)<<< '%s'\n", sock, mesg->recv_buf);
     if (socket_write(sock, mesg->recv_buf, msglen) < msglen)
         return -1;
 
