@@ -46,12 +46,12 @@
  */
 const hcfg_info_t plugin_keyinfo[] = {
     { CFGKEY_INIT_POINT, NULL,
-      "Point used to initialize the search simplex.  If this key is left "
-      "undefined, the simplex will be initialized in the center of the "
-      "search space." },
-    { CFGKEY_INIT_PERCENT, "0.50",
-      "Percent of the regular simplex expanded from the initial point as a "
-      "fraction of the search space percent." },
+      "Centroid point used to initialize the search simplex.  If this key "
+      "is left undefined, the simplex will be initialized in the center of "
+      "the search space." },
+    { CFGKEY_INIT_RADIUS, "0.50",
+      "Size of the initial simplex, specified as a fraction of the total "
+      "search space radius." },
     { CFGKEY_REJECT_METHOD, "penalty",
       "How to choose a replacement when dealing with rejected points. "
       "    penalty: Use this method if the chance of point rejection is "
@@ -111,7 +111,7 @@ static int check_convergence(void);
 
 /* Variables to control search properties. */
 vertex_t        init_point;
-double          init_percent;
+double          init_radius;
 reject_method_t reject_type;
 
 double reflect_val;
@@ -168,7 +168,7 @@ int strategy_init(hspace_t* space_ptr)
     if (config_strategy() != 0)
         return -1;
 
-    if (simplex_set(&simplex, space, &init_point, init_percent) != 0) {
+    if (simplex_set(&simplex, space, &init_point, init_radius) != 0) {
         session_error("Could not generate initial simplex");
         return -1;
     }
@@ -368,9 +368,9 @@ int config_strategy(void)
         }
     }
 
-    init_percent = hcfg_real(session_cfg, CFGKEY_INIT_PERCENT);
-    if (isnan(init_percent) || init_percent <= 0 || init_percent > 1) {
-        session_error("Configuration key " CFGKEY_INIT_PERCENT
+    init_radius = hcfg_real(session_cfg, CFGKEY_INIT_RADIUS);
+    if (isnan(init_radius) || init_radius <= 0 || init_radius > 1) {
+        session_error("Configuration key " CFGKEY_INIT_RADIUS
                       " must be between 0.0 and 1.0 (exclusive).");
         return -1;
     }
