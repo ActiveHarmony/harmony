@@ -651,6 +651,7 @@ int handle_setcfg(hmesg_t* mesg)
         errmsg = strerror(EINVAL);
         return -1;
     }
+    *sep = '\0';
 
     /* Store the original value, possibly allocating memory for it. */
     oldval = hcfg_get(&cfg, mesg->data.string);
