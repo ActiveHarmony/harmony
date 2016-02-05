@@ -574,21 +574,11 @@ int handle_client_socket(int fd)
     }
 
     mesg.origin = fd;
-    if (sess->modified) {
-        if (mesg_send(sess->fd, &mesg) < 1) {
-            perror("Error sending message to session");
-            FD_CLR(sess->fd, &listen_fds);
-            session_close(sess);
-            goto shutdown;
-        }
-        sess->modified = 0;
+    if (mesg_forward(sess->fd, &mesg) < 1) {
+        perror("Error forwarding message to session");
+        goto shutdown;
     }
-    else {
-        if (mesg_forward(sess->fd, &mesg) < 1) {
-            perror("Error forwarding message to session");
-            goto shutdown;
-        }
-    }
+
     return 0;
 
   error:
@@ -720,23 +710,6 @@ session_state_t* session_open(void)
 
     sess->client_len = 0;
     sess->best_perf = HUGE_VAL;
-
-    /* Force sessions to load the httpinfo plugin layer. */
-    #define HTTPINFO "httpinfo.so"
-    cfgstr = hcfg_get(&mesg.data.cfg, CFGKEY_LAYERS);
-    if (!cfgstr) {
-        hcfg_set(&mesg.data.cfg, CFGKEY_LAYERS, HTTPINFO);
-        sess->modified = 1;
-    }
-    else if (strstr(cfgstr, HTTPINFO) == NULL) {
-        char *buf = sprintf_alloc(HTTPINFO ":%s", cfgstr);
-        hcfg_set(&mesg.data.cfg, CFGKEY_LAYERS, buf);
-        sess->modified = 1;
-        free(buf);
-    }
-    else {
-        sess->modified = 0;
-    }
 
     /* Initialize HTTP server fields. */
     if (hspace_copy(&sess->space, &mesg.state.space) != 0)

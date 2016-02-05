@@ -45,7 +45,6 @@ typedef struct session_state {
     int client_len, client_cap;
     hpoint_t best;
     double best_perf;
-    int modified;
 
     /* Fields used by the HTTP server. */
     struct timeval start;
