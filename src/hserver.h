@@ -27,6 +27,11 @@
 extern "C" {
 #endif
 
+typedef enum sess_status {
+    STATUS_CONVERGED = 0x1,
+    STATUS_PAUSED    = 0x2
+} sess_status_t;
+
 typedef struct http_log {
     struct timeval stamp;
     hpoint_t pt;
@@ -62,6 +67,7 @@ session_state_t* session_open();
 void session_close(session_state_t* sess);
 const char* session_getcfg(session_state_t* sess, const char* key);
 int session_setcfg(session_state_t* sess, const char* key, const char* val);
+int session_refresh(session_state_t* sess);
 int session_restart(session_state_t* sess);
 
 #ifdef __cplusplus

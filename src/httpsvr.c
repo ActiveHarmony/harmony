@@ -48,11 +48,6 @@
 
 unsigned int http_connection_limit = 32;
 
-typedef enum http_status {
-    HTTP_STATUS_CONVERGED = 0x1,
-    HTTP_STATUS_PAUSED    = 0x2
-} http_status_t;
-
 typedef enum {
     CONTENT_HTML,
     CONTENT_JAVASCRIPT,
@@ -244,44 +239,12 @@ int handle_http_socket(int fd)
     return 0;
 }
 
-int handle_http_info(session_state_t* sess, char* buf)
-{
-    int val = 0;
-
-    sscanf(buf, CFGKEY_STRATEGY "=%n", &val);
-    if (val) {
-        free(sess->strategy);
-        sess->strategy = stralloc(&buf[val]);
-        return 0;
-    }
-
-    sscanf(buf, CFGKEY_CONVERGED "=%n", &val);
-    if (val) {
-        if (buf[val] == '1')
-            sess->status |= HTTP_STATUS_CONVERGED;
-        else
-            sess->status &= ~HTTP_STATUS_CONVERGED;
-        return 0;
-    }
-
-    sscanf(buf, CFGKEY_PAUSED "=%n", &val);
-    if (val) {
-        if (buf[val] == '1')
-            sess->status |= HTTP_STATUS_PAUSED;
-        else
-            sess->status &= ~HTTP_STATUS_PAUSED;
-        return 0;
-    }
-
-    return 0;
-}
-
 const char* status_string(session_state_t* sess)
 {
-    if (sess->status & HTTP_STATUS_PAUSED)
+    if (sess->status & STATUS_PAUSED)
         return "Paused";
 
-    if (sess->status & HTTP_STATUS_CONVERGED)
+    if (sess->status & STATUS_CONVERGED)
         return "Converged";
 
     return "Searching";
@@ -383,6 +346,7 @@ int http_request_handle(int fd, char* req)
         opt_sock_write(fd, HTTP_ENDL);
 
         if (sess) {
+            session_refresh(sess);
             http_send_refresh(fd, sess, arg);
             opt_http_write(fd, "");
             return 0;

@@ -57,6 +57,7 @@ int handle_client_socket(int fd);
 int handle_session_socket(int idx);
 int available_index(int** list, int* cap);
 void client_close(int fd);
+int update_flags(session_state_t* sess, const char* keyval);
 int update_state(session_state_t* sess);
 int append_http_log(session_state_t* sess, const hpoint_t* pt, double perf);
 
@@ -479,10 +480,16 @@ int handle_client_socket(int fd)
 
     switch (mesg.type) {
     case HMESG_GETCFG:
-    case HMESG_SETCFG:
     case HMESG_BEST:
     case HMESG_FETCH:
     case HMESG_RESTART:
+        break;
+
+    case HMESG_SETCFG:
+        if (update_flags(sess, mesg.data.string) != 0) {
+            perror("Error updating session info from HMESG_SETCFG message");
+            goto error;
+        }
         break;
 
     case HMESG_SESSION:
@@ -603,23 +610,19 @@ int handle_session_socket(int idx)
     if (mesg_recv(sess->fd, &mesg) < 1)
         goto error;
 
-    if (mesg.origin == -1) {
-        if (mesg.status == HMESG_STATUS_REQ) {
-            if (handle_http_info(sess, (char*)mesg.data.string) != 0) {
-                perror("Error handling http info message");
-                goto error;
-            }
-        }
-        return 0;
-    }
-
     switch (mesg.type) {
     case HMESG_SESSION:
     case HMESG_JOIN:
     case HMESG_SETCFG:
-    case HMESG_GETCFG:
     case HMESG_BEST:
     case HMESG_RESTART:
+        break;
+
+    case HMESG_GETCFG:
+        if (update_flags(sess, mesg.data.string) != 0) {
+            perror("Error updating session info from HMESG_GETCFG message");
+            goto error;
+        }
         break;
 
     case HMESG_FETCH:
@@ -666,11 +669,16 @@ int handle_session_socket(int idx)
         goto error;
     }
 
-    int dest = mesg.origin;
-    mesg.origin = idx;
-    if (mesg_forward(dest, &mesg) < 1) {
-        perror("Error forwarding message to client");
-        client_close(dest);
+    // Messages with a negative "origin" field came within hserver itself.
+    // No need to forward those messages.
+    //
+    if (mesg.origin >= 0) {
+        int dest = mesg.origin;
+        mesg.origin = idx;
+        if (mesg_forward(dest, &mesg) < 1) {
+            perror("Error forwarding message to client");
+            client_close(dest);
+        }
     }
     return 0;
 
@@ -831,6 +839,31 @@ int available_index(int** list, int* cap)
     return orig_cap;
 }
 
+int update_flags(session_state_t* sess, const char* keyval)
+{
+    int val = 0;
+
+    sscanf(keyval, CFGKEY_CONVERGED "=%n", &val);
+    if (val) {
+        if (keyval[val] == '1')
+            sess->status |= STATUS_CONVERGED;
+        else
+            sess->status &= ~STATUS_CONVERGED;
+        return 0;
+    }
+
+    sscanf(keyval, CFGKEY_PAUSED "=%n", &val);
+    if (val) {
+        if (keyval[val] == '1')
+            sess->status |= STATUS_PAUSED;
+        else
+            sess->status &= ~STATUS_PAUSED;
+        return 0;
+    }
+
+    return 0;
+}
+
 int update_state(session_state_t* sess)
 {
     if (mesg.state.space.id > sess->space.id) {
@@ -906,6 +939,26 @@ int session_setcfg(session_state_t* sess, const char* key, const char* val)
 
     free(buf);
     return retval;
+}
+
+int session_refresh(session_state_t* sess)
+{
+    mesg.origin = -1;
+    mesg.type = HMESG_GETCFG;
+    mesg.status = HMESG_STATUS_REQ;
+    mesg.state.space.id = sess->space.id;
+    mesg.state.best.id = sess->best.id;
+    mesg.state.client = "<hserver>";
+
+    mesg.data.string = CFGKEY_CONVERGED;
+    if (mesg_send(sess->fd, &mesg) < 1)
+        return -1;
+
+    mesg.data.string = CFGKEY_PAUSED;
+    if (mesg_send(sess->fd, &mesg) < 1)
+        return -1;
+
+    return 0;
 }
 
 int session_restart(session_state_t* sess)
