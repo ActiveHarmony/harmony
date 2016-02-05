@@ -906,6 +906,9 @@ int session_setcfg(session_state_t* sess, const char* key, const char* val)
     mesg.type = HMESG_SETCFG;
     mesg.status = HMESG_STATUS_REQ;
     mesg.data.string = buf;
+    mesg.state.space.id = sess->space.id;
+    mesg.state.best.id = sess->best.id;
+    mesg.state.client = "<hserver>";
 
     if (mesg_send(sess->fd, &mesg) < 1)
         retval = -1;
@@ -941,6 +944,9 @@ int session_restart(session_state_t* sess)
     mesg.origin = -1;
     mesg.type = HMESG_RESTART;
     mesg.status = HMESG_STATUS_REQ;
+    mesg.state.space.id = sess->space.id;
+    mesg.state.best.id = sess->best.id;
+    mesg.state.client = "<hserver>";
 
     if (mesg_send(sess->fd, &mesg) < 1)
         retval = -1;
