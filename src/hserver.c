@@ -491,6 +491,16 @@ int handle_client_socket(int fd)
             errno = EINVAL;
             goto error;
         }
+
+        // Add the initiating client to the session.
+        idx = available_index(&sess->client, &sess->client_cap);
+        if (idx < 0) {
+            perror("Could not grow session client list");
+            goto error;
+        }
+        sess->client[idx] = fd;
+        ++sess->client_len;
+
         break;
 
     case HMESG_JOIN:
@@ -728,6 +738,15 @@ session_state_t* session_open(void)
         goto error;
 
     cfgstr = hcfg_get(&mesg.data.cfg, CFGKEY_STRATEGY);
+    if (!cfgstr) {
+        int clients = hcfg_int(&mesg.data.cfg, CFGKEY_CLIENT_COUNT);
+        if (clients < 1)
+            cfgstr = "???";
+        else if (clients == 1)
+            cfgstr = "nm.so";
+        else
+            cfgstr = "pro.so";
+    }
     sess->strategy = stralloc( cfgstr );
     sess->status = 0x0;
     sess->log_len = 0;
