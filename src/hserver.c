@@ -765,8 +765,6 @@ void session_close(session_state_t* sess)
         if (sess->client[i] != -1)
             client_close(sess->client[i]);
     }
-
-    hspace_fini(&sess->space);
 }
 
 void client_close(int fd)
