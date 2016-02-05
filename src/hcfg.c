@@ -427,7 +427,7 @@ void key_del(hcfg_t* cfg, const char* key)
     if (i < cfg->len) {
         if (!hmesg_owner(cfg->owner, cfg->env[i]))
             free(cfg->env[i]);
-        --cfg->len;
+        cfg->env[i] = cfg->env[ --cfg->len ];
     }
 }
 
