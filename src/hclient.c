@@ -892,7 +892,14 @@ char* ah_get_cfg(hdesc_t* hd, const char* key)
         return NULL;
     }
 
-    snprintf_grow(&hd->buf, &hd->buflen, "%s", hd->mesg.data.string);
+    const char* val = strchr(hd->mesg.data.string, '=');
+    if (!val) {
+        hd->errstr = "Malformed message received from server";
+        return NULL;
+    }
+    ++val;
+
+    snprintf_grow(&hd->buf, &hd->buflen, "%s", val);
     if (hcfg_set(&hd->cfg, key, hd->buf) != 0) {
         hd->errstr = "Error setting local CFG cache";
         return NULL;

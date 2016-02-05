@@ -155,8 +155,8 @@ int maxfd;
 /* -------------------------------------------
  * Static buffers used for dynamic allocation.
  */
-static char* setcfg_buf = NULL;
-static int setcfg_len = 0;
+static char* cfg_buf = NULL;
+static int cfg_len = 0;
 
 /* =================================
  * Core session routines begin here.
@@ -296,7 +296,7 @@ int main(int argc, char* argv[])
     hmesg_fini(&mesg);
     hcfg_fini(&cfg);
     hspace_fini(&session_space);
-    free(setcfg_buf);
+    free(cfg_buf);
 
     return retval;
 }
@@ -632,7 +632,12 @@ int handle_join(hmesg_t* mesg)
 int handle_getcfg(hmesg_t* mesg)
 {
     /* Prepare getcfg response message for client. */
-    mesg->data.string = hcfg_get(&cfg, mesg->data.string);
+    const char* cfgval = hcfg_get(&cfg, mesg->data.string);
+    if (cfgval == NULL)
+        cfgval = "";
+
+    snprintf_grow(&cfg_buf, &cfg_len, "%s=%s", mesg->data.string, cfgval);
+    mesg->data.string = cfg_buf;
     mesg->status = HMESG_STATUS_OK;
     return 0;
 }
@@ -650,8 +655,8 @@ int handle_setcfg(hmesg_t* mesg)
     /* Store the original value, possibly allocating memory for it. */
     oldval = hcfg_get(&cfg, mesg->data.string);
     if (oldval) {
-        snprintf_grow(&setcfg_buf, &setcfg_len, "%s", oldval);
-        oldval = setcfg_buf;
+        snprintf_grow(&cfg_buf, &cfg_len, "%s", oldval);
+        oldval = cfg_buf;
     }
 
     if (session_setcfg(mesg->data.string, sep + 1) != 0) {
