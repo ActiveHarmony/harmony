@@ -410,7 +410,9 @@ int http_request_handle(int fd, char* req)
         opt_sock_write(fd, HTTP_ENDL);
 
         if (sess) {
-            session_setcfg(sess, CFGKEY_INIT_POINT, arg);
+            if (arg && strstr(arg, "_=") != arg) {
+                session_setcfg(sess, CFGKEY_INIT_POINT, arg);
+            }
             session_restart(sess);
             opt_http_write(fd, "OK");
             opt_http_write(fd, "");
