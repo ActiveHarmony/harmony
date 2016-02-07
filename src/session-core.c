@@ -132,6 +132,7 @@ const char* errmsg;
 int curr_layer = 0;
 hflow_t flow;
 int paused_id;
+hpoint_t best;
 
 /* List of all points generated, but not yet returned to the strategy. */
 htrial_t* pending = NULL;
@@ -199,12 +200,12 @@ int main(int argc, char* argv[])
     }
 
     /* Initialize the session. */
-    if (hspace_copy(&session_space, &mesg.state.space) != 0) {
+    if (hspace_copy(&session_space, mesg.state.space) != 0) {
         mesg.data.string = "Could not copy session data";
         goto error;
     }
 
-    if (hcfg_copy(&cfg, &mesg.data.cfg) != 0) {
+    if (hcfg_copy(&cfg, mesg.data.cfg) != 0) {
         mesg.data.string = "Could not copy configuration environment";
         goto error;
     }
@@ -606,11 +607,6 @@ int handle_join(hmesg_t* mesg)
 {
     int i;
 
-    if (hspace_copy(&mesg->state.space, &session_space) < 0) {
-        errmsg = "Could not copy search space to message";
-        return -1;
-    }
-
     /* Grow the pending and ready queues. */
     ++num_clients;
     if (extend_lists(num_clients * per_client) != 0)
@@ -625,6 +621,7 @@ int handle_join(hmesg_t* mesg)
             return -1;
     }
 
+    mesg->state.space = &session_space;
     mesg->status = HMESG_STATUS_OK;
     return 0;
 }
@@ -680,19 +677,13 @@ int handle_best(hmesg_t* mesg)
 int handle_fetch(hmesg_t* mesg)
 {
     int idx = ready[ready_head], paused;
-    htrial_t* next;
 
     /* Check if the session is paused. */
     paused = hcfg_bool(&cfg, CFGKEY_PAUSED);
 
     if (!paused && idx >= 0) {
         /* Send the next point on the ready queue. */
-        next = &pending[idx];
-
-        if (hpoint_copy(&mesg->data.point, &next->point) != 0) {
-            errmsg = "Internal error: Could not copy candidate point data.";
-            return -1;
-        }
+        mesg->data.point = &pending[idx].point;
 
         /* Remove the first point from the ready queue. */
         ready[ready_head] = -1;
@@ -703,10 +694,11 @@ int handle_fetch(hmesg_t* mesg)
     else {
         /* Ready queue is empty, or session is paused.
          * Send the best known point. */
-        if (strategy_best(&mesg->state.best) != 0)
+        mesg->state.best = &best;
+        if (strategy_best(&best) != 0)
             return -1;
 
-        paused_id = mesg->data.point.id;
+        paused_id = mesg->data.point->id;
         mesg->status = HMESG_STATUS_BUSY;
     }
     return 0;
@@ -720,12 +712,11 @@ int handle_report(hmesg_t* mesg)
     /* Find the associated trial in the pending list. */
     for (idx = 0; idx < pending_cap; ++idx) {
         trial = &pending[idx];
-        if (trial->point.id == mesg->data.point.id)
+        if (trial->point.id == mesg->data.point->id)
             break;
     }
     if (idx == pending_cap) {
-        if (mesg->data.point.id == paused_id) {
-            hperf_fini(&mesg->data.perf);
+        if (mesg->data.point->id == paused_id) {
             mesg->status = HMESG_STATUS_OK;
             return 0;
         }
@@ -737,14 +728,13 @@ int handle_report(hmesg_t* mesg)
     paused_id = 0;
 
     /* Update performance in our local records. */
-    hperf_copy(&trial->perf, &mesg->data.perf);
+    hperf_copy(&trial->perf, mesg->data.perf);
 
     /* Begin the workflow at the outermost analysis layer. */
     curr_layer = -lstack_len;
     if (plugin_workflow(idx) != 0)
         return -1;
 
-    hperf_fini(&mesg->data.perf);
     mesg->status = HMESG_STATUS_OK;
     return 0;
 }
@@ -758,20 +748,26 @@ int handle_restart(hmesg_t* mesg)
 
 int update_state(hmesg_t* mesg)
 {
-    if (mesg->state.space.id < session_space.id) {
-        if (hspace_copy(&mesg->state.space, &session_space) != 0)
-            return -1;
+    if (mesg->state.space->id < session_space.id) {
+        mesg->state.space = &session_space;
     }
     else if (mesg->type != HMESG_JOIN) {
-        mesg->state.space.id = 0;
+        mesg->state.space = &mesg->unpacked_space;
+        mesg->unpacked_space.id = 0;
     }
 
-    unsigned client_best = mesg->state.best.id;
-    if (strategy_best(&mesg->state.best) != 0) {
+    // Refresh the best known point from the strategy.
+    if (strategy_best(&best) != 0) {
         return -1;
     }
-    else if (client_best == mesg->state.best.id) {
-        mesg->state.best.id = 0;
+
+    // Send it to the client if necessary.
+    if (mesg->state.best->id < best.id) {
+        mesg->state.best = &best;
+    }
+    else {
+        mesg->state.best = &mesg->unpacked_best;
+        mesg->unpacked_best.id = 0;
     }
     return 0;
 }

@@ -148,9 +148,9 @@ int codegen_init(hspace_t* space)
      */
     mesg.type = HMESG_SESSION;
     mesg.status = HMESG_STATUS_REQ;
+    mesg.state.space = space;
+    mesg.data.cfg = session_cfg;
 
-    hspace_copy(&mesg.state.space, space);
-    hcfg_copy(&mesg.data.cfg, session_cfg);
     if (mesg_send(sockfd, &mesg) < 1)
         return -1;
 
@@ -196,7 +196,7 @@ int codegen_generate(hflow_t* flow, htrial_t* trial)
 
     mesg.type = HMESG_FETCH;
     mesg.status = HMESG_STATUS_OK;
-    hpoint_copy(&mesg.data.point, &trial->point);
+    mesg.data.point = &trial->point;
 
     if (mesg_send(sockfd, &mesg) < 1) {
         session_error( strerror(errno) );
@@ -223,7 +223,7 @@ int codegen_callback(int fd, hflow_t* flow, int n, htrial_t** trial)
     if (mesg_recv(fd, &mesg) < 1)
         return -1;
 
-    i = cglog_find(&mesg.data.point);
+    i = cglog_find(mesg.data.point);
     if (i < 0) {
         session_error("Could not find point from code server in log");
         return -1;
@@ -232,7 +232,7 @@ int codegen_callback(int fd, hflow_t* flow, int n, htrial_t** trial)
 
     /* Search waitlist for index of returned point. */
     for (i = 0; i < n; ++i) {
-        if (trial[i]->point.id == mesg.data.point.id) {
+        if (trial[i]->point.id == mesg.data.point->id) {
             flow->status = HFLOW_ACCEPT;
             return i;
         }

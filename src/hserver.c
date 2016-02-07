@@ -534,10 +534,10 @@ int handle_client_socket(int fd)
         break;
 
     case HMESG_REPORT:
-        perf = hperf_unify(&mesg.data.perf);
+        perf = hperf_unify(mesg.data.perf);
 
         for (i = 0; i < sess->fetched_len; ++i) {
-            if (sess->fetched[i].id == mesg.data.point.id)
+            if (sess->fetched[i].id == mesg.data.point->id)
                 break;
         }
         if (i < sess->fetched_len) {
@@ -628,7 +628,7 @@ int handle_session_socket(int idx)
             }
 
             if (hpoint_copy(&sess->fetched[sess->fetched_len],
-                            &mesg.data.point) != 0)
+                            mesg.data.point) != 0)
             {
                 perror("Internal error copying hpoint to HTTP log");
                 goto error;
@@ -689,7 +689,7 @@ session_state_t* session_open(void)
             if (idx < 0)
                 idx = i;
         }
-        else if (strcmp(slist[i].name, mesg.state.space.name) == 0) {
+        else if (strcmp(slist[i].name, mesg.state.space->name) == 0) {
             mesg.status = HMESG_STATUS_FAIL;
             mesg.data.string = "Session name already exists.";
             return NULL;
@@ -704,7 +704,7 @@ session_state_t* session_open(void)
     }
     sess = &slist[idx];
 
-    sess->name = stralloc(mesg.state.space.name);
+    sess->name = stralloc(mesg.state.space->name);
     if (!sess->name)
         return NULL;
 
@@ -712,15 +712,15 @@ session_state_t* session_open(void)
     sess->best_perf = HUGE_VAL;
 
     /* Initialize HTTP server fields. */
-    if (hspace_copy(&sess->space, &mesg.state.space) != 0)
+    if (hspace_copy(&sess->space, mesg.state.space) != 0)
         goto error;
 
     if (gettimeofday(&sess->start, NULL) < 0)
         goto error;
 
-    cfgstr = hcfg_get(&mesg.data.cfg, CFGKEY_STRATEGY);
+    cfgstr = hcfg_get(mesg.data.cfg, CFGKEY_STRATEGY);
     if (!cfgstr) {
-        int clients = hcfg_int(&mesg.data.cfg, CFGKEY_CLIENT_COUNT);
+        int clients = hcfg_int(mesg.data.cfg, CFGKEY_CLIENT_COUNT);
         if (clients < 1)
             cfgstr = "???";
         else if (clients == 1)
@@ -837,17 +837,24 @@ int update_flags(session_state_t* sess, const char* keyval)
 
 int update_state(session_state_t* sess)
 {
-    if (mesg.state.space.id > sess->space.id) {
-        if (hspace_copy(&sess->space, &mesg.state.space) != 0) {
+    if (mesg.type == HMESG_SESSION ||
+        mesg.type == HMESG_JOIN)
+    {
+        // Session state doesn't need to be updated yet.
+        return 0;
+    }
+
+    if (mesg.state.space->id > sess->space.id) {
+        if (hspace_copy(&sess->space, mesg.state.space) != 0) {
             perror("Could not copy session search space");
             return -1;
         }
     }
 
-    if (mesg.state.best.id > sess->best.id) {
+    if (mesg.state.best->id > sess->best.id) {
         int i;
         for (i = sess->log_len - 1; i >= 0; --i) {
-            if (sess->log[i].pt.id == mesg.state.best.id) {
+            if (sess->log[i].pt.id == mesg.state.best->id) {
                 sess->best_perf = sess->log[i].perf;
                 break;
             }
@@ -855,7 +862,7 @@ int update_state(session_state_t* sess)
         if (i < 0)
             sess->best_perf = NAN;
 
-        if (hpoint_copy(&sess->best, &mesg.state.best) != 0) {
+        if (hpoint_copy(&sess->best, mesg.state.best) != 0) {
             perror("Internal error copying hpoint to best");
             return -1;
         }
@@ -904,8 +911,8 @@ int session_setcfg(session_state_t* sess, const char* key, const char* val)
     mesg.type = HMESG_SETCFG;
     mesg.status = HMESG_STATUS_REQ;
     mesg.data.string = buf;
-    mesg.state.space.id = sess->space.id;
-    mesg.state.best.id = sess->best.id;
+    mesg.state.space = &sess->space;
+    mesg.state.best = &sess->best;
     mesg.state.client = "<hserver>";
 
     if (mesg_send(sess->fd, &mesg) < 1)
@@ -920,8 +927,8 @@ int session_refresh(session_state_t* sess)
     mesg.origin = -1;
     mesg.type = HMESG_GETCFG;
     mesg.status = HMESG_STATUS_REQ;
-    mesg.state.space.id = sess->space.id;
-    mesg.state.best.id = sess->best.id;
+    mesg.state.space = &sess->space;
+    mesg.state.best = &sess->best;
     mesg.state.client = "<hserver>";
 
     mesg.data.string = CFGKEY_CONVERGED;
@@ -942,8 +949,8 @@ int session_restart(session_state_t* sess)
     mesg.origin = -1;
     mesg.type = HMESG_RESTART;
     mesg.status = HMESG_STATUS_REQ;
-    mesg.state.space.id = sess->space.id;
-    mesg.state.best.id = sess->best.id;
+    mesg.state.space = &sess->space;
+    mesg.state.best = &sess->best;
     mesg.state.client = "<hserver>";
 
     if (mesg_send(sess->fd, &mesg) < 1)

@@ -38,17 +38,17 @@ static int unpack_data(hmesg_t* mesg, char* buf);
 
 void hmesg_scrub(hmesg_t* mesg)
 {
-    hspace_scrub(&mesg->state.space);
-    hcfg_scrub(&mesg->data.cfg);
+    hspace_scrub(&mesg->unpacked_space);
+    hcfg_scrub(&mesg->unpacked_cfg);
 }
 
 void hmesg_fini(hmesg_t* mesg)
 {
-    hspace_fini(&mesg->state.space);
-    hpoint_fini(&mesg->state.best);
-    hcfg_fini(&mesg->data.cfg);
-    hpoint_fini(&mesg->data.point);
-    hperf_fini(&mesg->data.perf);
+    hspace_fini(&mesg->unpacked_space);
+    hpoint_fini(&mesg->unpacked_best);
+    hcfg_fini(&mesg->unpacked_cfg);
+    hpoint_fini(&mesg->unpacked_point);
+    hperf_fini(&mesg->unpacked_perf);
     free(mesg->recv_buf);
     free(mesg->send_buf);
 }
@@ -235,7 +235,7 @@ int pack_state(char** buf, int* buflen, const hmesg_t* mesg)
     switch (mesg->status) {
     case HMESG_STATUS_REQ:
         count = snprintf_serial(buf, buflen, " state:%u %u",
-                                mesg->state.space.id, mesg->state.best.id);
+                                mesg->state.space->id, mesg->state.best->id);
         if (count < 0) return -1;
         total += count;
 
@@ -250,11 +250,11 @@ int pack_state(char** buf, int* buflen, const hmesg_t* mesg)
         if (count < 0) return -1;
         total += count;
 
-        count = hspace_pack(buf, buflen, &mesg->state.space);
+        count = hspace_pack(buf, buflen, mesg->state.space);
         if (count < 0) return -1;
         total += count;
 
-        count = hpoint_pack(buf, buflen, &mesg->state.best);
+        count = hpoint_pack(buf, buflen, mesg->state.best);
         if (count < 0) return -1;
         total += count;
         break;
@@ -281,8 +281,10 @@ int unpack_state(hmesg_t* mesg, char* buf)
 
     switch (mesg->status) {
     case HMESG_STATUS_REQ:
-        if (sscanf(buf, " state:%u %u%n", &mesg->state.space.id,
-                   &mesg->state.best.id, &count) < 2)
+        mesg->state.space = &mesg->unpacked_space;
+        mesg->state.best  = &mesg->unpacked_best;
+        if (sscanf(buf, " state:%u %u%n", &mesg->unpacked_space.id,
+                   &mesg->unpacked_best.id, &count) < 2)
             return -1;
         total += count;
 
@@ -297,12 +299,14 @@ int unpack_state(hmesg_t* mesg, char* buf)
         if (count < 0) return -1;
         total += count;
 
-        mesg->state.space.owner = mesg;
-        count = hspace_unpack(&mesg->state.space, buf + total);
+        mesg->state.space = &mesg->unpacked_space;
+        mesg->unpacked_space.owner = mesg;
+        count = hspace_unpack(&mesg->unpacked_space, buf + total);
         if (count < 0) return -1;
         total += count;
 
-        count = hpoint_unpack(&mesg->state.best, buf + total);
+        mesg->state.best = &mesg->unpacked_best;
+        count = hpoint_unpack(&mesg->unpacked_best, buf + total);
         if (count < 0) return -1;
         total += count;
         break;
@@ -324,11 +328,11 @@ int pack_data(char** buf, int* buflen, const hmesg_t* mesg)
     switch (mesg->type) {
     case HMESG_SESSION:
         if (mesg->status == HMESG_STATUS_REQ) {
-            count = hspace_pack(buf, buflen, &mesg->state.space);
+            count = hspace_pack(buf, buflen, mesg->state.space);
             if (count < 0) return -1;
             total += count;
 
-            count = hcfg_pack(buf, buflen, &mesg->data.cfg);
+            count = hcfg_pack(buf, buflen, mesg->data.cfg);
             if (count < 0) return -1;
             total += count;
         }
@@ -342,7 +346,7 @@ int pack_data(char** buf, int* buflen, const hmesg_t* mesg)
             break;
         }
         else if (mesg->status == HMESG_STATUS_OK) {
-            count = hspace_pack(buf, buflen, &mesg->state.space);
+            count = hspace_pack(buf, buflen, mesg->state.space);
             if (count < 0) return -1;
             total += count;
         }
@@ -356,7 +360,7 @@ int pack_data(char** buf, int* buflen, const hmesg_t* mesg)
 
     case HMESG_FETCH:
         if (mesg->status == HMESG_STATUS_OK) {
-            count = hpoint_pack(buf, buflen, &mesg->data.point);
+            count = hpoint_pack(buf, buflen, mesg->data.point);
             if (count < 0) return -1;
             total += count;
         }
@@ -364,11 +368,11 @@ int pack_data(char** buf, int* buflen, const hmesg_t* mesg)
 
     case HMESG_REPORT:
         if (mesg->status == HMESG_STATUS_REQ) {
-            count = snprintf_serial(buf, buflen, " %d", mesg->data.point.id);
+            count = snprintf_serial(buf, buflen, " %d", mesg->data.point->id);
             if (count < 0) return -1;
             total += count;
 
-            count = hperf_pack(buf, buflen, &mesg->data.perf);
+            count = hperf_pack(buf, buflen, mesg->data.perf);
             if (count < 0) return -1;
             total += count;
         }
@@ -391,13 +395,15 @@ int unpack_data(hmesg_t* mesg, char* buf)
     switch (mesg->type) {
     case HMESG_SESSION:
         if (mesg->status == HMESG_STATUS_REQ) {
-            mesg->state.space.owner = mesg;
-            count = hspace_unpack(&mesg->state.space, buf + total);
+            mesg->state.space = &mesg->unpacked_space;
+            mesg->unpacked_space.owner = mesg;
+            count = hspace_unpack(&mesg->unpacked_space, buf + total);
             if (count < 0) return -1;
             total += count;
 
-            mesg->data.cfg.owner = mesg;
-            count = hcfg_unpack(&mesg->data.cfg, buf + total);
+            mesg->data.cfg = &mesg->unpacked_cfg;
+            mesg->unpacked_cfg.owner = mesg;
+            count = hcfg_unpack(&mesg->unpacked_cfg, buf + total);
             if (count < 0) return -1;
             total += count;
         }
@@ -410,8 +416,9 @@ int unpack_data(hmesg_t* mesg, char* buf)
             total += count;
         }
         else if (mesg->status == HMESG_STATUS_OK) {
-            mesg->state.space.owner = mesg;
-            count = hspace_unpack(&mesg->state.space, buf + total);
+            mesg->state.space = &mesg->unpacked_space;
+            mesg->unpacked_space.owner = mesg;
+            count = hspace_unpack(&mesg->unpacked_space, buf + total);
             if (count < 0) return -1;
             total += count;
         }
@@ -426,7 +433,8 @@ int unpack_data(hmesg_t* mesg, char* buf)
 
     case HMESG_FETCH:
         if (mesg->status == HMESG_STATUS_OK) {
-            count = hpoint_unpack(&mesg->data.point, buf + total);
+            mesg->data.point = &mesg->unpacked_point;
+            count = hpoint_unpack(&mesg->unpacked_point, buf + total);
             if (count < 0) return -1;
             total += count;
         }
@@ -434,12 +442,14 @@ int unpack_data(hmesg_t* mesg, char* buf)
 
     case HMESG_REPORT:
         if (mesg->status == HMESG_STATUS_REQ) {
+            mesg->data.point = &mesg->unpacked_point;
             if (sscanf(buf + total, " %d%n",
-                       &mesg->data.point.id, &count) < 1)
+                       &mesg->unpacked_point.id, &count) < 1)
                 return -1;
             total += count;
 
-            count = hperf_unpack(&mesg->data.perf, buf + total);
+            mesg->data.perf = &mesg->unpacked_perf;
+            count = hperf_unpack(&mesg->unpacked_perf, buf + total);
             if (count < 0) return -1;
             total += count;
         }

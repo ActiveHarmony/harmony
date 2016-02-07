@@ -93,18 +93,27 @@ typedef struct hmesg {
     hmesg_type type;
     hmesg_status status;
 
+    // External state access pointers.
     struct hmesg_state {
-        hspace_t    space;
-        hpoint_t    best;
-        const char* client;
+        const hspace_t* space;
+        const hpoint_t* best;
+        const char*     client;
     } state;
 
+    // External data access pointers.
     struct hmesg_data {
-        hcfg_t      cfg;
-        hpoint_t    point;
-        hperf_t     perf;
-        const char* string;
+        const hcfg_t*   cfg;
+        const hpoint_t* point;
+        const hperf_t*  perf;
+        const char*     string;
     } data;
+
+    // Storage space for *_unpack() routines.
+    hspace_t unpacked_space;
+    hpoint_t unpacked_best;
+    hcfg_t   unpacked_cfg;
+    hpoint_t unpacked_point;
+    hperf_t  unpacked_perf;
 
     char* recv_buf;
     int   recv_len;

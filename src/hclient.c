@@ -503,8 +503,8 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
         hd->id = hd->default_id;
 
     /* Prepare a Harmony message. */
-    hspace_copy(&hd->mesg.state.space, &hd->space);
-    hcfg_copy(&hd->mesg.data.cfg, &hd->cfg);
+    hd->mesg.state.space = &hd->space;
+    hd->mesg.data.cfg = &hd->cfg;
 
     if (send_request(hd, HMESG_SESSION) != 0)
         return -1;
@@ -605,7 +605,7 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
             return -1;
         }
 
-        if (hspace_copy(&hd->space, &hd->mesg.state.space) != 0) {
+        if (hspace_copy(&hd->space, hd->mesg.state.space) != 0) {
             hd->errstr = "Error copying received search space structure";
             return -1;
         }
@@ -1007,7 +1007,7 @@ int ah_fetch(hdesc_t* hd)
             hd->curr = &hd->best;
         }
         else if (hd->mesg.status == HMESG_STATUS_OK) {
-            if (hpoint_copy(&hd->test, &hd->mesg.data.point) != 0) {
+            if (hpoint_copy(&hd->test, hd->mesg.data.point) != 0) {
                 hd->errstr = "Error copying current point data";
                 return -1;
             }
@@ -1086,11 +1086,8 @@ int ah_report(hdesc_t* hd, double* perf)
     }
 
     /* Prepare a Harmony message. */
-    hd->mesg.data.point.id = hd->test.id;
-    if (hperf_copy(&hd->mesg.data.perf, &hd->perf) != 0) {
-        hd->errstr = "Error allocating performance array for message";
-        return -1;
-    }
+    hd->mesg.data.point = &hd->test;
+    hd->mesg.data.perf = &hd->perf;
 
     if (send_request(hd, HMESG_REPORT) != 0)
         return -1;
@@ -1436,8 +1433,8 @@ int send_request(hdesc_t* hd, hmesg_type msg_type)
     hd->mesg.type = msg_type;
     hd->mesg.status = HMESG_STATUS_REQ;
 
-    hd->mesg.state.space.id = hd->space.id;
-    hd->mesg.state.best.id = hd->best.id;
+    hd->mesg.state.space = &hd->space;
+    hd->mesg.state.best = &hd->best;
     hd->mesg.state.client = hd->id;
 
     if (mesg_send(hd->socket, &hd->mesg) < 1) {
@@ -1471,14 +1468,14 @@ int send_request(hdesc_t* hd, hmesg_type msg_type)
     }
     else {
         // Update local state from server.
-        if (hd->space.id < hd->mesg.state.space.id) {
-            if (hspace_copy(&hd->space, &hd->mesg.state.space) != 0) {
+        if (hd->space.id < hd->mesg.state.space->id) {
+            if (hspace_copy(&hd->space, hd->mesg.state.space) != 0) {
                 hd->errstr = "Could not update session search space";
                 return -1;
             }
         }
-        if (hd->best.id < hd->mesg.state.best.id) {
-            if (hpoint_copy(&hd->best, &hd->mesg.state.best) != 0) {
+        if (hd->best.id < hd->mesg.state.best->id) {
+            if (hpoint_copy(&hd->best, hd->mesg.state.best) != 0) {
                 hd->errstr = "Could not update best known point";
                 return -1;
             }

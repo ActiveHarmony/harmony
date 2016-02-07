@@ -52,9 +52,6 @@
 /*
  * Session and configuration information from the Harmony Server.
  */
-hspace_t space = HSPACE_INITIALIZER;
-hcfg_t cfg = HCFG_INITIALIZER;
-
 using namespace std;
 
 typedef struct {
@@ -76,7 +73,7 @@ int codeserver_init(string& filename);
 int dir_erase(string& dirname);
 int parse_slave_list(const char* hostlist);
 int slave_complete(pid_t pid);
-vector<long> values_of(hpoint_t* pt);
+vector<long> values_of(const hpoint_t* pt);
 string vector_to_string(vector<long>& v);
 string vector_to_bash_array_local(vector<long>& v);
 string vector_to_bash_array_remote(vector<long>& v);
@@ -142,7 +139,7 @@ void generator_main(generator_t& gen)
     //  make a call to chill_script.appname.sh
     // Note that appname has to match the name given to this session.
 
-    vector<long> values = values_of(&gen.mesg.data.point);
+    vector<long> values = values_of(gen.mesg.data.point);
 
     /* Print a message to the logger */
     log_message.str("");
@@ -325,11 +322,9 @@ int codeserver_init(string& filename)
         return -1;
     }
 
-    hspace_copy(&space, &init_mesg.state.space);
-    hcfg_copy(&cfg, &init_mesg.data.cfg);
-    appname = space.name;
+    appname = init_mesg.state.space->name;
 
-    cfgval = hcfg_get(&cfg, CFGKEY_SERVER_URL);
+    cfgval = hcfg_get(init_mesg.data.cfg, CFGKEY_SERVER_URL);
     if (!cfgval) {
         cerr << "Session does not define local URL.\n";
         return -1;
@@ -339,7 +334,7 @@ int codeserver_init(string& filename)
         return -1;
     }
 
-    cfgval = hcfg_get(&cfg, CFGKEY_TARGET_URL);
+    cfgval = hcfg_get(init_mesg.data.cfg, CFGKEY_TARGET_URL);
     if (!cfgval) {
         cerr << "Session does not define target URL.\n";
         return -1;
@@ -349,7 +344,7 @@ int codeserver_init(string& filename)
         return -1;
     }
 
-    cfgval = hcfg_get(&cfg, CFGKEY_REPLY_URL);
+    cfgval = hcfg_get(init_mesg.data.cfg, CFGKEY_REPLY_URL);
     if (!cfgval) {
         cerr << "Session does not define reply URL.\n";
         return -1;
@@ -359,7 +354,7 @@ int codeserver_init(string& filename)
         return -1;
     }
 
-    cfgval = hcfg_get(&cfg, CFGKEY_SLAVE_LIST);
+    cfgval = hcfg_get(init_mesg.data.cfg, CFGKEY_SLAVE_LIST);
     if (!cfgval) {
         cerr << "Session does not define slave list.\n";
         return -1;
@@ -370,7 +365,7 @@ int codeserver_init(string& filename)
         return -1;
     }
 
-    cfgval = hcfg_get(&cfg, CFGKEY_SLAVE_PATH);
+    cfgval = hcfg_get(init_mesg.data.cfg, CFGKEY_SLAVE_PATH);
     if (!cfgval) {
         cerr << "Session does not define slave directory.\n";
         return -1;
@@ -640,7 +635,7 @@ int slave_complete(pid_t pid)
     return -1;
 }
 
-vector<long> values_of(hpoint_t* pt)
+vector<long> values_of(const hpoint_t* pt)
 {
     vector<long> retval;
 

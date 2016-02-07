@@ -192,8 +192,7 @@ int init_signals(void)
 int init_comm(void)
 {
     const char* cfgval;
-    hspace_t* space = &mesg.state.space;
-    hcfg_t* cfg = &mesg.data.cfg;
+    hcfg_t cfg = hcfg_zero;
 
     /* Read a session message from the codegen plugin */
     if (mesg_recv(STDIN_FILENO, &mesg) < 1) {
@@ -206,59 +205,71 @@ int init_comm(void)
         return -1;
     }
 
-    cfgval = hcfg_get(cfg, CFGKEY_TMPDIR);
+    if (hcfg_copy(&cfg, mesg.data.cfg) != 0) {
+        mesg.data.string = "Could not copy config environment during init";
+        return -1;
+    }
+
+    cfgval = hcfg_get(&cfg, CFGKEY_TMPDIR);
     if (!cfgval)
         cfgval = "";
 
     tmp_dir = stralloc(cfgval);
     if (!tmp_dir) {
         mesg.data.string = "Could not copy " CFGKEY_TMPDIR " config var";
-        return -1;
+        goto error;
     }
 
-    sess_name = stralloc(space->name);
+    sess_name = stralloc(mesg.state.space->name);
     if (!sess_name) {
         mesg.data.string = "Could not copy session name";
-        return -1;
+        goto error;
     }
 
     /* Get the URL for the code generation server, and open a socket to it */
-    cfgval = hcfg_get(cfg, CFGKEY_SERVER_URL);
+    cfgval = hcfg_get(&cfg, CFGKEY_SERVER_URL);
     if (!cfgval) {
         mesg.data.string = "Codegen server URL not specified";
-        return -1;
+        goto error;
     }
 
     if (url_parse(cfgval) < 0)
-        return -1;
+        goto error;
 
-    if (scp_cmd && !hcfg_get(cfg, CFGKEY_REPLY_URL)) {
+    if (scp_cmd && !hcfg_get(&cfg, CFGKEY_REPLY_URL)) {
         /* User did not supply a reply URL.  Build one ourselves. */
         if (reply_url_build() < 0)
-            return -1;
+            goto error;
 
-        if (hcfg_set(cfg, CFGKEY_REPLY_URL, buf) != 0) {
+        if (hcfg_set(&cfg, CFGKEY_REPLY_URL, buf) != 0) {
             mesg.data.string = "Could not set reply URL config val";
-            return -1;
+            goto error;
         }
     }
     else if (!scp_cmd) {
-        if (hcfg_set(cfg, CFGKEY_REPLY_URL, reply_dir) != 0) {
+        if (hcfg_set(&cfg, CFGKEY_REPLY_URL, reply_dir) != 0) {
             mesg.data.string = "Could not set reply URL config val";
-            return -1;
+            goto error;
         }
     }
 
     if (hmesg_pack(&mesg) < 0) {
         mesg.data.string = "Could not allocate memory for initial message";
-        return -1;
+        goto error;
     }
 
     /* Write the initial message for the code server. */
     if (mesg_write(-1) < 0)
-        return -1;
+        goto error;
 
+    hcfg_fini(&cfg);
     return 0;
+
+  error:
+    if (sess_name)
+        free(sess_name);
+    hcfg_fini(&cfg);
+    return -1;
 }
 
 int url_parse(const char* url)
