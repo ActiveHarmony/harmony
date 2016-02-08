@@ -306,7 +306,6 @@ int init_session(void)
 {
     const char* ptr;
     long seed;
-    int clients;
 
     /* Before anything else, control the random seeds. */
     seed = hcfg_int(&cfg, CFGKEY_RANDOM_SEED);
@@ -343,8 +342,8 @@ int init_session(void)
         return -1;
     }
 
-    clients = hcfg_int(&cfg, CFGKEY_CLIENT_COUNT);
-    if (clients < 1) {
+    num_clients = hcfg_int(&cfg, CFGKEY_CLIENT_COUNT);
+    if (num_clients < 1) {
         errmsg = "Invalid " CFGKEY_CLIENT_COUNT " configuration key value";
         return -1;
     }
@@ -352,7 +351,7 @@ int init_session(void)
     /* Load and initialize the strategy code object. */
     ptr = hcfg_get(&cfg, CFGKEY_STRATEGY);
     if (!ptr) {
-        if (clients > 1)
+        if (num_clients > 1)
             ptr = "pro.so";
         else
             ptr = "nm.so";
@@ -366,7 +365,7 @@ int init_session(void)
     if (ptr && load_layers(ptr) != 0)
         return -1;
 
-    if (extend_lists(clients * per_client) != 0)
+    if (extend_lists(num_clients * per_client) != 0)
         return -1;
 
     return 0;
