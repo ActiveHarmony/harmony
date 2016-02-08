@@ -47,8 +47,8 @@ extern const hspace_t hspace_zero;
 
 // Base structure management interface.
 int  hspace_copy(hspace_t* dst, const hspace_t* src);
-void hspace_scrub(hspace_t* space);
 void hspace_fini(hspace_t* space);
+void hspace_scrub(hspace_t* space);
 
 // Search space definition interface.
 int hspace_name(hspace_t* space, const char* name);

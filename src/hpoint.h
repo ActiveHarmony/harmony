@@ -43,6 +43,7 @@ extern const hpoint_t hpoint_zero;
 int  hpoint_init(hpoint_t* point, int newlen);
 int  hpoint_copy(hpoint_t* dst, const hpoint_t* src);
 void hpoint_fini(hpoint_t* point);
+void hpoint_scrub(hpoint_t* point);
 
 // Point comparison interface.
 int hpoint_align(hpoint_t* point, const hspace_t* space);

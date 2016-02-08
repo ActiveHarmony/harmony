@@ -220,7 +220,6 @@ int mesg_recv(int sock, hmesg_t* mesg)
     int msglen, retval;
     unsigned int magic, msgver;
 
-    hmesg_scrub(mesg);
     retval = recv(sock, hdr, HMESG_HDR_SIZE, MSG_PEEK);
     if (retval <  0) goto error;
     if (retval == 0) return 0;

@@ -547,7 +547,7 @@ int parse_slave_list(const char* hostlist)
 
     while (gen_list.size()) {
         if (gen_list.back().pid)
-            hmesg_scrub(&gen_list.back().mesg);
+            hmesg_fini(&gen_list.back().mesg);
         gen_list.pop_back();
     }
 
@@ -600,7 +600,7 @@ int parse_slave_list(const char* hostlist)
 
             while (gen_list.size()) {
                 if (gen_list.back().pid)
-                    hmesg_scrub(&gen_list.back().mesg);
+                    hmesg_fini(&gen_list.back().mesg);
                 gen_list.pop_back();
             }
             return -1;
@@ -625,7 +625,7 @@ int slave_complete(pid_t pid)
             if (mesg_write(gen_list[i].mesg, gen_list[i].step) != 0) {
                 return -1;
             }
-            hmesg_scrub(&gen_list[i].mesg);
+            hmesg_fini(&gen_list[i].mesg);
             gen_list[i].pid = 0;
             return 0;
         }

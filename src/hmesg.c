@@ -36,19 +36,21 @@ static int unpack_state(hmesg_t* mesg, char* buf);
 static int pack_data(char** buf, int* buflen, const hmesg_t* mesg);
 static int unpack_data(hmesg_t* mesg, char* buf);
 
-void hmesg_scrub(hmesg_t* mesg)
-{
-    hspace_scrub(&mesg->unpacked_space);
-    hcfg_scrub(&mesg->unpacked_cfg);
-}
-
+// To avoid excessive memory allocation, the *_unpack() routines build
+// non-standard versions of their structures by taking advantage of
+// the hmesg_t internal buffers.
+//
+// As a result, we use the *_scrub() routines here instead of their
+// *_fini() should NOT be used here
+//
 void hmesg_fini(hmesg_t* mesg)
 {
-    hspace_fini(&mesg->unpacked_space);
-    hpoint_fini(&mesg->unpacked_best);
-    hcfg_fini(&mesg->unpacked_cfg);
-    hpoint_fini(&mesg->unpacked_point);
-    hperf_fini(&mesg->unpacked_perf);
+    hspace_scrub(&mesg->unpacked_space);
+    hpoint_scrub(&mesg->unpacked_best);
+    hcfg_scrub(&mesg->unpacked_cfg);
+    hpoint_scrub(&mesg->unpacked_point);
+    hperf_fini(&mesg->unpacked_perf); // No scrub routine for hperf_t.
+
     free(mesg->recv_buf);
     free(mesg->send_buf);
 }
@@ -281,12 +283,12 @@ int unpack_state(hmesg_t* mesg, char* buf)
 
     switch (mesg->status) {
     case HMESG_STATUS_REQ:
-        mesg->state.space = &mesg->unpacked_space;
-        mesg->state.best  = &mesg->unpacked_best;
         if (sscanf(buf, " state:%u %u%n", &mesg->unpacked_space.id,
                    &mesg->unpacked_best.id, &count) < 2)
             return -1;
         total += count;
+        mesg->state.space = &mesg->unpacked_space;
+        mesg->state.best  = &mesg->unpacked_best;
 
         count = scanstr_serial(&mesg->state.client, buf + total);
         if (count < 0) return -1;

@@ -76,21 +76,19 @@ int range_enum_add_value(range_enum_t* bounds, char* str)
 //
 int hrange_copy(hrange_t* dst, const hrange_t* src)
 {
+    // Free heap data allocated by the destination structure.
+    hrange_fini(dst);
+
     dst->name = stralloc(src->name);
     if (!dst->name)
         return -1;
 
     dst->type = src->type;
-    switch (dst->type) {
+    switch (src->type) {
     case HVAL_INT:  dst->bounds.i = src->bounds.i; break;
     case HVAL_REAL: dst->bounds.r = src->bounds.r; break;
-    case HVAL_STR:
-        if (copy_enum(&dst->bounds.e, &src->bounds.e) != 0)
-            return -1;
-        break;
-
-    default:
-        return -1;
+    case HVAL_STR:  if (copy_enum(&dst->bounds.e, &src->bounds.e) == 0) break;
+    default:        return -1;
     }
     dst->owner = NULL;
 
@@ -109,6 +107,12 @@ void hrange_fini(hrange_t* range)
         }
         free(range->bounds.e.set);
     }
+}
+
+void hrange_scrub(hrange_t* range)
+{
+    if (range->type == HVAL_STR)
+        free(range->bounds.e.set);
 }
 
 //
@@ -232,6 +236,9 @@ int hrange_unpack(hrange_t* range, char* buf)
         return -1;
     total = count;
 
+    // Free heap data currently allocated for the structure.
+    hrange_scrub(range);
+
     count = scanstr_serial((const char**)&range->name, buf + total);
     if (count < 0) return -1;
     total += count;
@@ -268,26 +275,23 @@ int hrange_unpack(hrange_t* range, char* buf)
         break;
 
     case HVAL_STR:
-        if (sscanf(buf + total, " %d%n",
-                   &range->bounds.e.len, &count) < 1)
-            return -1;
-        total += count;
+        if (sscanf(buf + total, " %d%n", &range->bounds.e.len, &count) > 0) {
+            total += count;
 
-        if (range->bounds.e.cap < range->bounds.e.len) {
-            char** newbuf = realloc(range->bounds.e.set,
-                                    sizeof(char*) * range->bounds.e.len);
-            if (!newbuf) return -1;
+            char** newbuf = malloc(range->bounds.e.len * sizeof(*newbuf));
+            if (!newbuf)
+                return -1;
+
+            for (int i = 0; i < range->bounds.e.len; ++i) {
+                count = scanstr_serial((const char**) &newbuf[i], buf + total);
+                if (count < 0) return -1;
+                total += count;
+            }
+
             range->bounds.e.set = newbuf;
             range->bounds.e.cap = range->bounds.e.len;
+            break;
         }
-
-        for (int i = 0; i < range->bounds.e.len; ++i) {
-            count = scanstr_serial((const char**)&range->bounds.e.set[i],
-                                   buf + total);
-            if (count < 0) return -1;
-            total += count;
-        }
-        break;
 
     default:
         return -1;
@@ -376,11 +380,10 @@ int copy_enum(range_enum_t* dst, const range_enum_t* src)
     if (!dst->set)
         return -1;
 
-    dst->len = src->len;
     dst->cap = src->cap;
-    for (int i = 0; i < src->len; ++i) {
-        dst->set[i] = stralloc(src->set[i]);
-        if (!dst->set[i])
+    for (dst->len = 0; dst->len < src->len; ++dst->len) {
+        dst->set[ dst->len ] = stralloc(src->set[ dst->len ]);
+        if (!dst->set[ dst->len ])
             return -1;
     }
     return 0;

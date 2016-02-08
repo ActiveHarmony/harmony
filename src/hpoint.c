@@ -39,13 +39,19 @@ static int align_str(hval_t* val, const hrange_t* range);
 //
 int hpoint_init(hpoint_t* point, int newlen)
 {
-    if (point->len != newlen) {
+    while (point->len > newlen)
+        hval_fini(&point->term[ --point->len ]);
+
+    if (point->len < newlen) {
         hval_t* oldbuf = point->term;
         hval_t* newbuf = realloc(oldbuf, newlen * sizeof(*newbuf));
         if (!newbuf)
             return -1;
 
-        memset(newbuf, 0, newlen * sizeof(*newbuf));
+        // Initialize any newly created hval_t structures.
+        memset(newbuf + point->len, 0,
+               (newlen - point->len) * sizeof(*newbuf));
+
         point->term = newbuf;
         point->len  = newlen;
     }
@@ -237,10 +243,8 @@ int align_str(hval_t* val, const hrange_t* range)
     for (int i = 0; i < range->bounds.e.len; ++i) {
         if (strcmp(val->value.s, range->bounds.e.set[i]) == 0) {
             val->value.s = range->bounds.e.set[i];
-            if (val->buf) {
-                free(val->buf);
-                val->buf = NULL;
-            }
+            free(val->buf);
+            val->buf = NULL;
             return 0;
         }
     }

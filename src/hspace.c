@@ -37,62 +37,48 @@ static hrange_t* find_dim(hspace_t* sig, const char* name);
 //
 int hspace_copy(hspace_t* dst, const hspace_t* src)
 {
-    int i = 0;
-    hspace_scrub(dst);
+    // Free heap data allocated by the destination structure.
+    free(dst->name);
 
-    dst->id = src->id;
     dst->name = stralloc(src->name);
     if (!dst->name)
-        goto error;
+        return -1;
 
-    if (dst->cap != src->cap) {
-        hrange_t* newbuf = realloc(dst->dim, src->cap * sizeof(*src->dim));
+    // Increase the capacity of the destination, if necessary.
+    if (dst->cap < src->cap) {
+        hrange_t* newbuf = realloc(dst->dim, src->cap * sizeof(*dst->dim));
         if (!newbuf)
-            goto error;
+            return -1;
 
-        memset(newbuf + src->len, 0,
-               (src->cap - src->len) * sizeof(*src->dim));
-
+        // Ensure memory begins in a valid state.
+        memset(newbuf + dst->cap, 0,
+               (src->cap - dst->cap) * sizeof(*dst->dim));
         dst->dim = newbuf;
         dst->cap = src->cap;
     }
-    dst->len = src->len;
 
-    while (i < src->len) {
-        if (hrange_copy(&dst->dim[i], &src->dim[i]) != 0)
-            goto error;
-        ++i;
+    for (dst->len = 0; dst->len < src->len; ++dst->len) {
+        if (hrange_copy(&dst->dim[ dst->len ], &src->dim[ dst->len ]) != 0)
+            return -1;
     }
     dst->owner = NULL;
 
+    dst->id = src->id;
     return 0;
-
-  error:
-    while (i > 0)
-        hrange_fini(&dst->dim[--i]);
-    free(dst->dim);
-    free(dst->name);
-    *dst = hspace_zero;
-
-    return -1;
-}
-
-void hspace_scrub(hspace_t* space)
-{
-    space->id = 0;
-    if (!hmesg_owner(space->owner, space->name)) {
-        free(space->name);
-        space->name = NULL;
-    }
-
-    for (int i = 0; i < space->len; ++i)
-        hrange_fini(&space->dim[i]);
-    space->len = 0;
 }
 
 void hspace_fini(hspace_t* space)
 {
-    hspace_scrub(space);
+    free(space->name);
+    for (int i = 0; i < space->cap; ++i)
+        hrange_fini(&space->dim[i]);
+    free(space->dim);
+}
+
+void hspace_scrub(hspace_t* space)
+{
+    for (int i = 0; i < space->len; ++i)
+        hrange_scrub(&space->dim[i]);
     free(space->dim);
 }
 
@@ -314,13 +300,14 @@ int hspace_unpack(hspace_t* space, char* buf)
             hrange_t* newbuf = realloc(space->dim,
                                        space->len * sizeof(*space->dim));
             if (!newbuf) return -1;
+
+            memset(newbuf + space->cap, 0,
+                   (space->len - space->cap) * sizeof(*space->dim));
             space->dim = newbuf;
             space->cap = space->len;
         }
 
         for (int i = 0; i < space->len; ++i) {
-            space->dim[i] = hrange_zero;
-            space->dim[i].owner = space->owner;
             count = hrange_unpack(&space->dim[i], buf + total);
             if (count < 0) return -1;
             total += count;

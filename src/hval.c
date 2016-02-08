@@ -34,6 +34,9 @@ static int parse_str(hval_t* val, const char* buf);
 //
 int hval_copy(hval_t* dst, const hval_t* src)
 {
+    // Free heap data allocated by the destination structure.
+    free(dst->buf);
+
     *dst = *src;
     if (src->buf) {
         dst->buf = stralloc(src->buf);
@@ -46,8 +49,7 @@ int hval_copy(hval_t* dst, const hval_t* src)
 
 void hval_fini(hval_t* val)
 {
-    if (val->buf)
-        free(val->buf);
+    free(val->buf);
 }
 
 //
@@ -142,8 +144,7 @@ int parse_real(hval_t* val, const char* buf)
 
 int parse_str(hval_t* val, const char* buf)
 {
-    char* token;
-    int span = unquote_string(buf, &token, NULL);
-    val->value.s = token;
+    int span = unquote_string(buf, &val->buf, NULL);
+    val->value.s = val->buf;
     return span;
 }

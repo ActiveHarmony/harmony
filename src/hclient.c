@@ -753,8 +753,8 @@ int ah_leave(hdesc_t* hd)
     if (close(hd->socket) != 0 && debug_mode)
         perror("Error closing socket during ah_leave()");
 
-    /* Reset the hsession_t to prepare for harmony descriptor reuse. */
-    hspace_scrub(&hd->space);
+    /* Reset the descriptor entries to prepare for reuse. */
+    hd->space.len = 0;
     hd->best.id = 0;
 
     return 0;

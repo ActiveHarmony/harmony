@@ -50,7 +50,10 @@ void hperf_reset(hperf_t* perf)
 
 int hperf_copy(hperf_t* dst, const hperf_t* src)
 {
-    hperf_init(dst, src->len);
+    if (dst->len != src->len) {
+        if (hperf_init(dst, src->len) != 0)
+            return -1;
+    }
     memcpy(dst->obj, src->obj, sizeof(*dst->obj) * src->len);
     return 0;
 }
@@ -58,7 +61,6 @@ int hperf_copy(hperf_t* dst, const hperf_t* src)
 void hperf_fini(hperf_t* perf)
 {
     free(perf->obj);
-    *perf = hperf_zero;
 }
 
 int hperf_cmp(const hperf_t* a, const hperf_t* b)

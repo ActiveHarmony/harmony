@@ -75,6 +75,7 @@ extern const hrange_t hrange_zero;
 // Base structure management interface.
 int  hrange_copy(hrange_t* dst, const hrange_t* src);
 void hrange_fini(hrange_t* range);
+void hrange_scrub(hrange_t* range);
 
 // Range value query interface.
 int           hrange_finite(const hrange_t* range);

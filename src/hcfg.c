@@ -63,6 +63,7 @@ const hcfg_info_t hcfg_global_keys[] = {
 };
 
 /* Internal helper function prototypes. */
+static void   free_data(hcfg_t* cfg);
 static int    key_find(const hcfg_t* cfg, const char* key, char** val);
 static char*  key_val(const hcfg_t* cfg, const char* key);
 static char*  key_val_index(const hcfg_t* cfg, const char* key, int idx);
@@ -113,50 +114,36 @@ int hcfg_reginfo(hcfg_t* cfg, const hcfg_info_t* info)
 
 int hcfg_copy(hcfg_t* dst, const hcfg_t* src)
 {
-    int i = 0;
-    hcfg_scrub(dst);
+    // Free heap data allocated by the destination structure.
+    free_data(dst);
 
-    if (dst->cap != src->cap) {
-        char** newbuf = realloc(dst->env, src->cap * sizeof(*src->env));
+    if (dst->cap < src->cap) {
+        char** newbuf = realloc(dst->env, src->cap * sizeof(*dst->env));
         if (!newbuf)
             return -1;
 
         dst->env = newbuf;
         dst->cap = src->cap;
     }
-    dst->len = src->len;
 
-    while (i < dst->len) {
-        dst->env[i] = stralloc( src->env[i] );
-        if (!dst->env[i])
-            goto error;
-        ++i;
+    for (dst->len = 0; dst->len < src->len; ++dst->len) {
+        dst->env[ dst->len ] = stralloc( src->env[ dst->len ] );
+        if (!dst->env[ dst->len ])
+            return -1;
     }
     dst->owner = NULL;
 
     return 0;
-
-  error:
-    while (i > 0)
-        free(dst->env[--i]);
-    free(dst->env);
-    *dst = hcfg_zero;
-
-    return -1;
-}
-
-void hcfg_scrub(hcfg_t* cfg)
-{
-    for (int i = 0; i < cfg->len; ++i) {
-        if (!hmesg_owner(cfg->owner, cfg->env[i]))
-            free(cfg->env[i]);
-    }
-    cfg->len = 0;
 }
 
 void hcfg_fini(hcfg_t* cfg)
 {
-    hcfg_scrub(cfg);
+    free_data(cfg);
+    free(cfg->env);
+}
+
+void hcfg_scrub(hcfg_t* cfg)
+{
     free(cfg->env);
 }
 
@@ -364,6 +351,11 @@ int hcfg_parse(hcfg_t* cfg, const char* buf, const char** errptr)
 /*
  * Internal helper functions.
  */
+void free_data(hcfg_t* cfg) {
+    for (int i = 0; i < cfg->len; ++i)
+        free(cfg->env[i]);
+}
+
 int key_find(const hcfg_t* cfg, const char* key, char** val)
 {
     int i;
