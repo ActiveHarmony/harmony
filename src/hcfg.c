@@ -131,8 +131,6 @@ int hcfg_copy(hcfg_t* dst, const hcfg_t* src)
         if (!dst->env[ dst->len ])
             return -1;
     }
-    dst->owner = NULL;
-
     return 0;
 }
 
@@ -397,8 +395,7 @@ int key_add(hcfg_t* cfg, char* pair)
     int i = key_find(cfg, pair, NULL);
 
     if (i < cfg->len) {
-        if (!hmesg_owner(cfg->owner, cfg->env[i]))
-            free(cfg->env[i]);
+        free(cfg->env[i]);
     }
     else if (i == cfg->cap) {
         if (array_grow(&cfg->env, &cfg->cap, sizeof(*cfg->env)) != 0)
@@ -417,8 +414,7 @@ void key_del(hcfg_t* cfg, const char* key)
     int i = key_find(cfg, key, NULL);
 
     if (i < cfg->len) {
-        if (!hmesg_owner(cfg->owner, cfg->env[i]))
-            free(cfg->env[i]);
+        free(cfg->env[i]);
         cfg->env[i] = cfg->env[ --cfg->len ];
     }
 }

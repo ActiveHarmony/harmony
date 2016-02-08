@@ -36,8 +36,6 @@ typedef struct hcfg {
     char** env;
     int    len;
     int    cap;
-
-    void*  owner;
 } hcfg_t;
 #define HCFG_INITIALIZER {0}
 extern const hcfg_t hcfg_zero;

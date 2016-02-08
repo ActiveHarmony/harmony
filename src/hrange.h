@@ -66,8 +66,6 @@ typedef struct hrange {
         range_real_t r;
         range_enum_t e;
     } bounds;
-
-    void* owner;
 } hrange_t;
 #define HRANGE_INITIALIZER {0}
 extern const hrange_t hrange_zero;

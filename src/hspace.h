@@ -39,8 +39,6 @@ typedef struct hspace {
     hrange_t* dim;
     int       len;
     int       cap;
-
-    void*     owner;
 } hspace_t;
 #define HSPACE_INITIALIZER {0}
 extern const hspace_t hspace_zero;

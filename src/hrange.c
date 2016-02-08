@@ -90,23 +90,17 @@ int hrange_copy(hrange_t* dst, const hrange_t* src)
     case HVAL_STR:  if (copy_enum(&dst->bounds.e, &src->bounds.e) == 0) break;
     default:        return -1;
     }
-    dst->owner = NULL;
-
     return 0;
 }
 
 void hrange_fini(hrange_t* range)
 {
-    if (!hmesg_owner(range->owner, range->name))
-        free(range->name);
-
     if (range->type == HVAL_STR) {
-        for (int i = 0; i < range->bounds.e.len; ++i) {
-            if (!hmesg_owner(range->owner, range->bounds.e.set[i]))
-                free(range->bounds.e.set[i]);
-        }
+        for (int i = 0; i < range->bounds.e.len; ++i)
+            free(range->bounds.e.set[i]);
         free(range->bounds.e.set);
     }
+    free(range->name);
 }
 
 void hrange_scrub(hrange_t* range)
@@ -360,7 +354,6 @@ int hrange_parse(hrange_t* range, const char* buf, const char** errptr)
         errstr = "Cannot copy range name";
         goto error;
     }
-    range->owner = NULL;
 
     if (errptr) *errptr = NULL;
     return 1;

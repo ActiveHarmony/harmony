@@ -61,7 +61,6 @@ int hspace_copy(hspace_t* dst, const hspace_t* src)
         if (hrange_copy(&dst->dim[ dst->len ], &src->dim[ dst->len ]) != 0)
             return -1;
     }
-    dst->owner = NULL;
 
     dst->id = src->id;
     return 0;
@@ -87,8 +86,7 @@ void hspace_scrub(hspace_t* space)
 //
 int hspace_name(hspace_t* space, const char* name)
 {
-    if (space->name && !hmesg_owner(space->owner, space->name))
-        free(space->name);
+    free(space->name);
 
     space->name = stralloc(name);
     if (!space->name)
@@ -114,7 +112,6 @@ int hspace_int(hspace_t* space, const char* name,
     range.bounds.i.max = max - remain;
     range.bounds.i.step = step;
     range.name = stralloc(name);
-    range.owner = NULL;
     if (!range.name)
         return -1;
 
@@ -151,7 +148,6 @@ int hspace_real(hspace_t* space, const char* name,
     range.bounds.r.max = max;
     range.bounds.r.step = step;
     range.name = stralloc(name);
-    range.owner = NULL;
     if (!range.name)
         return -1;
 
@@ -177,7 +173,6 @@ int hspace_enum(hspace_t* space, const char* name, const char* value)
         range.bounds.e.len = 0;
         range.bounds.e.cap = 0;
         range.name = stralloc(name);
-        range.owner = NULL;
         if (!range.name)
             return -1;
 
