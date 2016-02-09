@@ -26,13 +26,13 @@
 extern "C" {
 #endif
 
-//
-// Harmony structure representing the search space.
-//
-// Also be referred to as the input, decision, or parameter space,
-// it describes the valid set of multi-dimensional input values an
-// optimization problem.
-//
+/*
+ * Harmony structure representing the search space.
+ *
+ * Also be referred to as the input, decision, or parameter space,
+ * it describes the valid set of multi-dimensional input values an
+ * optimization problem.
+ */
 typedef struct hspace {
     unsigned  id;
     char*     name;
@@ -43,12 +43,16 @@ typedef struct hspace {
 #define HSPACE_INITIALIZER {0}
 extern const hspace_t hspace_zero;
 
-// Base structure management interface.
+/*
+ * Base structure management interface.
+ */
 int  hspace_copy(hspace_t* dst, const hspace_t* src);
 void hspace_fini(hspace_t* space);
 void hspace_scrub(hspace_t* space);
 
-// Search space definition interface.
+/*
+ * Search space definition interface.
+ */
 int hspace_name(hspace_t* space, const char* name);
 int hspace_int(hspace_t* space, const char* name,
                long min, long max, long step);
@@ -56,10 +60,14 @@ int hspace_real(hspace_t* space, const char* name,
                 double min, double max, double step);
 int hspace_enum(hspace_t* space, const char* name, const char* value);
 
-// Search space comparison interface.
+/*
+ * Search space comparison interface.
+ */
 int hspace_equal(const hspace_t* a, const hspace_t* b);
 
-// Data transmission interface.
+/*
+ * Data transmission interface.
+ */
 int hspace_pack(char** buf, int* buflen, const hspace_t* space);
 int hspace_unpack(hspace_t* space, char* buf);
 int hspace_parse(hspace_t* space, const char* buf, const char** errptr);
@@ -68,4 +76,4 @@ int hspace_parse(hspace_t* space, const char* buf, const char** errptr);
 }
 #endif
 
-#endif /* __HSPACE_H__ */
+#endif // __HSPACE_H__

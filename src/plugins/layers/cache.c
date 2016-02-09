@@ -125,19 +125,23 @@ int cache_init(hspace_t* space)
     return 0;
 }
 
-/* Generate function: look up point in array.
- * Sets status to HFLOW_RETURN with trial's performance set to retrieved value
- * if the point is found.
- * Otherwise, sets status to HFLOW_ACCEPT (pass point on in plugin workflow)
+/*
+ * Generate function: look up point in array.
+ *
+ * Sets status to HFLOW_RETURN with trial's performance set to
+ * retrieved value if the point is found.  Otherwise, sets status to
+ * HFLOW_ACCEPT (pass point on in plugin workflow).
  */
 int cache_generate(hflow_t* flow, htrial_t* trial)
 {
     int i, pt_num;
     visited_t *visited_pt;
 
-    // so the client gets a chance to do something when the search is converged
-    // not really part of cache, but gemm example client will never terminate
-    // or do anything if this isn't present (it never knows when strat is converged)
+    // So the client gets a chance to do something when the search is
+    // converged not really part of cache, but gemm example client
+    // will never terminate or do anything if this isn't present (it
+    // never knows when strat is converged)
+    //
     if(strncmp(hcfg_get(session_cfg, CFGKEY_CONVERGED), "1", 1) == 0) {
       return HFLOW_ACCEPT;
     }
@@ -145,8 +149,10 @@ int cache_generate(hflow_t* flow, htrial_t* trial)
     visited_pt = find_visited(&trial->point);
 
     if(visited_pt != NULL) {
-        // wrapping around (i.e. if point occurs twice, and we're coming back for the third time
-        // we should give back the first point
+        // wrapping around (i.e. if point occurs twice, and we're
+        // coming back for the third time we should give back the
+        // first point
+        //
         if(visited_pt->total_num > 0 && visited_pt->count > visited_pt->total_num)
             visited_pt->count = visited_pt->count % visited_pt->total_num + 1;
     }
@@ -154,7 +160,7 @@ int cache_generate(hflow_t* flow, htrial_t* trial)
     cache_lookup:
     pt_num = 0;
 
-    /* For now, we rely on a linear cache lookup. */
+    // For now, we rely on a linear cache lookup.
     for (i = 0; i < cache_len; ++i) {
         if (hpoint_cmp(&trial->point, &cache[i].point) == 0) {
             hperf_copy(&trial->perf, &cache[i].perf);
@@ -164,27 +170,30 @@ int cache_generate(hflow_t* flow, htrial_t* trial)
 
             if(visited_pt != NULL) {
               if(pt_num == visited_pt->count || visited_pt->count == 0) {
-                return 0;      // pt found, is % nth point listed (where n = times visited)
+                return 0; // Point found, is % nth point listed
+                          // (where n = times visited).
               }
             } else {
-                return 0;   // pt found, never visited
+                return 0; // Point found, never visited.
             }
         }
     }
 
-    if(visited_pt != NULL) {             // reached end of data = we know how many times this point appears
+    if(visited_pt != NULL) {
+        // Reached end of data = we know how many times this point appears.
         visited_pt->total_num = pt_num;
         visited_pt->count = visited_pt->count % visited_pt->total_num;
         goto cache_lookup;
     }
 
     if(! skip)
-        flow->status = HFLOW_ACCEPT; // pt not found
+        flow->status = HFLOW_ACCEPT; // Point not found.
 
     return 0;
 }
 
-/* Analyze each trial as it passes through the system.  Add the
+/*
+ * Analyze each trial as it passes through the system.  Add the
  * observed point/performance pair to the cache unless it was a result
  * of a cache hit.
  */
@@ -210,7 +219,7 @@ int cache_analyze(hflow_t* flow, htrial_t* trial)
     flow->status = HFLOW_ACCEPT;
 
     visited_pt = find_visited(&trial->point);
-    /* add to list of visited points */
+    // Add to list of visited points.
     if(visited_pt == NULL) {
       if(visited_cap == visited_len) {
           visited_cap += 10;
@@ -219,10 +228,13 @@ int cache_analyze(hflow_t* flow, htrial_t* trial)
       memset(visited + visited_len, 0, sizeof(visited_t));
       hpoint_init(&visited[visited_len].point, trial->point.len);
       hpoint_copy(&visited[visited_len].point, &trial->point);
-      visited[visited_len].count = 2;  // looking for the 2nd occurance next time we get to generate
+
+      // Looking for the 2nd occurrence next time we get to generate().
+      visited[visited_len].count = 2;
       visited_len++;
     } else {
-      visited_pt->count++;  // or update existing visited point info
+      // Or update existing visited point info.
+      visited_pt->count++;
     }
 
     return 0;
@@ -241,7 +253,8 @@ int cache_fini(void)
     return 0;
 }
 
-/* Search the parameter space for any HVAL_STR dimensions, and return
+/*
+ * Search the parameter space for any HVAL_STR dimensions, and return
  * the length of the largest possible string.
  */
 int find_max_strlen(void)
@@ -260,7 +273,8 @@ int find_max_strlen(void)
     return max;
 }
 
-/* Initialize the in-memory cache using a log file generated from the
+/*
+ * Initialize the in-memory cache using a log file generated from the
  * logger layer during a prior tuning session.
  *
  * Note: This function must be kept in sync with the output routines
@@ -284,14 +298,14 @@ int load_logger_file(const char* filename)
     }
 
     while (fscanf(fp, " %c", &c) != EOF) {
-        /* Skip any line that doesn't start with 'P'. */
+        // Skip any line that doesn't start with 'P'.
         if (c != 'P') {
             SKIP_PATTERN(fp, "%*[^\n] ");
             continue;
         }
         SKIP_PATTERN(fp, "oint #%*d: ( ");
 
-        /* Prepare a new point in the memory cache. */
+        // Prepare a new point in the memory cache.
         if (cache_len == cache_cap) {
             if (array_grow(&cache, &cache_cap, sizeof(cache_t)) != 0) {
                 session_error("Could not allocate more memory for cache");
@@ -304,7 +318,7 @@ int load_logger_file(const char* filename)
             return -1;
         }
 
-        /* Parse point data. */
+        // Parse point data.
         for (i = 0; i < i_cnt; ++i) {
             hval_t* v = &cache[cache_len].point.term[i];
 
@@ -326,7 +340,7 @@ int load_logger_file(const char* filename)
             }
         }
 
-        /* Parse performance data. */
+        // Parse performance data.
         SKIP_PATTERN(fp, " ) => (");
         for (i = 0; i < o_cnt; ++i) {
             if (i > 0) SKIP_PATTERN(fp, " ,");
@@ -336,7 +350,7 @@ int load_logger_file(const char* filename)
             }
         }
 
-        /* Discard the rest of the line after the right parenthesis. */
+        // Discard the rest of the line after the right parenthesis.
         if (fscanf(fp, " %c%*[^\n]", &c) != 1 || c != ')') {
             session_error("Error parsing point data from logfile");
             return -1;
@@ -347,7 +361,8 @@ int load_logger_file(const char* filename)
     return 0;
 }
 
-/* Parse a double-quoted string value from a file stream.  Static
+/*
+ * Parse a double-quoted string value from a file stream.  Static
  * variables buf and buflen must be initialized prior to use.
  *
  * Return values designed to match scanf family.

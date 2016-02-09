@@ -25,7 +25,8 @@
 
 #include "hclient.h"
 
-/* For illustration purposes, the performance here is defined by following
+/*
+ * For illustration purposes, the performance here is defined by following
  * simple definition:
  *   perf = (p1 - 15)^2 + (p2 - 30)^2 + (p3 - 45)^2 +
  *          (p4 - 60)^2 + (p5 - 75)^2 + (p6 - 90)^2
@@ -34,7 +35,6 @@
  *      (15, 30, 45, 60, 75, 90)
  *
  * And a reasonable search range for all parameters is [1-100].
- *
  */
 long application(long p1, long p2, long p3, long p4, long p5, long p6)
 {
@@ -55,10 +55,10 @@ int main(int argc, char* argv[])
     int i, retval, loop = 200;
     double perf = -HUGE_VAL;
 
-    /* Variables to hold the application's runtime tunable parameters.
-     * Once bound to a Harmony tuning session, these variables will be
-     * modified upon ah_fetch() to a new testing configuration.
-     */
+    // Variables to hold the application's runtime tunable parameters.
+    // Once bound to a Harmony tuning session, these variables will be
+    // modified upon ah_fetch() to a new testing configuration.
+    //
     long param_1;
     long param_2;
     long param_3;
@@ -75,7 +75,7 @@ int main(int argc, char* argv[])
         }
     }
 
-    /* Initialize a Harmony client. */
+    // Initialize a Harmony client.
     hdesc = ah_init();
     if (hdesc == NULL) {
         fprintf(stderr, "Failed to initialize a harmony session.\n");
@@ -83,7 +83,7 @@ int main(int argc, char* argv[])
     }
     ah_args(hdesc, &argc, argv);
 
-    /* Process the program arguments. */
+    // Process the program arguments.
     name = "XML_example";
     if (argc > 1)
         name = argv[1];
@@ -106,7 +106,7 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    /* Bind the session variables to local variables. */
+    // Bind the session variables to local variables.
     if (ah_bind_int(hdesc, "param_1", &param_1) != 0 ||
         ah_bind_int(hdesc, "param_2", &param_2) != 0 ||
         ah_bind_int(hdesc, "param_3", &param_3) != 0 ||
@@ -119,7 +119,7 @@ int main(int argc, char* argv[])
         goto cleanup;
     }
 
-    /* Begin a new tuning session. */
+    // Begin a new tuning session.
     printf("Starting Harmony...\n");
     if (ah_launch(hdesc, NULL, 0, name) != 0) {
         fprintf(stderr, "Could not launch tuning session: %s\n",
@@ -127,7 +127,7 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    /* main loop */
+    // Main loop.
     for (i = 0; !ah_converged(hdesc) && i < loop; i++) {
         int hresult = ah_fetch(hdesc);
         if (hresult < 0) {
@@ -137,40 +137,37 @@ int main(int argc, char* argv[])
             goto cleanup;
         }
         else if (hresult == 0) {
-            /* New values were not available at this time.
-             * Bundles remain unchanged by Harmony system.
-             */
+            // New values were not available at this time.
+            // Bundles remain unchanged by Harmony system.
         }
         else if (hresult > 0) {
-            /* The Harmony system modified the variable values.
-             * Do any systemic updates to deal with such a change.
-             */
+            // The Harmony system modified the variable values.
+            // Do any systemic updates to deal with such a change.
         }
 
-        /* Run one full iteration of the application (or code variant).
-         *
-         * Here our application is rather simple. Definition of performance can
-         * be user-defined. Depending on application, it can be MFlops/sec,
-         * time to complete the entire run of the application, cache hits vs.
-         * misses and so on.
-         *
-         * For searching the parameter space in a Transformation framework,
-         * just run different parameterized code variants here. A simple
-         * mapping between the parameters and the code-variants is needed to
-         * call the appropriate code variant.
-         */
-
+        // Run one full iteration of the application (or code variant).
+        //
+        // Here our application is rather simple. Definition of performance can
+        // be user-defined. Depending on application, it can be MFlops/sec,
+        // time to complete the entire run of the application, cache hits vs.
+        // misses and so on.
+        //
+        // For searching the parameter space in a Transformation framework,
+        // just run different parameterized code variants here. A simple
+        // mapping between the parameters and the code-variants is needed to
+        // call the appropriate code variant.
+        //
         perf = application(param_1, param_2, param_3,
                            param_4, param_5, param_6);
 
         if (hresult > 0) {
-            /* Only print performance if new values were fetched. */
+            // Only print performance if new values were fetched.
             printf("%ld, %ld, %ld, %ld, %ld, %ld = %lf\n",
                    param_1, param_2, param_3,
                    param_4, param_5, param_6, perf);
         }
 
-        /* Report the performance we've just measured. */
+        // Report the performance we've just measured.
         if (ah_report(hdesc, &perf) != 0) {
             fprintf(stderr, "Failed to report performance to server.\n");
             retval = -1;
@@ -178,7 +175,7 @@ int main(int argc, char* argv[])
         }
     }
 
-    /* Leave the session */
+    // Leave the session.
     if (ah_leave(hdesc) != 0) {
         fprintf(stderr, "Failed to disconnect from harmony server.\n");
         retval = -1;

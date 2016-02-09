@@ -191,11 +191,11 @@ void perf_mean(hperf_t* dst, hperf_t* src, int count)
 {
     int i, j;
 
-    /* Initialize the destination hperf_t. */
+    // Initialize the destination hperf_t.
     for (i = 0; i < dst->len; ++i)
         dst->obj[i] = 0.0;
 
-    /* Calculate the mean of each objective individually. */
+    // Calculate the mean of each objective individually.
     for (j = 0; j < count; ++j)
         for (i = 0; i < dst->len; ++i)
             dst->obj[i] += src[j].obj[i];

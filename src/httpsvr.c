@@ -37,7 +37,8 @@
 
 #define HTTP_ENDL "\r\n"
 
-/* The following opt_* definitions allow the compiler to possibly
+/*
+ * The following opt_* definitions allow the compiler to possibly
  * optimize away a call to strlen().
  */
 #define opt_sock_write(x, y) socket_write((x), (y), strlen(y))
@@ -60,7 +61,7 @@ typedef struct {
 } memfile_t;
 
 static memfile_t html_file[] = {
-    /* The overview html file must be first in this array. */
+    // The overview html file must be first in this array.
     { "overview.cgi",                 CONTENT_HTML,       NULL, 0 },
     { "overview.js",                  CONTENT_JAVASCRIPT, NULL, 0 },
     { "session-view.cgi",             CONTENT_HTML,       NULL, 0 },
@@ -73,7 +74,7 @@ static memfile_t html_file[] = {
     { "jquery.flot.resize.min.js",    CONTENT_JAVASCRIPT, NULL, 0 },
     { "jquery.flot.selection.min.js", CONTENT_JAVASCRIPT, NULL, 0 },
     { "excanvas.min.js",              CONTENT_JAVASCRIPT, NULL, 0 },
-    /* A null entry must end this array. */
+    // A null entry must end this array.
     { NULL, CONTENT_HTML, NULL, 0 }
 };
 
@@ -95,10 +96,12 @@ static const char http_headers[] =
     "Cache-Control: no-cache"    HTTP_ENDL
     "Transfer-Encoding: chunked" HTTP_ENDL;
 
-char sendbuf[8192];  /* Static buffer used for outgoing HTTP data. */
-char recvbuf[10240]; /* Static buffer used for incoming HTTP data. */
+char sendbuf[8192];  // Static buffer used for outgoing HTTP data.
+char recvbuf[10240]; // Static buffer used for incoming HTTP data.
 
-/* Internal helper function declarations */
+/*
+ * Internal helper function prototypes.
+ */
 const char* status_string(session_state_t* sess);
 char* uri_decode(char* buf);
 session_state_t* find_session(const char* name);
@@ -201,13 +204,13 @@ int handle_http_socket(int fd)
         if (opt_strncmp(req, "GET ") == 0) {
             endp = strchr(req + 4, ' ');
             if (endp == NULL) {
-                http_send_error(fd, 400, req); /* Bad Request */
+                http_send_error(fd, 400, req); // "Bad Request" error.
             }
             else {
                 *endp = '\0';
                 req = uri_decode(req + 4);
                 if (http_request_handle(fd, req) < 0)
-                    http_send_error(fd, 404, req);  /* Not Found */
+                    http_send_error(fd, 404, req); // "Not Found" error.
             }
         }
         else if (opt_strncmp(req, "OPTIONS ") == 0 ||
@@ -218,7 +221,7 @@ int handle_http_socket(int fd)
                  opt_strncmp(req, "TRACE ")   == 0 ||
                  opt_strncmp(req, "CONNECT ") == 0) {
 
-            /* Unimplemented Function */
+            // "Unimplemented Function" error.
             http_send_error(fd, 501, req);
         }
 
@@ -226,7 +229,7 @@ int handle_http_socket(int fd)
     }
 
     if (errno == 0) {
-        /* No data returned, and no error reported.  Socket closed by peer. */
+        // No data returned, and no error reported.  Socket closed by peer.
         printf("[AH]: Closing socket %d (HTTP Socket)\n", fd);
         if (close(fd) < 0)
             printf("[AH]: Error closing HTTP socket\n");
@@ -248,8 +251,8 @@ const char* status_string(session_state_t* sess)
     return "Searching";
 }
 
-/**************************************
- * Internal helper function definitions
+/*
+ * Internal helper function implementation.
  */
 char* uri_decode(char* buf)
 {
@@ -421,9 +424,9 @@ int http_request_handle(int fd, char* req)
         return 0;
     }
 
-    /* If request is not handled by any special cases above,
-     * look for a known html file corresponding to the request.
-     */
+    // If request is not handled by any special cases above,
+    // look for a known html file corresponding to the request.
+    //
     for (i = 0; html_file[i].filename != NULL; ++i) {
         if (strcmp(req + 1, html_file[i].filename) == 0) {
             opt_sock_write(fd, status_200);
@@ -457,7 +460,7 @@ int http_chunk_send(int fd, const char* data, int datalen)
 
     n = snprintf(buf, sizeof(buf), "%x" HTTP_ENDL, datalen);
 
-    /* Relying on TCP buffering to keep this somewhat efficient. */
+    // Relying on TCP buffering to keep this somewhat efficient.
     socket_write(fd, buf, n);
     if (datalen > 0)
         n += socket_write(fd, data, datalen);
@@ -480,18 +483,18 @@ char* http_request_recv(int fd, char* buf, int buflen, char** data)
         len = strlen(*data);
 
         if (*data == buf && len == (buflen-1)) {
-            /* Buffer overflow.  Return truncated request. */
+            // Buffer overflow.  Return truncated request.
             break;
         }
 
         if (*data != buf) {
             if (len > 0) {
-                /* Move existing data to the front of buffer. */
+                // Move existing data to the front of buffer.
                 if (len < *data - buf) {
                     strcpy(buf, *data);
 
                 } else {
-                    /* Memory region overlaps.  Can't use strcpy(). */
+                    // Memory region overlaps.  Can't use strcpy().
                     for (len = 0; (*data)[len] != '\0'; ++len)
                         buf[len] = (*data)[len];
                     buf[len] = '\0';
@@ -500,13 +503,13 @@ char* http_request_recv(int fd, char* buf, int buflen, char** data)
             *data = buf;
         }
 
-        /* Read more data from socket into the remaining buffer space. */
+        // Read more data from socket into the remaining buffer space.
         recvlen = recv(fd, buf + len, buflen - (len + 1), MSG_DONTWAIT);
         if (recvlen < 0) {
             return NULL;
         } else if (recvlen == 0) {
             if (len == 0) {
-                /* No data in buffer, and connection was closed. */
+                // No data in buffer, and connection was closed.
                 return NULL;
             }
             break;
@@ -522,7 +525,7 @@ char* http_request_recv(int fd, char* buf, int buflen, char** data)
         *data = split + strlen(delim);
 
     } else {
-        /* Socket closed while buffer not empty.  Return remaining data */
+        // Socket closed while buffer not empty.  Return remaining data
         *data += len;
     }
     // /* DEBUG */ printf("HTTP REQ: %s", retval);
@@ -597,17 +600,17 @@ int http_send_overview(int fd)
         total += count;
 
         if (total >= sizeof(sendbuf)) {
-            /* Corner Case: No room for any session data.  Error out. */
+            // Corner Case: No room for any session data.  Error out.
             if (ptr == sendbuf) {
                 opt_http_write(fd, "FAIL");
                 return -1;
             }
 
-            /* Make room in buffer by sending the contents thus far. */
+            // Make room in buffer by sending the contents thus far.
             *ptr = '\0';
             opt_http_write(fd, sendbuf);
 
-            /* Reset the loop variables and try again. */
+            // Reset the loop variables and try again.
             buf = sendbuf;
             buflen = sizeof(sendbuf);
             total = 0;
@@ -731,15 +734,15 @@ int http_send_refresh(int fd, session_state_t* sess, const char* arg)
         total += count;
 
         if (total >= sizeof(sendbuf)) {
-            /* Corner Case: No room for any session data.  Error out. */
+            // Corner Case: No room for any session data.  Error out.
             if (ptr == sendbuf)
                 goto error;
 
-            /* Make room in buffer by sending the contents thus far. */
+            // Make room in buffer by sending the contents thus far.
             *ptr = '\0';
             opt_http_write(fd, sendbuf);
 
-            /* Reset the loop variables and try again. */
+            // Reset the loop variables and try again.
             buf = sendbuf;
             buflen = sizeof(sendbuf);
             total = 0;

@@ -29,7 +29,9 @@
 
 #define MAX_LOOP 5000
 
-/* A simple performance function is defined here for illustration purposes. */
+/*
+ * A simple performance function is defined here for illustration purposes.
+ */
 double application(long ival, double rval, const char* string)
 {
     int i;
@@ -55,7 +57,7 @@ int main(int argc, char* argv[])
         }
     }
 
-    /* Initialize a Harmony client. */
+    // Initialize a Harmony client.
     hd = ah_init();
     if (hd == NULL) {
         fprintf(stderr, "Error initializing a Harmony session");
@@ -66,20 +68,20 @@ int main(int argc, char* argv[])
     if (argc > 1)
         filename = argv[1];
 
-    /* Load a session definition file. */
+    // Load a session definition file.
     if (ah_load(hd, filename) != 0) {
         fprintf(stderr, "Error loading session file");
         goto error;
     }
 
-    /* Begin a new tuning session. */
+    // Begin a new tuning session.
     printf("Starting Harmony...\n");
     if (ah_launch(hd, NULL, 0, filename) != 0) {
         fprintf(stderr, "Error launching tuning session");
         goto error;
     }
 
-    /* Main tuning loop. */
+    // Main tuning loop.
     for (i = 0; !ah_converged(hd) && i < MAX_LOOP; ++i) {
         int hresult = ah_fetch(hd);
         if (hresult < 0) {
@@ -87,18 +89,18 @@ int main(int argc, char* argv[])
             goto error;
         }
 
-        /* Run one full iteration of the application (or code variant).
-         *
-         * Here our application is rather simple. Definition of performance can
-         * be user-defined. Depending on application, it can be MFlops/sec,
-         * time to complete the entire run of the application, cache hits vs.
-         * misses and so on.
-         *
-         * For searching the parameter space in a Transformation framework,
-         * just run different parameterized code variants here. A simple
-         * mapping between the parameters and the code-variants is needed to
-         * call the appropriate code variant.
-         */
+        // Run one full iteration of the application (or code variant).
+        //
+        // Here our application is rather simple. Definition of performance can
+        // be user-defined. Depending on application, it can be MFlops/sec,
+        // time to complete the entire run of the application, cache hits vs.
+        // misses and so on.
+        //
+        // For searching the parameter space in a Transformation framework,
+        // just run different parameterized code variants here. A simple
+        // mapping between the parameters and the code-variants is needed to
+        // call the appropriate code variant.
+        //
         perf = application(ah_get_int(hd, "i_var"),
                            ah_get_real(hd, "r_var"),
                            ah_get_enum(hd, "fruits"));
@@ -109,7 +111,7 @@ int main(int argc, char* argv[])
                ah_get_enum(hd, "fruits"),
                perf);
 
-        /* Report the performance we've just measured. */
+        // Report the performance we've just measured.
         if (ah_report(hd, &perf) != 0) {
             fprintf(stderr, "Error reporting performance to server");
             goto error;
@@ -142,7 +144,7 @@ int main(int argc, char* argv[])
     retval = -1;
 
   cleanup:
-    /* Leave the tuning session. */
+    // Leave the tuning session.
     if (ah_leave(hd) != 0)
         fprintf(stderr, "Error disconnecting from Harmony session: %s.\n",
                 ah_error_string(hd));

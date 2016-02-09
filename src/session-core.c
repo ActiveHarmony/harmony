@@ -40,7 +40,7 @@
 #include <sys/socket.h>
 #include <sys/select.h>
 
-/* --------------------------------
+/*
  * Session configuration variables.
  */
 hspace_t session_space = HSPACE_INITIALIZER;
@@ -51,7 +51,7 @@ int perf_count;
 int per_client;
 int num_clients;
 
-/* --------------------------------
+/*
  * Callback registration variables.
  */
 typedef struct callback {
@@ -64,7 +64,7 @@ callback_t* cbs = NULL;
 int cbs_len = 0;
 int cbs_cap = 0;
 
-/* -------------------------
+/*
  * Plug-in system variables.
  */
 strategy_generate_t strategy_generate;
@@ -97,13 +97,15 @@ typedef struct layer {
     int wait_analyze_cap;
 } layer_t;
 
-/* Stack of layer objects. */
+/*
+ * Stack of layer objects.
+ */
 layer_t* lstack = NULL;
 int lstack_len = 0;
 int lstack_cap = 0;
 
-/* ------------------------------
- * Forward function declarations.
+/*
+ * Internal helper function prototypes.
  */
 int init_session(void);
 int generate_trial(void);
@@ -125,7 +127,7 @@ int load_layers(const char* list);
 int extend_lists(int target_cap);
 void reverse_array(void* ptr, int head, int tail);
 
-/* -------------------
+/*
  * Workflow variables.
  */
 const char* errmsg;
@@ -134,18 +136,22 @@ hflow_t flow;
 int paused_id;
 hpoint_t best;
 
-/* List of all points generated, but not yet returned to the strategy. */
+/*
+ * List of all points generated, but not yet returned to the strategy.
+ */
 htrial_t* pending = NULL;
 int pending_cap = 0;
 int pending_len = 0;
 
-/* List of all trials (point/performance pairs) waiting for client fetch. */
+/*
+ * List of all trials (point/performance pairs) waiting for client fetch.
+ */
 int* ready = NULL;
 int ready_head = 0;
 int ready_tail = 0;
 int ready_cap = 0;
 
-/* ----------------------------
+/*
  * Variables used for select().
  */
 struct timeval  polltime;
@@ -153,13 +159,13 @@ struct timeval* pollstate;
 fd_set fds;
 int maxfd;
 
-/* -------------------------------------------
+/*
  * Static buffers used for dynamic allocation.
  */
 static char* cfg_buf = NULL;
 static int cfg_len = 0;
 
-/* =================================
+/*
  * Core session routines begin here.
  */
 int main(int argc, char* argv[])
@@ -169,13 +175,13 @@ int main(int argc, char* argv[])
     fd_set ready_fds;
     hmesg_t mesg = HMESG_INITIALIZER;
 
-    /* Check that we have been launched correctly by checking that
-     * STDIN_FILENO is a socket descriptor.
-     *
-     * Print an error message to stderr if this is not the case.  This
-     * should be the only time an error message is printed to stdout
-     * or stderr.
-     */
+    // Check that we have been launched correctly by checking that
+    // STDIN_FILENO is a socket descriptor.
+    //
+    // Print an error message to stderr if this is not the case.  This
+    // should be the only time an error message is printed to stdout
+    // or stderr.
+    //
     if (fstat(STDIN_FILENO, &sb) < 0) {
         perror("Could not determine the status of STDIN");
         return -1;
@@ -186,7 +192,7 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    /* Receive the initial session message. */
+    // Receive the initial session message.
     mesg.type = HMESG_SESSION;
     printf("Receiving initial session message on fd %d\n", STDIN_FILENO);
     if (mesg_recv(STDIN_FILENO, &mesg) < 1) {
@@ -199,7 +205,7 @@ int main(int argc, char* argv[])
         goto error;
     }
 
-    /* Initialize the session. */
+    // Initialize the session.
     if (hspace_copy(&session_space, mesg.state.space) != 0) {
         mesg.data.string = "Could not copy session data";
         goto error;
@@ -219,7 +225,7 @@ int main(int argc, char* argv[])
     if (init_session() != 0)
         goto error;
 
-    /* Send the initial session message acknowledgment. */
+    // Send the initial session message acknowledgment.
     mesg.status = HMESG_STATUS_OK;
     if (mesg_send(STDIN_FILENO, &mesg) < 1) {
         errmsg = mesg.data.string;
@@ -235,13 +241,13 @@ int main(int argc, char* argv[])
         if (retval < 0)
             goto error;
 
-        /* Launch callbacks, if needed. */
+        // Launch callbacks, if needed.
         for (i = 0; i < cbs_len; ++i) {
             if (FD_ISSET(cbs[i].fd, &ready_fds))
                 handle_callback(&cbs[i]);
         }
 
-        /* Handle hmesg_t, if needed. */
+        // Handle hmesg_t, if needed.
         if (FD_ISSET(STDIN_FILENO, &ready_fds)) {
             retval = mesg_recv(STDIN_FILENO, &mesg);
             if (retval == 0) goto cleanup;
@@ -274,7 +280,7 @@ int main(int argc, char* argv[])
                 goto error;
         }
 
-        /* Generate another point, if there's room in the queue. */
+        // Generate another point, if there's room in the queue.
         while (pollstate != NULL && pending_len < pending_cap) {
             generate_trial();
         }
@@ -307,14 +313,14 @@ int init_session(void)
     const char* ptr;
     long seed;
 
-    /* Before anything else, control the random seeds. */
+    // Before anything else, control the random seeds.
     seed = hcfg_int(&cfg, CFGKEY_RANDOM_SEED);
     if (seed < 0)
         seed = time(NULL);
     srand((int) seed);
     srand48(seed);
 
-    /* Initialize global data structures. */
+    // Initialize global data structures.
     pollstate = &polltime;
     FD_ZERO(&fds);
     FD_SET(STDIN_FILENO, &fds);
@@ -348,7 +354,7 @@ int init_session(void)
         return -1;
     }
 
-    /* Load and initialize the strategy code object. */
+    // Load and initialize the strategy code object.
     ptr = hcfg_get(&cfg, CFGKEY_STRATEGY);
     if (!ptr) {
         if (num_clients > 1)
@@ -360,7 +366,7 @@ int init_session(void)
     if (load_strategy(ptr) != 0)
         return -1;
 
-    /* Load and initialize requested layer's. */
+    // Load and initialize requested layers.
     ptr = hcfg_get(&cfg, CFGKEY_LAYERS);
     if (ptr && load_layers(ptr) != 0)
         return -1;
@@ -376,7 +382,7 @@ int generate_trial(void)
     int idx;
     htrial_t* trial = NULL;
 
-    /* Find a free point. */
+    // Find a free point.
     for (idx = 0; idx < pending_cap; ++idx) {
         trial = &pending[idx];
         if (!trial->point.id)
@@ -387,21 +393,21 @@ int generate_trial(void)
         return -1;
     }
 
-    /* Reset the performance for this trial. */
+    // Reset the performance for this trial.
     hperf_reset(&trial->perf);
 
-    /* Call strategy generation routine. */
+    // Call strategy generation routine.
     if (strategy_generate(&flow, (hpoint_t*)&trial->point) != 0)
         return -1;
 
     if (flow.status == HFLOW_WAIT) {
-        /* Strategy requests that we pause point generation. */
+        // Strategy requests that we pause point generation.
         pollstate = NULL;
         return 0;
     }
     ++pending_len;
 
-    /* Begin generation workflow for new point. */
+    // Begin generation workflow for new point.
     curr_layer = 1;
     return plugin_workflow(idx);
 }
@@ -417,14 +423,14 @@ int plugin_workflow(int trial_idx)
 
         flow.status = HFLOW_ACCEPT;
         if (curr_layer < 0) {
-            /* Analyze workflow. */
+            // Analyze workflow.
             if (lstack[stack_idx].analyze) {
                 if (lstack[stack_idx].analyze(&flow, trial) != 0)
                     return -1;
             }
         }
         else {
-            /* Generate workflow. */
+            // Generate workflow.
             if (lstack[stack_idx].generate) {
                 if (lstack[stack_idx].generate(&flow, trial) != 0)
                     return -1;
@@ -437,19 +443,19 @@ int plugin_workflow(int trial_idx)
     }
 
     if (curr_layer == 0) {
-        /* Completed analysis layers.  Send trial to strategy. */
+        // Completed analysis layers.  Send trial to strategy.
         if (strategy_analyze(trial) != 0)
             return -1;
 
-        /* Remove point data from pending list. */
+        // Remove point data from pending list.
         ((hpoint_t*)&trial->point)->id = 0;
         --pending_len;
 
-        /* Point generation attempts may begin again. */
+        // Point generation attempts may begin again.
         pollstate = &polltime;
     }
     else if (curr_layer > lstack_len) {
-        /* Completed generation layers.  Enqueue trial in ready queue. */
+        // Completed generation layers.  Enqueue trial in ready queue.
         if (ready[ready_tail] != -1) {
             errmsg = "Internal error: Ready queue overflow.";
             return -1;
@@ -466,7 +472,7 @@ int plugin_workflow(int trial_idx)
     return 0;
 }
 
-/* Layer state machine transitions. */
+// Layer state machine transitions.
 int workflow_transition(int trial_idx)
 {
     switch (flow.status) {
@@ -511,7 +517,7 @@ int handle_reject(int trial_idx)
         return -1;
     }
 
-    /* Regenerate this rejected point. */
+    // Regenerate this rejected point.
     if (strategy_rejected(&flow, (hpoint_t*) &trial->point) != 0)
         return -1;
 
@@ -567,7 +573,7 @@ int handle_callback(callback_t* cb)
     curr_layer = cb->index;
     idx = abs(curr_layer) - 1;
 
-    /* The idx variable represents layer plugin index for now. */
+    // The idx variable represents layer plugin index for now.
     if (curr_layer < 0) {
         list = lstack[idx].wait_analyze;
         len = &lstack[idx].wait_analyze_len;
@@ -582,12 +588,12 @@ int handle_callback(callback_t* cb)
         return -1;
     }
 
-    /* Prepare a list of htrial_t pointers. */
+    // Prepare a list of htrial_t pointers.
     trial_list = malloc(*len * sizeof(htrial_t*));
     for (i = 0; i < *len; ++i)
         trial_list[i] = &pending[ list[i] ];
 
-    /* Reusing idx to represent waitlist index.  (Shame on me.) */
+    // Reusing idx to represent waitlist index.  (Shame on me.)
     idx = cb->func(cb->fd, &flow, *len, trial_list);
     free(trial_list);
 
@@ -606,12 +612,12 @@ int handle_join(hmesg_t* mesg)
 {
     int i;
 
-    /* Grow the pending and ready queues. */
+    // Grow the pending and ready queues.
     ++num_clients;
     if (extend_lists(num_clients * per_client) != 0)
         return -1;
 
-    /* Launch all join hooks defined in the plug-in stack. */
+    // Launch all join hooks defined in the plug-in stack.
     if (strategy_join && strategy_join(mesg->state.client) != 0)
         return -1;
 
@@ -627,7 +633,7 @@ int handle_join(hmesg_t* mesg)
 
 int handle_getcfg(hmesg_t* mesg)
 {
-    /* Prepare getcfg response message for client. */
+    // Prepare getcfg response message for client.
     const char* cfgval = hcfg_get(&cfg, mesg->data.string);
     if (cfgval == NULL)
         cfgval = "";
@@ -649,7 +655,7 @@ int handle_setcfg(hmesg_t* mesg)
     }
     *sep = '\0';
 
-    /* Store the original value, possibly allocating memory for it. */
+    // Store the original value, possibly allocating memory for it.
     oldval = hcfg_get(&cfg, mesg->data.string);
     if (oldval) {
         snprintf_grow(&cfg_buf, &cfg_len, "%s", oldval);
@@ -661,7 +667,7 @@ int handle_setcfg(hmesg_t* mesg)
         return -1;
     }
 
-    /* Prepare setcfg response message for client. */
+    // Prepare setcfg response message for client.
     mesg->data.string = oldval;
     mesg->status = HMESG_STATUS_OK;
     return 0;
@@ -677,22 +683,22 @@ int handle_fetch(hmesg_t* mesg)
 {
     int idx = ready[ready_head], paused;
 
-    /* Check if the session is paused. */
+    // Check if the session is paused.
     paused = hcfg_bool(&cfg, CFGKEY_PAUSED);
 
     if (!paused && idx >= 0) {
-        /* Send the next point on the ready queue. */
+        // Send the next point on the ready queue.
         mesg->data.point = &pending[idx].point;
 
-        /* Remove the first point from the ready queue. */
+        // Remove the first point from the ready queue.
         ready[ready_head] = -1;
         ready_head = (ready_head + 1) % ready_cap;
 
         mesg->status = HMESG_STATUS_OK;
     }
     else {
-        /* Ready queue is empty, or session is paused.
-         * Send the best known point. */
+        // Ready queue is empty, or session is paused.
+        // Send the best known point.
         mesg->state.best = &best;
         if (strategy_best(&best) != 0)
             return -1;
@@ -708,7 +714,7 @@ int handle_report(hmesg_t* mesg)
     int idx;
     htrial_t* trial = NULL;
 
-    /* Find the associated trial in the pending list. */
+    // Find the associated trial in the pending list.
     for (idx = 0; idx < pending_cap; ++idx) {
         trial = &pending[idx];
         if (trial->point.id == mesg->data.point->id)
@@ -726,10 +732,10 @@ int handle_report(hmesg_t* mesg)
     }
     paused_id = 0;
 
-    /* Update performance in our local records. */
+    // Update performance in our local records.
     hperf_copy(&trial->perf, mesg->data.perf);
 
-    /* Begin the workflow at the outermost analysis layer. */
+    // Begin the workflow at the outermost analysis layer.
     curr_layer = -lstack_len;
     if (plugin_workflow(idx) != 0)
         return -1;
@@ -771,14 +777,16 @@ int update_state(hmesg_t* mesg)
     return 0;
 }
 
-/* ISO C forbids conversion of object pointer to function pointer,
+/*
+ * ISO C forbids conversion of object pointer to function pointer,
  * making it difficult to use dlsym() for functions.  We get around
  * this by first casting to a word-length integer.  (ILP32/LP64
  * compilers assumed).
  */
 #define dlfptr(x, y) ((void (*)(void))(long)(dlsym((x), (y))))
 
-/* Loads strategy given name of library file.
+/*
+ * Loads strategy given name of library file.
  * Checks that strategy defines required functions,
  * and then calls the strategy's init function (if defined)
  */
@@ -964,7 +972,7 @@ int extend_lists(int target_cap)
     if (ready && ready_tail <= ready_head && ready[ready_head] != -1) {
         i = ready_cap - ready_head;
 
-        /* Shift ready array to align head with array index 0. */
+        // Shift ready array to align head with array index 0.
         reverse_array(ready, 0, ready_cap);
         reverse_array(ready, 0, i);
         reverse_array(ready, i, ready_cap);
@@ -996,7 +1004,7 @@ void reverse_array(void* ptr, int head, int tail)
     unsigned long* arr = (unsigned long*) ptr;
 
     while (head < --tail) {
-        /* Swap head and tail entries. */
+        // Swap head and tail entries.
         arr[head] ^= arr[tail];
         arr[tail] ^= arr[head];
         arr[head] ^= arr[tail];
@@ -1004,10 +1012,9 @@ void reverse_array(void* ptr, int head, int tail)
     }
 }
 
-/* ========================================================
+/*
  * Exported functions for pluggable modules.
  */
-
 int callback_generate(int fd, cb_func_t func)
 {
     if (cbs_len >= cbs_cap) {
@@ -1044,7 +1051,9 @@ int callback_analyze(int fd, cb_func_t func)
     return 0;
 }
 
-/* Central interface for shared configuration between pluggable modules. */
+/*
+ * Central interface for shared configuration between pluggable modules.
+ */
 int session_setcfg(const char* key, const char* val)
 {
     int i;
@@ -1052,11 +1061,11 @@ int session_setcfg(const char* key, const char* val)
     if (hcfg_set(&cfg, key, val) != 0)
         return -1;
 
-    /* Make sure setcfg callbacks are triggered after the
-     * configuration has been set.  Otherwise, any subsequent
-     * calls to setcfg further down the stack will be nullified
-     * when we return to this frame.
-     */
+    // Make sure setcfg callbacks are triggered after the
+    // configuration has been set.  Otherwise, any subsequent calls to
+    // setcfg further down the stack will be nullified when we return
+    // to this frame.
+    //
     if (strategy_setcfg && strategy_setcfg(key, val) != 0)
         return -1;
 

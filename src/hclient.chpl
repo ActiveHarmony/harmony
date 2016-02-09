@@ -17,8 +17,9 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/* Harmony client module definition file for Cray's Chapel language. */
-
+/*
+ * Harmony client module definition file for Cray's Chapel language.
+ */
 module hclient
 {
     extern var HARMONY_IO_POLL : int(32);

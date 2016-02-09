@@ -17,7 +17,9 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/* Global Variables */
+/*
+ * Global Variables.
+ */
 var appName;
 var space;
 var trials = new Array();
@@ -36,7 +38,9 @@ function shutdown_comm(xhr, status, error)
     $("#interval").attr("disabled", true);
 }
 
-// Effectively, the main() routine for this program.
+/*
+ * Effectively, the main() routine for this program.
+ */
 $(document).ready(function(){
     ajaxSetup(shutdown_comm);
 
@@ -152,8 +156,10 @@ function handleRefreshData(data)
     var oldTrialsLength = trials.length;
     var index;
 
-    /* mechanism only updates parts of the page that need to be updated
-      (what was sent from the session with the session data request) */
+    // Mechanism only updates parts of the page that need to be
+    // updated (what was sent from the session with the session data
+    // request)
+    //
     for (var i = 0; i < pairs.length; ++i) {
         var pair = keyval(pairs[i]);
 

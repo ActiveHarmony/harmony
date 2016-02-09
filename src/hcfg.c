@@ -28,11 +28,11 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <ctype.h>
-#include <math.h> /* For NAN */
+#include <math.h> // For NAN.
 
 const hcfg_t hcfg_zero = HCFG_INITIALIZER;
 
-/* -------------------------------------------
+/*
  * Default values for configuration variables.
  */
 const hcfg_info_t hcfg_global_keys[] = {
@@ -62,7 +62,9 @@ const hcfg_info_t hcfg_global_keys[] = {
     { NULL }
 };
 
-/* Internal helper function prototypes. */
+/*
+ * Internal helper function prototypes.
+ */
 static void   free_data(hcfg_t* cfg);
 static int    key_find(const hcfg_t* cfg, const char* key, char** val);
 static char*  key_val(const hcfg_t* cfg, const char* key);
@@ -74,7 +76,9 @@ static long   val_to_int(const char* val);
 static double val_to_real(const char* val);
 static int    copy_keyval(const char* buf, char** keyval, const char** errptr);
 
-/* Incorporate environment variables into current configuration. */
+/*
+ * Basic structure management implementation.
+ */
 int hcfg_init(hcfg_t* cfg)
 {
     extern char** environ;
@@ -85,6 +89,7 @@ int hcfg_init(hcfg_t* cfg)
     if (!cfg->env)
         return -1;
 
+    // Incorporate environment variables into current configuration.
     for (int i = 0; environ[i]; ++i) {
         if (valid_id(environ[i], strcspn(environ[i], "="))) {
             if (cfg->len == cfg->cap)
@@ -145,11 +150,32 @@ void hcfg_scrub(hcfg_t* cfg)
     free(cfg->env);
 }
 
+/*
+ * Configuration value access implementation.
+ */
 char* hcfg_get(const hcfg_t* cfg, const char* key)
 {
     return key_val(cfg, key);
 }
 
+int hcfg_set(hcfg_t* cfg, const char* key, const char* val)
+{
+    if (!valid_id(key, strlen(key)))
+        return -1;
+
+    if (val) {
+        char* pair = sprintf_alloc("%s=%s", key, val);
+        return key_add(cfg, pair);
+    }
+    else {
+        key_del(cfg, key);
+        return 0;
+    }
+}
+
+/*
+ * Scalar value conversion implementation.
+ */
 int hcfg_bool(const hcfg_t* cfg, const char* key)
 {
     return val_to_bool( key_val(cfg, key) );
@@ -165,6 +191,9 @@ double hcfg_real(const hcfg_t* cfg, const char* key)
     return val_to_real( key_val(cfg, key) );
 }
 
+/*
+ * Array value conversion implementation.
+ */
 int hcfg_arr_len(const hcfg_t* cfg, const char* key)
 {
     char* val = key_val(cfg, key);
@@ -206,64 +235,9 @@ double hcfg_arr_real(const hcfg_t* cfg, const char* key, int idx)
     return val_to_real( key_val_index(cfg, key, idx) );
 }
 
-int hcfg_set(hcfg_t* cfg, const char* key, const char* val)
-{
-    if (!valid_id(key, strlen(key)))
-        return -1;
-
-    if (val) {
-        char* pair = sprintf_alloc("%s=%s", key, val);
-        return key_add(cfg, pair);
-    }
-    else {
-        key_del(cfg, key);
-        return 0;
-    }
-}
-
-int hcfg_write(const hcfg_t* cfg, const char* filename)
-{
-    FILE* fp = stdout;
-
-    if (strcmp(filename, "-") != 0) {
-        fp = fopen(filename, "w");
-        if (!fp) {
-            perror("Error opening file for write");
-            return -1;
-        }
-    }
-
-    for (int i = 0; i < cfg->len; ++i) {
-        char* ptr = strchr(cfg->env[i], '=');
-        int   end = strlen(ptr) - 1;
-        char* quote = cfg->env[i] + strcspn(cfg->env[i], "#'\"\n\\");
-
-        if (isspace(ptr[1]) || isspace(ptr[end]) || *quote) {
-            fprintf(fp, "%.*s=\"", (int)(ptr - cfg->env[i]), cfg->env[i]);
-            ++ptr;
-            while (*ptr) {
-                int span = strcspn(ptr, "\"\\");
-                fprintf(fp, "%.*s", span, ptr);
-                ptr += span;
-                if (*ptr) {
-                    fprintf(fp, "\\%c", *ptr);
-                    ++ptr;
-                }
-            }
-            fprintf(fp, "\"\n");
-        }
-        else {
-            fprintf(fp, "%s\n", cfg->env[i]);
-        }
-    }
-
-    if (fp != stdout && fclose(fp) != 0) {
-        fprintf(stderr, "Warning: Ignoring error on close(%s): %s\n",
-                filename, strerror(errno));
-    }
-    return 0;
-}
-
+/*
+ * Data transmission implementation.
+ */
 int hcfg_pack(char** buf, int* buflen, const hcfg_t* cfg)
 {
     int count, total;
@@ -346,8 +320,51 @@ int hcfg_parse(hcfg_t* cfg, const char* buf, const char** errptr)
     return -1;
 }
 
+int hcfg_write(const hcfg_t* cfg, const char* filename)
+{
+    FILE* fp = stdout;
+
+    if (strcmp(filename, "-") != 0) {
+        fp = fopen(filename, "w");
+        if (!fp) {
+            perror("Error opening file for write");
+            return -1;
+        }
+    }
+
+    for (int i = 0; i < cfg->len; ++i) {
+        char* ptr = strchr(cfg->env[i], '=');
+        int   end = strlen(ptr) - 1;
+        char* quote = cfg->env[i] + strcspn(cfg->env[i], "#'\"\n\\");
+
+        if (isspace(ptr[1]) || isspace(ptr[end]) || *quote) {
+            fprintf(fp, "%.*s=\"", (int)(ptr - cfg->env[i]), cfg->env[i]);
+            ++ptr;
+            while (*ptr) {
+                int span = strcspn(ptr, "\"\\");
+                fprintf(fp, "%.*s", span, ptr);
+                ptr += span;
+                if (*ptr) {
+                    fprintf(fp, "\\%c", *ptr);
+                    ++ptr;
+                }
+            }
+            fprintf(fp, "\"\n");
+        }
+        else {
+            fprintf(fp, "%s\n", cfg->env[i]);
+        }
+    }
+
+    if (fp != stdout && fclose(fp) != 0) {
+        fprintf(stderr, "Warning: Ignoring error on close(%s): %s\n",
+                filename, strerror(errno));
+    }
+    return 0;
+}
+
 /*
- * Internal helper functions.
+ * Internal helper function implementation.
  */
 void free_data(hcfg_t* cfg) {
     for (int i = 0; i < cfg->len; ++i)

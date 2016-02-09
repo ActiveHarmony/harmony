@@ -102,14 +102,18 @@ typedef enum simplex_state {
     SIMPLEX_STATE_MAX
 } simplex_state_t;
 
-/* Forward function definitions. */
+/*
+ * Internal helper function prototypes.
+ */
 static int config_strategy(void);
 static int pro_algorithm(void);
 static int pro_next_state(void);
 static int pro_next_simplex(void);
 static int check_convergence(void);
 
-/* Variables to control search properties. */
+/*
+ * Variables to control search properties.
+ */
 vertex_t        init_point;
 double          init_radius;
 reject_method_t reject_type;
@@ -120,7 +124,9 @@ double shrink_val;
 double fval_tol;
 double size_tol;
 
-/* Variables to track current search state. */
+/*
+ * Variables to track current search state.
+ */
 hspace_t*       space;
 simplex_t       simplex;
 simplex_t       reflect;
@@ -244,9 +250,9 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
     }
     else {
         if (reject_type == REJECT_METHOD_PENALTY) {
-            /* Apply an infinite penalty to the invalid point and
-             * allow the algorithm to determine the next point to try.
-             */
+            // Apply an infinite penalty to the invalid point and
+            // allow the algorithm to determine the next point to try.
+            //
             hperf_reset(&next->vertex[reject_idx].perf);
             ++reported;
 
@@ -274,7 +280,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
             ++send_idx;
         }
         else if (reject_type == REJECT_METHOD_RANDOM) {
-            /* Replace the rejected point with a random point. */
+            // Replace the rejected point with a random point.
             if (vertex_random(&next->vertex[reject_idx], space, 1.0) != 0) {
                 session_error("Could not make random point during reject");
                 return -1;
@@ -301,7 +307,7 @@ int strategy_analyze(htrial_t* trial)
             break;
     }
     if (report_idx > space->len) {
-        /* Ignore rouge vertex reports. */
+        // Ignore rouge vertex reports.
         return 0;
     }
 
@@ -320,7 +326,7 @@ int strategy_analyze(htrial_t* trial)
         send_idx = 0;
     }
 
-    /* Update the best performing point, if necessary. */
+    // Update the best performing point, if necessary.
     if (hperf_cmp(&best_perf, &trial->perf) < 0) {
         if (hperf_copy(&best_perf, &trial->perf) != 0) {
             session_error("Could not store best performance during analyze");
@@ -347,9 +353,9 @@ int strategy_best(hpoint_t* point)
     return 0;
 }
 
-//
-// Internal helper function implementation.
-//
+/*
+ * Internal helper function implementation.
+ */
 int config_strategy(void)
 {
     const char* cfgval;
@@ -462,7 +468,7 @@ int pro_next_state(void)
     switch (state) {
     case SIMPLEX_STATE_INIT:
     case SIMPLEX_STATE_SHRINK:
-        /* Simply accept the candidate simplex and prepare to reflect. */
+        // Simply accept the candidate simplex and prepare to reflect.
         best_base = best_test;
         state = SIMPLEX_STATE_REFLECT;
         break;
@@ -471,16 +477,16 @@ int pro_next_state(void)
         if (hperf_cmp(&reflect.vertex[best_test].perf,
                       &simplex.vertex[best_base].perf) < 0)
         {
-            /* Reflected simplex has best known performance.
-             * Attempt a trial expansion.
-             */
+            // Reflected simplex has best known performance.
+            // Attempt a trial expansion.
+            //
             best_reflect = best_test;
             state = SIMPLEX_STATE_EXPAND_ONE;
         }
         else {
-            /* Reflected simplex does not improve performance.
-             * Shrink the simplex instead.
-             */
+            // Reflected simplex does not improve performance.
+            // Shrink the simplex instead.
+            //
             state = SIMPLEX_STATE_SHRINK;
         }
         break;
@@ -489,16 +495,16 @@ int pro_next_state(void)
         if (hperf_cmp(&expand.vertex[0].perf,
                       &reflect.vertex[best_reflect].perf) < 0)
         {
-            /* Trial expansion has found the best known vertex thus far.
-             * We are now free to expand the entire reflected simplex.
-             */
+            // Trial expansion has found the best known vertex thus far.
+            // We are now free to expand the entire reflected simplex.
+            //
             state = SIMPLEX_STATE_EXPAND_ALL;
         }
         else {
-            /* Expanded test vertex does not improve performance.
-             * Accept the original (unexpanded) reflected simplex and
-             * attempt another reflection.
-             */
+            // Expanded test vertex does not improve performance.
+            // Accept the original (unexpanded) reflected simplex and
+            // attempt another reflection.
+            //
             if (simplex_copy(&simplex, &reflect) != 0) {
                 session_error("Could not copy reflection simplex"
                               " for next state");
@@ -511,9 +517,9 @@ int pro_next_state(void)
 
     case SIMPLEX_STATE_EXPAND_ALL:
         if (simplex_inbounds(&expand, space)) {
-            /* If the entire expanded simplex is valid (in bounds),
-             * accept it as the reference simplex.
-             */
+            // If the entire expanded simplex is valid (in bounds),
+            // accept it as the reference simplex.
+            //
             if (simplex_copy(&simplex, &expand) != 0) {
                 session_error("Could not copy expanded simplex"
                               " for next state");
@@ -522,9 +528,9 @@ int pro_next_state(void)
             best_base = best_test;
         }
         else {
-            /* Otherwise, accept the original (unexpanded) reflected
-             * simplex as the reference simplex.
-             */
+            // Otherwise, accept the original (unexpanded) reflected
+            // simplex as the reference simplex.
+            //
             if (simplex_copy(&simplex, &reflect) != 0) {
                 session_error("Could not copy reflected simplex"
                               " for next state");
@@ -533,7 +539,7 @@ int pro_next_state(void)
             best_base = best_reflect;
         }
 
-        /* Either way, test reflection next. */
+        // Either way, test reflection next.
         state = SIMPLEX_STATE_REFLECT;
         break;
 
@@ -547,7 +553,7 @@ int pro_next_simplex(void)
 {
     switch (state) {
     case SIMPLEX_STATE_INIT:
-        /* Bootstrap the process by testing the reference simplex. */
+        // Bootstrap the process by testing the reference simplex.
         next = &simplex;
         break;
 
@@ -555,15 +561,16 @@ int pro_next_simplex(void)
         // Each simplex vertex is translated to a position opposite
         // its origin (best performing) vertex.  This corresponds to a
         // coefficient that is -1 * (1.0 + <reflect coefficient>).
+        //
         simplex_transform(&simplex, &simplex.vertex[best_base],
                           -(1.0 + reflect_val), &reflect);
         next = &reflect;
         break;
 
     case SIMPLEX_STATE_EXPAND_ONE:
-        /* Next simplex should have one vertex extending the best.
-         * And the rest should be copies of the best known vertex.
-         */
+        // Next simplex should have one vertex extending the best.
+        // And the rest should be copies of the best known vertex.
+        //
         vertex_transform(&simplex.vertex[best_reflect],
                          &simplex.vertex[best_base],
                          -(1.0 + expand_val), &expand.vertex[0]);
@@ -575,24 +582,27 @@ int pro_next_simplex(void)
         break;
 
     case SIMPLEX_STATE_EXPAND_ALL:
-        /* Expand all original simplex vertices away from the best
-         * known vertex thus far. */
+        // Expand all original simplex vertices away from the best
+        // known vertex thus far.
+        //
         simplex_transform(&simplex, &simplex.vertex[best_base],
                           -(1.0 + expand_val), &expand);
         next = &expand;
         break;
 
     case SIMPLEX_STATE_SHRINK:
-        /* Shrink all original simplex vertices towards the best
-         * known vertex thus far. */
+        // Shrink all original simplex vertices towards the best
+        // known vertex thus far.
+        //
         simplex_transform(&simplex, &simplex.vertex[best_base],
                           -shrink_val, &simplex);
         next = &simplex;
         break;
 
     case SIMPLEX_STATE_CONVERGED:
-        /* Simplex has converged.  Nothing to do.
-         * In the future, we may consider new search at this point. */
+        // Simplex has converged.  Nothing to do.
+        // In the future, we may consider new search at this point.
+        //
         break;
 
     default:

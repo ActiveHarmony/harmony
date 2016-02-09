@@ -16,7 +16,8 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-#define _XOPEN_SOURCE 600 // Needed for S_ISSOCK, sigaction(), and gethostname().
+#define _XOPEN_SOURCE 600 // Needed for S_ISSOCK, sigaction(), and
+                          // gethostname().
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,17 +42,22 @@
 
 #define POLL_TIME 250000
 
+/*
+ * Internal helper function prototypes.
+ */
 void graceful_exit(int signum);
+int  init_signals(void);
+int  init_comm(void);
+int  url_parse(const char* url);
+int  reply_url_build(void);
+int  mesg_write(int id);
+int  mesg_read(int id);
+int  read_loop(int fd, char* readbuf, int readlen);
+int  write_loop(int fd, char* writebuf, int writelen);
 
-int init_signals(void);
-int init_comm(void);
-int url_parse(const char* url);
-int reply_url_build(void);
-int mesg_write(int id);
-int mesg_read(int id);
-int read_loop(int fd, char* readbuf, int readlen);
-int write_loop(int fd, char* writebuf, int writelen);
-
+/*
+ * Global variables.
+ */
 hmesg_t mesg = HMESG_INITIALIZER;
 char*   reply_dir;
 int     reply_dir_created, signal_caught;
@@ -72,13 +78,13 @@ int main(int argc, char* argv[])
     fd_set fds, ready_fds;
     struct timeval polltime;
 
-    /* Check that we have been launched correctly by checking that
-     * STDIN_FILENO is a socket descriptor.
-     *
-     * Print an error message to stderr if this is not the case.  This
-     * should be the only time an error message is printed to stdout
-     * or stderr.
-     */
+    // Check that we have been launched correctly by checking that
+    // STDIN_FILENO is a socket descriptor.
+    //
+    // Print an error message to stderr if this is not the case.  This
+    // should be the only time an error message is printed to stdout
+    // or stderr.
+    //
     if (fstat(STDIN_FILENO, &sb) != 0) {
         perror("Could not determine the status of STDIN");
         return -1;
@@ -122,7 +128,7 @@ int main(int argc, char* argv[])
             goto error;
         }
 
-        /* Forward incoming message from Harmony server to code server. */
+        // Forward incoming message from Harmony server to code server.
         if (FD_ISSET(STDIN_FILENO, &ready_fds)) {
             if (mesg_recv(STDIN_FILENO, &mesg) < 1)
                 goto error;
@@ -133,7 +139,7 @@ int main(int argc, char* argv[])
             ++next_id;
         }
 
-        /* Forward incoming message from code server to Harmony server. */
+        // Forward incoming message from code server to Harmony server.
         do {
             count = mesg_read(curr_id);
             if (count < 0) goto error;
@@ -166,6 +172,9 @@ int main(int argc, char* argv[])
     return retval;
 }
 
+/*
+ * Internal helper function implementation.
+ */
 void graceful_exit(int signum)
 {
     fprintf(stderr, "\nCaught signal %d.  Exiting.\n", signum);
@@ -194,7 +203,7 @@ int init_comm(void)
     const char* cfgval;
     hcfg_t cfg = hcfg_zero;
 
-    /* Read a session message from the codegen plugin */
+    // Read a session message from the codegen plugin.
     if (mesg_recv(STDIN_FILENO, &mesg) < 1) {
         mesg.data.string = "Socket or unpacking error";
         return -1;
@@ -226,7 +235,7 @@ int init_comm(void)
         goto error;
     }
 
-    /* Get the URL for the code generation server, and open a socket to it */
+    // Get the URL for the code generation server, and open a socket to it.
     cfgval = hcfg_get(&cfg, CFGKEY_SERVER_URL);
     if (!cfgval) {
         mesg.data.string = "Codegen server URL not specified";
@@ -237,7 +246,7 @@ int init_comm(void)
         goto error;
 
     if (scp_cmd && !hcfg_get(&cfg, CFGKEY_REPLY_URL)) {
-        /* User did not supply a reply URL.  Build one ourselves. */
+        // User did not supply a reply URL.  Build one ourselves.
         if (reply_url_build() < 0)
             goto error;
 
@@ -258,7 +267,7 @@ int init_comm(void)
         goto error;
     }
 
-    /* Write the initial message for the code server. */
+    // Write the initial message for the code server.
     if (mesg_write(-1) < 0)
         goto error;
 
@@ -287,9 +296,9 @@ int url_parse(const char* url)
     ptr += 2;
 
     if (strncmp("dir://", url, ptr - url) == 0) {
-        /* Codegen path is local.  Check that the path exists as a
-         * directory, and use it for incoming and outgoing messages.
-         */
+        // Codegen path is local.  Check that the path exists as a
+        // directory, and use it for incoming and outgoing messages.
+        //
         if (stat(ptr, &sb) < 0) {
             mesg.data.string = "Could not stat reply directory";
             return -1;
@@ -307,10 +316,10 @@ int url_parse(const char* url)
         }
     }
     else if (strncmp("ssh://", url, ptr - url) == 0) {
-        /* Codegen path exists on another machine accessible via ssh.
-         * First, create a local directory to temporarily hold outgoing
-         * messages, and receive incoming messages.
-         */
+        // Codegen path exists on another machine accessible via ssh.
+        // First, create a local directory to temporarily hold outgoing
+        // messages, and receive incoming messages.
+        //
         reply_dir = sprintf_alloc("%s/codegen-%s.%lx",
                                   tmp_dir, sess_name, time(NULL));
         if (!reply_dir) {
@@ -324,9 +333,9 @@ int url_parse(const char* url)
         }
         reply_dir_created = 1;
 
-        /* Now prepare the strings we'll use to launch scp for file
-         * transfer.
-         */
+        // Now prepare the strings we'll use to launch scp for file
+        // transfer.
+        //
         url = ptr;
 
         ptr = strchr(url, '/');
@@ -380,7 +389,7 @@ int reply_url_build(void)
         mesg.data.string = "Could not determine local hostname";
         return -1;
     }
-    host[sizeof(host) - 1] = '\0'; /* Safety first! */
+    host[sizeof(host) - 1] = '\0'; // Safety first!
 
     memset(&hints, 0, sizeof(hints));
     hints.ai_flags = AI_CANONNAME;
@@ -431,7 +440,7 @@ int mesg_read(int id)
         goto retry;
     }
 
-    /* Obtain file size */
+    // Obtain file size.
     if (fstat(fd, &sb) != 0) {
         errmsg = strerror(errno);
         goto retry;
@@ -487,13 +496,13 @@ int mesg_read(int id)
     return retval;
 
   retry:
-    /* Avoid the race condition where we attempt to read a message
-     * before the remote code server scp process has completely
-     * written the file.
-     *
-     * At some point, this retry method should probably be replaced
-     * with file locks as a more complete solution.
-     */
+    // Avoid the race condition where we attempt to read a message
+    // before the remote code server scp process has completely
+    // written the file.
+    //
+    // At some point, this retry method should probably be replaced
+    // with file locks as a more complete solution.
+    //
     close(fd);
     if (--retries) {
         polltime.tv_sec = 0;
@@ -544,7 +553,7 @@ int mesg_write(int id)
     }
 
     if (scp_cmd) {
-        /* Call scp to transfer the file. */
+        // Call scp to transfer the file.
         count = snprintf_grow(&buf, &buflen, "%s %s/%s.%d %s",
                               scp_cmd, reply_dir, out_filename, id, scp_dst);
         if (count < 0) {
@@ -557,7 +566,7 @@ int mesg_write(int id)
             return -1;
         }
 
-        /* Remove the file from the local filesystem. */
+        // Remove the file from the local filesystem.
         count = snprintf_grow(&buf, &buflen, "%s/%s.%d",
                               reply_dir, out_filename, id);
         if (count < 0) {

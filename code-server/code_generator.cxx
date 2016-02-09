@@ -68,6 +68,9 @@ typedef struct {
     string port;
 } url_t;
 
+/*
+ * Internal helper function prototypes.
+ */
 void generator_main(generator_t& gen);
 int codeserver_init(string& filename);
 int dir_erase(string& dirname);
@@ -98,7 +101,9 @@ vector<generator_t> gen_list;
 string log_file;
 stringstream log_message;
 
-/* Configuration values passed in from the Harmony server. */
+/*
+ * Configuration values passed in from the Harmony server.
+ */
 string appname, slave_path;
 url_t local_url, reply_url, target_url;
 
@@ -114,56 +119,57 @@ pid_t generator_make(generator_t& gen)
 
     pid = fork();
     if (pid > 0) {
-        /* Parent case */
+        // Parent case.
         gen.pid = pid;
         return pid;
     }
     else if (pid < 0) {
-        /* Error case */
+        // Error case.
         cerr << "Error on fork(); " << strerror(errno) << "\n";
         return 0;
     }
 
-    generator_main(gen); // child continues
+    generator_main(gen); // Child continues.
     return 0;
 }
 
-// this gets the code generation parameters from the code manager and fires
-//  scripts to use the underlying code generation tool to generate the code.
-//  Scripts for different code and different code-generation utility need to
-//   be provided by the user.
-
+/*
+ * This gets the code generation parameters from the code manager and
+ * fires scripts to use the underlying code generation tool to
+ * generate the code.  Scripts for different code and different
+ * code-generation utility need to be provided by the user.
+ *
+ * This is where the code generation happens.  Note that appname has
+ * to match the name given to this session.
+ */
 void generator_main(generator_t& gen)
 {
-    // this is where the code generation happens
-    //  make a call to chill_script.appname.sh
-    // Note that appname has to match the name given to this session.
-
+    // Make a call to chill_script.appname.sh
     vector<long> values = values_of(gen.mesg.data.point);
 
-    /* Print a message to the logger */
+    // Print a message to the logger.
     log_message.str("");
     log_message << gen.hostname << ": " << vector_to_string(values) << "\n";
     logger(log_message.str());
 
-    // set which machine to use
-    // first check to see if there is an underscore in the machine name.
+    // Set which machine to use.
+    // First check to see if there is an underscore in the machine name.
     string generator_name;
     generator_name = gen.hostname.substr(0, gen.hostname.find("_"));
 
-    /* Different machines might be configured differently. So a check here
-     * should be made to make sure that the hostname matches uniformly across
-     * generator_hosts file and hostname gathered here.
-     */
+    // Different machines might be configured differently. So a check
+    // here should be made to make sure that the hostname matches
+    // uniformly across generator_hosts file and hostname gathered
+    // here.
 
-    /* Determine if slave is on a remote host */
+    // Determine if slave is on a remote host.
     bool flag = (generator_name == local_url.host);
 
     stringstream ss;
     ss.str("");
 
     if (!flag) {
-        // remote
+        // Remote.
         ss << "ssh " << generator_name << " ";
     }
     ss << "exec " << slave_path << "/" << gen.hostname
@@ -174,6 +180,7 @@ void generator_main(generator_t& gen)
     } else {
         ss << vector_to_bash_array_remote(values);
     }
+
     ss << generator_name << " "
        << slave_path << "/" << gen.hostname << "_" << appname << " "
        << target_url.host << " "
@@ -188,7 +195,7 @@ void generator_main(generator_t& gen)
         gen_list.pop_back();
     }
 
-    // error check not done yet.
+    // Error check not done yet.
     exit(0);
 }
 
@@ -214,9 +221,9 @@ int main(int argc, char* argv[])
     local_url.path = argv[1];
     local_url.host.clear();
 
-    // main loop starts here
-    // update the log file
+    // Main loop starts here.
 
+    // Update the log file.
     if (dir_erase(local_url.path) < 0) {
         cerr << "Could not prepare local directory for incoming messages.\n";
         return -1;
@@ -225,7 +232,7 @@ int main(int argc, char* argv[])
     string init_filename = local_url.path + "/" + infile_name + ".-1";
     string next_filename;
     while (true) {
-        /* Construct the next timestep filename. */
+        // Construct the next timestep filename.
         ss.str("");
         ss << local_url.path << "/" << infile_name << "." << timestep;
         next_filename = ss.str();
@@ -249,7 +256,7 @@ int main(int argc, char* argv[])
                 cerr << "Removing invalid configuration file.\n";
             }
             else {
-                // record some data? How many variants produced in total?
+                // Record some data? How many variants produced in total?
                 timestep = 0;
                 num_ready = gen_list.size();
                 cout << "Beginning new code server session." << endl;
@@ -263,7 +270,7 @@ int main(int argc, char* argv[])
 	double time1__, time2__;
 	time1__=time_stamp();
 
-        // Find an available generator slot
+        // Find an available generator slot.
         for (i = 0; i < gen_list.size(); ++i) {
             if (gen_list[i].pid == 0) {
                 mesg_read(next_filename.c_str(), &gen_list[i].mesg);
@@ -296,13 +303,13 @@ int main(int argc, char* argv[])
         logger(log_message.str());
 	log_message.str("");
 
-	/* Remove the conf file we just processed. */
+	// Remove the conf file we just processed.
         std::remove(next_filename.c_str());
         cout << "Iteration complete." << endl;
 
-        // increment the timestep
+        // Increment the timestep.
         timestep++;
-    } // mainloop
+    } // Main loop.
 }
 
 int codeserver_init(string& filename)
@@ -372,7 +379,7 @@ int codeserver_init(string& filename)
     }
     slave_path = cfgval;
 
-    /* Initialize the application log file. */
+    // Initialize the application log file.
     ss.str("");
     ss << "generation." << appname << ".log";
     log_file = ss.str();
@@ -393,7 +400,7 @@ int codeserver_init(string& filename)
     logger(log_message.str());
     log_message.str("");
 
-    /* Run the setup_code_gen_hosts.sh script. */
+    // Run the setup_code_gen_hosts.sh script.
     ss.str("");
     ss << "/bin/sh setup_code_gen_hosts.sh " << appname <<  " "
        << slave_path << " " << local_url.host;
@@ -405,7 +412,7 @@ int codeserver_init(string& filename)
         return -1;
     }
 
-    /* Respond to the harmony server. */
+    // Respond to the Harmony server.
     init_mesg.status = HMESG_STATUS_OK;
     if (mesg_write(init_mesg, -1) < 0) {
         cerr << "Could not write/send initial reply message.\n";
@@ -417,9 +424,8 @@ int codeserver_init(string& filename)
 }
 
 /*
-  Helpers
-*/
-
+ * Internal helper function implementation.
+ */
 double time_stamp(void)
 {
   struct timeval t;
@@ -429,7 +435,8 @@ double time_stamp(void)
   return time;
 }
 
-/* This function only parses out hosts and paths.  A more
+/*
+ * This function only parses out hosts and paths.  A more
  * sophisticated version will be required when the codeserver is
  * overhauled.
  */
@@ -482,7 +489,7 @@ int url_parse(const char* str, url_t& url)
         return 0;
     }
     else if (strncmp("tcp://", str, ptr - str) == 0) {
-        /* Not implemented yet. */
+        // Not implemented yet.
     }
     return -1;
 }
@@ -500,7 +507,7 @@ int dir_erase(string& dirname)
     initfile << infile_name << ".-1";
     while ( (dent = readdir(dirfd))) {
         if (initfile.str() == dent->d_name)
-            continue;  /* Do not delete an initial file, if found. */
+            continue; // Do not delete an initial file, if found.
 
         if (strncmp(dent->d_name, infile_name, strlen(infile_name)) == 0) {
             string fullpath = dirname + "/" + dent->d_name;
@@ -560,25 +567,25 @@ int parse_slave_list(const char* hostlist)
         host = "";
         num = -1;
 
-        /* Find the entry boundary. */
+        // Find the entry boundary.
         tail = reinterpret_cast<const char*>(memchr(head, ',', end - head));
         if (!tail) {
             tail = end;
         }
 
-        /* Skip leading whitespace. */
+        // Skip leading whitespace.
         while (head < tail && (head == '\0' || isspace(*head))) {
             ++head;
         }
         host_ptr = head;
 
-        /* Find host boundary whitespace. */
+        // Find host boundary whitespace.
         while (head < tail && (head != '\0' && !isspace(*head))) {
             ++head;
         }
         host = string(host_ptr, head++);
 
-        /* Find the unsigned integer after the host. */
+        // Find the unsigned integer after the host.
         errno = 0;
         num = strtol(head, &num_ptr, 0);
         if (errno != 0) {
@@ -588,12 +595,12 @@ int parse_slave_list(const char* hostlist)
             head = num_ptr;
         }
 
-        /* Skip trailing whitespace. */
+        // Skip trailing whitespace.
         while (head < tail && (head == '\0' || isspace(*head))) {
             ++head;
         }
 
-        /* Error check */
+        // Error check.
         if (host.empty() || num == -1 || head != tail) {
             cerr << "<Error parsing slave host list ("
                  << hostlist << ")\n";
@@ -723,7 +730,7 @@ int mesg_read(const char* filename, hmesg_t* msg)
         goto cleanup;
     }
 
-    /* Obtain file size */
+    // Obtain file size.
     if (fstat(fd, &sb) != 0) {
         cerr << "Could not fstat file: " << strerror(errno) << ". Retrying.\n";
         goto retry;
@@ -766,13 +773,13 @@ int mesg_read(const char* filename, hmesg_t* msg)
     return retval;
 
   retry:
-    /* Avoid the race condition where we attempt to read a message
-     * before the remote code server scp process has completely
-     * written the file.
-     *
-     * At some point, this retry method should probably be replaced
-     * with file locks as a more complete solution.
-     */
+    // Avoid the race condition where we attempt to read a message
+    // before the remote code server scp process has completely
+    // written the file.
+    //
+    // At some point, this retry method should probably be replaced
+    // with file locks as a more complete solution.
+    //
     close(fd);
     if (--retries) {
         polltime.tv_sec = 0;
@@ -809,7 +816,7 @@ int mesg_write(hmesg_t& mesg, int step)
         return -1;
 
     if (!reply_url.host.empty()) {
-        /* Call scp to transfer the file. */
+        // Call scp to transfer the file.
         ss.str("");
         ss << "scp ";
 

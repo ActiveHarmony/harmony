@@ -30,7 +30,7 @@
  * or layer is incorporated into the Active Harmony codebase.
  */
 
-/* Session-wide configuration variables. */
+// Session-wide configuration variables.
 #define CFGKEY_HARMONY_HOME       "HARMONY_HOME"
 #define CFGKEY_HARMONY_HOST       "HARMONY_HOST"
 #define CFGKEY_HARMONY_PORT       "HARMONY_PORT"
@@ -41,12 +41,12 @@
 #define CFGKEY_STRATEGY           "STRATEGY"
 #define CFGKEY_LAYERS             "LAYERS"
 
-/* Session state configuration variables. */
+// Session state configuration variables.
 #define CFGKEY_PAUSED             "PAUSED"
 #define CFGKEY_CONVERGED          "CONVERGED"
 #define CFGKEY_CURRENT_CLIENT     "CURRENT_CLIENT"
 
-/* Plug-in strategy configuration variables. */
+// Plug-in strategy configuration variables.
 #define CFGKEY_PASSES             "PASSES"
 #define CFGKEY_INIT_METHOD        "INIT_METHOD"
 #define CFGKEY_INIT_RADIUS        "INIT_RADIUS"
@@ -68,7 +68,7 @@
 #define CFGKEY_ANGEL_LEEWAY       "ANGEL_LEEWAY"
 #define CFGKEY_ANGEL_PHASE        "ANGEL_PHASE"
 
-/* Plug-in layer configuration variables. */
+// Plug-in layer configuration variables.
 #define CFGKEY_AGG_FUNC           "AGG_FUNC"
 #define CFGKEY_AGG_TIMES          "AGG_TIMES"
 #define CFGKEY_CACHE_FILE         "CACHE_FILE"
@@ -84,7 +84,7 @@
 #define CFGKEY_TAUDB_STORE_NUM    "TAUDB_STORE_NUM"
 #define CFGKEY_XML_FILE           "XML_FILE"
 
-/* Codegen server configuration variables. */
+// Codegen server configuration variables.
 #define CFGKEY_SERVER_URL         "SERVER_URL"
 #define CFGKEY_TARGET_URL         "TARGET_URL"
 #define CFGKEY_REPLY_URL          "REPLY_URL"

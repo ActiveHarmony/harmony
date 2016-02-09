@@ -121,7 +121,7 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    /* Find external support executables */
+    // Find external support executables.
     path = find_exec("env");
     if (path != NULL) {
         strncpy(prog_env, path, sizeof(prog_env));
@@ -132,20 +132,20 @@ int main(int argc, char* argv[])
                 "  Will attempt direct execution.\n");
     }
 
-    /* Initialize the Harmony descriptor */
+    // Initialize the Harmony descriptor.
     hdesc = ah_init();
     if (hdesc == NULL) {
         fprintf(stderr, "Failed to initialize a Harmony descriptor.\n");
         return -1;
     }
 
-    /* Parse the command line arguments. */
+    // Parse the command line arguments.
     parseArgs(argc, argv);
 
-    /* Use the Nelder-Mead search strategy by default. */
+    // Use the Nelder-Mead search strategy by default.
     ah_strategy(hdesc, "nm.so");
 
-    /* Sanity check before we attempt to connect to the server. */
+    // Sanity check before we attempt to connect to the server.
     if (bcount < 1) {
         fprintf(stderr, "No tunable variables defined.\n");
         return -1;
@@ -157,7 +157,7 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    /* Connect to Harmony server and register ourselves as a client. */
+    // Connect to Harmony server and register ourselves as a client.
     if (ah_join(hdesc, NULL, 0, client_bin) != 0) {
         fprintf(stderr, "Error joining Harmony session: %s\n",
                 ah_error_string(hdesc));
@@ -171,7 +171,7 @@ int main(int argc, char* argv[])
             goto cleanup;
         }
         else if (hresult > 0) {
-            /* The Harmony system modified the variable values. */
+            // The Harmony system modified the variable values.
             prepare_client_argv();
         }
 
@@ -222,7 +222,7 @@ int main(int argc, char* argv[])
             goto cleanup;
         }
 
-        /* Update the performance result */
+        // Update the performance result.
         if (ah_report(hdesc, &perf) < 0) {
             fprintf(stderr, "Failed to report performance to server.\n");
             goto cleanup;
@@ -250,7 +250,7 @@ int main(int argc, char* argv[])
     }
 
   cleanup:
-    /* Close the session */
+    // Close the session.
     if (ah_leave(hdesc) < 0)
         fprintf(stderr, "Failed to disconnect from harmony server.\n");
     ah_fini(hdesc);
@@ -780,8 +780,8 @@ FILE* tuna_popen(const char* prog, char** argv, pid_t* ret_pid)
 
     pid = fork();
     if (pid == 0) {
-        /* Child Case */
-        close(pipefd[0]); /* Close (historically) read side of pipe. */
+        // Child Case.
+        close(pipefd[0]); // Close (historically) read side of pipe.
 
         if (dup2(pipefd[1], STDOUT_FILENO) < 0 ||
             dup2(pipefd[1], STDERR_FILENO) < 0)
@@ -798,9 +798,9 @@ FILE* tuna_popen(const char* prog, char** argv, pid_t* ret_pid)
         perror("Error on fork()");
         return NULL;
     }
-    close(pipefd[1]); /* Close (historically) write side of pipe. */
+    close(pipefd[1]); // Close (historically) write side of pipe.
 
-    /* Convert raw socket to stream based FILE ptr. */
+    // Convert raw socket to stream based FILE ptr.
     fptr = fdopen(pipefd[0], "r");
     if (fptr == NULL) {
         perror("Cannot convert pipefd to FILE ptr");

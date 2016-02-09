@@ -74,7 +74,7 @@ hcfg_info_t plugin_keyinfo[] = {
 #define MY_ENCODING "ISO-8859-1"
 
 hspace_t sess_space;
-/* clock_t file_create_time; */
+//clock_t file_create_time;
 char filename[128];
 char create_time[128];
 int paramNum;
@@ -87,11 +87,11 @@ int xmlWriter_init(hspace_t* space)
     int rc;
     const char* tmpstr;
     xmlTextWriterPtr writer;
-    /* xmlChar* tmp; */
+    //xmlChar* tmp;
     xmlDocPtr doc;
     xmlNodePtr node;
 
-    /* Using create time to name xml file and initialize */
+    // Using create time to name xml file and initialize.
     time_t now;
     struct tm* current;
     now = time(0);
@@ -119,10 +119,10 @@ int xmlWriter_init(hspace_t* space)
         return -1;
     }
 
-    /* Make "HarmonyData" the root node of the tree */
+    // Make "HarmonyData" the root node of the tree.
     xmlDocSetRootElement(doc, node);
 
-    /* Create a new xmlWriter for DOM tree, with no compression */
+    // Create a new xmlWriter for DOM tree, with no compression.
     writer = xmlNewTextWriterTree(doc, node, 0);
     if (!writer) {
         session_error("Error creating the xml writer");
@@ -143,30 +143,31 @@ int xmlWriter_init(hspace_t* space)
 
     rc = xmlTextWriterStartElement(writer, BAD_CAST "Nodeinfo");
 
-    /* Close the element Nodeinfo */
+    // Close the element Nodeinfo.
     rc = xmlTextWriterEndElement(writer);
 
-    /* Start them element AppName */
+    // Start them element AppName.
     rc = xmlTextWriterStartElement(writer, BAD_CAST "AppName");
 
-    /* Close the element AppName */
+    // Close the element AppName.
     rc = xmlTextWriterEndElement(writer);
 
-    /* Start and close the element Param */
+    // Start and close the element Param.
     rc = xmlTextWriterStartElement(writer, BAD_CAST "ParamList");
     rc = xmlTextWriterEndElement(writer);
 
-    /* Start and close starttime */
+    // Start and close starttime.
     rc = xmlTextWriterWriteFormatElement(writer, BAD_CAST "StartTime",
                                          "%s", create_time);
-                                         /* Close the element Metadata */
+
+    // Close the element Metadata.
     rc = xmlTextWriterEndElement(writer);
 
-    /* Start and close RawData */
+    // Start and close RawData.
     rc = xmlTextWriterStartElement(writer, BAD_CAST "RawData");
     rc = xmlTextWriterEndElement(writer);
 
-    /* close HarmonyData */
+    // Close HarmonyData.
     rc = xmlTextWriterEndElement(writer);
 
     rc = xmlTextWriterEndDocument(writer);
@@ -175,16 +176,16 @@ int xmlWriter_init(hspace_t* space)
     xmlSaveFileEnc(filename, doc, MY_ENCODING);
     xmlFreeDoc(doc);
 
-    /* Writing primary metadata */
+    // Writing primary metadata.
     hspace_copy(&sess_space, space);
 
-    /* Write appName */
+    // Write appName.
     if (harmony_xmlWriteAppName(space->name) != 0)
         return -1;
 
-    /* Write nodeInfo */
+    // Write nodeInfo
 
-    /* Write param info */
+    // Write param info.
     paramNum = space->len;
     if (harmony_xmlWriteParamInfo() != 0)
         return -1;
@@ -222,7 +223,7 @@ int xmlWriter_generate(hflow_t* flow, htrial_t* trial)
     }
 
     root_element = xmlDocGetRootElement(doc);
-    /* point to the first child under HarmonyData tag */
+    // Point to the first child under HarmonyData tag.
     curNode = root_element->xmlChildrenNode->xmlChildrenNode;
     while (curNode != NULL) {
         if (xmlStrcmp(curNode->name, (const xmlChar*)"RawData") == 0) {
@@ -238,7 +239,7 @@ int xmlWriter_generate(hflow_t* flow, htrial_t* trial)
             xmlAddChild(curNode, newNode);
             curNode = newNode;
 
-            /* Start adding param and corresponding config */
+            // Start adding param and corresponding config.
             for (i = 0; i < paramNum; i++) {
                 const hval_t* val = &trial->point.term[i];
 
@@ -350,7 +351,7 @@ int harmony_xmlWriteAppName(const char* appName)
     }
 
     root_element = xmlDocGetRootElement(doc);
-    //point to the first child under Metadata tag
+    // Point to the first child under Metadata tag.
     curNode = root_element->xmlChildrenNode->xmlChildrenNode->xmlChildrenNode;
     while (curNode) {
         if (!xmlStrcmp(curNode->name, (const xmlChar*)"AppName")) {
@@ -364,7 +365,8 @@ int harmony_xmlWriteAppName(const char* appName)
     return 0;
 }
 
-/* This function get the param information in the followint format
+/*
+ * This function get the param information in the following format
  * {Name Min Max Step Name Min Max Step ......}  And then parse this
  * formation and put it into the Metadata section of the xml file
  */
@@ -389,7 +391,7 @@ int harmony_xmlWriteParamInfo(void)
 
     root_element = xmlDocGetRootElement(doc);
 
-    /* Point to the first child under Metadata tag */
+    // Point to the first child under Metadata tag.
     curNode = root_element->xmlChildrenNode->xmlChildrenNode->xmlChildrenNode;
     while (curNode != NULL) {
         if (!xmlStrcmp(curNode->name, (const xmlChar*)"ParamList")) {
@@ -398,7 +400,7 @@ int harmony_xmlWriteParamInfo(void)
                 snprintf(paramName, sizeof(paramName), "%s",
                          sess_space.dim[i].name);
 
-                /*Type sensitive*/
+                // Type sensitive.
                 switch (sess_space.dim[i].type) {
                 case HVAL_INT:
                     snprintf(paramMin, sizeof(paramMin), "%ld",

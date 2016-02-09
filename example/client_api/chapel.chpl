@@ -26,7 +26,8 @@ if (numThreads == 0) {
     numThreads = here.numCores;
 }
 
-/* For illustration purposes, the performance here is defined by following
+/*
+ * For illustration purposes, the performance here is defined by following
  * simple definition:
  *   perf = (p1 - 15)^2 + (p2 - 30)^2 + (p3 - 45)^2 +
  *          (p4 - 60)^2 + (p5 - 75)^2 + (p6 - 90)^2
@@ -35,7 +36,6 @@ if (numThreads == 0) {
  *      (15, 30, 45, 60, 75, 90)
  *
  * And a reasonable search range for all parameters is [1-100].
- *
  */
 proc application(p1, p2, p3, p4, p5, p6: int)
 {

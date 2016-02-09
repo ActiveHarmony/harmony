@@ -98,7 +98,7 @@ int group_init(hspace_t* space)
     const char* ptr;
 
     if (internal_restart_req) {
-        /* Ignore our own requests to re-initialize. */
+        // Ignore our own requests to re-initialize.
         return 0;
     }
 
@@ -109,7 +109,7 @@ int group_init(hspace_t* space)
         return -1;
     }
 
-    /* The maximum group size is the number of input ranges. */
+    // The maximum group size is the number of input ranges.
     cap_max = space->len;
 
     locked_val = calloc(cap_max, sizeof(*locked_val));
@@ -141,7 +141,7 @@ int group_setcfg(const char* key, const char* val)
     if (strcmp(key, CFGKEY_CONVERGED) == 0 && val && *val == '1') {
         session_best(&best);
 
-        /* Update locked values with converged group. */
+        // Update locked values with converged group.
         for (int i = 0; i < glist[glist_curr].idx_len; ++i) {
             int idx = glist[glist_curr].idx[i];
             locked_val[idx] = best.term[idx];
@@ -161,22 +161,22 @@ int group_generate(hflow_t* flow, htrial_t* trial)
     int ptlen = cap_max * sizeof(*hint_val);
 
     if (glist_curr < glist_len) {
-        /* Initialize locked values, if needed. */
+        // Initialize locked values, if needed.
         for (int i = 0; i < cap_max; ++i) {
             if (locked_val[i].type == HVAL_UNKNOWN)
                 locked_val[i] = trial->point.term[i];
         }
 
-        /* Base hint values on locked values. */
+        // Base hint values on locked values.
         memcpy(hint_val, locked_val, ptlen);
 
-        /* Allow current group values from the trial point to pass through. */
+        // Allow current group values from the trial point to pass through.
         for (int i = 0; i < glist[glist_curr].idx_len; ++i) {
             int idx = glist[glist_curr].idx[i];
             hint_val[idx] = trial->point.term[idx];
         }
 
-        /* If any values differ from our hint, reject it. */
+        // If any values differ from our hint, reject it.
         if (memcmp(hint_val, trial->point.term, ptlen) != 0) {
             if (hpoint_init(&flow->point, cap_max) != 0) {
                 session_error("Could not initialize rejection hint point");
@@ -249,13 +249,13 @@ int parse_group(const char* buf)
         }
         ++buf;
 
-        /* Allocate memory for the parsed index list. */
+        // Allocate memory for the parsed index list.
         glist[i].idx = malloc(j * sizeof(int));
         if (!glist[i].idx) {
             session_error("Error allocating memory for group index list");
             goto cleanup;
         }
-        /* Copy index from list into glist. */
+        // Copy index from list into glist.
         memcpy(glist[i].idx, list, j * sizeof(int));
         glist[i].idx_len = j;
 
@@ -267,13 +267,13 @@ int parse_group(const char* buf)
     }
     glist_len = i;
 
-    /* Produce a final group of all unseen input indexes. */
+    // Produce a final group of all unseen input indexes.
     for (i = 0, j = 0; j < cap_max; ++j) {
         if (!seen[j])
             list[i++] = j;
     }
 
-    /* Only add the final group if necessary. */
+    // Only add the final group if necessary.
     if (i) {
         glist[glist_len].idx = list;
         glist[glist_len].idx_len = i;

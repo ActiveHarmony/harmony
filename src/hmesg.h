@@ -39,7 +39,7 @@
  * |               ...               |
  */
 
-/* Offset and size of static header members in a byte-stream. */
+// Offset and size of static header members in a byte-stream.
 #define HMESG_MAGIC_OFFSET    0
 #define HMESG_MAGIC_SIZE      4
 #define HMESG_LENGTH_OFFSET   4
@@ -50,10 +50,10 @@
 #define HMESG_ORIGIN_SIZE     2
 #define HMESG_HDR_SIZE       12
 
-/* Magic number for messages between the harmony server and its clients.    */
-#define HMESG_OLD_MAGIC 0x5261793a /* Magic number for packets (pre v4.5).  */
-#define HMESG_MAGIC     0x5261797c /* Magic number for packet.              */
-#define HMESG_VERSION   0x05       /* Protocol version.                     */
+// Magic number for messages between the harmony server and its clients.
+#define HMESG_OLD_MAGIC 0x5261793a // Magic number for packets (pre v4.5).
+#define HMESG_MAGIC     0x5261797c // Magic number for packet.
+#define HMESG_VERSION   0x05       // Protocol version.
 
 #ifdef __cplusplus
 extern "C" {
@@ -64,24 +64,24 @@ extern "C" {
  */
 typedef enum {
     HMESG_UNKNOWN = 0x00,
-    HMESG_SESSION, /* Tuning session description            */
-    HMESG_JOIN,    /* Client registration info              */
-    HMESG_GETCFG,  /* Get session cfg key/value pair        */
-    HMESG_SETCFG,  /* Set new session cfg key/value pair    */
-    HMESG_BEST,    /* Retrieve best known point             */
-    HMESG_FETCH,   /* Retrieve search space point to test   */
-    HMESG_REPORT,  /* Report search space point performance */
-    HMESG_RESTART, /* Restart the search                    */
+    HMESG_SESSION, // Tuning session description.
+    HMESG_JOIN,    // Client registration info.
+    HMESG_GETCFG,  // Get session cfg key/value pair.
+    HMESG_SETCFG,  // Set new session cfg key/value pair.
+    HMESG_BEST,    // Retrieve best known point.
+    HMESG_FETCH,   // Retrieve search space point to test.
+    HMESG_REPORT,  // Report search space point performance.
+    HMESG_RESTART, // Restart the search.
 
     HMESG_TYPE_MAX
 } hmesg_type;
 
 typedef enum {
     HMESG_STATUS_UNKNOWN = 0x00,
-    HMESG_STATUS_REQ,  /* Initial request message          */
-    HMESG_STATUS_OK,   /* Request acknowledged             */
-    HMESG_STATUS_FAIL, /* Request failed                   */
-    HMESG_STATUS_BUSY, /* Server could not respond in time */
+    HMESG_STATUS_REQ,  // Initial request message.
+    HMESG_STATUS_OK,   // Request acknowledged.
+    HMESG_STATUS_FAIL, // Request failed.
+    HMESG_STATUS_BUSY, // Server could not respond in time.
 
     HMESG_STATUS_MAX
 } hmesg_status;
@@ -131,4 +131,4 @@ int  hmesg_unpack(hmesg_t* mesg);
 }
 #endif
 
-#endif  /* ifndef __HMESG_H__ */
+#endif  // ifndef __HMESG_H__

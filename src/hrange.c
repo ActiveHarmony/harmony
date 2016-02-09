@@ -30,9 +30,9 @@
 
 const hrange_t hrange_zero = HRANGE_INITIALIZER;
 
-//
-// Internal helper function prototypes.
-//
+/*
+ * Internal helper function prototypes.
+ */
 static int copy_enum(range_enum_t* dst, const range_enum_t* src);
 static int parse_int(range_int_t* bounds, const char* buf, const char** err);
 static int parse_real(range_real_t* bounds, const char* buf, const char** err);
@@ -52,9 +52,9 @@ static hval_t value_of_int(const range_int_t* bounds, unsigned long idx);
 static hval_t value_of_real(const range_real_t* bounds, unsigned long idx);
 static hval_t value_of_enum(const range_enum_t* bounds, unsigned long idx);
 
-//
-// Enumerated domain range structure utility interface implementation.
-//
+/*
+ * Enumerated domain range structure utility interface implementation.
+ */
 int range_enum_add_value(range_enum_t* bounds, char* str)
 {
     for (int i = 0; i < bounds->len; ++i) {
@@ -71,9 +71,9 @@ int range_enum_add_value(range_enum_t* bounds, char* str)
     return 0;
 }
 
-//
-// Base structure management implementation.
-//
+/*
+ * Base structure management implementation.
+ */
 int hrange_copy(hrange_t* dst, const hrange_t* src)
 {
     // Free heap data allocated by the destination structure.
@@ -109,9 +109,9 @@ void hrange_scrub(hrange_t* range)
         free(range->bounds.e.set);
 }
 
-//
-// Range value query implementation.
-//
+/*
+ * Range value query implementation.
+ */
 int hrange_finite(const hrange_t* range)
 {
     return (range->type != HVAL_REAL || range->bounds.r.step > 0.0);
@@ -157,9 +157,9 @@ hval_t hrange_value(const hrange_t* range, unsigned long idx)
     }
 }
 
-//
-// Data transmission implementation.
-//
+/*
+ * Data transmission implementation.
+ */
 int hrange_pack(char** buf, int* buflen, const hrange_t* range)
 {
     int i, count, total;
@@ -364,9 +364,9 @@ int hrange_parse(hrange_t* range, const char* buf, const char** errptr)
     return -1;
 }
 
-//
-// Internal helper function implementation.
-//
+/*
+ * Internal helper function implementation.
+ */
 int copy_enum(range_enum_t* dst, const range_enum_t* src)
 {
     dst->set = malloc(src->cap * sizeof(*dst->set));
@@ -382,9 +382,9 @@ int copy_enum(range_enum_t* dst, const range_enum_t* src)
     return 0;
 }
 
-//
-// Range definition parsing implementation.
-//
+/*
+ * Range definition parsing implementation.
+ */
 int parse_int(range_int_t* bounds, const char* buf, const char** err)
 {
     *bounds = (range_int_t){LONG_MIN, LONG_MIN, 1};
@@ -459,9 +459,9 @@ int parse_enum(range_enum_t* bounds, const char* buf, const char** err)
     return tail;
 }
 
-//
-// Value to range index implementation.
-//
+/*
+ * Value to range index implementation.
+ */
 unsigned long index_of_int(const range_int_t* bounds, long val)
 {
     if (val < bounds->min) return 0;
@@ -498,9 +498,9 @@ unsigned long index_of_enum(const range_enum_t* bounds, const char* val)
     return (unsigned long) index;
 }
 
-//
-// Count of range indexes implementation.
-//
+/*
+ * Count of range indexes implementation.
+ */
 unsigned long limit_of_int(const range_int_t* bounds)
 {
     unsigned long bins;
@@ -544,9 +544,9 @@ unsigned long random_index(unsigned long limit)
     return index / bins;
 }
 
-//
-// Random range value implementation.
-//
+/*
+ * Random range value implementation.
+ */
 hval_t random_int(const range_int_t* bounds)
 {
     return value_of_int(bounds, random_index( limit_of_int(bounds) ));
@@ -576,9 +576,9 @@ hval_t random_enum(const range_enum_t* bounds)
     return value_of_enum(bounds, random_index( limit_of_enum(bounds) ));
 }
 
-//
-// Index to range value implementation.
-//
+/*
+ * Index to range value implementation.
+ */
 hval_t value_of_int(const range_int_t* bounds, unsigned long idx)
 {
     hval_t val;

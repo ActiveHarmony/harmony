@@ -154,7 +154,9 @@ static const char* layer_suffix[] = {
     NULL
 };
 
-/* Function Prototypes */
+/*
+ * Internal helper function prototypes.
+ */
 int   parse_opts(int argc, char* argv[]);
 char* find_harmony_home(const char* progname);
 int   is_valid_harmony_home(const char* dir);
@@ -169,7 +171,7 @@ int   libexec_open(void);
 char* libexec_path(void);
 void  libexec_close(void);
 
-/* Global Variables */
+// Global Variables.
 hinfo_cmd_t command;
 char* cmd_arg;
 char* curr_file;
@@ -234,7 +236,7 @@ int main(int argc, char* argv[])
 
     case HINFO_INFO:
         if (strchr(cmd_arg, '/')) {
-            /* Argument includes path information.  Open the file directly. */
+            // Argument includes path information.  Open the file directly.
             handle = dlopen(cmd_arg, RTLD_LAZY | RTLD_LOCAL);
             if (!handle) {
                 fprintf(stderr, "Could not dlopen %s: %s\n",
@@ -246,7 +248,7 @@ int main(int argc, char* argv[])
         else {
             home_dir = find_harmony_home(argv[0]);
 
-            /* Open the file in HARMONY_HOME/libexec. */
+            // Open the file in HARMONY_HOME/libexec.
             errno = 0;
             handle = find_plugin(cmd_arg);
             if (!handle) {
@@ -323,7 +325,7 @@ char* find_harmony_home(const char* argv0)
     char* retval;
     int home_from_env = 0;
 
-    /* First check HARMONY_HOME environment variable. */
+    // First check HARMONY_HOME environment variable.
     retval = getenv("HARMONY_HOME");
     if (retval) {
         vprint("Found home via HARMONY_HOME environment variable.\n");
@@ -335,11 +337,11 @@ char* find_harmony_home(const char* argv0)
         }
         home_from_env = 1;
     }
-    /* See if program invocation specified a path. */
+    // See if program invocation specified a path.
     else if (strchr(argv0, '/')) {
         vprint("Inferring home via program invocation path.\n");
 
-        retval = sprintf_alloc("%s   ", argv0); /* Allocate 3 extra chars.*/
+        retval = sprintf_alloc("%s   ", argv0); // Allocate 3 extra chars.
         if (!retval) {
             perror("Could not allocate memory for home path");
             exit(-1);
@@ -347,7 +349,7 @@ char* find_harmony_home(const char* argv0)
         retval = dirname(retval);
         strcat(retval, "/..");
     }
-    /* As a last resort, search the PATH environment variable. */
+    // As a last resort, search the PATH environment variable.
     else {
         char* dirpath;
         char* tmpbuf = stralloc(argv0);
@@ -390,7 +392,7 @@ char* find_harmony_home(const char* argv0)
 int is_valid_harmony_home(const char* dir)
 {
     static const char* home_file[] = {
-        /* Not a complete list.  Just enough to move forward confidently. */
+        // Not a complete list.  Just enough to move forward confidently.
         "bin/hinfo",
         "bin/tuna",
         "libexec/random.so",
@@ -487,9 +489,8 @@ void* find_plugin(const char* name)
     if (libexec_open() != 0)
         return NULL;
 
-    /* If the search name ends with .so, search libexec by filename.
-     * Otherwise, search libexec by plug-in title.
-     */
+    // If the search name ends with .so, search libexec by filename.
+    // Otherwise, search libexec by plug-in title.
     tail = strrchr(name, '.');
     by_filename = (tail && strcmp(tail, ".so") == 0);
 
@@ -537,9 +538,7 @@ void print_details(void* handle)
     int i, some_defined;
     const char* prefix;
 
-    /*
-     * Strategy plug-in analysis.
-     */
+    // Strategy plug-in analysis.
     some_defined = 0;
     for (i = 0; strategy_required[i]; ++i)
         if (dlsym(handle, strategy_required[i]))
@@ -576,7 +575,7 @@ void print_details(void* handle)
     }
     printf("\n");
 
-    /* Processing layer plug-in analysis. */
+    // Processing layer plug-in analysis.
     printf("Considering `%s' as a processing layer plug-in:\n", curr_file);
     prefix = dlsym(handle, "harmony_layer_name");
     if (prefix) {
@@ -608,8 +607,8 @@ void print_details(void* handle)
     printf("\n");
 }
 
-/* Quick check for required processing layer plug-in
- * function symbols within shared library.
+/* Quick check for required processing layer plug-in function symbols
+ * within shared library.
  *
  * Returns the defined layer name.
  */
@@ -619,12 +618,12 @@ char* is_layer(void* handle)
     char* prefix;
     char* fname;
 
-    /* Plugin layers must define a layer name. */
+    // Plugin layers must define a layer name.
     prefix = dlsym(handle, "harmony_layer_name");
     if (!prefix)
         return NULL;
 
-    /* Then, either <prefix>_generate or <prefix>_analyze must be defined. */
+    // Then, either <prefix>_generate or <prefix>_analyze must be defined.
     fname = sprintf_alloc("%s_generate", prefix);
     if (!fname) {
         perror("Could not allocate space for function name");
@@ -644,8 +643,9 @@ char* is_layer(void* handle)
     return (valid ? prefix : NULL);
 }
 
-/* Quick check for required strategy plug-in
- * function symbols within shared library.
+/*
+ * Quick check for required strategy plug-in function symbols within
+ * shared library.
  */
 int is_strategy(void* handle)
 {
@@ -665,8 +665,9 @@ int qsort_strcmp(const void* a, const void* b)
     return strcmp(*_a, *_b);
 }
 
-/* The following three utility functions are used to search the libexec
- * directory.
+/*
+ * The following three utility functions are used to search the
+ * libexec directory.
  */
 static DIR* dp;
 static char* path;
@@ -684,7 +685,7 @@ int libexec_open(void)
     }
 
     if (!dp) {
-        /* Open the libexec directory, if DIR pointer isn't set. */
+        // Open the libexec directory, if DIR pointer isn't set.
         while (snprintf(path, cap, "%s/libexec", home_dir) >= cap) {
             if (array_grow(&path, &cap, sizeof(*path)) != 0) {
                 perror("Could not grow memory for libexec directory path");
@@ -722,7 +723,7 @@ char* libexec_path(void)
         }
         file = entry->d_name;
 
-        /* Build the file path string. */
+        // Build the file path string.
         while (snprintf(path, cap, "%s/libexec/%s", home_dir, file) >= cap) {
             if (array_grow(&path, &cap, sizeof(*path)) != 0) {
                 perror("Could not grow memory for libexec file path");
@@ -730,19 +731,19 @@ char* libexec_path(void)
             }
         }
 
-        /* Request file metadata. */
+        // Request file metadata.
         if (stat(path, &finfo) != 0) {
             vprint("  Skipping %s: stat error: %s\n", file, strerror(errno));
             continue;
         }
 
-        /* Only consider regular files. */
+        // Only consider regular files.
         if (!S_ISREG(finfo.st_mode)) {
             vprint("  Skipping %s: non-regular file.\n", file);
             continue;
         }
 
-        /* path now contains a regular file within libexec. */
+        // Path now contains a regular file within libexec.
         vprint("  Considering %s.\n", file);
         return path;
     }

@@ -69,8 +69,8 @@ struct hdesc_t {
     const char* errstr;
 };
 
-/* ---------------------------------------------------
- * Forward declarations for internal helper functions.
+/*
+ * Internal helper function prototypes.
  */
 int generate_id(hdesc_t* hd);
 int extend_perf(hdesc_t* hd);
@@ -82,8 +82,8 @@ int write_values(hdesc_t* hd);
 
 static int debug_mode = 0;
 
-/* ----------------------------------
- * Public Client API Implementations.
+/*
+ * Harmony descriptor management implementation.
  */
 
 /**
@@ -190,6 +190,10 @@ void ah_fini(hdesc_t* hd)
         free(hd);
     }
 }
+
+/*
+ * Session setup implementation.
+ */
 
 /**
  * @}
@@ -426,7 +430,7 @@ int ah_layers(hdesc_t* hd, const char* list)
  */
 int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
 {
-    /* Sanity check input */
+    // Sanity check input.
     if (hd->state > HARMONY_STATE_INIT) {
         hd->errstr = "Descriptor already connected to another session";
         errno = EINVAL;
@@ -455,7 +459,7 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
         char* path;
         const char* home;
 
-        /* Find the Active Harmony installation. */
+        // Find the Active Harmony installation.
         home = hcfg_get(&hd->cfg, CFGKEY_HARMONY_HOME);
         if (!home) {
             hd->errstr = "No host or " CFGKEY_HARMONY_HOME " specified";
@@ -463,7 +467,7 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
             return -1;
         }
 
-        /* Fork a local tuning session. */
+        // Fork a local tuning session.
         path = sprintf_alloc("%s/libexec/" SESSION_CORE_EXECFILE, home);
         if (!path) {
             hd->errstr = "Could not allocate memory for session filename";
@@ -486,13 +490,13 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
     }
     hd->state = HARMONY_STATE_CONNECTED;
 
-    /* Prepare a default client id, if necessary. */
+    // Prepare a default client id, if necessary.
     if (!hd->id && generate_id(hd) != 0) {
         hd->errstr = "Could not generate default ID string";
         return -1;
     }
 
-    /* Provide a default name, if necessary. */
+    // Provide a default name, if necessary.
     if (!name && !hd->space.name)
         name = hd->id;
 
@@ -501,7 +505,7 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
         return -1;
     }
 
-    /* Prepare a Harmony message. */
+    // Prepare a Harmony message.
     hd->mesg.state.space = &hd->space;
     hd->mesg.data.cfg = &hd->cfg;
 
@@ -512,6 +516,10 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
 
     return 0;
 }
+
+/*
+ * Client setup implementation.
+ */
 
 /**
  * @}
@@ -591,10 +599,10 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
             return -1;
         }
 
-        /* Prepare a Harmony message. */
+        // Prepare a Harmony message.
         hd->mesg.data.string = name;
 
-        /* send the client registration message */
+        // Send the client registration message.
         if (send_request(hd, HMESG_JOIN) != 0)
             return -1;
 
@@ -752,12 +760,16 @@ int ah_leave(hdesc_t* hd)
     if (close(hd->socket) != 0 && debug_mode)
         perror("Error closing socket during ah_leave()");
 
-    /* Reset the descriptor entries to prepare for reuse. */
+    // Reset the descriptor entries to prepare for reuse.
     hd->space.len = 0;
     hd->best.id = 0;
 
     return 0;
 }
+
+/*
+ * Client/Session interaction implementation.
+ */
 
 /**
  * @}
@@ -879,7 +891,7 @@ char* ah_get_cfg(hdesc_t* hd, const char* key)
         return hcfg_get(&hd->cfg, key);
     }
 
-    /* Prepare a Harmony message. */
+    // Prepare a Harmony message.
     hd->mesg.data.string = key;
 
     if (send_request(hd, HMESG_GETCFG) != 0)
@@ -941,7 +953,7 @@ char* ah_set_cfg(hdesc_t* hd, const char* key, const char* val)
             return NULL;
         }
 
-        /* Prepare a Harmony message. */
+        // Prepare a Harmony message.
         hd->mesg.data.string = buf;
 
         retval = send_request(hd, HMESG_SETCFG);
@@ -992,17 +1004,17 @@ int ah_fetch(hdesc_t* hd)
     }
 
     if (hd->state == HARMONY_STATE_READY) {
-        /* Prepare a Harmony message. */
+        // Prepare a Harmony message.
         if (send_request(hd, HMESG_FETCH) != 0)
             return -1;
 
         if (hd->mesg.status == HMESG_STATUS_BUSY) {
             if (!hd->best.id) {
-                /* No best point is available yet.  Do not set values. */
+                // No best point is available yet.  Do not set values.
                 return 0;
             }
 
-            /* Set current point to best point. */
+            // Set current point to best point.
             hd->curr = &hd->best;
         }
         else if (hd->mesg.status == HMESG_STATUS_OK) {
@@ -1020,15 +1032,15 @@ int ah_fetch(hdesc_t* hd)
         }
     }
 
-    /* Update the variables from the content of the message. */
+    // Update the variables from the content of the message.
     if (write_values(hd) != 0)
         return -1;
 
-    /* Initialize our internal performance array. */
+    // Initialize our internal performance array.
     for (int i = 0; i < hd->perf.len; ++i)
         hd->perf.obj[i] = NAN;
 
-    /* Client variables were changed.  Inform the user by returning 1. */
+    // Client variables were changed.  Inform the user by returning 1.
     return 1;
 }
 
@@ -1084,7 +1096,7 @@ int ah_report(hdesc_t* hd, double* perf)
         }
     }
 
-    /* Prepare a Harmony message. */
+    // Prepare a Harmony message.
     hd->mesg.data.point = &hd->test;
     hd->mesg.data.perf = &hd->perf;
 
@@ -1157,7 +1169,7 @@ int ah_best(hdesc_t* hd)
     int retval = 0;
 
     if (hd->state >= HARMONY_STATE_CONNECTED) {
-        /* Prepare a Harmony message. */
+        // Prepare a Harmony message.
         if (send_request(hd, HMESG_BEST) != 0)
             return -1;
 
@@ -1168,7 +1180,7 @@ int ah_best(hdesc_t* hd)
         retval = 1;
     }
 
-    /* Make sure our best known point is valid. */
+    // Make sure our best known point is valid.
     if (!hd->best.id) {
         errno = EINVAL;
         return -1;
@@ -1223,10 +1235,9 @@ void ah_error_clear(hdesc_t* hd)
  * @}
  */
 
-/* ----------------------------------------
- * Deprecated function implementations.
+/*
+ * Deprecated API function implementation.
  */
-
 hdesc_t* harmony_init(void)
 {
     return ah_init();
@@ -1369,8 +1380,8 @@ void harmony_error_clear(hdesc_t* hd)
     ah_error_clear(hd);
 }
 
-/* ----------------------------------------
- * Private helper function implementations.
+/*
+ * Internal helper function implementation.
  */
 int find_var(hdesc_t* hd, const char* name)
 {

@@ -126,7 +126,9 @@ typedef enum simplex_state {
     SIMPLEX_STATE_MAX
 } simplex_state_t;
 
-// Internal helper functions.
+/*
+ * Internal helper function prototypes.
+ */
 static int  allocate_structures(void);
 static int  config_strategy(void);
 static void check_convergence(void);
@@ -137,7 +139,9 @@ static int  nm_state_transition(void);
 static int  make_initial_simplex(void);
 static int  update_centroid(void);
 
-/* Variables to control search properties. */
+/*
+ * Variables to control search properties.
+ */
 vertex_t        init_point;
 double          init_radius;
 reject_method_t reject_type  = REJECT_METHOD_PENALTY;
@@ -153,7 +157,9 @@ double move_len;
 double space_size;
 int    tol_cnt;
 
-/* Variables to track current search state. */
+/*
+ * Variables to track current search state.
+ */
 hspace_t*       space;
 simplex_state_t state;
 vertex_t        centroid;
@@ -166,7 +172,7 @@ simplex_t       simplex;
 vertex_t* next;
 int       index_best;
 int       index_worst;
-int       index_curr; /* for INIT or SHRINK */
+int       index_curr; // For INIT or SHRINK.
 int       next_id = 1;
 
 int     phase = -1;
@@ -174,7 +180,9 @@ int     perf_n;
 double* thresh;
 span_t* span;
 
-/* Option variables */
+/*
+ * Option variables.
+ */
 double* leeway;
 double  mult;
 int     anchor;
@@ -245,7 +253,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
     hpoint_t* hint = &flow->point;
 
     if (hint && hint->id) {
-        /* Update our state to include the hint point. */
+        // Update our state to include the hint point.
         hint->id = point->id;
         if (vertex_set(next, space, hint) != 0) {
             session_error("Could not copy hint into simplex during reject");
@@ -258,10 +266,10 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
         }
     }
     else if (reject_type == REJECT_METHOD_PENALTY) {
-        /* Apply an infinite penalty to the invalid point and
-         * allow the algorithm to determine the next point to try.
-         */
+        // Apply an infinite penalty to the rejected point.
         hperf_reset(&next->perf);
+
+        // Allow the algorithm to choose the next point.
         if (nm_algorithm() != 0) {
             session_error("Nelder-Mead algorithm failure");
             return -1;
@@ -274,7 +282,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
         }
     }
     else if (reject_type == REJECT_METHOD_RANDOM) {
-        /* Replace the rejected point with a random point. */
+        // Replace the rejected point with a random point.
         if (vertex_random(next, space, 1.0) != 0) {
             session_error("Could not randomize point during reject");
             return -1;
@@ -302,7 +310,7 @@ int strategy_analyze(htrial_t* trial)
     }
     hperf_copy(&next->perf, &trial->perf);
 
-    /* Update the observed value ranges. */
+    // Update the observed value ranges.
     for (int i = 0; i < perf_n; ++i) {
         if (span[i].min > next->perf.obj[i])
             span[i].min = next->perf.obj[i];
@@ -332,7 +340,7 @@ int strategy_analyze(htrial_t* trial)
                                             span[phase].min) * mult;
     }
 
-    /* Update the best performing point, if necessary. */
+    // Update the best performing point, if necessary.
     if (!best_perf.len || best_perf.obj[phase] > next->perf.obj[phase]) {
         if (hperf_copy(&best_perf, &next->perf) != 0) {
             session_error("Could not store best performance");
@@ -368,9 +376,9 @@ int strategy_best(hpoint_t* point)
     return 0;
 }
 
-//
-// Internal helper function implementation.
-//
+/*
+ * Internal helper function implementation.
+ */
 int allocate_structures(void)
 {
     void* newbuf;
@@ -670,7 +678,7 @@ void check_convergence(void)
 int increment_phase(void)
 {
     if (phase >= 0) {
-        /* Calculate the threshold for the previous phase. */
+        // Calculate the threshold for the previous phase.
         thresh[phase] = span[phase].min + (span[phase].max -
                                            span[phase].min) * leeway[phase];
     }
@@ -687,7 +695,7 @@ int increment_phase(void)
     }
 
     if (!samesimplex) {
-        /* Re-initialize the initial simplex, if needed. */
+        // Re-initialize the initial simplex, if needed.
         if (make_initial_simplex() != 0) {
             session_error("Could not reinitialize the initial simplex.");
             return -1;
@@ -750,7 +758,7 @@ int nm_state_transition(void)
     switch (state) {
     case SIMPLEX_STATE_INIT:
     case SIMPLEX_STATE_SHRINK:
-        /* Simplex vertex performance value. */
+        // Simplex vertex performance value.
         if (++index_curr == space->len + 1) {
             update_centroid();
             state = SIMPLEX_STATE_REFLECT;
@@ -762,27 +770,27 @@ int nm_state_transition(void)
         if (reflect.perf.obj[phase] <
             simplex.vertex[index_best].perf.obj[phase])
         {
-            /* Reflected point performs better than all simplex
-             * points.  Attempt expansion.
-             */
+            // Reflected point performs better than all simplex points.
+            // Attempt expansion.
+            //
             state = SIMPLEX_STATE_EXPAND;
         }
         else if (reflect.perf.obj[phase] <
                  simplex.vertex[index_worst].perf.obj[phase])
         {
-            /* Reflected point performs better than worst simplex
-             * point.  Replace the worst simplex point with reflected
-             * point and attempt reflection again.
-             */
+            // Reflected point performs better than worst simplex point.
+            // Replace the worst simplex point with reflected point
+            // and attempt reflection again.
+            //
             if (vertex_copy(&simplex.vertex[index_worst], &reflect) != 0)
                 return -1;
 
             update_centroid();
         }
         else {
-            /* Reflected point performs worse than all simplex points.
-             * Attempt contraction.
-             */
+            // Reflected point performs worse than all simplex points.
+            // Attempt contraction.
+            //
             state = SIMPLEX_STATE_CONTRACT;
         }
         break;
@@ -791,18 +799,18 @@ int nm_state_transition(void)
         if (expand.perf.obj[phase] <
             simplex.vertex[index_best].perf.obj[phase])
         {
-            /* Expanded point performs even better than reflected
-             * point.  Replace the worst simplex point with the
-             * expanded point and attempt reflection again.
-             */
+            // Expanded point performs even better than reflected point.
+            // Replace the worst simplex point with the expanded point
+            // and attempt reflection again.
+            //
             if (vertex_copy(&simplex.vertex[index_worst], &expand) != 0)
                 return -1;
         }
         else {
-            /* Expanded point did not result in improved performance.
-             * Replace the worst simplex point with the original
-             * reflected point and attempt reflection again.
-             */
+            // Expanded point did not result in improved performance.
+            // Replace the worst simplex point with the original
+            // reflected point and attempt reflection again.
+            //
             if (vertex_copy(&simplex.vertex[index_worst], &reflect) != 0)
                 return -1;
         }
@@ -814,10 +822,10 @@ int nm_state_transition(void)
         if (contract.perf.obj[phase] <
             simplex.vertex[index_worst].perf.obj[phase])
         {
-            /* Contracted point performs better than the worst simplex
-             * point. Replace the worst simplex point with contracted
-             * point and attempt reflection.
-             */
+            // Contracted point performs better than the worst simplex point.
+            // Replace the worst simplex point with contracted point
+            // and attempt reflection.
+            //
             if (vertex_copy(&simplex.vertex[index_worst], &contract) != 0)
                 return -1;
 
@@ -825,10 +833,10 @@ int nm_state_transition(void)
             state = SIMPLEX_STATE_REFLECT;
         }
         else {
-            /* Contracted test vertex has worst known performance.
-             * Shrink the entire simplex towards the best point.
-             */
-            index_curr = -1; /* to notify the beginning of SHRINK */
+            // Contracted test vertex has worst known performance.
+            // Shrink the entire simplex towards the best point.
+            //
+            index_curr = -1; // Indicates the beginning of SHRINK.
             state = SIMPLEX_STATE_SHRINK;
         }
         break;
@@ -843,13 +851,14 @@ int nm_next_vertex(void)
 {
     switch (state) {
     case SIMPLEX_STATE_INIT:
-        /* Test individual vertices of the initial simplex. */
+        // Test individual vertices of the initial simplex.
         next = &simplex.vertex[index_curr];
         break;
 
     case SIMPLEX_STATE_REFLECT:
-        /* Test a vertex reflected from the worst performing vertex
-         * through the centroid point. */
+        // Test a vertex reflected from the worst performing vertex
+        // through the centroid point.
+        //
         if (vertex_transform(&centroid, &simplex.vertex[index_worst],
                              reflect_val, &reflect) != 0)
             return -1;
@@ -861,8 +870,9 @@ int nm_next_vertex(void)
         break;
 
     case SIMPLEX_STATE_EXPAND:
-        /* Test a vertex that expands the reflected vertex even
-         * further from the the centroid point. */
+        // Test a vertex that expands the reflected vertex even
+        // further from the the centroid point.
+        //
         if (vertex_transform(&centroid, &simplex.vertex[index_worst],
                              expand_val, &expand) != 0)
             return -1;
@@ -871,8 +881,9 @@ int nm_next_vertex(void)
         break;
 
     case SIMPLEX_STATE_CONTRACT:
-        /* Test a vertex contracted from the worst performing vertex
-         * towards the centroid point. */
+        // Test a vertex contracted from the worst performing vertex
+        // towards the centroid point.
+        //
         if (vertex_transform(&simplex.vertex[index_worst], &centroid,
                              -contract_val, &contract) != 0)
             return -1;
@@ -882,8 +893,9 @@ int nm_next_vertex(void)
 
     case SIMPLEX_STATE_SHRINK:
         if (index_curr == -1) {
-          /* Shrink the entire simplex towards the best known vertex
-           * thus far. */
+            // Shrink the entire simplex towards the best known vertex
+            // thus far.
+            //
             if (simplex_transform(&simplex, &simplex.vertex[index_best],
                                   -shrink_val, &simplex) != 0)
                 return -1;
@@ -896,8 +908,9 @@ int nm_next_vertex(void)
         break;
 
     case SIMPLEX_STATE_CONVERGED:
-        /* Simplex has converged.  Nothing to do.
-         * In the future, we may consider new search at this point. */
+        // Simplex has converged.  Nothing to do.
+        // In the future, we may consider new search at this point.
+        //
         next = &simplex.vertex[index_best];
         break;
 

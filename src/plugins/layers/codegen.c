@@ -157,7 +157,7 @@ int codegen_init(hspace_t* space)
     if (mesg_recv(sockfd, &mesg) < 1)
         return -1;
 
-    /* TODO: Need a way to unregister a callback for reinitialization. */
+    // TODO: Need a way to unregister a callback for re-initialization.
     if (callback_generate(sockfd, codegen_callback) != 0) {
         session_error("Could not register callback for codegen plugin");
         return -1;
@@ -230,7 +230,7 @@ int codegen_callback(int fd, hflow_t* flow, int n, htrial_t** trial)
     }
     cglog[i].status = CODEGEN_STATUS_COMPLETE;
 
-    /* Search waitlist for index of returned point. */
+    // Search waitlist for index of returned point.
     for (i = 0; i < n; ++i) {
         if (trial[i]->point.id == mesg.data.point->id) {
             flow->status = HFLOW_ACCEPT;
@@ -268,7 +268,7 @@ int url_connect(const char* url)
         return socket_launch(buf, helper_argv, NULL);
     }
     else if (strncmp("tcp:", url, ptr - url) == 0) {
-        /* Not implemented yet. */
+        // Not implemented yet.
     }
     return -1;
 }

@@ -36,7 +36,9 @@
 #define MAX_IN       16
 #define MAX_OUT      16
 
-/* Function Prototypes */
+/*
+ * Internal helper function prototypes.
+ */
 void   parse_opts(int argc, char* argv[]);
 void   parse_params(int idx, int argc, char* argv[]);
 void   parse_dim(char* dim);
@@ -50,7 +52,9 @@ void   fprint_darr(FILE* fp, const char* head,
                    double* arr, int len, const char* tail);
 void   use_resources(void);
 
-/* Option Variables (and their associated defaults). */
+/*
+ * Option Variables (and their associated defaults).
+ */
 int accuracy = 6;
 long seed;
 int i_cnt, o_cnt;
@@ -61,7 +65,9 @@ double quantize;
 double perturb;
 char tuna_mode;
 
-/* Global Variables */
+/*
+ * Global Variables
+ */
 finfo_t* finfo[MAX_OUT];
 double* fopts[MAX_OUT];
 double bound_min, bound_max;
@@ -207,7 +213,7 @@ int main(int argc, char* argv[])
     else if (hresult == 1) {
         double cmp = 0.0;
 
-        /* A new point was retrieved.  Evaluate it. */
+        // A new point was retrieved.  Evaluate it.
         eval_func();
         for (j = 0; j < o_cnt; ++j)
             cmp += perf[j];
@@ -226,7 +232,7 @@ int main(int argc, char* argv[])
     else
         printf(" [Global optimal: <Unknown>]\n");
 
-    /* Initial pass through the point array to find maximum field width. */
+    // Initial pass through the point array to find maximum field width.
     maxwidth = 0;
     for (i = 0; i < i_cnt; ++i) {
         width = snprintf(NULL, 0, "%lf", point[i]);
@@ -243,6 +249,9 @@ int main(int argc, char* argv[])
     return retval;
 }
 
+/*
+ * Internal helper function implementation.
+ */
 void parse_opts(int argc, char* argv[])
 {
     int c, list_funcs = 0;
@@ -520,7 +529,7 @@ int start_harmony(hdesc_t* hdesc)
     double step;
     int i;
 
-    /* Build the session name. */
+    // Build the session name.
     snprintf(session_name, sizeof(session_name),
              "test_in%d_out%d.pid%d", i_cnt, o_cnt, getpid());
 
@@ -648,7 +657,7 @@ void use_resources(void)
     stall = (unsigned int)(sum * 1000);
 
     switch (tuna_mode) {
-    case 'w': /* Wall time */
+    case 'w': // Wall time.
         if (verbose) {
             fprintf(stdout, " ==> usleep(%d)\n", stall);
             fflush(stdout);
@@ -656,7 +665,7 @@ void use_resources(void)
         usleep(stall);
         break;
 
-    case 'u': /* User time */
+    case 'u': // User time.
         if (verbose) {
             fprintf(stdout, " ==> perform %d flops\n", stall * 2);
             fflush(stdout);
@@ -665,7 +674,7 @@ void use_resources(void)
             sum = sum * (17.0/sum);
         break;
 
-    case 's': /* System time */
+    case 's': // System time.
         if (verbose) {
             fprintf(stdout, " ==> perform %d syscalls\n", stall * 2);
             fflush(stdout);
@@ -674,7 +683,7 @@ void use_resources(void)
             close(open("/dev/null", O_RDONLY));
         break;
 
-    case 'o': /* Output method */
+    case 'o': // Output method.
         fprint_darr(stdout, "(", perf, o_cnt, ")\n");
         break;
     }

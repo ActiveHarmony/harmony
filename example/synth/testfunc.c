@@ -393,23 +393,23 @@ double f_oka1_2(int n, double x[], double option[])
 
 double f_oka2_1(int n, double x[], double option[])
 {
-    /* There are 2 objectives, 3 decision (x) variables.
-     * The x variables are in the ranges:
-     *  x[0] in [-PI, PI]
-     *  x[1] in [-5, 5]
-     *  x[2] in [-5, 5]
-     */
+    // There are 2 objectives, 3 decision (x) variables.
+    // The x variables are in the ranges:
+    //  x[0] in [-PI, PI]
+    //  x[1] in [-5, 5]
+    //  x[2] in [-5, 5]
+    //
     return x[0];
 }
 
 double f_oka2_2(int n, double x[], double option[])
 {
-    /* There are 2 objectives, 3 decision (x) variables.
-     * The x variables are in the ranges:
-     *  x[0] in [-PI, PI]
-     *  x[1] in [-5, 5]
-     *  x[2] in [-5, 5]
-     */
+    // There are 2 objectives, 3 decision (x) variables.
+    // The x variables are in the ranges:
+    //  x[0] in [-PI, PI]
+    //  x[1] in [-5, 5]
+    //  x[2] in [-5, 5]
+    //
     return (1.0 - (1.0 / (4.0 * M_PI * M_PI)) * pow(x[0] + M_PI, 2) +
             pow(fabs(x[1] - 5.0 * cos(x[0])), 1.0/3.0) +
             pow(fabs(x[2] - 5.0 * sin(x[0])), 1.0/3.0));
@@ -417,7 +417,7 @@ double f_oka2_2(int n, double x[], double option[])
 
 double f_vlmop2_1(int n, double x[], double option[])
 {
-    /* x variables must be in the range [-2,2] */
+    // x variables must be in the range [-2,2].
     int i;
     double sum1 = 0.0;
 
@@ -429,7 +429,7 @@ double f_vlmop2_1(int n, double x[], double option[])
 
 double f_vlmop2_2(int n, double x[], double option[])
 {
-    /* x variables must be in the range [-2,2] */
+    // x variables must be in the range [-2,2].
     int i;
     double sum2 = 0.0;
 
@@ -458,9 +458,9 @@ double f_vlmop3_3(int n, double x[], double option[])
 
 double f_kno1_1(int n, double x[], double option[])
 {
-    /* There are 2 objectives, 2 decision (x) variables.
-     * The x variables are in the range [0,3]
-     */
+    // There are 2 objectives, 2 decision (x) variables.
+    // The x variables are in the range [0,3]
+    //
     double f;
     double g;
     double c;
@@ -475,9 +475,9 @@ double f_kno1_1(int n, double x[], double option[])
 
 double f_kno1_2(int n, double x[], double option[])
 {
-    /* There are 2 objectives, 2 decision (x) variables.
-     * The x variables are in the range [0,3]
-     */
+    // There are 2 objectives, 2 decision (x) variables.
+    // The x variables are in the range [0,3]
+    //
     double f;
     double g;
     double c;
@@ -491,15 +491,15 @@ double f_kno1_2(int n, double x[], double option[])
 
 double f_dtlz1a_1(int n, double x[], double option[])
 {
-    /* There are 2 objectives, 6 decision (x) variables.
-     * The x variables are in the range [0,1].
-     */
+    // There are 2 objectives, 6 decision (x) variables.
+    // The x variables are in the range [0,1].
+    //
     int i;
     double g = 0.0;
     assert(n == 6);
 
     for (i = 1; i < n; ++i) {
-        /* Note this is 20*PI in Deb's DTLZ1 */
+        // Note this is 20*PI in Deb's DTLZ1.
         g += (x[i] - 0.5) * (x[i] - 0.5) - cos(2 * M_PI * (x[i] - 0.5));
     }
     g += n-1;
@@ -510,15 +510,15 @@ double f_dtlz1a_1(int n, double x[], double option[])
 
 double f_dtlz1a_2(int n, double x[], double option[])
 {
-    /* There are 2 objectives, 6 decision (x) variables.
-     * The x variables are in the range [0,1].
-     */
+    // There are 2 objectives, 6 decision (x) variables.
+    // The x variables are in the range [0,1].
+    //
     int i;
     double g = 0.0;
     assert(n == 6);
 
     for (i = 1; i < n; ++i) {
-        /* Note this is 20*PI in Deb's DTLZ1 */
+        // Note this is 20*PI in Deb's DTLZ1.
         g += (x[i] - 0.5) * (x[i] - 0.5) - cos(2 * M_PI * (x[i] - 0.5));
     }
     g += n-1;
@@ -529,9 +529,9 @@ double f_dtlz1a_2(int n, double x[], double option[])
 
 double f_dtlz2a_1(int n, double x[], double option[])
 {
-    /* There are 3 objectives, 8 decision (x) variables.
-     * The x variables are in the range [0,1].
-     */
+    // There are 3 objectives, 8 decision (x) variables.
+    // The x variables are in the range [0,1].
+    //
     int i;
     double alph = 1.0;
     double g = 0.0;
@@ -547,9 +547,9 @@ double f_dtlz2a_1(int n, double x[], double option[])
 
 double f_dtlz2a_2(int n, double x[], double option[])
 {
-    /* There are 3 objectives, 8 decision (x) variables.
-     * The x variables are in the range [0,1].
-     */
+    // There are 3 objectives, 8 decision (x) variables.
+    // The x variables are in the range [0,1].
+    //
     int i;
     double alph = 1.0;
     double g = 0.0;
@@ -568,9 +568,9 @@ double f_dtlz2a_2(int n, double x[], double option[])
 
 double f_dtlz2a_3(int n, double x[], double option[])
 {
-    /* There are 3 objectives, 8 decision (x) variables.
-     * The x variables are in the range [0,1].
-     */
+    // There are 3 objectives, 8 decision (x) variables.
+    // The x variables are in the range [0,1].
+    //
     int i;
     double alph = 1.0;
     double g = 0.0;
@@ -617,27 +617,27 @@ double f_dtlz4a_3(int n, double x[], double option[])
 
 double f_dtlz7a_1(int n, double x[], double option[])
 {
-    /* There are 3 objectives, 8 decision (x) variables.
-     * The x variables are in the range [0,1].
-     */
+    // There are 3 objectives, 8 decision (x) variables.
+    // The x variables are in the range [0,1].
+    //
     assert(n == 8);
     return x[0];
 }
 
 double f_dtlz7a_2(int n, double x[], double option[])
 {
-    /* There are 3 objectives, 8 decision (x) variables.
-     * The x variables are in the range [0,1].
-     */
+    // There are 3 objectives, 8 decision (x) variables.
+    // The x variables are in the range [0,1].
+    //
     assert(n == 8);
     return x[1];
 }
 
 double f_dtlz7a_3(int n, double x[], double option[])
 {
-    /* There are 3 objectives, 8 decision (x) variables.
-     * The x variables are in the range [0,1].
-     */
+    // There are 3 objectives, 8 decision (x) variables.
+    // The x variables are in the range [0,1].
+    //
     int i, nobjs = 3;
     double g, h, sum;
     assert(n == 8);

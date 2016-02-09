@@ -46,7 +46,7 @@ typedef struct session_state {
     hpoint_t best;
     double best_perf;
 
-    /* Fields used by the HTTP server. */
+    // Fields used by the HTTP server.
     struct timeval start;
     hspace_t space;
     char* strategy;
@@ -73,4 +73,4 @@ int session_restart(session_state_t* sess);
 }
 #endif
 
-#endif /* __HSERVER_H__ */
+#endif // __HSERVER_H__

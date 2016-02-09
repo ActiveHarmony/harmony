@@ -28,10 +28,11 @@
 extern "C" {
 #endif
 
-/* ===================================================================
- * The following functions are required.  Active Harmony will not
- * recognize shared objects as search strategies unless these
- * functions exist.
+/*
+ * The following functions are required.
+ *
+ * Active Harmony will not recognize shared objects as search
+ * strategies unless these functions exist.
  */
 
 /*
@@ -87,9 +88,11 @@ int strategy_analyze(htrial_t* trial);
  */
 int strategy_best(hpoint_t* point);
 
-/* ===================================================================
- * The following functions are optional.  They will be invoked at the
- * appropriate time if and only if they exist.
+/*
+ * The following functions are optional.
+ *
+ * They will be invoked at the appropriate time if and only if they
+ * exist.
  */
 
 /*

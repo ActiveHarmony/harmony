@@ -29,14 +29,16 @@
 
 const hpoint_t hpoint_zero = HPOINT_INITIALIZER;
 
-// Internal helper function prototypes.
+/*
+ * Internal helper function prototypes.
+ */
 static int align_int(hval_t* val, const hrange_t* range);
 static int align_real(hval_t* val, const hrange_t* range);
 static int align_str(hval_t* val, const hrange_t* range);
 
-//
-// Base structure management implementation.
-//
+/*
+ * Base structure management implementation.
+ */
 int hpoint_init(hpoint_t* point, int newlen)
 {
     while (point->len > newlen)
@@ -86,9 +88,9 @@ void hpoint_scrub(hpoint_t* point)
     free(point->term);
 }
 
-//
-// Point manipulation implementation.
-//
+/*
+ * Point manipulation implementation.
+ */
 int hpoint_align(hpoint_t* point, const hspace_t* space)
 {
     if (!point->id)
@@ -117,9 +119,9 @@ int hpoint_cmp(const hpoint_t* a, const hpoint_t* b)
             : a->len - b->len);
 }
 
-//
-// Data transmission implementation.
-//
+/*
+ * Data transmission implementation.
+ */
 int hpoint_pack(char** buf, int* buflen, const hpoint_t* point)
 {
     int total = snprintf_serial(buf, buflen, " pt:%u", point->id);
@@ -188,9 +190,9 @@ int hpoint_parse(hpoint_t* point, const char* buf, const hspace_t* space)
     return 0;
 }
 
-//
-// Internal helper function implementation.
-//
+/*
+ * Internal helper function implementation.
+ */
 int align_int(hval_t* val, const hrange_t* range)
 {
     if (val->value.i < range->bounds.i.min)

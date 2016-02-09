@@ -24,14 +24,16 @@
 
 const hval_t hval_zero = HVAL_INITIALIZER;
 
-// Internal helper function prototypes.
+/*
+ * Internal helper function prototypes.
+ */
 static int parse_int(hval_t* val, const char* buf);
 static int parse_real(hval_t* val, const char* buf);
 static int parse_str(hval_t* val, const char* buf);
 
-//
-// Base structure management implementation.
-//
+/*
+ * Base structure management implementation.
+ */
 int hval_copy(hval_t* dst, const hval_t* src)
 {
     // Free heap data allocated by the destination structure.
@@ -52,9 +54,9 @@ void hval_fini(hval_t* val)
     free(val->buf);
 }
 
-//
-// Value utility interface implementation.
-//
+/*
+ * Value utility interface implementation.
+ */
 int hval_eq(const hval_t* a, const hval_t* b)
 {
     if (a->type != b->type)
@@ -68,9 +70,9 @@ int hval_eq(const hval_t* a, const hval_t* b)
     }
 }
 
-//
-// Data transmission implementation.
-//
+/*
+ * Data transmission implementation.
+ */
 int hval_pack(char** buf, int* buflen, const hval_t* val)
 {
     switch (val->type) {
@@ -125,9 +127,9 @@ int hval_parse(hval_t* val, hval_type_t type, const char* buf)
     return span;
 }
 
-//
-// Internal helper function implementations.
-//
+/*
+ * Internal helper function implementation.
+ */
 int parse_int(hval_t* val, const char* buf)
 {
     int span = -1;

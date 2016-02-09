@@ -27,9 +27,9 @@
 #include <string.h> // For memcpy() and memset().
 #include <math.h>   // For fabs(), nextafter(), HUGE_VAL, and NAN.
 
-//
-// Internal helper function prototypes.
-//
+/*
+ * Internal helper function prototypes.
+ */
 static int       copy_vertex(vertex_t* dest, const vertex_t* src,
                              unsigned count);
 static double    fraction(const hval_t* val, const hrange_t* range);
@@ -47,9 +47,9 @@ static void      unit_simplex(simplex_t* simplex, unsigned dimensions);
 static int       validate_simplex(simplex_t* simplex, const hspace_t* space);
 static hval_t    value(double fraction, const hrange_t* range);
 
-//
-// Vertex structure management implementation.
-//
+/*
+ * Vertex structure management implementation.
+ */
 int vertex_init(vertex_t* vertex, int newlen)
 {
     if (vertex->len != newlen) {
@@ -74,9 +74,9 @@ void vertex_fini(vertex_t* vertex)
     free(vertex->term);
 }
 
-//
-// Vertex initialization implementation.
-//
+/*
+ * Vertex initialization implementation.
+ */
 int vertex_center(vertex_t* vertex, const hspace_t* space)
 {
     if (vertex->len != space->len) {
@@ -200,9 +200,9 @@ int vertex_set(vertex_t* vertex, const hspace_t* space, const hpoint_t* point)
     return 0;
 }
 
-//
-// Vertex utility function implementation.
-//
+/*
+ * Vertex utility function implementation.
+ */
 int vertex_inbounds(const vertex_t* vertex, const hspace_t* space)
 {
     return inbounds(vertex, 1, space);
@@ -245,9 +245,9 @@ int vertex_transform(const vertex_t* base, const vertex_t* origin,
     return transform(base, 1, origin, coefficient, result);
 }
 
-//
-// Simplex structure management implementation.
-//
+/*
+ * Simplex structure management implementation.
+ */
 int simplex_init(simplex_t* simplex, unsigned dimensions)
 {
     unsigned newlen = dimensions + 1;
@@ -287,9 +287,9 @@ void simplex_fini(simplex_t* simplex)
     free(simplex->vertex);
 }
 
-//
-// Simplex initialization implementation.
-//
+/*
+ * Simplex initialization implementation.
+ */
 int simplex_set(simplex_t* simplex, const hspace_t* space,
                 const vertex_t* base, double radius)
 {
@@ -327,16 +327,16 @@ int simplex_set(simplex_t* simplex, const hspace_t* space,
     return 0;
 }
 
-//
-// Simplex utility function implementation.
-//
+/*
+ * Simplex utility function implementation.
+ */
 
-//
-// General centroid formula for vertex points x1 through xN:
-//     sum(x1, x2, x3, ... , xN) / N
-//
-// This function will ignore any vertices with id == 0.
-//
+/*
+ * General centroid formula for vertex points x1 through xN:
+ *     sum(x1, x2, x3, ... , xN) / N
+ *
+ * This function will ignore any vertices with id == 0.
+ */
 int simplex_centroid(const simplex_t* simplex, vertex_t* centroid)
 {
     int total = 0;
@@ -411,9 +411,9 @@ int simplex_transform(const simplex_t* base, const vertex_t* origin,
                      result->vertex);
 }
 
-//
-// Internal helper function implementation.
-//
+/*
+ * Internal helper function implementation.
+ */
 int copy_vertex(vertex_t* dest, const vertex_t* src, unsigned count)
 {
     for (unsigned i = 0; i < count; ++i) {
@@ -432,7 +432,9 @@ int copy_vertex(vertex_t* dest, const vertex_t* src, unsigned count)
     return 0;
 }
 
-// Convert a raw value into a number between [0, 1).
+/*
+ * Convert a raw value into a number between [0, 1).
+ */
 double fraction(const hval_t* val, const hrange_t* range)
 {
     double fraction;
@@ -444,7 +446,9 @@ double fraction(const hval_t* val, const hrange_t* range)
     return fraction;
 }
 
-// Check if a vertex falls within the bounds of a search space.
+/*
+ * Check if a vertex falls within the bounds of a search space.
+ */
 int inbounds(const vertex_t* vertex, unsigned count, const hspace_t* space)
 {
     if (!vertex)
@@ -488,8 +492,10 @@ double l2_norm(const vertex_t* a, const vertex_t* b)
     return sqrt(sum);
 }
 
-// Given an index (i), returns the i'th lexicographical combination of
-// choosing two elements from a set of size N.
+/*
+ * Given an index (i), returns the i'th lexicographical combination of
+ * choosing two elements from a set of size N.
+ */
 void pair_by_index(unsigned n, unsigned index, unsigned pair[])
 {
     int limit = 0;
@@ -503,7 +509,9 @@ void pair_by_index(unsigned n, unsigned index, unsigned pair[])
     pair[1] = n + index - limit - 1;
 }
 
-// Randomly rotate a simplex in N dimensions about the origin.
+/*
+ * Randomly rotate a simplex in N dimensions about the origin.
+ */
 int rotate_simplex(simplex_t* simplex, int dimensions)
 {
     unsigned combos = (dimensions * (dimensions - 1)) / 2;
@@ -534,8 +542,10 @@ int rotate_simplex(simplex_t* simplex, int dimensions)
     return 0;
 }
 
-// Generate a random permutation of N indexes using the Knuth shuffle.
-// Returns a newly allocated heap array which must be freed.
+/*
+ * Generate a random permutation of N indexes using the Knuth shuffle.
+ * Returns a newly allocated heap array which must be freed.
+ */
 unsigned* shuffle(unsigned size)
 {
     unsigned* retval = malloc(size * sizeof(*retval));
@@ -550,9 +560,11 @@ unsigned* shuffle(unsigned size)
     return retval;
 }
 
-// Translate each base point by a coefficient of its distance from an
-// origin point.  For example, a coefficient of 0.0 produces the base
-// point, and a coefficient of -1.0 produces the origin.
+/*
+ * Translate each base point by a coefficient of its distance from an
+ * origin point.  For example, a coefficient of 0.0 produces the base
+ * point, and a coefficient of -1.0 produces the origin.
+ */
 int transform(const vertex_t* base, unsigned count, const vertex_t* origin,
               double coefficient, vertex_t* result)
 {
@@ -575,8 +587,10 @@ int transform(const vertex_t* base, unsigned count, const vertex_t* origin,
     return 0;
 }
 
-// Write a regular N-dimensional simplex (whose vertex-to-origin
-// distance is 1) into the given simplex_t structure.
+/*
+ * Write a regular N-dimensional simplex (whose vertex-to-origin
+ * distance is 1) into the given simplex_t structure.
+ */
 void unit_simplex(simplex_t* simplex, unsigned dimensions)
 {
     simplex->vertex[0].term[0] = 1.0;
@@ -596,14 +610,15 @@ void unit_simplex(simplex_t* simplex, unsigned dimensions)
     }
 }
 
-// Check that a simplex is within the bounds of its search space,
-// shifting the entire simplex as necessary.  If shifting the simplex
-// will not resolve the issue (i.e., the simplex is larger than the
-// search space), return -1.
-//
-// This function only considers the first D+1 vertices, where D is the
-// number of search space dimensions.
-//
+/*
+ * Check that a simplex is within the bounds of its search space,
+ * shifting the entire simplex as necessary.  If shifting the simplex
+ * will not resolve the issue (i.e., the simplex is larger than the
+ * search space), return -1.
+ *
+ * This function only considers the first D+1 vertices, where D is the
+ * number of search space dimensions.
+ */
 int validate_simplex(simplex_t* simplex, const hspace_t* space)
 {
     // Process each dimension in isolation.
@@ -618,7 +633,7 @@ int validate_simplex(simplex_t* simplex, const hspace_t* space)
                 high = simplex->vertex[j].term[i];
         }
 
-        /* Verify that simplex is not larger than the search space. */
+        // Verify that simplex is not larger than the search space.
         double min;
         double max;
         if (hrange_finite(&space->dim[i])) {
@@ -651,7 +666,9 @@ int validate_simplex(simplex_t* simplex, const hspace_t* space)
     return 0;
 }
 
-// Convert a fractional value [0, 1) to a raw value.
+/*
+ * Convert a fractional value [0, 1) to a raw value.
+ */
 hval_t value(double fraction, const hrange_t* range)
 {
     unsigned long index;

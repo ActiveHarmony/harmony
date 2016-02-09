@@ -24,14 +24,14 @@
 extern "C" {
 #endif
 
-/* -----------------------------------------------------------------
+/*
  * Harmony structures that encapsulate values within a search space.
  */
 typedef enum hval_type {
     HVAL_UNKNOWN = 0,
-    HVAL_INT,  /* Integer domain value. */
-    HVAL_REAL, /* Real domain value. */
-    HVAL_STR,  /* String domain value (for enumerated types). */
+    HVAL_INT,  // Integer domain value.
+    HVAL_REAL, // Real domain value.
+    HVAL_STR,  // String domain value (for enumerated types).
 
     HVAL_MAX
 } hval_type_t;
@@ -51,20 +51,23 @@ typedef struct hval {
 #define HVAL_INITIALIZER {HVAL_UNKNOWN}
 extern const hval_t hval_zero;
 
-// Base structure management interface.
+/*
+ * Base structure management interface.
+ */
 int  hval_copy(hval_t* dst, const hval_t* src);
 void hval_fini(hval_t* v);
 
-// Value comparison interface.
+/*
+ * Value comparison interface.
+ */
 int hval_eq(const hval_t* a, const hval_t* b);
 
-// Data transmission interface.
+/*
+ * Data transmission interface.
+ */
 int hval_pack(char** buf, int* buflen, const hval_t* v);
 int hval_unpack(hval_t* v, char* buf);
 int hval_parse(hval_t* v, hval_type_t type, const char* buf);
-
-// Exported parsing utility interface.
-int hval_string_copy(const char* buf, char** token, const char** errptr);
 
 #ifdef __cplusplus
 }

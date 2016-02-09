@@ -57,7 +57,7 @@ int tcp_connect(const char* host, int port)
     memcpy(&addr.sin_addr, h_name->h_addr_list[0], sizeof(struct in_addr));
     addr.sin_port = htons((unsigned short)port);
 
-    /* try to connect to the server */
+    // Try to connect to the server.
     addr.sin_family = AF_INET;
     if (connect(sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0)
         return -1;
@@ -133,7 +133,7 @@ int socket_launch(const char* path, char* const argv[], pid_t* return_pid)
         return -1;
 
     if (pid == 0) {
-        /* Child Case */
+        // Child Case.
         close(sockfd[0]);
         if (dup2(sockfd[1], STDIN_FILENO) != STDIN_FILENO)
             perror("Could not duplicate socket onto child STDIN");
@@ -144,10 +144,10 @@ int socket_launch(const char* path, char* const argv[], pid_t* return_pid)
         if (execv(path, argv) < 0)
             perror("Could not launch child executable");
 
-        exit(-1);  /* Be sure to exit here. */
+        exit(-1); // Be sure to exit here.
     }
 
-    /* Parent continues here. */
+    // Parent continues here.
     if (return_pid)
         *return_pid = pid;
 
@@ -246,7 +246,7 @@ int mesg_recv(int sock, hmesg_t* mesg)
     retval = socket_read(sock, mesg->recv_buf, msglen);
     if (retval == 0) return 0;
     if (retval < msglen) goto error;
-    mesg->recv_buf[retval] = '\0';  /* A strlen() safety net. */
+    mesg->recv_buf[retval] = '\0'; // A strlen() safety net.
     // fprintf(stderr, "(%2d)>>> '%s'\n", sock, mesg->recv_buf);
 
     if (hmesg_unpack(mesg) < 0)

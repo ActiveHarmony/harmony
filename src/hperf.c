@@ -29,6 +29,9 @@
 
 const hperf_t hperf_zero = HPERF_INITIALIZER;
 
+/*
+ * Base structure management implementation.
+ */
 int hperf_init(hperf_t* perf, int len)
 {
     if (perf->len != len) {
@@ -63,6 +66,9 @@ void hperf_fini(hperf_t* perf)
     free(perf->obj);
 }
 
+/*
+ * Performance utility implementation.
+ */
 int hperf_cmp(const hperf_t* a, const hperf_t* b)
 {
     double sum_a = 0.0, sum_b = 0.0;
@@ -86,6 +92,9 @@ double hperf_unify(const hperf_t* perf)
     return retval;
 }
 
+/*
+ * Data transmission implementation.
+ */
 int hperf_pack(char** buf, int* buflen, const hperf_t* perf)
 {
     int i, count, total;

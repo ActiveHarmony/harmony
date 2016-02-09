@@ -26,27 +26,27 @@
 extern "C" {
 #endif
 
-//
-// Integer domain range type.
-//
+/*
+ * Integer domain range type.
+ */
 typedef struct range_int {
     long min;
     long max;
     long step;
 } range_int_t;
 
-//
-// Real domain range type.
-//
+/*
+ * Real domain range type.
+ */
 typedef struct range_real {
     double min;
     double max;
     double step;
 } range_real_t;
 
-//
-// Enumerated domain range type.
-//
+/*
+ * Enumerated domain range type.
+ */
 typedef struct range_enum {
     char** set;
     int    len;
@@ -55,9 +55,9 @@ typedef struct range_enum {
 
 int range_enum_add_value(range_enum_t* bounds, char* str);
 
-//
-// Range type to represent a single dimension of the tuning search space.
-//
+/*
+ * Range type to represent a single dimension of the tuning search space.
+ */
 typedef struct hrange {
     char* name;
     hval_type_t type;
@@ -70,19 +70,25 @@ typedef struct hrange {
 #define HRANGE_INITIALIZER {0}
 extern const hrange_t hrange_zero;
 
-// Base structure management interface.
+/*
+ * Base structure management interface.
+ */
 int  hrange_copy(hrange_t* dst, const hrange_t* src);
 void hrange_fini(hrange_t* range);
 void hrange_scrub(hrange_t* range);
 
-// Range value query interface.
+/*
+ * Range value query interface.
+ */
 int           hrange_finite(const hrange_t* range);
 unsigned long hrange_index(const hrange_t* range, const hval_t* val);
 unsigned long hrange_limit(const hrange_t* range);
 hval_t        hrange_random(const hrange_t* range);
 hval_t        hrange_value(const hrange_t* range, unsigned long idx);
 
-// Data transmission interface.
+/*
+ * Data transmission interface.
+ */
 int hrange_pack(char** buf, int* buflen, const hrange_t* range);
 int hrange_unpack(hrange_t* range, char* buf);
 int hrange_parse(hrange_t* range, const char* buf, const char** errptr);
@@ -91,4 +97,4 @@ int hrange_parse(hrange_t* range, const char* buf, const char** errptr);
 }
 #endif
 
-#endif /* __HRANGE_H__ */
+#endif // __HRANGE_H__

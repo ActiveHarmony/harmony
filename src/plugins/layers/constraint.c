@@ -97,7 +97,9 @@ hcfg_info_t plugin_keyinfo[] = {
 #define MAX_CMD_LEN  4096
 #define MAX_TEXT_LEN 1024
 
-/* Forward function declarations. */
+/*
+ * Internal helper function prototypes.
+ */
 int strategy_cfg(hspace_t* space);
 int build_vars_text(hspace_t* space);
 int build_bounds_text(hspace_t* space);
@@ -107,7 +109,9 @@ int update_bounds(hspace_t* space);
 int check_validity(hpoint_t* point);
 char* call_omega_calc(const char* cmd);
 
-/* Keep copy of session information */
+/*
+ * Global variables.
+ */
 hspace_t local_space;
 
 const char* omega_bin   = "oc";
@@ -118,15 +122,14 @@ char bounds_text[MAX_TEXT_LEN];
 char user_text[MAX_TEXT_LEN];
 char point_text[MAX_TEXT_LEN];
 
-/* Some global variables */
 int quiet;
 
 int constraint_init(hspace_t* space)
 {
-    /* Make a copy of the search space. */
+    // Make a copy of the search space.
     hspace_copy(&local_space, space);
 
-    /* Initialize layer variables. */
+    // Initialize layer variables.
     if (strategy_cfg(space) != 0)
         return -1;
 
@@ -139,13 +142,49 @@ int constraint_init(hspace_t* space)
     if (build_user_text() != 0)
         return -1;
 
-    /* Calculate the range for each tuning variable, given the constraints. */
+    // Calculate the range for each tuning variable, given the constraints.
     if (update_bounds(space) != 0)
         return -1;
 
     return 0;
 }
 
+int constraint_generate(hflow_t* flow, hpoint_t* point)
+{
+    flow->status = HFLOW_ACCEPT;
+    if (!check_validity(point)) {
+        flow->status = HFLOW_REJECT;
+        flow->point.id = -1;
+
+        if (!quiet) {
+            fprintf(stderr, "Rejecting point: {");
+            for (int i = 0; i < point->len; ++i) {
+                const hval_t* val = &point->term[i];
+
+                switch (local_space.dim[i].type) {
+                case HVAL_INT:  fprintf(stderr, "%ld", val->value.i); break;
+                case HVAL_REAL: fprintf(stderr, "%g", val->value.r); break;
+                case HVAL_STR:  fprintf(stderr, "%s", val->value.s); break;
+                default:        fprintf(stderr, "<INV>");
+                }
+                if (i < point->len - 1)
+                    fprintf(stderr, ", ");
+            }
+            fprintf(stderr, "}\n");
+        }
+    }
+    return 0;
+}
+
+int constraint_fini(void)
+{
+    hspace_fini(&local_space);
+    return 0;
+}
+
+/*
+ * Internal helper function implementation.
+ */
 int strategy_cfg(hspace_t* space)
 {
     const char* cfgval;
@@ -204,39 +243,6 @@ int strategy_cfg(hspace_t* space)
     return 0;
 }
 
-int constraint_generate(hflow_t* flow, hpoint_t* point)
-{
-    flow->status = HFLOW_ACCEPT;
-    if (!check_validity(point)) {
-        flow->status = HFLOW_REJECT;
-        flow->point.id = -1;
-
-        if (!quiet) {
-            fprintf(stderr, "Rejecting point: {");
-            for (int i = 0; i < point->len; ++i) {
-                const hval_t* val = &point->term[i];
-
-                switch (local_space.dim[i].type) {
-                case HVAL_INT:  fprintf(stderr, "%ld", val->value.i); break;
-                case HVAL_REAL: fprintf(stderr, "%g", val->value.r); break;
-                case HVAL_STR:  fprintf(stderr, "%s", val->value.s); break;
-                default:        fprintf(stderr, "<INV>");
-                }
-                if (i < point->len - 1)
-                    fprintf(stderr, ", ");
-            }
-            fprintf(stderr, "}\n");
-        }
-    }
-    return 0;
-}
-
-int constraint_fini(void)
-{
-    hspace_fini(&local_space);
-    return 0;
-}
-
 int build_vars_text(hspace_t* space)
 {
     int i;
@@ -260,7 +266,7 @@ int build_bounds_text(hspace_t* space)
     for (i = 0; i < space->len; ++i) {
         hrange_t* range = &space->dim[i];
 
-        /* Fetch min and max according to variable type */
+        // Fetch min and max according to variable type.
         switch (range->type) {
         case HVAL_INT:
             ptr += snprintf(ptr, end - ptr, "%ld <= %s <= %ld",
@@ -323,7 +329,7 @@ int build_point_text(hpoint_t* point)
 
     point_text[0] = '\0';
     for (i = 0; i < point->len; ++i) {
-        /* Fetch min and max according to variable type */
+        // Fetch min and max according to variable type.
         switch (local_space.dim[i].type) {
         case HVAL_INT:
             ptr += snprintf(ptr, end - ptr, "%s = %ld",
@@ -346,7 +352,8 @@ int build_point_text(hpoint_t* point)
     return 0;
 }
 
-/* XXX - We don't actually update the session search space just yet,
+/*
+ * XXX - We don't actually update the session search space just yet,
  * resulting in correct, but less optimal point generation.
  */
 int update_bounds(hspace_t* space)
@@ -358,22 +365,22 @@ int update_bounds(hspace_t* space)
     for (i = 0; i < local_space.len; ++i) {
         hrange_t* range = &local_space.dim[i];
 
-        /* Write the domain text with variable constraints to the file */
+        // Write the domain text with variable constraints to the file.
         snprintf(cmd, sizeof(cmd),
                  "symbolic %s;\n"
                  "D:={[%s]: %s && %s};\n"
                  "range D;",
                  range->name, vars_text, bounds_text, user_text);
 
-        /* Call omega calculator */
+        // Call omega calculator.
         retstr = call_omega_calc(cmd);
         if (!retstr)
             return -1;
 
-        /* Parse the result */
+        // Parse the result.
         while (*retstr) {
             if (strncmp(">>>", retstr, 3) == 0)
-                goto nextline; /* Skip echo lines. */
+                goto nextline; // Skip echo lines.
 
             switch (range->type) {
             case HVAL_INT:
@@ -455,16 +462,16 @@ int check_validity(hpoint_t* point)
              "D;",
              vars_text, bounds_text, user_text, point_text);
 
-    /* Call omega test */
+    // Call omega test.
     retstr = call_omega_calc(cmd);
     if (!retstr)
         return -1;
 
-    /* Parse result */
+    // Parse result.
     while (*retstr) {
         char c;
         if (strncmp(">>>", retstr, 3) == 0)
-            goto nextline; /* Skip echo lines. */
+            goto nextline; // Skip echo lines.
 
         retval = sscanf(retstr, " { %*s : FALSE %c ", &c);
 
@@ -477,7 +484,7 @@ int check_validity(hpoint_t* point)
             ++retstr;
     }
 
-    /* If sscanf ever succeeded, retval will be 1 and the point is invalid. */
+    // If sscanf ever succeeded, retval will be 1 and the point is invalid.
     return (retval != 1);
 }
 

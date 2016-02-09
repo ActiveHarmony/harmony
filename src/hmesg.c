@@ -30,19 +30,22 @@
 
 const hmesg_t hmesg_zero = HMESG_INITIALIZER;
 
-/* Internal helper function prototypes. */
+/*
+ * Internal helper function prototypes.
+ */
 static int pack_state(char** buf, int* buflen, const hmesg_t* mesg);
 static int unpack_state(hmesg_t* mesg, char* buf);
 static int pack_data(char** buf, int* buflen, const hmesg_t* mesg);
 static int unpack_data(hmesg_t* mesg, char* buf);
 
-// To avoid excessive memory allocation, the *_unpack() routines build
-// non-standard versions of their structures by taking advantage of
-// the hmesg_t internal buffers.
-//
-// As a result, we use the *_scrub() routines here instead of their
-// *_fini() should NOT be used here
-//
+/*
+ * To avoid excessive memory allocation, the *_unpack() routines build
+ * non-standard versions of their structures by taking advantage of the
+ * hmesg_t internal buffers.
+ *
+ * As a result, we use the *_scrub() routines here instead of their
+ * corresponding *_fini() routine.
+ */
 void hmesg_fini(hmesg_t* mesg)
 {
     hspace_scrub(&mesg->unpacked_space);
@@ -73,7 +76,7 @@ int hmesg_pack(hmesg_t* mesg)
     buf = mesg->send_buf;
     buflen = mesg->send_len;
 
-    /* Leave room for a header. */
+    // Leave room for a header.
     buf += HMESG_HDR_SIZE;
     buflen -= HMESG_HDR_SIZE;
     if (buflen < 0)
@@ -152,7 +155,7 @@ int hmesg_unpack(hmesg_t* mesg)
     int count, total;
     char* buf = mesg->recv_buf;
 
-    /* Verify HMESG_MAGIC and HMESG_VERSION */
+    // Verify HMESG_MAGIC and HMESG_VERSION.
     unsigned int magic;
     memcpy(&magic, buf, sizeof(magic));
     if (ntohl(magic) != HMESG_MAGIC)
@@ -215,7 +218,7 @@ int hmesg_unpack(hmesg_t* mesg)
 }
 
 /*
- * Internal helper function implementations.
+ * Internal helper function implementation.
  */
 int pack_state(char** buf, int* buflen, const hmesg_t* mesg)
 {

@@ -55,20 +55,24 @@ const hcfg_info_t plugin_keyinfo[] = {
 hpoint_t best = HPOINT_INITIALIZER;
 double   best_perf;
 
-//
-// Strategy specific structures.
-//
+/*
+ * Strategy specific structures.
+ */
 typedef union unit {
     unsigned long index;
     double        value;
 } unit_u;
 
-/* Forward function definitions. */
+/*
+ * Internal helper function prototypes.
+ */
 int  config_strategy(void);
 void increment(void);
 int  make_hpoint(const unit_u* index, hpoint_t* point);
 
-/* Variables to track current search state. */
+/*
+ * Variables to track current search state.
+ */
 hspace_t* space;
 unit_u*   head;
 unit_u*   next;
@@ -85,16 +89,16 @@ int outstanding_points = 0, final_point_received = 0;
 int strategy_init(hspace_t* space_ptr)
 {
     if (!space) {
-        /* One time memory allocation and/or initialization. */
-
-        /* The best point and trial counter should only be initialized once,
-         * and thus be retained across a restart.
-         */
+        // One time memory allocation and/or initialization.
+        //
+        // The best point and trial counter should only be initialized
+        // once, and thus be retained across a restart.
+        //
         best_perf = HUGE_VAL;
         next_id = 1;
     }
 
-    /* Initialization for every call to strategy_init(). */
+    // Initialization for every call to strategy_init().
     if (space != space_ptr) {
         if (next) free(next);
         next = malloc(space_ptr->len * sizeof(*next));
@@ -162,9 +166,8 @@ int strategy_generate(hflow_t* flow, hpoint_t* point)
         }
     }
 
-    /* every time we send out a point that's before
-       the final point, increment the numebr of points
-       we're waiting for results from */
+    // Every time we send out a point that's before the final point,
+    // increment the numebr of points we're waiting for results from.
     if(! final_id || next_id <= final_id)
       outstanding_points++;
 
@@ -220,17 +223,16 @@ int strategy_analyze(htrial_t* trial)
         }
     }
 
-    /* decrement the number of points we're waiting for
-       when we get a point back that was generated before
-       the final point */
+    // Decrement the number of points we're waiting for when we get a
+    // point back that was generated before the final point.
     if(! final_id || trial->point.id <= final_id)
         outstanding_points--;
 
     if (trial->point.id == final_id)
         final_point_received = 1;
 
-    /* converged when the final point has been received,
-       and there are no outstanding points */
+    // Converged when the final point has been received, and there are
+    // no outstanding points.
     if(outstanding_points <= 0 && final_point_received) {
         if (session_setcfg(CFGKEY_CONVERGED, "1") != 0) {
             session_error("Internal error: Could not set convergence status.");
@@ -253,9 +255,9 @@ int strategy_best(hpoint_t* point)
     return 0;
 }
 
-//
-// Internal helper function implementation.
-//
+/*
+ * Internal helper function implementation.
+ */
 int config_strategy(void)
 {
     const char* cfgstr;

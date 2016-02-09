@@ -30,9 +30,9 @@
 extern "C" {
 #endif
 
-//
-// Vertex structure for geometric manipulation of hpoints.
-//
+/*
+ * Vertex structure for geometric manipulation of hpoints.
+ */
 typedef struct vertex {
     unsigned id;
     double*  term;
@@ -48,16 +48,16 @@ typedef enum vertex_norm {
     VERTEX_NORM_MAX
 } vertex_norm_t;
 
-//
-// Vertex structure management interface.
-//
+/*
+ * Vertex structure management interface.
+ */
 int  vertex_init(vertex_t* vertex, int newlen);
 int  vertex_copy(vertex_t* dest, const vertex_t* src);
 void vertex_fini(vertex_t* vertex);
 
-//
-// Vertex initialization interface.
-//
+/*
+ * Vertex initialization interface.
+ */
 int vertex_center(vertex_t* vertex, const hspace_t* space);
 int vertex_maximum(vertex_t* vertex, const hspace_t* space);
 int vertex_minimum(vertex_t* vertex, const hspace_t* space);
@@ -65,9 +65,9 @@ int vertex_parse(vertex_t* vertex, const hspace_t* space, const char* buf);
 int vertex_random(vertex_t* vertex, const hspace_t* space, double radius);
 int vertex_set(vertex_t* vertex, const hspace_t* space, const hpoint_t* point);
 
-//
-// Vertex utility function interface.
-//
+/*
+ * Vertex utility function interface.
+ */
 int    vertex_inbounds(const vertex_t* vertex, const hspace_t* space);
 double vertex_norm(const vertex_t* a, const vertex_t* b, vertex_norm_t norm);
 int    vertex_point(const vertex_t* vertex, const hspace_t* space,
@@ -75,30 +75,30 @@ int    vertex_point(const vertex_t* vertex, const hspace_t* space,
 int    vertex_transform(const vertex_t* base, const vertex_t* origin,
                         double coefficient, vertex_t* result);
 
-//
-// Simplex structure to support operations on vertex groups.
-//
+/*
+ * Simplex structure to support operations on vertex groups.
+ */
 typedef struct simplex {
     vertex_t* vertex;
     int       len;
 } simplex_t;
 
-//
-// Simplex structure management interface.
-//
+/*
+ * Simplex structure management interface.
+ */
 int  simplex_init(simplex_t* simplex, unsigned dimensions);
 int  simplex_copy(simplex_t* dest, const simplex_t* src);
 void simplex_fini(simplex_t* simplex);
 
-//
-// Simplex initialization interface.
-//
+/*
+ * Simplex initialization interface.
+ */
 int simplex_set(simplex_t* simplex, const hspace_t* space,
                 const vertex_t* base, double radius);
 
-//
-// Simplex utility function interface.
-//
+/*
+ * Simplex utility function interface.
+ */
 int simplex_centroid(const simplex_t* simplex, vertex_t* centroid);
 int simplex_collapsed(const simplex_t* simplex, const hspace_t* space);
 int simplex_inbounds(const simplex_t* simplex, const hspace_t* space);

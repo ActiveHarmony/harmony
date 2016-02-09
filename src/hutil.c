@@ -45,7 +45,7 @@ void* file_map(const char* filename, size_t* size)
         return NULL;
     }
 
-    /* Obtain file size */
+    // Obtain file size.
     struct stat sb;
     void* retval = NULL;
     if (fstat(fd, &sb) != 0) {
@@ -252,7 +252,7 @@ int array_grow(void* oldbuf, int* oldcap, int size)
 
 char* search_path(const char* filename)
 {
-    /* XXX - Not re-entrant. */
+    // XXX - Not re-entrant.
     static char* fullpath = NULL;
     static int pathlen = 0;
 
@@ -367,7 +367,7 @@ int snprintf_serial(char** buf, int* buflen, const char* fmt, ...)
     if (*buflen < 0)
         *buflen = 0;
     else
-        *buf += count;  /* Only advance *buf if the write was successful. */
+        *buf += count; // Only advance *buf if the write was successful.
 
     return count;
 }

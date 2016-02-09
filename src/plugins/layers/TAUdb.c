@@ -89,10 +89,12 @@ hspace_t sess_space;
 int param_max;
 int client_max;
 int save_counter = 0;
-int taudb_store_type; //1 for real time, 0 for one-time
+int taudb_store_type; // 1 for real time, 0 for one-time
 int total_record_num = 0;
 
-/* Several Pre-declaration */
+/*
+ * Internal helper function prototypes.
+ */
 int client_idx(void);
 int save_timer_parameter(TAUDB_TIMER* timer, htrial_t* trial);
 int harmony_taudb_trial_init(const char* appName, const char* trialname);
@@ -103,14 +105,15 @@ void harmony_taudb_get_secondary_metadata(TAUDB_THREAD* thread, char* opsys,
                                           char* cpuvendor, char* cpumodel,
                                           char* clkfreq, char* cachesize);
 
-/* Initialization of TAUdb
+/*
+ * Initialization of TAUdb.
  * Return 0 for success, -1 for error
  */
 int TAUdb_init(hspace_t* space)
 {
     char* tmpstr;
 
-    /* Connecting to TAUdb */
+    // Connecting to TAUdb.
     tmpstr = hcfg_get(session_cfg, CFGKEY_TAUDB_NAME);
     if (!tmpstr) {
         session_error("TAUdb connection failed: config file not found.");
@@ -119,21 +122,21 @@ int TAUdb_init(hspace_t* space)
 
     connection = taudb_connect_config(tmpstr);
 
-    /* Check if the connection has been established */
+    // Check if the connection has been established.
     taudb_check_connection(connection);
 
-    /* Initializing Trial */
+    // Initializing trial.
     if (harmony_taudb_trial_init(space->name, space->name) != 0) {
         session_error("Failed to create TAUdb trial");
         return -1;
     }
 
-    /* Create a metric */
+    // Create a metric.
     metric = taudb_create_metrics(1);
     metric->name = taudb_strdup("TIME");
     taudb_add_metric_to_trial(taudb_trial, metric);
 
-    /* Initializing Timer group */
+    // Initializing timer group.
     timer_group = taudb_create_timer_groups(1);
     timer_group->name = taudb_strdup("Harmony Perf");
     taudb_add_timer_group_to_trial(taudb_trial, timer_group);
@@ -158,7 +161,7 @@ int TAUdb_init(hspace_t* space)
 
     thread = harmony_taudb_create_thread(client_max);
 
-    /* Client id map to thread id*/
+    // Client id map to thread id.
     client = malloc(client_max * sizeof(cinfo_t));
     if (!client) {
         session_error("Internal error: Could not allocate client list");
@@ -212,7 +215,7 @@ int TAUdb_analyze(hflow_t* flow, htrial_t* ah_trial)
 
     //taudb_save_metrics(connection, taudb_trial, 1);
 
-    /*create a timer*/
+    // Create a timer.
     TAUDB_TIMER* timer = taudb_create_timers(1);
     TAUDB_TIMER_VALUE* timer_value = taudb_create_timer_values(1);
     TAUDB_TIMER_CALLPATH* timer_callpath = taudb_create_timer_callpaths(1);
@@ -223,7 +226,8 @@ int TAUdb_analyze(hflow_t* flow, htrial_t* ah_trial)
     if (idx < 0)
         return -1;
 
-    /*parse input string and get param information*/
+    // Parse input string and get param information.
+    //
     //timer_group->name = taudb_strdup("Harmony Perf");
 
     ++client[idx].timer;
@@ -257,7 +261,7 @@ int TAUdb_analyze(hflow_t* flow, htrial_t* ah_trial)
     if (save_timer_parameter(timer, ah_trial) != 0)
         return -1;
 
-    /*Save the trial*/
+    // Save the trial.
     if (taudb_store_type == 0) {
         if (save_counter < total_record_num) {
             ++save_counter;
@@ -280,7 +284,9 @@ int TAUdb_analyze(hflow_t* flow, htrial_t* ah_trial)
     return 0;
 }
 
-/* Finalize a trial */
+/*
+ * Finalize a trial.
+ */
 void TAUdb_fini(void)
 {
     boolean update = 1;
@@ -288,14 +294,13 @@ void TAUdb_fini(void)
     taudb_compute_statistics(taudb_trial);
     taudb_save_trial(connection, taudb_trial, update, cascade);
 
-    /*Disconnect from TAUdb*/
+    // Disconnect from TAUdb.
     taudb_disconnect(connection);
 }
 
-/*----------------------------------------------------------
- * All functions below are internal functions
+/*
+ * Internal helper function implementation.
  */
-
 int client_idx(void)
 {
     int i;
@@ -334,10 +339,10 @@ int save_timer_parameter(TAUDB_TIMER* timer, htrial_t* trial)
     for (i = 0; i < param_max; i++) {
         const hval_t* val = &trial->point.term[i];
 
-        /*Save name*/
+        // Save name.
         param[i].name = taudb_strdup(sess_space.dim[i].name);
 
-        /*get value*/
+        // Get value.
         switch (val->type) {
         case HVAL_INT:
             snprintf(buf, sizeof(buf), "%ld", val->value.i);
@@ -362,32 +367,34 @@ int save_timer_parameter(TAUDB_TIMER* timer, htrial_t* trial)
     return 0;
 }
 
-/*Initialize a trial*/
+/*
+ * Initialize a trial.
+ */
 int harmony_taudb_trial_init(const char* appName, const char* trialname)
 {
     char startTime[32];
     struct tm* current;
     time_t now;
 
-    /*Check if the connection has been established*/
+    // Check if the connection has been established.
     taudb_check_connection(connection);
 
-    /*Create a new trial*/
+    // Create a new trial.
     taudb_trial = taudb_create_trials(1);
     taudb_trial->name = taudb_strdup(trialname);
 
-    /*set the data source to other*/
+    // Set the data source to other.
     taudb_trial->data_source =
         taudb_get_data_source_by_id(taudb_query_data_sources(connection), 999);
 
-    /*Create metadata*/
+    // Create metadata.
     //num_metadata = count_num_metadata();
     TAUDB_PRIMARY_METADATA* pm = taudb_create_primary_metadata(2);
     pm[0].name = taudb_strdup("Application");
     pm[0].value = taudb_strdup(appName);
     taudb_add_primary_metadata_to_trial(taudb_trial, &(pm[0]));
 
-    //get the start time of the task
+    // Get the start time of the task.
     now = time(0);
     current = localtime(&now);
     snprintf(startTime, 64, "%d%d%d", (int)current->tm_hour,
@@ -418,7 +425,9 @@ TAUDB_THREAD* harmony_taudb_create_thread(int num)
     return thread;
 }
 
-/*Get per client metadata*/
+/*
+ * Get per client metadata.
+ */
 void harmony_taudb_get_secondary_metadata(TAUDB_THREAD* thr, char* opsys,
                                           char* machine, char* release,
                                           char* hostname, char* procnum,
@@ -428,7 +437,7 @@ void harmony_taudb_get_secondary_metadata(TAUDB_THREAD* thr, char* opsys,
     //TAUDB_SECONDARY_METADATA* cur = taudb_create_secondary_metadata(1);
     TAUDB_SECONDARY_METADATA* sm = taudb_create_secondary_metadata(1);
 
-    /*Loading os info*/
+    // Loading os info.
     fprintf(stderr, "Loading OS information.\n");
     sm->key.thread = thr;
     sm->key.name = taudb_strdup("OS");
@@ -461,7 +470,7 @@ void harmony_taudb_get_secondary_metadata(TAUDB_THREAD* thr, char* opsys,
     taudb_add_secondary_metadata_to_trial(taudb_trial, sm);
     fprintf(stderr, "Host name loaded.\n");
 
-    /*Loading CPU info*/
+    // Loading CPU info.
     fprintf(stderr, "Loading CPU information.\n");
     sm = taudb_create_secondary_metadata(1);
     sm->key.thread = thr;

@@ -39,15 +39,15 @@ typedef struct hdesc_t hdesc_t;
 
 #endif
 
-/* -------------------------------------------------------------------
- * Harmony descriptor management functions.
+/*
+ * Harmony descriptor management interface.
  */
 hdesc_t* ah_init(void);
 int      ah_args(hdesc_t* hd, int* argc, char** argv);
 void     ah_fini(hdesc_t* hd);
 
-/* -------------------------------------------------------------------
- * Session setup functions.
+/*
+ * Session setup interface.
  */
 int ah_load(hdesc_t* hd, const char* filename);
 int ah_int(hdesc_t* hd, const char* name,
@@ -59,8 +59,8 @@ int ah_strategy(hdesc_t* hd, const char* strategy);
 int ah_layers(hdesc_t* hd, const char* list);
 int ah_launch(hdesc_t* hd, const char* host, int port, const char* name);
 
-/* -------------------------------------------------------------------
- * Client setup functions.
+/*
+ * Client setup interface.
  */
 int ah_join(hdesc_t* hd, const char* host, int port, const char* name);
 int ah_id(hdesc_t* hd, const char* id);
@@ -69,8 +69,8 @@ int ah_bind_real(hdesc_t* hd, const char* name, double* ptr);
 int ah_bind_enum(hdesc_t* hd, const char* name, const char** ptr);
 int ah_leave(hdesc_t* hd);
 
-/* -------------------------------------------------------------------
- * Client/Session interaction functions.
+/*
+ * Client/Session interaction interface.
  */
 long        ah_get_int(hdesc_t* hd, const char* name);
 double      ah_get_real(hdesc_t* hd, const char* name);
@@ -85,8 +85,8 @@ int         ah_converged(hdesc_t* hd);
 const char* ah_error_string(hdesc_t* hd);
 void        ah_error_clear(hdesc_t* hd);
 
-/* -------------------------------------------------------------------
- * Deprecated API functions.
+/*
+ * Deprecated API.
  *
  * These functions are slated for removal in a future release.
  */

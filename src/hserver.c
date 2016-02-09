@@ -34,7 +34,7 @@
 #include <libgen.h>
 #include <signal.h>
 #include <math.h>
-#include <getopt.h> /* For getopt_long(). Requires _GNU_SOURCE */
+#include <getopt.h> // For getopt_long(). Requires _GNU_SOURCE.
 
 #include <sys/types.h>
 #include <sys/select.h>
@@ -45,7 +45,7 @@
 #include <netinet/tcp.h>
 
 /*
- * Function prototypes
+ * Internal helper function prototypes.
  */
 int verbose(const char* fmt, ...);
 int parse_opts(int argc, char* argv[]);
@@ -99,19 +99,19 @@ int main(int argc, char* argv[])
     int i, fd_count, retval;
     fd_set ready_fds;
 
-    /* Parse user options. */
+    // Parse user options.
     if (parse_opts(argc, argv) != 0)
         return -1;
 
-    /* Initialize global variable state. */
+    // Initialize global variable state.
     if (vars_init(argc, argv) < 0)
         return -1;
 
-    /* Initialize the HTTP user interface. */
+    // Initialize the HTTP user interface.
     if (http_init(harmony_dir) < 0)
         return -1;
 
-    /* Initialize socket networking service. */
+    // Initialize socket networking service.
     if (network_init() < 0)
         return -1;
 
@@ -127,7 +127,7 @@ int main(int argc, char* argv[])
         }
 
         if (fd_count > 0) {
-            /* Before all else, handle input from session instances. */
+            // Before all else, handle input from session instances.
             for (i = 0; i < slist_cap; ++i) {
                 if (slist[i].name && FD_ISSET(slist[i].fd, &ready_fds)) {
                     if (handle_session_socket(i) < 0) {
@@ -136,7 +136,7 @@ int main(int argc, char* argv[])
                 }
             }
 
-            /* Handle new connections */
+            // Handle new connections.
             if (FD_ISSET(listen_socket, &ready_fds)) {
                 retval = handle_new_connection(listen_socket);
                 if (retval > 0) {
@@ -146,7 +146,7 @@ int main(int argc, char* argv[])
                 }
             }
 
-            /* Handle unknown connections (Unneeded if we switch to UDP) */
+            // Handle unknown connections (Unneeded if we switch to UDP).
             for (i = 0; i < unk_cap; ++i) {
                 if (unk_fds[i] == -1)
                     continue;
@@ -158,7 +158,7 @@ int main(int argc, char* argv[])
                 }
             }
 
-            /* Handle harmony messages */
+            // Handle Harmony messages.
             for (i = 0; i < client_cap; ++i) {
                 if (client_fds[i] == -1)
                     continue;
@@ -171,7 +171,7 @@ int main(int argc, char* argv[])
                 }
             }
 
-            /* Handle http requests */
+            // Handle http requests.
             for (i = 0; i < http_cap; ++i) {
                 if (http_fds[i] == -1)
                     continue;
@@ -243,14 +243,10 @@ int vars_init(int argc, char* argv[])
     char* tmppath;
     char* binfile;
 
-    /*
-     * Ignore signal for writes to broken pipes/sockets.
-     */
+    // Ignore signal for writes to broken pipes/sockets.
     signal(SIGPIPE, SIG_IGN);
 
-    /*
-     * Determine directory where this binary is located.
-     */
+    //Determine directory where this binary is located
     tmppath = stralloc(argv[0]);
     binfile = stralloc(basename(tmppath));
     free(tmppath);
@@ -276,9 +272,7 @@ int vars_init(int argc, char* argv[])
     }
     free(binfile);
 
-    /*
-     * Find supporting binaries and shared objects.
-     */
+    // Find supporting binaries and shared objects.
     session_bin = sprintf_alloc("%s/libexec/" SESSION_CORE_EXECFILE,
                                 harmony_dir);
     if (!file_exists(session_bin)) {
@@ -287,9 +281,7 @@ int vars_init(int argc, char* argv[])
         return -1;
     }
 
-    /*
-     * Prepare the file descriptor lists.
-     */
+    // Prepare the file descriptor lists.
     unk_fds = NULL;
     unk_cap = 0;
     if (array_grow(&unk_fds, &unk_cap, sizeof(int)) < 0) {
@@ -329,7 +321,7 @@ int network_init(void)
     int optval;
     struct sockaddr_in addr;
 
-    /* create a listening socket */
+    // Create a listening socket.
     verbose("Listening on TCP port: %d\n", listen_port);
     listen_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (listen_socket < 0) {
@@ -337,9 +329,11 @@ int network_init(void)
         return -1;
     }
 
-    /* set socket options. We try to make the port reusable and have it
-       close as fast as possible without waiting in unnecessary wait states
-       on close. */
+    // Set socket options.
+    //
+    // Try to make the port reusable and have it close as fast as
+    // possible without waiting in unnecessary wait states on close.
+    //
     optval = 1;
     if (setsockopt(listen_socket, SOL_SOCKET, SO_REUSEADDR,
                    &optval, sizeof(optval)) < 0)
@@ -348,20 +342,18 @@ int network_init(void)
         return -1;
     }
 
-    /* Initialize the socket address. */
+    // Initialize the socket address.
     addr.sin_family      = AF_INET;
     addr.sin_addr.s_addr = INADDR_ANY;
     addr.sin_port        = htons((unsigned short)listen_port);
 
-    /* Bind the socket to the desired port. */
+    // Bind the socket to the desired port.
     if (bind(listen_socket, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         perror("Could not bind socket to listening address");
         return -1;
     }
 
-    /*
-     * Set the file descriptor set
-     */
+    // Set the file descriptor set.
     FD_ZERO(&listen_fds);
     FD_SET(listen_socket, &listen_fds);
     highest_socket = listen_socket;
@@ -386,9 +378,9 @@ int handle_new_connection(int fd)
         return -1;
     }
 
-    /* The peer may not have sent data yet.  To prevent blocking, lets
-     * stash the new socket in the unknown_list until we know it has data.
-     */
+    // The peer may not have sent data yet.  To prevent blocking, lets
+    // stash the new socket in the unknown_list until we know it has data.
+    //
     idx = available_index(&unk_fds, &unk_cap);
     if (idx < 0) {
         perror("Could not grow unknown connection array");
@@ -408,14 +400,14 @@ int handle_unknown_connection(int fd)
 
     readlen = recv(fd, &header, sizeof(header), MSG_PEEK | MSG_DONTWAIT);
     if (readlen < 0 || (unsigned int)readlen < sizeof(header)) {
-        /* Error on recv, or insufficient data.  Close the connection. */
+        // Error on recv, or insufficient data.  Close the connection.
         printf("Can't determine type for socket %d.  Closing.\n", fd);
         if (close(fd) < 0)
             perror("Error closing connection");
         return -1;
     }
     else if (ntohl(header) == HMESG_MAGIC) {
-        /* This is a communication socket from a Harmony client. */
+        // This is a communication socket from a Harmony client.
         idx = available_index(&client_fds, &client_cap);
         if (idx < 0) {
             perror("Could not grow Harmony connection array");
@@ -427,7 +419,7 @@ int handle_unknown_connection(int fd)
     }
     else
     {
-        /* Consider this an HTTP communication socket. */
+        // Consider this an HTTP communication socket.
         if (http_len >= http_connection_limit) {
             printf("Hit HTTP connection limit on socket %d.  Closing.\n", fd);
             http_send_error(fd, 503, NULL);
@@ -464,11 +456,11 @@ int handle_client_socket(int fd)
         goto error;
 
     if (mesg.origin == -1) {
-        /* Message was intended to be ignored. */
+        // Message was intended to be ignored.
         return 0;
     }
 
-    /* Sanity check input */
+    // Sanity check input.
     if (mesg.type != HMESG_SESSION && mesg.type != HMESG_JOIN) {
         idx = mesg.origin;
         if (idx < 0 || idx >= slist_cap || slist[idx].name == NULL) {
@@ -543,13 +535,13 @@ int handle_client_socket(int fd)
         if (i < sess->fetched_len) {
             const hpoint_t* pt = &sess->fetched[i];
 
-            /* Copy point from fetched list to HTTP log. */
+            // Copy point from fetched list to HTTP log.
             if (append_http_log(sess, pt, perf) != 0) {
                 perror("Internal error copying fetched point to HTTP log");
                 goto error;
             }
 
-            /* Remove point from fetched list. */
+            // Remove point from fetched list.
             --sess->fetched_len;
             if (i < sess->fetched_len) {
                 if (hpoint_copy(&sess->fetched[i],
@@ -561,7 +553,7 @@ int handle_client_socket(int fd)
             }
         }
         else {
-            /* Copy point from fetched list to HTTP log. */
+            // Copy point from fetched list to HTTP log.
             if (append_http_log(sess, &sess->best, perf) != 0) {
                 perror("Internal error copying best point to HTTP log");
                 goto error;
@@ -617,7 +609,7 @@ int handle_session_socket(int idx)
 
     case HMESG_FETCH:
         if (mesg.status == HMESG_STATUS_OK) {
-            /* Log this point before we forward it to the client. */
+            // Log this point before we forward it to the client.
             if (sess->fetched_len == sess->fetched_cap) {
                 if (array_grow(&sess->fetched, &sess->fetched_cap,
                                sizeof(*sess->fetched)) != 0)
@@ -683,7 +675,7 @@ session_state_t* session_open(void)
     session_state_t* sess;
     const char* cfgstr;
 
-    /* check if session already exists, and return if it does */
+    // Check if session already exists, and return if it does.
     for (i = 0; i < slist_cap; ++i) {
         if (!slist[i].name) {
             if (idx < 0)
@@ -695,8 +687,8 @@ session_state_t* session_open(void)
             return NULL;
         }
     }
-    /* expand session list arr if necessary, and add
-       the new session to the session list arr */
+
+    // Expand session list if necessary.
     if (idx == -1) {
         idx = slist_cap;
         if (array_grow(&slist, &slist_cap, sizeof(session_state_t)) < 0)
@@ -704,6 +696,7 @@ session_state_t* session_open(void)
     }
     sess = &slist[idx];
 
+    // Add the new session to the session list.
     sess->name = stralloc(mesg.state.space->name);
     if (!sess->name)
         return NULL;
@@ -711,7 +704,7 @@ session_state_t* session_open(void)
     sess->client_len = 0;
     sess->best_perf = HUGE_VAL;
 
-    /* Initialize HTTP server fields. */
+    // Initialize HTTP server fields.
     if (hspace_copy(&sess->space, mesg.state.space) != 0)
         goto error;
 
@@ -733,7 +726,7 @@ session_state_t* session_open(void)
     sess->log_len = 0;
     sess->reported = 0;
 
-    /* Fork and exec a session handler. */
+    // Fork and exec a session handler.
     char* const child_argv[] = {sess->name,
                                 harmony_dir,
                                 NULL};
@@ -880,7 +873,7 @@ int append_http_log(session_state_t* sess, const hpoint_t* pt, double perf)
 {
     http_log_t* entry;
 
-    /* Extend HTTP log if necessary. */
+    // Extend HTTP log if necessary.
     if (sess->log_len == sess->log_cap) {
         if (array_grow(&sess->log, &sess->log_cap, sizeof(http_log_t)) != 0) {
             perror("Could not grow HTTP log");

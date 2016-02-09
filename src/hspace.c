@@ -28,13 +28,15 @@
 
 const hspace_t hspace_zero = HSPACE_INITIALIZER;
 
-// Internal helper function prototypes.
+/*
+ * Internal helper function prototypes.
+ */
 static int       add_dim(hspace_t* sig, hrange_t* dim, const char** errptr);
 static hrange_t* find_dim(hspace_t* sig, const char* name);
 
-//
-// Base structure management implementation.
-//
+/*
+ * Base structure management implementation.
+ */
 int hspace_copy(hspace_t* dst, const hspace_t* src)
 {
     // Free heap data allocated by the destination structure.
@@ -81,9 +83,9 @@ void hspace_scrub(hspace_t* space)
     free(space->dim);
 }
 
-//
-// Search space definition implementation.
-//
+/*
+ * Search space definition implementation.
+ */
 int hspace_name(hspace_t* space, const char* name)
 {
     free(space->name);
@@ -196,9 +198,9 @@ int hspace_enum(hspace_t* space, const char* name, const char* value)
     return 0;
 }
 
-//
-// Search space comparison implementation.
-//
+/*
+ * Search space comparison implementation.
+ */
 int hspace_equal(const hspace_t* a, const hspace_t* b)
 {
     if (strcmp(a->name, b->name) != 0)
@@ -245,9 +247,9 @@ int hspace_equal(const hspace_t* a, const hspace_t* b)
     return 1;
 }
 
-//
-// Data transmission implementation.
-//
+/*
+ * Data transmission implementation.
+ */
 int hspace_pack(char** buf, int* buflen, const hspace_t* space)
 {
     int count, total;
@@ -335,9 +337,9 @@ int hspace_parse(hspace_t* space, const char* buf, const char** errptr)
     return -1;
 }
 
-//
-// Internal helper function implementation.
-//
+/*
+ * Internal helper function implementation.
+ */
 int add_dim(hspace_t* space, hrange_t* dim, const char** errptr)
 {
     const char* errstr;

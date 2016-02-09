@@ -17,7 +17,7 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/* Global Variables */
+// Global Variables.
 var intervalHandle;
 
 function shutdown_comm(xhr, status, error)

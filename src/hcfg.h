@@ -25,13 +25,9 @@
 extern "C" {
 #endif
 
-typedef struct hcfg_info {
-    const char* key;
-    const char* val;
-    const char* help;
-} hcfg_info_t;
-extern const hcfg_info_t hcfg_global_keys[];
-
+/*
+ * Harmony structure that represents configuration key/value pairs.
+ */
 typedef struct hcfg {
     char** env;
     int    len;
@@ -40,17 +36,41 @@ typedef struct hcfg {
 #define HCFG_INITIALIZER {0}
 extern const hcfg_t hcfg_zero;
 
-int    hcfg_init(hcfg_t* cfg);
-int    hcfg_reginfo(hcfg_t* cfg, const hcfg_info_t* info);
-int    hcfg_copy(hcfg_t* dst, const hcfg_t* src);
-void   hcfg_fini(hcfg_t* cfg);
-void   hcfg_scrub(hcfg_t* cfg);
+/*
+ * Harmony structure that represents key/value pair metadata.
+ */
+typedef struct hcfg_info {
+    const char* key;
+    const char* val;
+    const char* help;
+} hcfg_info_t;
+extern const hcfg_info_t hcfg_global_keys[];
 
-char*  hcfg_get(const hcfg_t* cfg, const char* key);
+/*
+ * Basic structure management interface.
+ */
+int  hcfg_init(hcfg_t* cfg);
+int  hcfg_reginfo(hcfg_t* cfg, const hcfg_info_t* info);
+int  hcfg_copy(hcfg_t* dst, const hcfg_t* src);
+void hcfg_fini(hcfg_t* cfg);
+void hcfg_scrub(hcfg_t* cfg);
+
+/*
+ * Configuration value access interface.
+ */
+char* hcfg_get(const hcfg_t* cfg, const char* key);
+int   hcfg_set(hcfg_t* cfg, const char* key, const char* val);
+
+/*
+ * Scalar value conversion interface.
+ */
 int    hcfg_bool(const hcfg_t* cfg, const char* key);
 long   hcfg_int(const hcfg_t* cfg, const char* key);
 double hcfg_real(const hcfg_t* cfg, const char* key);
 
+/*
+ * Array value conversion interface.
+ */
 int    hcfg_arr_len(const hcfg_t* cfg, const char* key);
 int    hcfg_arr_get(const hcfg_t* cfg, const char* key, int idx,
                     char* buf, int len);
@@ -58,13 +78,13 @@ int    hcfg_arr_bool(const hcfg_t* cfg, const char* key, int idx);
 long   hcfg_arr_int(const hcfg_t* cfg, const char* key, int idx);
 double hcfg_arr_real(const hcfg_t* cfg, const char* key, int idx);
 
-int    hcfg_set(hcfg_t* cfg, const char* key, const char* val);
-int    hcfg_loadfile(hcfg_t* cfg, const char* filename);
-int    hcfg_write(const hcfg_t* cfg, const char* filename);
-
-int    hcfg_pack(char** buf, int* buflen, const hcfg_t* cfg);
-int    hcfg_unpack(hcfg_t* cfg, char* buf);
-int    hcfg_parse(hcfg_t* cfg, const char* buf, const char** errptr);
+/*
+ * Data transmission interface.
+ */
+int hcfg_pack(char** buf, int* buflen, const hcfg_t* cfg);
+int hcfg_unpack(hcfg_t* cfg, char* buf);
+int hcfg_parse(hcfg_t* cfg, const char* buf, const char** errptr);
+int hcfg_write(const hcfg_t* cfg, const char* filename);
 
 #ifdef __cplusplus
 }

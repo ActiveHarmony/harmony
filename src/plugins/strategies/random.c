@@ -55,11 +55,15 @@ hcfg_info_t plugin_keyinfo[] = {
 hpoint_t best = HPOINT_INITIALIZER;
 double   best_perf;
 
-/* Forward function definitions. */
+/*
+ * Internal helper function prototypes.
+ */
 int  config_strategy(void);
 void randomize(hpoint_t* point);
 
-/* Variables to track current search state. */
+/*
+ * Variables to track current search state.
+ */
 hspace_t* space;
 hpoint_t  next;
 
@@ -69,16 +73,16 @@ hpoint_t  next;
 int strategy_init(hspace_t* space_ptr)
 {
     if (!space) {
-        /* One time memory allocation and/or initialization. */
-
-        /* The best point and trial counter should only be initialized once,
-         * and thus be retained across a restart.
-         */
+        // One time memory allocation and/or initialization.
+        //
+        // The best point and trial counter should only be initialized
+        // once, and thus be retained across a restart.
+        //
         best_perf = HUGE_VAL;
         next.id = 1;
     }
 
-    /* Initialization for subsequent calls to strategy_init(). */
+    // Initialization for subsequent calls to strategy_init().
     if (space != space_ptr) {
         if (hpoint_init(&next, space_ptr->len) != 0) {
             session_error("Could not initialize point structure");
@@ -107,7 +111,7 @@ int strategy_generate(hflow_t* flow, hpoint_t* point)
         return -1;
     }
 
-    /* Prepare a new random vertex for the next call to strategy_generate. */
+    // Prepare a new random vertex for the next call to strategy_generate.
     randomize(&next);
     ++next.id;
 
@@ -166,9 +170,9 @@ int strategy_best(hpoint_t* point)
     return 0;
 }
 
-//
-// Internal helper function implementation.
-//
+/*
+ * Internal helper function implementation.
+ */
 int config_strategy(void)
 {
     const char* cfgval = hcfg_get(session_cfg, CFGKEY_INIT_POINT);
