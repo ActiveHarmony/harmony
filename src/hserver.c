@@ -750,7 +750,6 @@ void session_close(session_state_t* sess)
 {
     int i;
 
-    free(sess->strategy);
     free(sess->name);
     sess->name = NULL;
 
@@ -758,6 +757,9 @@ void session_close(session_state_t* sess)
         if (sess->client[i] != -1)
             client_close(sess->client[i]);
     }
+
+    free(sess->strategy);
+    sess->best.id = 0;
 }
 
 void client_close(int fd)
