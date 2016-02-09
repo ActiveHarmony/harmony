@@ -25,7 +25,7 @@
  */
 
 #include "session-core.h"
-#include "hsignature.h"
+#include "hspace.h"
 #include "hpoint.h"
 #include "hperf.h"
 #include "hcfg.h"
@@ -56,7 +56,7 @@ hcfg_info_t plugin_keyinfo[] = {
 
 FILE* fd;
 
-int logger_init(hsignature_t* sig)
+int logger_init(hspace_t* space)
 {
     const char* filename = hcfg_get(session_cfg, CFGKEY_LOG_FILE);
     const char* mode     = hcfg_get(session_cfg, CFGKEY_LOG_MODE);
@@ -88,13 +88,11 @@ int logger_join(const char* id)
 
 int logger_analyze(hflow_t* flow, htrial_t* trial)
 {
-    int i;
-
     fprintf(fd, "Point #%d: (", trial->point.id);
-    for (i = 0; i < trial->point.n; ++i) {
-        hval_t* v = &trial->point.val[i];
+    for (int i = 0; i < trial->point.len; ++i) {
         if (i > 0) fprintf(fd, ",");
 
+        const hval_t* v = &trial->point.term[i];
         switch (v->type) {
         case HVAL_INT:  fprintf(fd, "%ld", v->value.i); break;
         case HVAL_REAL: fprintf(fd, "%lf[%la]", v->value.r, v->value.r); break;
@@ -106,15 +104,15 @@ int logger_analyze(hflow_t* flow, htrial_t* trial)
     }
     fprintf(fd, ") ");
 
-    if (trial->perf->n > 1) {
+    if (trial->perf.len > 1) {
         fprintf(fd, "=> (");
-        for (i = 0; i < trial->perf->n; ++i) {
+        for (int i = 0; i < trial->perf.len; ++i) {
             if (i > 0) fprintf(fd, ",");
-            fprintf(fd, "%lf[%la]", trial->perf->p[i], trial->perf->p[i]);
+            fprintf(fd, "%lf[%la]", trial->perf.obj[i], trial->perf.obj[i]);
         }
         fprintf(fd, ") ");
     }
-    fprintf(fd, "=> %lf\n", hperf_unify(trial->perf));
+    fprintf(fd, "=> %lf\n", hperf_unify(&trial->perf));
     fflush(fd);
 
     flow->status = HFLOW_ACCEPT;

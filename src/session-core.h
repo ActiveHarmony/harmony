@@ -22,7 +22,7 @@
 
 #include "hpoint.h"
 #include "hperf.h"
-#include "hsignature.h"
+#include "hspace.h"
 #include "hcfg.h"
 
 #ifdef __cplusplus
@@ -47,11 +47,11 @@ typedef struct hflow {
 
 typedef struct htrial {
     const hpoint_t point;
-    hperf_t* perf;
+    hperf_t perf;
 } htrial_t;
 
 /* Generic plug-in event-hook signatures. */
-typedef int (*hook_init_t)(hsignature_t* sig);
+typedef int (*hook_init_t)(hspace_t* space);
 typedef int (*hook_join_t)(const char* id);
 typedef int (*hook_setcfg_t)(const char* key, const char* val);
 typedef int (*hook_fini_t)(void);

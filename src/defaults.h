@@ -49,7 +49,7 @@
 /* Plug-in strategy configuration variables. */
 #define CFGKEY_PASSES             "PASSES"
 #define CFGKEY_INIT_METHOD        "INIT_METHOD"
-#define CFGKEY_INIT_PERCENT       "INIT_PERCENT"
+#define CFGKEY_INIT_RADIUS        "INIT_RADIUS"
 #define CFGKEY_INIT_POINT         "INIT_POINT"
 #define CFGKEY_SIMPLEX_SIZE       "SIMPLEX_SIZE"
 #define CFGKEY_REFLECT            "REFLECT"

@@ -35,13 +35,14 @@ int   valid_id(const char* key, int len);
 int   file_read_line(FILE* fp, char** buf, int* cap,
                      char** line, char** end, const char** errstr);
 char* search_path(const char* filename);
-int   array_grow(void* buf, int* capacity, int elem_size);
+int   array_grow(void* buf, int* cap, int size);
 char* stralloc(const char* in);
 char* sprintf_alloc(const char* fmt, ...);
 int   snprintf_grow(char** buf, int* buflen, const char* fmt, ...);
 int   snprintf_serial(char** buf, int* buflen, const char* fmt, ...);
 int   printstr_serial(char** buf, int* buflen, const char* str);
 int   scanstr_serial(const char** str, char* buf);
+int   unquote_string(const char* buf, char** token, const char** errptr);
 
 #ifdef __cplusplus
 }

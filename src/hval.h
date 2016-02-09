@@ -24,32 +24,47 @@
 extern "C" {
 #endif
 
-/* --------------------------------------------------------------
- * Harmony structures that encapsulate values and configurations
+/* -----------------------------------------------------------------
+ * Harmony structures that encapsulate values within a search space.
  */
-typedef enum {
+typedef enum hval_type {
     HVAL_UNKNOWN = 0,
-    HVAL_INT,  /* Integer domain value */
-    HVAL_REAL, /* Real domain value    */
-    HVAL_STR,  /* String value         */
+    HVAL_INT,  /* Integer domain value. */
+    HVAL_REAL, /* Real domain value. */
+    HVAL_STR,  /* String domain value (for enumerated types). */
 
     HVAL_MAX
-} hval_type;
+} hval_type_t;
+
+typedef union hval_value {
+    long        i;
+    double      r;
+    const char* s;
+} hval_value_t;
 
 typedef struct hval {
-    hval_type type;
-    union {
-        long i;
-        double r;
-        const char* s;
-    } value;
+    hval_type_t  type;
+    hval_value_t value;
+    char*        buf;
 } hval_t;
 
-extern const hval_t HVAL_INITIALIZER;
+#define HVAL_INITIALIZER {HVAL_UNKNOWN}
+extern const hval_t hval_zero;
 
-int hval_parse(hval_t* val, const char* buf);
-int hval_serialize(char** buf, int* buflen, const hval_t* val);
-int hval_deserialize(hval_t* val, char* buf);
+// Base structure management interface.
+int  hval_copy(hval_t* dst, const hval_t* src);
+void hval_fini(hval_t* v);
+
+// Value comparison interface.
+int hval_eq(const hval_t* a, const hval_t* b);
+
+// Data transmission interface.
+int hval_pack(char** buf, int* buflen, const hval_t* v);
+int hval_unpack(hval_t* v, char* buf);
+int hval_parse(hval_t* v, hval_type_t type, const char* buf);
+
+// Exported parsing utility interface.
+int hval_string_copy(const char* buf, char** token, const char** errptr);
 
 #ifdef __cplusplus
 }

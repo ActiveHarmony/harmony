@@ -57,12 +57,13 @@ int main(int argc, char* argv[])
     hdesc_t* hd;
     int i, retval;
     double perf;
+    char* session_name = NULL;
 
     retval = 0;
     for (i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
-            fprintf(stderr, "Usage: %s [KEY_1=VAL_1] ... [KEY_N=VAL_N]\n\n",
-                    argv[0]);
+            fprintf(stderr, "Usage: %s [session_name]"
+                    " [KEY_1=VAL_1] ... [KEY_N=VAL_N]\n\n", argv[0]);
             return 0;
         }
     }
@@ -74,6 +75,9 @@ int main(int argc, char* argv[])
         goto error;
     }
     ah_args(hd, &argc, argv);
+
+    if (argc > 1)
+        session_name = argv[1];
 
     /* Define a tuning variable that resides in the integer domain. */
     if (ah_int(hd, "i_var",  1, 1000, 1) != 0) {
@@ -97,7 +101,7 @@ int main(int argc, char* argv[])
 
     /* Begin a new tuning session. */
     printf("Starting Harmony...\n");
-    if (ah_launch(hd, NULL, 0, NULL) != 0) {
+    if (ah_launch(hd, NULL, 0, session_name) != 0) {
         fprintf(stderr, "Error launching tuning session");
         goto error;
     }
@@ -108,6 +112,11 @@ int main(int argc, char* argv[])
         if (hresult < 0) {
             fprintf(stderr, "Error fetching values from tuning session");
             goto error;
+        }
+        else if (hresult == 0) {
+            printf("No testing point available.  Waiting.\n");
+            sleep(1);
+            continue;
         }
 
         /* Run one full iteration of the application (or code variant).

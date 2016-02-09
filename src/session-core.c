@@ -19,7 +19,7 @@
 #define _XOPEN_SOURCE 600 // Needed for srand48() and S_ISSOCK.
 
 #include "session-core.h"
-#include "hsession.h"
+#include "hspace.h"
 #include "hcfg.h"
 #include "hmesg.h"
 #include "hutil.h"
@@ -43,8 +43,9 @@
 /* --------------------------------
  * Session configuration variables.
  */
-hsession_t* sess;
-const hcfg_t* session_cfg;
+hspace_t session_space = HSPACE_INITIALIZER;
+hcfg_t cfg = HCFG_INITIALIZER;
+const hcfg_t* session_cfg = &cfg;
 
 int perf_count;
 int per_client;
@@ -118,6 +119,7 @@ int handle_report(hmesg_t* mesg);
 int handle_reject(int trial_idx);
 int handle_restart(hmesg_t* mesg);
 int handle_wait(int trial_idx);
+int update_state(hmesg_t* mesg);
 int load_strategy(const char* file);
 int load_layers(const char* list);
 int extend_lists(int target_cap);
@@ -130,6 +132,7 @@ const char* errmsg;
 int curr_layer = 0;
 hflow_t flow;
 int paused_id;
+hpoint_t best;
 
 /* List of all points generated, but not yet returned to the strategy. */
 htrial_t* pending = NULL;
@@ -153,8 +156,8 @@ int maxfd;
 /* -------------------------------------------
  * Static buffers used for dynamic allocation.
  */
-static char* setcfg_buf = NULL;
-static int setcfg_len = 0;
+static char* cfg_buf = NULL;
+static int cfg_len = 0;
 
 /* =================================
  * Core session routines begin here.
@@ -165,7 +168,6 @@ int main(int argc, char* argv[])
     int i, retval;
     fd_set ready_fds;
     hmesg_t mesg = HMESG_INITIALIZER;
-    hmesg_t session_mesg = HMESG_INITIALIZER;
 
     /* Check that we have been launched correctly by checking that
      * STDIN_FILENO is a socket descriptor.
@@ -187,37 +189,46 @@ int main(int argc, char* argv[])
     /* Receive the initial session message. */
     mesg.type = HMESG_SESSION;
     printf("Receiving initial session message on fd %d\n", STDIN_FILENO);
-    if (mesg_recv(STDIN_FILENO, &session_mesg) < 1) {
+    if (mesg_recv(STDIN_FILENO, &mesg) < 1) {
         mesg.data.string = "Socket or deserialization error";
         goto error;
     }
 
-    if (session_mesg.type != HMESG_SESSION ||
-        session_mesg.status != HMESG_STATUS_REQ)
-    {
+    if (mesg.type != HMESG_SESSION || mesg.status != HMESG_STATUS_REQ) {
         mesg.data.string = "Invalid initial message";
         goto error;
     }
 
     /* Initialize the session. */
-    sess = &session_mesg.data.session;
-    session_cfg = &session_mesg.data.session.cfg;
+    if (hspace_copy(&session_space, mesg.state.space) != 0) {
+        mesg.data.string = "Could not copy session data";
+        goto error;
+    }
+
+    if (hcfg_copy(&cfg, mesg.data.cfg) != 0) {
+        mesg.data.string = "Could not copy configuration environment";
+        goto error;
+    }
+
+    // Overwrite CFGKEY_HARMONY_HOME, which was passed to session as argv[1].
+    if (hcfg_set(&cfg, CFGKEY_HARMONY_HOME, argv[1]) != 0) {
+        mesg.data.string = "Could not set " CFGKEY_HARMONY_HOME " for session";
+        goto error;
+    }
+
     if (init_session() != 0)
         goto error;
 
     /* Send the initial session message acknowledgment. */
-    mesg.dest   = session_mesg.dest;
-    mesg.type   = session_mesg.type;
     mesg.status = HMESG_STATUS_OK;
-    mesg.src_id = session_mesg.src_id;
     if (mesg_send(STDIN_FILENO, &mesg) < 1) {
-        errmsg = session_mesg.data.string;
+        errmsg = mesg.data.string;
         goto error;
     }
 
     while (1) {
         flow.status = HFLOW_ACCEPT;
-        flow.point  = HPOINT_INITIALIZER;
+        flow.point  = hpoint_zero;
 
         ready_fds = fds;
         retval = select(maxfd + 1, &ready_fds, NULL, NULL, (pending_len == pending_cap)?NULL:pollstate);
@@ -236,7 +247,7 @@ int main(int argc, char* argv[])
             if (retval == 0) goto cleanup;
             if (retval <  0) goto error;
 
-            hcfg_set(&sess->cfg, CFGKEY_CURRENT_CLIENT, mesg.src_id);
+            hcfg_set(&cfg, CFGKEY_CURRENT_CLIENT, mesg.state.client);
             switch (mesg.type) {
             case HMESG_JOIN:    retval = handle_join(&mesg); break;
             case HMESG_GETCFG:  retval = handle_getcfg(&mesg); break;
@@ -245,6 +256,7 @@ int main(int argc, char* argv[])
             case HMESG_FETCH:   retval = handle_fetch(&mesg); break;
             case HMESG_REPORT:  retval = handle_report(&mesg); break;
             case HMESG_RESTART: retval = handle_restart(&mesg); break;
+
             default:
                 errmsg = "Internal error: Unknown message type.";
                 goto error;
@@ -252,8 +264,11 @@ int main(int argc, char* argv[])
             if (retval != 0)
                 goto error;
 
-            hcfg_set(&sess->cfg, CFGKEY_CURRENT_CLIENT, NULL);
-            mesg.src_id = NULL;
+            if (update_state(&mesg) != 0) {
+                errmsg = "Could not update session state in message";
+                goto error;
+            }
+            hcfg_set(&cfg, CFGKEY_CURRENT_CLIENT, NULL);
 
             if (mesg_send(STDIN_FILENO, &mesg) < 1)
                 goto error;
@@ -279,9 +294,10 @@ int main(int argc, char* argv[])
         if (lstack[i].fini)
             lstack[i].fini();
     }
-    hmesg_fini(&session_mesg);
     hmesg_fini(&mesg);
-    free(setcfg_buf);
+    hcfg_fini(&cfg);
+    hspace_fini(&session_space);
+    free(cfg_buf);
 
     return retval;
 }
@@ -290,10 +306,9 @@ int init_session(void)
 {
     const char* ptr;
     long seed;
-    int clients;
 
     /* Before anything else, control the random seeds. */
-    seed = hcfg_int(&sess->cfg, CFGKEY_RANDOM_SEED);
+    seed = hcfg_int(&cfg, CFGKEY_RANDOM_SEED);
     if (seed < 0)
         seed = time(NULL);
     srand((int) seed);
@@ -315,28 +330,28 @@ int init_session(void)
         return -1;
     }
 
-    perf_count = hcfg_int(&sess->cfg, CFGKEY_PERF_COUNT);
+    perf_count = hcfg_int(&cfg, CFGKEY_PERF_COUNT);
     if (perf_count < 1) {
         errmsg = "Invalid " CFGKEY_PERF_COUNT " configuration key value";
         return -1;
     }
 
-    per_client = hcfg_int(&sess->cfg, CFGKEY_GEN_COUNT);
+    per_client = hcfg_int(&cfg, CFGKEY_GEN_COUNT);
     if (per_client < 1) {
         errmsg = "Invalid " CFGKEY_GEN_COUNT " configuration key value";
         return -1;
     }
 
-    clients = hcfg_int(&sess->cfg, CFGKEY_CLIENT_COUNT);
-    if (clients < 1) {
+    num_clients = hcfg_int(&cfg, CFGKEY_CLIENT_COUNT);
+    if (num_clients < 1) {
         errmsg = "Invalid " CFGKEY_CLIENT_COUNT " configuration key value";
         return -1;
     }
 
     /* Load and initialize the strategy code object. */
-    ptr = hcfg_get(&sess->cfg, CFGKEY_STRATEGY);
+    ptr = hcfg_get(&cfg, CFGKEY_STRATEGY);
     if (!ptr) {
-        if (clients > 1)
+        if (num_clients > 1)
             ptr = "pro.so";
         else
             ptr = "nm.so";
@@ -346,11 +361,11 @@ int init_session(void)
         return -1;
 
     /* Load and initialize requested layer's. */
-    ptr = hcfg_get(&sess->cfg, CFGKEY_LAYERS);
+    ptr = hcfg_get(&cfg, CFGKEY_LAYERS);
     if (ptr && load_layers(ptr) != 0)
         return -1;
 
-    if (extend_lists(clients * per_client) != 0)
+    if (extend_lists(num_clients * per_client) != 0)
         return -1;
 
     return 0;
@@ -364,7 +379,7 @@ int generate_trial(void)
     /* Find a free point. */
     for (idx = 0; idx < pending_cap; ++idx) {
         trial = &pending[idx];
-        if (trial->point.id == -1)
+        if (!trial->point.id)
             break;
     }
     if (idx == pending_cap) {
@@ -373,7 +388,7 @@ int generate_trial(void)
     }
 
     /* Reset the performance for this trial. */
-    hperf_reset(trial->perf);
+    hperf_reset(&trial->perf);
 
     /* Call strategy generation routine. */
     if (strategy_generate(&flow, (hpoint_t*)&trial->point) != 0)
@@ -427,8 +442,7 @@ int plugin_workflow(int trial_idx)
             return -1;
 
         /* Remove point data from pending list. */
-        hpoint_fini( (hpoint_t*)&trial->point );
-        *(hpoint_t*)&trial->point = HPOINT_INITIALIZER;
+        ((hpoint_t*)&trial->point)->id = 0;
         --pending_len;
 
         /* Point generation attempts may begin again. */
@@ -592,31 +606,21 @@ int handle_join(hmesg_t* mesg)
 {
     int i;
 
-    /* Verify that client signature matches current session. */
-    if (!hsignature_match(&mesg->data.join, &sess->sig)) {
-        errmsg = "Incompatible join signature.";
-        return -1;
-    }
-
-    if (hsignature_copy(&mesg->data.join, &sess->sig) < 0) {
-        errmsg = "Internal error: Could not copy signature.";
-        return -1;
-    }
-
     /* Grow the pending and ready queues. */
     ++num_clients;
     if (extend_lists(num_clients * per_client) != 0)
         return -1;
 
     /* Launch all join hooks defined in the plug-in stack. */
-    if (strategy_join && strategy_join(mesg->src_id) != 0)
+    if (strategy_join && strategy_join(mesg->state.client) != 0)
         return -1;
 
     for (i = 0; i < lstack_len; ++i) {
-        if (lstack[i].join && lstack[i].join(mesg->src_id) != 0)
+        if (lstack[i].join && lstack[i].join(mesg->state.client) != 0)
             return -1;
     }
 
+    mesg->state.space = &session_space;
     mesg->status = HMESG_STATUS_OK;
     return 0;
 }
@@ -624,7 +628,12 @@ int handle_join(hmesg_t* mesg)
 int handle_getcfg(hmesg_t* mesg)
 {
     /* Prepare getcfg response message for client. */
-    mesg->data.string = hcfg_get(&sess->cfg, mesg->data.string);
+    const char* cfgval = hcfg_get(&cfg, mesg->data.string);
+    if (cfgval == NULL)
+        cfgval = "";
+
+    snprintf_grow(&cfg_buf, &cfg_len, "%s=%s", mesg->data.string, cfgval);
+    mesg->data.string = cfg_buf;
     mesg->status = HMESG_STATUS_OK;
     return 0;
 }
@@ -638,12 +647,13 @@ int handle_setcfg(hmesg_t* mesg)
         errmsg = strerror(EINVAL);
         return -1;
     }
+    *sep = '\0';
 
     /* Store the original value, possibly allocating memory for it. */
-    oldval = hcfg_get(&sess->cfg, mesg->data.string);
+    oldval = hcfg_get(&cfg, mesg->data.string);
     if (oldval) {
-        snprintf_grow(&setcfg_buf, &setcfg_len, "%s", oldval);
-        oldval = setcfg_buf;
+        snprintf_grow(&cfg_buf, &cfg_len, "%s", oldval);
+        oldval = cfg_buf;
     }
 
     if (session_setcfg(mesg->data.string, sep + 1) != 0) {
@@ -659,10 +669,6 @@ int handle_setcfg(hmesg_t* mesg)
 
 int handle_best(hmesg_t* mesg)
 {
-    mesg->data.point = HPOINT_INITIALIZER;
-    if (strategy_best(&mesg->data.point) != 0)
-        return -1;
-
     mesg->status = HMESG_STATUS_OK;
     return 0;
 }
@@ -670,20 +676,13 @@ int handle_best(hmesg_t* mesg)
 int handle_fetch(hmesg_t* mesg)
 {
     int idx = ready[ready_head], paused;
-    htrial_t* next;
 
     /* Check if the session is paused. */
-    paused = hcfg_bool(&sess->cfg, CFGKEY_PAUSED);
+    paused = hcfg_bool(&cfg, CFGKEY_PAUSED);
 
     if (!paused && idx >= 0) {
         /* Send the next point on the ready queue. */
-        next = &pending[idx];
-
-        mesg->data.point = HPOINT_INITIALIZER;
-        if (hpoint_copy(&mesg->data.point, &next->point) != 0) {
-            errmsg = "Internal error: Could not copy candidate point data.";
-            return -1;
-        }
+        mesg->data.point = &pending[idx].point;
 
         /* Remove the first point from the ready queue. */
         ready[ready_head] = -1;
@@ -694,11 +693,11 @@ int handle_fetch(hmesg_t* mesg)
     else {
         /* Ready queue is empty, or session is paused.
          * Send the best known point. */
-        mesg->data.point = HPOINT_INITIALIZER;
-        if (strategy_best(&mesg->data.point) != 0)
+        mesg->state.best = &best;
+        if (strategy_best(&best) != 0)
             return -1;
 
-        paused_id = mesg->data.point.id;
+        paused_id = mesg->data.point->id;
         mesg->status = HMESG_STATUS_BUSY;
     }
     return 0;
@@ -712,12 +711,11 @@ int handle_report(hmesg_t* mesg)
     /* Find the associated trial in the pending list. */
     for (idx = 0; idx < pending_cap; ++idx) {
         trial = &pending[idx];
-        if (trial->point.id == mesg->data.report.cand_id)
+        if (trial->point.id == mesg->data.point->id)
             break;
     }
     if (idx == pending_cap) {
-        if (mesg->data.report.cand_id == paused_id) {
-            hperf_fini(mesg->data.report.perf);
+        if (mesg->data.point->id == paused_id) {
             mesg->status = HMESG_STATUS_OK;
             return 0;
         }
@@ -729,14 +727,13 @@ int handle_report(hmesg_t* mesg)
     paused_id = 0;
 
     /* Update performance in our local records. */
-    hperf_copy(trial->perf, mesg->data.report.perf);
+    hperf_copy(&trial->perf, mesg->data.perf);
 
     /* Begin the workflow at the outermost analysis layer. */
     curr_layer = -lstack_len;
     if (plugin_workflow(idx) != 0)
         return -1;
 
-    hperf_fini(mesg->data.report.perf);
     mesg->status = HMESG_STATUS_OK;
     return 0;
 }
@@ -745,6 +742,32 @@ int handle_restart(hmesg_t* mesg)
 {
     session_restart();
     mesg->status = HMESG_STATUS_OK;
+    return 0;
+}
+
+int update_state(hmesg_t* mesg)
+{
+    if (mesg->state.space->id < session_space.id) {
+        mesg->state.space = &session_space;
+    }
+    else if (mesg->type != HMESG_JOIN) {
+        mesg->state.space = &mesg->unpacked_space;
+        mesg->unpacked_space.id = 0;
+    }
+
+    // Refresh the best known point from the strategy.
+    if (strategy_best(&best) != 0) {
+        return -1;
+    }
+
+    // Send it to the client if necessary.
+    if (mesg->state.best->id < best.id) {
+        mesg->state.best = &best;
+    }
+    else {
+        mesg->state.best = &mesg->unpacked_best;
+        mesg->unpacked_best.id = 0;
+    }
     return 0;
 }
 
@@ -769,7 +792,7 @@ int load_strategy(const char* file)
     if (!file)
         return -1;
 
-    root = hcfg_get(&sess->cfg, CFGKEY_HARMONY_HOME);
+    root = hcfg_get(&cfg, CFGKEY_HARMONY_HOME);
     path = sprintf_alloc("%s/libexec/%s", root, file);
 
     lib = dlopen(path, RTLD_LAZY | RTLD_LOCAL);
@@ -811,21 +834,21 @@ int load_strategy(const char* file)
 
     keyinfo = dlsym(lib, "plugin_keyinfo");
     if (keyinfo) {
-        if (hcfg_reginfo(&sess->cfg, keyinfo) != 0) {
+        if (hcfg_reginfo(&cfg, keyinfo) != 0) {
             errmsg = "Error registering strategy configuration keys.";
             return -1;
         }
     }
 
     if (strategy_init)
-        return strategy_init(&sess->sig);
+        return strategy_init(&session_space);
 
     return 0;
 }
 
 int load_layers(const char* list)
 {
-    const char* prefix = hcfg_get(&sess->cfg, CFGKEY_HARMONY_HOME);
+    const char* home = hcfg_get(&cfg, CFGKEY_HARMONY_HOME);
     char* path = NULL;
     int path_len = 0;
     int retval = 0;
@@ -845,7 +868,7 @@ int load_layers(const char* list)
         }
 
         if (snprintf_grow(&path, &path_len, "%s/libexec/%.*s",
-                          prefix, end - list, list) < 0)
+                          home, end - list, list) < 0)
         {
             retval = -1;
             goto cleanup;
@@ -858,7 +881,7 @@ int load_layers(const char* list)
             goto cleanup;
         }
 
-        prefix = dlsym(lib, "harmony_layer_name");
+        const char* prefix = dlsym(lib, "harmony_layer_name");
         if (!prefix) {
             errmsg = dlerror();
             retval = -1;
@@ -904,7 +927,7 @@ int load_layers(const char* list)
 
         keyinfo = dlsym(lib, "plugin_keyinfo");
         if (keyinfo) {
-            if (hcfg_reginfo(&sess->cfg, keyinfo) != 0) {
+            if (hcfg_reginfo(&cfg, keyinfo) != 0) {
                 errmsg = "Error registering strategy configuration keys.";
                 return -1;
             }
@@ -912,7 +935,7 @@ int load_layers(const char* list)
 
         if (lstack[lstack_len].init) {
             curr_layer = lstack_len + 1;
-            if (lstack[lstack_len].init(&sess->sig) < 0) {
+            if (lstack[lstack_len].init(&session_space) < 0) {
                 retval = -1;
                 goto cleanup;
             }
@@ -962,17 +985,9 @@ int extend_lists(int target_cap)
         return -1;
     }
 
-    for (i = orig_cap; i < pending_cap; ++i) {
-        hpoint_t* point = (hpoint_t*) &pending[i].point;
-        *point = HPOINT_INITIALIZER;
-        pending[i].perf = hperf_alloc(perf_count);
-        if (!pending[i].perf) {
-            pending_cap = orig_cap;
-            errmsg = "Internal error: Could not allocate perf structure.";
-            return -1;
-        }
+    for (i = orig_cap; i < pending_cap; ++i)
         ready[i] = -1;
-    }
+
     return 0;
 }
 
@@ -1034,7 +1049,7 @@ int session_setcfg(const char* key, const char* val)
 {
     int i;
 
-    if (hcfg_set(&sess->cfg, key, val) != 0)
+    if (hcfg_set(&cfg, key, val) != 0)
         return -1;
 
     /* Make sure setcfg callbacks are triggered after the
@@ -1065,11 +1080,11 @@ int session_restart(void)
         if (lstack[i].fini && lstack[i].fini() != 0)
             return -1;
 
-    if (strategy_init && strategy_init(&sess->sig) != 0)
+    if (strategy_init && strategy_init(&session_space) != 0)
         return -1;
 
     for (i = 0; i < lstack_len; ++i)
-        if (lstack[i].init && lstack[i].init(&sess->sig) != 0)
+        if (lstack[i].init && lstack[i].init(&session_space) != 0)
             return -1;
 
     return 0;

@@ -20,162 +20,131 @@
 #include "hval.h"
 #include "hutil.h"
 
-#include <stdio.h>
-#include <errno.h>
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
+#include <ctype.h> // For isspace().
 
-int hval_parse_string(const char* buf, const char** newbuf);
+const hval_t hval_zero = HVAL_INITIALIZER;
 
-const hval_t HVAL_INITIALIZER = { HVAL_UNKNOWN };
+// Internal helper function prototypes.
+static int parse_int(hval_t* val, const char* buf);
+static int parse_real(hval_t* val, const char* buf);
+static int parse_str(hval_t* val, const char* buf);
 
-int hval_parse(hval_t* val, const char* buf)
+//
+// Base structure management implementation.
+//
+int hval_copy(hval_t* dst, const hval_t* src)
 {
-    int ret, cnt;
+    // Free heap data allocated by the destination structure.
+    free(dst->buf);
 
-    switch (val->type) {
-    case HVAL_INT:  ret = sscanf(buf, " %ld%n", &val->value.i, &cnt); break;
-    case HVAL_REAL: ret = sscanf(buf, " %lf%n", &val->value.r, &cnt); break;
-    case HVAL_STR:  ret = cnt = hval_parse_string(buf, &val->value.s); break;
-    default: return -1;
+    *dst = *src;
+    if (src->buf) {
+        dst->buf = stralloc(src->buf);
+        dst->value.s = dst->buf;
+        if (!dst->buf)
+            return -1;
     }
-    return (ret > 0) ? cnt : -1;
+    return 0;
 }
 
-int hval_parse_string(const char* buf, const char** newbuf)
+void hval_fini(hval_t* val)
 {
-    const char* head;
-    const char* tail;
-    int len, span, quoted = 0;
+    free(val->buf);
+}
 
-    /* Find the head. */
-    head = buf;
-    while (head && isspace(*head))
-        ++head;
-    if (!head)
-        return -1;
-    if (*head == '"') {
-        ++head;
-        quoted = 1;
+//
+// Value utility interface implementation.
+//
+int hval_eq(const hval_t* a, const hval_t* b)
+{
+    if (a->type != b->type)
+        return 0;
+
+    switch (a->type) {
+    case HVAL_INT:  return (a->value.i == b->value.i);
+    case HVAL_REAL: return (a->value.r == b->value.r);
+    case HVAL_STR:  return (a->value.s == b->value.s);
+    default:        return 0;
     }
+}
 
-    /* Find tail, length, and span. */
-    len = 0;
-    tail = head;
-    while (tail && (quoted ? *tail == '"'
-                           : isspace(*tail)))
-    {
-        if (*tail == '\\')
-            tail += 2;
-        else
-            tail += 1;
-        ++len;
-    }
-    if (!tail)
+//
+// Data transmission implementation.
+//
+int hval_pack(char** buf, int* buflen, const hval_t* val)
+{
+    switch (val->type) {
+    case HVAL_INT:
+        return snprintf_serial(buf, buflen, " i%ld", val->value.i);
+    case HVAL_REAL:
+        return snprintf_serial(buf, buflen, " r%a(%g)",
+                               val->value.r, val->value.r);
+    case HVAL_STR:
+        return printstr_serial(buf, buflen, val->value.s);
+    default:
         return -1;
-    span = tail - buf + 1;
+    }
+}
 
-    /* Allocate memory and copy an unescaped version of the string. */
-    if (newbuf) {
-        char* ptr = calloc(len + 1, sizeof(*ptr));
-        if (!ptr)
+int hval_unpack(hval_t* val, char* buf)
+{
+    int count = 0;
+
+    while (isspace( buf[count] ))
+        ++count;
+
+    if (buf[count] == 'i') {
+        val->type = HVAL_INT;
+        if (sscanf(buf, " i%ld%n", &val->value.i, &count) < 1)
             return -1;
-        *newbuf = ptr;
-
-        while (head < tail) {
-            if (*head == '\\') ++head;
-            *(ptr++) = *(head++);
-        }
     }
+    else if (buf[count] == 'r') {
+        val->type = HVAL_REAL;
+        if (sscanf(buf, " r%la(%*f)%n", &val->value.r, &count) < 1)
+            return -1;
+    }
+    else {
+        val->type = HVAL_STR;
+        count = scanstr_serial(&val->value.s, buf);
+    }
+    return count;
+}
+
+int hval_parse(hval_t* val, hval_type_t type, const char* buf)
+{
+    int span;
+
+    switch (type) {
+    case HVAL_INT:  span = parse_int(val, buf);  break;
+    case HVAL_REAL: span = parse_real(val, buf); break;
+    case HVAL_STR:  span = parse_str(val, buf);  break;
+    default:        return -1;
+    }
+
+    val->type = type;
     return span;
 }
 
-int hval_serialize(char** buf, int* buflen, const hval_t* val)
+//
+// Internal helper function implementations.
+//
+int parse_int(hval_t* val, const char* buf)
 {
-    int count, total;
-    const char* type_str;
-
-    switch (val->type) {
-    case HVAL_INT:  type_str = "INT"; break;
-    case HVAL_REAL: type_str = "REL"; break;
-    case HVAL_STR:  type_str = "STR"; break;
-    default: goto invalid;
-    }
-
-    count = snprintf_serial(buf, buflen, "hval:%s ", type_str);
-    if (count < 0) goto error;
-    total = count;
-
-    switch (val->type) {
-    case HVAL_INT:
-        count = snprintf_serial(buf, buflen, "%ld ", val->value.i);
-        if (count < 0) goto error;
-        total += count;
-        break;
-
-    case HVAL_REAL:
-        count = snprintf_serial(buf, buflen, "%la ", val->value.r);
-        if (count < 0) goto error;
-        total += count;
-        break;
-
-    case HVAL_STR:
-        count = printstr_serial(buf, buflen, val->value.s);
-        if (count < 0) goto error;
-        total += count;
-        break;
-
-    default:
-        goto invalid;
-    }
-    return total;
-
-  invalid:
-    errno = EINVAL;
-  error:
-    return -1;
+    int span = -1;
+    sscanf(buf, " %ld%n", &val->value.i, &span);
+    return span;
 }
 
-int hval_deserialize(hval_t* val, char* buf)
+int parse_real(hval_t* val, const char* buf)
 {
-    int count, total;
-    char type_str[4];
+    int span = -1;
+    sscanf(buf, " %lf%n", &val->value.r, &span);
+    return span;
+}
 
-    if (sscanf(buf, " hval:%3s%n", type_str, &count) < 1)
-        goto invalid;
-    total = count;
-
-    if      (strcmp(type_str, "INT") == 0) val->type = HVAL_INT;
-    else if (strcmp(type_str, "REL") == 0) val->type = HVAL_REAL;
-    else if (strcmp(type_str, "STR") == 0) val->type = HVAL_STR;
-    else goto invalid;
-
-    switch (val->type) {
-    case HVAL_INT:
-        if (sscanf(buf + total, " %ld%n", &val->value.i, &count) < 1)
-            goto invalid;
-        total += count;
-        break;
-
-    case HVAL_REAL:
-        if (sscanf(buf + total, " %la%n", &val->value.r, &count) < 1)
-            goto invalid;
-        total += count;
-        break;
-
-    case HVAL_STR:
-        count = scanstr_serial(&val->value.s, buf + total);
-        if (count < 0) goto invalid;
-        total += count;
-        break;
-
-    default:
-        goto invalid;
-    }
-    return total;
-
-  invalid:
-    errno = EINVAL;
-    return -1;
+int parse_str(hval_t* val, const char* buf)
+{
+    int span = unquote_string(buf, &val->buf, NULL);
+    val->value.s = val->buf;
+    return span;
 }

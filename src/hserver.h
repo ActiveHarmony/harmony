@@ -27,6 +27,11 @@
 extern "C" {
 #endif
 
+typedef enum sess_status {
+    STATUS_CONVERGED = 0x1,
+    STATUS_PAUSED    = 0x2
+} sess_status_t;
+
 typedef struct http_log {
     struct timeval stamp;
     hpoint_t pt;
@@ -35,7 +40,7 @@ typedef struct http_log {
 
 typedef struct session_state {
     char* name;
-    int fd, old_fd;
+    int fd;
     int* client;
     int client_len, client_cap;
     hpoint_t best;
@@ -43,7 +48,7 @@ typedef struct session_state {
 
     /* Fields used by the HTTP server. */
     struct timeval start;
-    hsignature_t sig;
+    hspace_t space;
     char* strategy;
     unsigned int status;
 
@@ -57,12 +62,11 @@ typedef struct session_state {
 extern session_state_t* slist;
 extern int slist_cap;
 
-extern hmesg_t mesg_in;
-
-session_state_t* session_open(hmesg_t* mesg);
+session_state_t* session_open();
 void session_close(session_state_t* sess);
 const char* session_getcfg(session_state_t* sess, const char* key);
 int session_setcfg(session_state_t* sess, const char* key, const char* val);
+int session_refresh(session_state_t* sess);
 int session_restart(session_state_t* sess);
 
 #ifdef __cplusplus

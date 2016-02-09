@@ -19,711 +19,645 @@
 #define _XOPEN_SOURCE 500 // Needed for drand48().
 
 #include "libvertex.h"
-#include "hsignature.h"
+#include "hspace.h"
 #include "hpoint.h"
 #include "hperf.h"
-#include "session-core.h"
-#include "hcfg.h"
 
-#include <stdlib.h>
-#include <string.h>
-#include <math.h>
+#include <stdlib.h> // For drand48(), free(), lrand48(), realloc(), and NULL.
+#include <string.h> // For memcpy() and memset().
+#include <math.h>   // For fabs(), nextafter(), HUGE_VAL, and NAN.
 
-/* Forward definitions of internal helper functions. */
-int    internal_vertex_min(vertex_t* v);
-int    internal_vertex_max(vertex_t* v);
-long   max_int(int_bounds_t* b);
-double max_real(real_bounds_t* b);
-int    max_str(str_bounds_t* b);
-int    simplex_fit(simplex_t* s);
-void   unit_simplex(simplex_t* s);
-int    rotate_simplex(simplex_t* s);
-int    rotate(simplex_t* s);
-int    rparam_sort(const void* _a, const void* _b);
+//
+// Internal helper function prototypes.
+//
+static int       copy_vertex(vertex_t* dest, const vertex_t* src,
+                             unsigned count);
+static double    fraction(const hval_t* val, const hrange_t* range);
+static int       inbounds(const vertex_t* base, unsigned count,
+                          const hspace_t* space);
+static double    l1_norm(const vertex_t* a, const vertex_t* b);
+static double    l2_norm(const vertex_t* a, const vertex_t* b);
+static void      pair_by_index(unsigned n, unsigned index, unsigned pair[]);
+static int       rotate_simplex(simplex_t* simplex, int dimensions);
+static unsigned* shuffle(unsigned size);
+static int       transform(const vertex_t* base, unsigned count,
+                           const vertex_t* origin, double coefficient,
+                           vertex_t* result);
+static void      unit_simplex(simplex_t* simplex, unsigned dimensions);
+static int       validate_simplex(simplex_t* simplex, const hspace_t* space);
+static hval_t    value(double fraction, const hrange_t* range);
 
-/* Global variables which must be set via libvertex_init(). */
-static int N, P;
-static hrange_t* range;
-static vertex_t* vmin;
-static vertex_t* vmax;
-static long sizeof_vertex;
-
-int libvertex_init(hsignature_t* sig)
+//
+// Vertex structure management implementation.
+//
+int vertex_init(vertex_t* vertex, int newlen)
 {
-    if (range != sig->range) {
-        range = sig->range;
-        N = sig->range_len;
-        P = hcfg_int(session_cfg, CFGKEY_PERF_COUNT);
-        sizeof_vertex = sizeof(vertex_t) + N * sizeof(double);
-
-        free(vmin);
-        vmin = vertex_alloc();
-        if (!vmin || internal_vertex_min(vmin) != 0)
+    if (vertex->len != newlen) {
+        double* newbuf = realloc(vertex->term, newlen * sizeof(*newbuf));
+        if (!newbuf)
             return -1;
-        hperf_reset(vmin->perf);
 
-        free(vmax);
-        vmax = vertex_alloc();
-        if (!vmax || internal_vertex_max(vmax) != 0)
-            return -1;
-        hperf_reset(vmax->perf);
+        vertex->term = newbuf;
+        vertex->len  = newlen;
     }
     return 0;
 }
 
-vertex_t* vertex_alloc()
+int vertex_copy(vertex_t* dest, const vertex_t* src)
 {
-    vertex_t* v;
+    return copy_vertex(dest, src, 1);
+}
 
-    v = malloc(sizeof_vertex);
-    if (!v)
-        return NULL;
-    v->id = 0;
-    v->perf = hperf_alloc(P);
-    if (!v->perf) {
-        free(v);
-        return NULL;
+void vertex_fini(vertex_t* vertex)
+{
+    hperf_fini(&vertex->perf);
+    free(vertex->term);
+}
+
+//
+// Vertex initialization implementation.
+//
+int vertex_center(vertex_t* vertex, const hspace_t* space)
+{
+    if (vertex->len != space->len) {
+        if (vertex_init(vertex, space->len) != 0)
+            return -1;
     }
-    return v;
-}
 
-void vertex_reset(vertex_t* v)
-{
-    v->id = 0;
-    hperf_reset(v->perf);
-}
-
-int vertex_copy(vertex_t* dst, const vertex_t* src)
-{
-    if (dst != src) {
-        dst->id = src->id;
-        memcpy(dst->term, src->term, N * sizeof(double));
-        hperf_copy(dst->perf, src->perf);
-    }
-    return 0;
-}
-
-void vertex_free(vertex_t* v)
-{
-    hperf_fini(v->perf);
-    free(v);
-}
-
-const vertex_t* vertex_min(void)
-{
-    return vmin;
-}
-
-int internal_vertex_min(vertex_t* v)
-{
-    int i;
-
-    vertex_reset(v);
-    for (i = 0; i < N; ++i) {
-        switch (range[i].type) {
-        case HVAL_INT:  v->term[i] = range[i].bounds.i.min; break;
-        case HVAL_REAL: v->term[i] = range[i].bounds.r.min; break;
-        case HVAL_STR:  v->term[i] = 0.0; break;
-        default: return -1;
+    for (int i = 0; i < space->len; ++i) {
+        if (hrange_finite(&space->dim[i])) {
+            vertex->term[i] = 0.5;
+        }
+        else {
+            vertex->term[i]  = space->dim[i].bounds.r.max;
+            vertex->term[i] -= space->dim[i].bounds.r.min;
+            vertex->term[i] /= 2;
+            vertex->term[i] += space->dim[i].bounds.r.min;
         }
     }
+
+    hperf_reset(&vertex->perf);
     return 0;
 }
 
-const vertex_t* vertex_max(void)
+int vertex_maximum(vertex_t* vertex, const hspace_t* space)
 {
-    return vmax;
-}
-
-int internal_vertex_max(vertex_t* v)
-{
-    int i;
-
-    vertex_reset(v);
-    for (i = 0; i < N; ++i) {
-        int idx = hrange_max_idx(&range[i]);
-
-        switch (range[i].type) {
-        case HVAL_INT:
-            v->term[i] = hrange_int_value(&range[i].bounds.i, idx);
-            break;
-
-        case HVAL_REAL:
-            if (range[i].bounds.r.step > 0.0)
-                v->term[i] = hrange_real_value(&range[i].bounds.r, idx);
-            else
-                v->term[i] = range[i].bounds.r.max;
-            break;
-
-        case HVAL_STR:
-            v->term[i] = range[i].bounds.s.set_len - 1;
-            break;
-
-        default:
+    if (vertex->len != space->len) {
+        if (vertex_init(vertex, space->len) != 0)
             return -1;
-        }
     }
+
+    for (int i = 0; i < space->len; ++i) {
+        if (hrange_finite(&space->dim[i]))
+            vertex->term[i] = nextafter(1.0, 0.0);
+        else
+            vertex->term[i] = space->dim[i].bounds.r.max;
+    }
+
+    hperf_reset(&vertex->perf);
     return 0;
 }
 
-int vertex_center(vertex_t* v)
+int vertex_minimum(vertex_t* vertex, const hspace_t* space)
 {
-    int i;
+    if (vertex->len != space->len) {
+        if (vertex_init(vertex, space->len) != 0)
+            return -1;
+    }
 
-    vertex_copy(v, vmin);
-    for (i = 0; i < N; ++i)
-        v->term[i] += (vmax->term[i] - vmin->term[i]) / 2;
+    for (int i = 0; i < space->len; ++i) {
+        if (hrange_finite(&space->dim[i]))
+            vertex->term[i] = 0.0;
+        else
+            vertex->term[i] = space->dim[i].bounds.r.min;
+    }
 
-    hperf_reset(v->perf);
+    hperf_reset(&vertex->perf);
     return 0;
 }
 
-int vertex_percent(vertex_t* v, double percent)
+int vertex_parse(vertex_t* vertex, const hspace_t* space, const char* buf)
 {
-    int i;
-    for (i = 0; i < N; ++i)
-        v->term[i] = (vmax->term[i] - vmin->term[i]) * percent;
+    hpoint_t point = hpoint_zero;
 
-    hperf_reset(v->perf);
-    return 0;
-}
-
-int vertex_rand(vertex_t* v)
-{
-    return vertex_rand_trim(v, 0.0);
-}
-
-int vertex_rand_trim(vertex_t* v, double trim_percentage)
-{
-    int i;
-    double rval;
-
-    if (vertex_percent(v, trim_percentage) != 0)
+    if (hpoint_parse(&point, buf, space) != 0)
         return -1;
 
-    for (i = 0; i < N; ++i) {
-        switch (range[i].type) {
-        case HVAL_INT: {
-            int_bounds_t* b = &range[i].bounds.i;
-            rval = (b->max - b->min - v->term[i]) * drand48();
-            rval += b->min + (v->term[i] / 2);
-            v->term[i] = hrange_int_nearest(b, (long)rval);
-            break;
-        }
-        case HVAL_REAL: {
-            real_bounds_t* b = &range[i].bounds.r;
-            rval = (b->max - b->min - v->term[i]) * drand48();
-            rval += b->min + (v->term[i] / 2);
-            v->term[i] = hrange_real_nearest(b, rval);
-            break;
-        }
-        case HVAL_STR: {
-            str_bounds_t* b = &range[i].bounds.s;
-            rval = (b->set_len - 1 - v->term[i]) * drand48();
-            rval += v->term[i] / 2;
-            v->term[i] = rval;
-            break;
-        }
-        default:
-            return -1;
-        }
-    }
-    hperf_reset(v->perf);
-    return 0;
-}
-
-double vertex_dist(const vertex_t* v1, const vertex_t* v2)
-{
-    int i;
-    double dist;
-
-    dist = 0;
-    for (i = 0; i < N; ++i)
-        dist += (v1->term[i] - v2->term[i]) * (v1->term[i] - v2->term[i]);
-
-    return sqrt(dist);
-}
-
-void vertex_transform(const vertex_t* src, const vertex_t* wrt,
-                      double coefficient, vertex_t* result)
-{
-    int i;
-
-    for (i = 0; i < N; ++i)
-        result->term[i] =
-            coefficient * src->term[i] + (1.0 - coefficient) * wrt->term[i];
-    hperf_reset(result->perf);
-}
-
-int vertex_outofbounds(const vertex_t* v)
-{
-    int i, out;
-
-    for (i = 0; i < N; ++i) {
-        switch (range[i].type) {
-        case HVAL_INT:  out = (v->term[i] < range[i].bounds.i.min); break;
-        case HVAL_REAL: out = (v->term[i] < range[i].bounds.r.min); break;
-        case HVAL_STR:  out = (v->term[i] < 0.0); break;
-        default: return -1;
-        }
-        if (out || v->term[i] > vmax->term[i])
-            return 1;
-    }
-    return 0;
-}
-
-int vertex_regrid(vertex_t* v)
-{
-    int i;
-
-    if (vertex_outofbounds(v))
+    if (hpoint_align(&point, space) != 0)
         return -1;
 
-    for (i = 0; i < N; ++i) {
-        switch (range[i].type) {
-        case HVAL_INT:
-            v->term[i] = hrange_int_nearest(&range[i].bounds.i,
-                                            (long)v->term[i]);
-            break;
-
-        case HVAL_REAL:
-            v->term[i] = hrange_real_nearest(&range[i].bounds.r, v->term[i]);
-            break;
-
-        case HVAL_STR:
-            if (v->term[i] < 0.0)
-                v->term[i] = 0.0;
-            if (v->term[i] > range[i].bounds.s.set_len - 1)
-                v->term[i] = range[i].bounds.s.set_len - 1;
-            v->term[i] = (unsigned long)(v->term[i] + 0.5);
-            break;
-
-        default:
-            return -1;
-        }
-    }
-
-    vertex_reset(v);
-    return 0;
-}
-
-int vertex_to_hpoint(const vertex_t* v, hpoint_t* result)
-{
-    int i;
-
-    hpoint_init(result, N);
-    for (i = 0; i < N; ++i) {
-        hval_t* val = &result->val[i];
-
-        val->type = range[i].type;
-        switch (range[i].type) {
-        case HVAL_INT:
-            val->value.i = hrange_int_nearest(&range[i].bounds.i,
-                                              (long)v->term[i]);
-            break;
-        case HVAL_REAL:
-            val->value.r = hrange_real_nearest(&range[i].bounds.r, v->term[i]);
-            break;
-        case HVAL_STR: {
-            unsigned long idx = (unsigned long)(v->term[i] + 0.5);
-            if (idx > range[i].bounds.s.set_len - 1)
-                idx = range[i].bounds.s.set_len - 1;
-
-            val->value.s = hrange_str_value(&range[i].bounds.s, idx);
-            break;
-        }
-        default:
-            return -1;
-        }
-    }
-
-    result->id = v->id;
-    return 0;
-}
-
-int vertex_from_hpoint(const hpoint_t* pt, vertex_t* result)
-{
-    int i, j;
-
-    for (i = 0; i < N; ++i) {
-        switch (range[i].type) {
-        case HVAL_INT:  result->term[i] = pt->val[i].value.i; break;
-        case HVAL_REAL: result->term[i] = pt->val[i].value.r; break;
-        case HVAL_STR:
-            for (j = 0; j < range[i].bounds.s.set_len; ++j) {
-                if (strcmp(pt->val[i].value.s, range[i].bounds.s.set[j]) == 0)
-                    break;
-            }
-            result->term[i] = j;
-            break;
-        default:
-            return -1;
-        }
-    }
-    return 0;
-}
-
-int vertex_from_string(const char* str, hsignature_t* sig, vertex_t* result)
-{
-    int retval = 0;
-    hpoint_t pt = HPOINT_INITIALIZER;
-
-    if (!str) {
-        session_error("Cannot convert null string to vertex");
+    if (vertex_set(vertex, space, &point) != 0)
         return -1;
+
+    hpoint_fini(&point);
+    return 0;
+}
+
+int vertex_random(vertex_t* vertex, const hspace_t* space, double radius)
+{
+    if (vertex->len != space->len) {
+        if (vertex_init(vertex, space->len) != 0)
+            return -1;
     }
 
-    if (hpoint_init(&pt, sig->range_len) != 0) {
-        session_error("Error initializing temporary hpoint");
+    for (int i = 0; i < space->len; ++i) {
+        double base, range;
+        if (hrange_finite(&space->dim[i])) {
+            base  = 0.0;
+            range = 1.0;
+        }
+        else {
+            range_real_t* bounds = &space->dim[i].bounds.r;
+            base  = bounds->min;
+            range = nextafter(bounds->max - bounds->min, HUGE_VAL);
+        }
+
+        vertex->term[i]  = range * (      radius) * drand48(); // Target window
+        vertex->term[i] += range * (1.0 - radius) / 2.0;      // Excluded frame
+        vertex->term[i] += base;
+    }
+
+    hperf_reset(&vertex->perf);
+    return 0;
+}
+
+int vertex_set(vertex_t* vertex, const hspace_t* space, const hpoint_t* point)
+{
+    if (vertex->len != space->len) {
+        if (vertex_init(vertex, space->len) != 0)
+            return -1;
+    }
+
+    for (int i = 0; i < space->len; ++i) {
+        if (hrange_finite(&space->dim[i]))
+            vertex->term[i] = fraction(&point->term[i], &space->dim[i]);
+        else
+            vertex->term[i] = point->term[i].value.r;
+    }
+
+    vertex->id = point->id;
+    hperf_reset(&vertex->perf);
+    return 0;
+}
+
+//
+// Vertex utility function implementation.
+//
+int vertex_inbounds(const vertex_t* vertex, const hspace_t* space)
+{
+    return inbounds(vertex, 1, space);
+}
+
+double vertex_norm(const vertex_t* a, const vertex_t* b, vertex_norm_t norm)
+{
+    switch (norm) {
+    case VERTEX_NORM_L1: return l1_norm(a, b);
+    case VERTEX_NORM_L2: return l2_norm(a, b);
+    default:             return NAN;
+    }
+}
+
+int vertex_point(const vertex_t* vertex, const hspace_t* space,
+                 hpoint_t* point)
+{
+    if (point->len != space->len) {
+        if (hpoint_init(point, space->len) != 0)
+            return -1;
+    }
+
+    for (int i = 0; i < space->len; ++i) {
+        if (hrange_finite(&space->dim[i])) {
+            point->term[i] = value(vertex->term[i], &space->dim[i]);
+        }
+        else {
+            point->term[i].type    = HVAL_REAL;
+            point->term[i].value.r = vertex->term[i];
+        }
+    }
+    point->id = vertex->id;
+
+    return 0;
+}
+
+int vertex_transform(const vertex_t* base, const vertex_t* origin,
+                     double coefficient, vertex_t* result)
+{
+    return transform(base, 1, origin, coefficient, result);
+}
+
+//
+// Simplex structure management implementation.
+//
+int simplex_init(simplex_t* simplex, unsigned dimensions)
+{
+    unsigned newlen = dimensions + 1;
+    if (simplex->len != newlen) {
+        vertex_t* newbuf = realloc(simplex->vertex, newlen * sizeof(*newbuf));
+        if (!newbuf)
+            return -1;
+
+        unsigned oldlen = simplex->len;
+        memset(&newbuf[ oldlen ], 0, (newlen - oldlen) * sizeof(*newbuf));
+        simplex->vertex = newbuf;
+        simplex->len    = newlen;
+    }
+
+    for (int i = 0; i < newlen; ++i) {
+        if (simplex->vertex[i].len != dimensions) {
+            if (vertex_init(&simplex->vertex[i], dimensions) != 0)
+                return -1;
+        }
+    }
+    return 0;
+}
+
+int simplex_copy(simplex_t* dest, const simplex_t* src)
+{
+    if (dest->len != src->len) {
+        if (simplex_init(dest, src->len - 1) != 0)
+            return -1;
+    }
+    return copy_vertex(dest->vertex, src->vertex, src->len);
+}
+
+void simplex_fini(simplex_t* simplex)
+{
+    for (unsigned i = 0; i < simplex->len; ++i)
+        vertex_fini(&simplex->vertex[i]);
+    free(simplex->vertex);
+}
+
+//
+// Simplex initialization implementation.
+//
+int simplex_set(simplex_t* simplex, const hspace_t* space,
+                const vertex_t* base, double radius)
+{
+    int dimensions = space->len;
+
+    if (simplex->len != dimensions + 1) {
+        if (simplex_init(simplex, dimensions) != 0)
+            return -1;
+    }
+
+    // Generate a unit simplex.
+    unit_simplex(simplex, dimensions);
+
+    // Rotate it randomly.
+    rotate_simplex(simplex, dimensions);
+
+    radius /= 2.0;
+    for (unsigned j = 0; j < dimensions; ++j) {
+        double range;
+        if (hrange_finite(&space->dim[j]))
+            range = 1.0;
+        else
+            range = space->dim[j].bounds.r.max - space->dim[j].bounds.r.min;
+
+        for (unsigned i = 0; i <= dimensions; ++i) {
+            simplex->vertex[i].term[j] *= range * radius;
+            simplex->vertex[i].term[j] += base->term[j];
+        }
+    }
+
+    // Move the simplex into the space if necessary.
+    if (validate_simplex(simplex, space) != 0)
         return -1;
-    }
 
-    if (hpoint_parse(&pt, sig, str) != 0) {
-        session_error("Error parsing point string");
-        retval = -1;
-        goto cleanup;
-    }
-
-    if (hpoint_align(&pt, sig) != 0) {
-        session_error("Error aligning point to session signature");
-        retval = -1;
-        goto cleanup;
-    }
-
-    if (vertex_from_hpoint(&pt, result) != 0) {
-        session_error("Error converting point to vertex");
-        retval = -1;
-    }
-
-  cleanup:
-    hpoint_fini(&pt);
-    return retval;
+    return 0;
 }
 
-simplex_t* simplex_alloc(int m)
+//
+// Simplex utility function implementation.
+//
+
+//
+// General centroid formula for vertex points x1 through xN:
+//     sum(x1, x2, x3, ... , xN) / N
+//
+// This function will ignore any vertices with id == 0.
+//
+int simplex_centroid(const simplex_t* simplex, vertex_t* centroid)
 {
-    int i;
-    simplex_t* s;
-    vertex_t* buf;
+    int total = 0;
+    int vert_len = simplex->vertex[0].len;
+    int perf_len = simplex->vertex[0].perf.len;
 
-    if (m <= N)
-        return NULL;
-
-    s = malloc(sizeof(simplex_t) + m * sizeof(vertex_t*));
-    if (!s)
-        return NULL;
-    s->len = m;
-
-    buf = malloc(m * sizeof_vertex);
-    for (i = 0; i < m; ++i) {
-        s->vertex[i] = buf + ((i * sizeof_vertex) / sizeof(*buf));
-        s->vertex[i]->perf = hperf_alloc(P);
-        if (!s->vertex[i]->perf)
-            return NULL;
-
-        vertex_reset(s->vertex[i]);
+    if (centroid->len != vert_len) {
+        if (vertex_init(centroid, vert_len) != 0)
+            return -1;
     }
 
-    return s;
+    if (centroid->perf.len != perf_len) {
+        if (hperf_init(&centroid->perf, perf_len) != 0)
+            return -1;
+    }
+
+    memset(centroid->term,     0, vert_len * sizeof(*centroid->term));
+    memset(centroid->perf.obj, 0, perf_len * sizeof(*centroid->perf.obj));
+
+    for (unsigned i = 0; i < simplex->len; ++i) {
+        if (!simplex->vertex[i].id)
+            continue;
+
+        for (int j = 0; j < vert_len; ++j)
+            centroid->term[j] += simplex->vertex[i].term[j];
+
+        for (int j = 0; j < perf_len; ++j)
+            centroid->perf.obj[j] += simplex->vertex[i].perf.obj[j];
+
+        ++total;
+    }
+
+    for (int j = 0; j < vert_len; ++j)
+        centroid->term[j] /= total;
+
+    for (int j = 0; j < perf_len; ++j)
+        centroid->perf.obj[j] /= total;
+
+    return 0;
 }
 
-void simplex_reset(simplex_t* s)
+int simplex_collapsed(const simplex_t* simplex, const hspace_t* space)
 {
-    int i;
-    for (i = 0; i < s->len; ++i)
-        vertex_reset(s->vertex[i]);
+    for (unsigned j = 0; j < space->len; ++j) {
+        hval_t value_0, value_i;
+
+        value_0 = value(simplex->vertex[0].term[j], &space->dim[j]);
+        for (int i = 1; i < simplex->len; ++i) {
+            value_i = value(simplex->vertex[i].term[j], &space->dim[j]);
+
+            if (!hval_eq(&value_0, &value_i))
+                return 0;
+        }
+    }
+    return -1;
 }
 
-int simplex_copy(simplex_t* dst, const simplex_t* src)
+int simplex_inbounds(const simplex_t* simplex, const hspace_t* space)
 {
-    int i;
+    return inbounds(simplex->vertex, simplex->len, space);
+}
 
-    if (dst == src)
+int simplex_transform(const simplex_t* base, const vertex_t* origin,
+                      double coefficient, simplex_t* result)
+{
+    if (result->len != base->len) {
+        if (simplex_init(result, base->len - 1) != 0)
+            return -1;
+    }
+
+    return transform(base->vertex, base->len, origin, coefficient,
+                     result->vertex);
+}
+
+//
+// Internal helper function implementation.
+//
+int copy_vertex(vertex_t* dest, const vertex_t* src, unsigned count)
+{
+    for (unsigned i = 0; i < count; ++i) {
+        if (dest[i].len != src[i].len) {
+            if (vertex_init(&dest[i], src[i].len) != 0)
+                return -1;
+        }
+
+        if (hperf_copy(&dest[i].perf, &src[i].perf) != 0) {
+            return -1;
+        }
+
+        memcpy(dest[i].term, src[i].term, src[i].len * sizeof(*src[i].term));
+        dest[i].id = src[i].id;
+    }
+    return 0;
+}
+
+// Convert a raw value into a number between [0, 1).
+double fraction(const hval_t* val, const hrange_t* range)
+{
+    double fraction;
+
+    fraction  = 0.5;
+    fraction += hrange_index(range, val);
+    fraction /= hrange_limit(range);
+
+    return fraction;
+}
+
+// Check if a vertex falls within the bounds of a search space.
+int inbounds(const vertex_t* vertex, unsigned count, const hspace_t* space)
+{
+    if (!vertex)
         return 0;
 
-    if (dst->len != src->len)
-        return -1;
-
-    for (i = 0; i < src->len; ++i)
-        vertex_copy(dst->vertex[i], src->vertex[i]);
-
-    return 0;
-}
-
-void simplex_free(simplex_t* s)
-{
-    if (s) {
-        free(s->vertex);
-        free(s);
-    }
-}
-
-/*
- * General centroid formula for vertex points x1 through xN:
- *
- *     sum(x1, x2, x3, ... , xN) / N
- *
- * This function will ignore any vertices with id < 0.
- */
-void simplex_centroid(const simplex_t* s, vertex_t* v)
-{
-    int i, j, count;
-
-    count = 0;
-    memset(v->term, 0, N * sizeof(double));
-    memset(v->perf->p, 0, P * sizeof(double));
-
-    for (i = 0; i < s->len; ++i) {
-        if (s->vertex[i]->id < 0)
-            continue;
-
-        for (j = 0; j < N; ++j)
-            v->term[j] += s->vertex[i]->term[j];
-
-        for (j = 0; j < P; ++j)
-            v->perf->p[j] += s->vertex[i]->perf->p[j];
-
-        ++count;
-    }
-
-    for (j = 0; j < N; ++j)
-        v->term[j] /= count;
-
-    for (j = 0; j < P; ++j)
-        v->perf->p[j] /= count;
-}
-
-void simplex_transform(const simplex_t* src, const vertex_t* wrt,
-                       double coefficient, simplex_t* result)
-{
-    int i;
-
-    for (i = 0; i < src->len; ++i) {
-        if (src->vertex[i] == wrt) {
-            vertex_copy(result->vertex[i], src->vertex[i]);
-            continue;
+    for (int j = 0; j < space->len; ++j) {
+        double min, max;
+        if (hrange_finite(&space->dim[j])) {
+            min = 0.0;
+            max = nextafter(1.0, 0.0);
         }
-        vertex_transform(src->vertex[i], wrt, coefficient, result->vertex[i]);
-    }
-}
-
-int simplex_outofbounds(const simplex_t* s)
-{
-    int i;
-
-    for (i = 0; i < s->len; ++i) {
-        if (vertex_outofbounds(s->vertex[i]))
-            return 1;
-    }
-    return 0;
-}
-
-int simplex_regrid(simplex_t* s)
-{
-    int i;
-
-    for (i = 0; i < s->len; ++i) {
-        if (vertex_regrid(s->vertex[i]) != 0)
-            return -1;
-    }
-    return 0;
-}
-
-int simplex_from_vertex(const vertex_t* v, double percent, simplex_t* s)
-{
-    int i, j;
-    vertex_t* size = vertex_alloc();
-
-    if (!size)
-        return -1;
-
-    if (vertex_percent(size, percent / 2) != 0) {
-        vertex_free(size);
-        return -1;
-    }
-
-    /* Generate a simplex of unit length. */
-    unit_simplex(s);
-
-    /* Pseudo-randomly rotate the unit simplex. */
-    rotate(s);
-
-    /* Grow and translate the simplex. */
-    for (i = 0; i <= N; ++i) {
-        for (j = 0; j < N; ++j) {
-            s->vertex[i]->term[j] *= size->term[j];
-            s->vertex[i]->term[j] += v->term[j];
-        }
-    }
-
-    if (simplex_fit(s) != 0) {
-        vertex_free(size);
-        return -1;
-    }
-
-    /* Fill any remaining points with random vertices. */
-    for (i = N+1; i < s->len; ++i)
-        vertex_rand(s->vertex[i]);
-
-    vertex_free(size);
-    return 0;
-}
-
-int simplex_fit(simplex_t* s)
-{
-    int i, j;
-    double lo, hi;
-
-    /* Process each dimension in isolation. */
-    for (i = 0; i < N; ++i) {
-        /* Find the lowest and highest simplex value. */
-        lo = s->vertex[0]->term[i];
-        hi = s->vertex[0]->term[i];
-        for (j = 1; j <= N; ++j) {
-            if (lo > s->vertex[j]->term[i])
-                lo = s->vertex[j]->term[i];
-            if (hi < s->vertex[j]->term[i])
-                hi = s->vertex[j]->term[i];
+        else {
+            min = space->dim[j].bounds.r.min;
+            max = space->dim[j].bounds.r.max;
         }
 
-        /* Verify that simplex is not larger than the search space. */
-        if ((hi - lo) > (vmax->term[i] - vmin->term[i]))
-            return -1;
-
-        /* Shift all vertices up, if necessary. */
-        if (lo < vmin->term[i]) {
-            double shift = vmin->term[i] - lo;
-            for (j = 0; j <= N; ++j)
-                s->vertex[j]->term[i] += shift;
-        }
-
-        /* Shift all vertices down, if necessary. */
-        if (hi > vmax->term[i]) {
-            double shift = hi - vmax->term[i];
-            for (j = 0; j <= N; ++j)
-                s->vertex[j]->term[i] -= shift;
-        }
-    }
-    return 0;
-}
-
-int simplex_collapsed(const simplex_t* s)
-{
-    static vertex_t* a;
-    static vertex_t* b;
-    int i, j;
-
-    if (!a || !b || a->id != N) {
-        free(a);
-        free(b);
-        a = vertex_alloc();
-        b = vertex_alloc();
-        if (!a || !b)
-            return -1;
-    }
-    vertex_copy(a, s->vertex[0]);
-    vertex_regrid(a);
-    a->id = N;
-
-    for (i = 1; i < s->len; ++i) {
-        vertex_copy(b, s->vertex[i]);
-        vertex_regrid(b);
-        for (j = 0; j < N; ++j) {
-            if (a->term[j] != b->term[j])
+        for (unsigned i = 0; i < count; ++i) {
+            if (vertex[i].term[j] < min || max < vertex[i].term[j])
                 return 0;
         }
     }
     return 1;
 }
 
-/*
- * Calculate a unit-length simplex about the origin.
- */
-void unit_simplex(simplex_t* s)
+double l1_norm(const vertex_t* a, const vertex_t* b)
 {
-    int i, j, k;
-    double sum;
+    double sum = 0.0;
+    for (int i = 0; i < a->len; ++i)
+        sum += fabs(a->term[i] - b->term[i]);
 
-    // Clear the simplex.
-    for (i = 0; i < s->len; ++i) {
-        s->vertex[i]->id = 0;
-        memset(s->vertex[i]->term, 0, N * sizeof(double));
-        hperf_reset(s->vertex[i]->perf);
-    }
-
-    // Calculate values for the first N+1 vertices.
-    for (i = 0; i < N; ++i) {
-        sum = 0.0;
-        for (j = 0; j < i; ++j)
-            sum += s->vertex[i]->term[j] * s->vertex[i]->term[j];
-        s->vertex[i]->term[i] = sqrt(1.0 - sum);
-
-        for (j = i+1; j <= N; ++j) {
-            sum = 0.0;
-            for (k = 0; k < i; ++k)
-                sum += s->vertex[i]->term[k] * s->vertex[j]->term[k];
-            s->vertex[j]->term[i] = ((-1.0 / ((double)N) - sum) /
-                                     s->vertex[i]->term[i]);
-        }
-    }
+    return sum;
 }
 
-/*
- * Data structure used for simplex rotation.
- */
-typedef struct {
-    unsigned long order;
-    int x;
-    int y;
-} rparam_t;
-
-/*
- * Rotates a simplex about the origin.
- */
-int rotate(simplex_t* s)
+double l2_norm(const vertex_t* a, const vertex_t* b)
 {
-    int i, j, k, combos = (N * (N - 1)) / 2;
-    rparam_t* rp;
+    double sum = 0.0;
+    for (int i = 0; i < a->len; ++i) {
+        double offset = a->term[i] - b->term[i];
+        sum += offset * offset;
+    }
+    return sqrt(sum);
+}
 
-    rp = malloc(combos * sizeof(rparam_t));
-    if (!rp)
+// Given an index (i), returns the i'th lexicographical combination of
+// choosing two elements from a set of size N.
+void pair_by_index(unsigned n, unsigned index, unsigned pair[])
+{
+    int limit = 0;
+    unsigned first = 0;
+
+    ++index;
+    do limit += n - ++first;
+    while (limit < index);
+
+    pair[0] = first - 1;
+    pair[1] = n + index - limit - 1;
+}
+
+// Randomly rotate a simplex in N dimensions about the origin.
+int rotate_simplex(simplex_t* simplex, int dimensions)
+{
+    unsigned combos = (dimensions * (dimensions - 1)) / 2;
+
+    // Produce a random order of (N choose 2) integers.
+    unsigned* order = shuffle(combos);
+    if (!order)
         return -1;
 
-    /* Generate a random ordering for all pairs of terms. */
-    i = 0;
-    for (j = 0; j < N-1; ++j) {
-        for (k = j+1; k < N; ++k) {
-            rp[i].order  = lrand48();
-            rp[i].x = j;
-            rp[i].y = k;
-            ++i;
-        }
-    }
-    qsort(rp, combos, sizeof(rparam_t), rparam_sort);
-
-    /* Rotate each pair of terms by a random angle. */
-    for (i = 0; i < combos; ++i) {
+    for (unsigned i = 0; i < combos; ++i) {
+        // Produce a random angle for each pair of dimensions.
         double theta = drand48() * (2 * M_PI);
 
-        for (j = 0; j < s->len; ++j) {
-            double term_x = s->vertex[j]->term[rp[i].x];
-            double term_y = s->vertex[j]->term[rp[i].y];
+        for (unsigned j = 0; j <= dimensions; ++j) {
+            unsigned pair[2];
+            pair_by_index(dimensions, order[i], pair);
 
-            s->vertex[j]->term[rp[i].x] = (term_x * cos(theta) -
-                                           term_y * sin(theta));
-            s->vertex[j]->term[rp[i].y] = (term_x * sin(theta) +
-                                           term_y * cos(theta));
+            double first  = simplex->vertex[j].term[ pair[0] ];
+            double second = simplex->vertex[j].term[ pair[1] ];
+            simplex->vertex[j].term[ pair[0] ] = (first  * cos(theta) -
+                                                  second * sin(theta));
+            simplex->vertex[j].term[ pair[1] ] = (first  * sin(theta) +
+                                                  second * cos(theta));
         }
     }
 
-    free(rp);
+    free(order);
     return 0;
 }
 
-int rparam_sort(const void* _a, const void* _b)
+// Generate a random permutation of N indexes using the Knuth shuffle.
+// Returns a newly allocated heap array which must be freed.
+unsigned* shuffle(unsigned size)
 {
-    const rparam_t* a = _a;
-    const rparam_t* b = _b;
+    unsigned* retval = malloc(size * sizeof(*retval));
+    if (!retval)
+        return NULL;
 
-    return (a->order - b->order);
+    for (unsigned i = 0; i < size; ++i) {
+        unsigned j = lrand48() % (i + 1);
+        retval[i] = retval[j];
+        retval[j] = i;
+    }
+    return retval;
+}
+
+// Translate each base point by a coefficient of its distance from an
+// origin point.  For example, a coefficient of 0.0 produces the base
+// point, and a coefficient of -1.0 produces the origin.
+int transform(const vertex_t* base, unsigned count, const vertex_t* origin,
+              double coefficient, vertex_t* result)
+{
+    int dimensions = origin->len;
+
+    for (unsigned i = 0; i < count; ++i) {
+        if (base[i].len != dimensions)
+            return -1;
+
+        if (result[i].len != dimensions) {
+            if (vertex_init(&result[i], dimensions) != 0)
+                return -1;
+        }
+
+        for (int j = 0; j < dimensions; ++j) {
+            double offset = (base[i].term[j] - origin->term[j]) * coefficient;
+            result[i].term[j] = base[i].term[j] + offset;
+        }
+    }
+    return 0;
+}
+
+// Write a regular N-dimensional simplex (whose vertex-to-origin
+// distance is 1) into the given simplex_t structure.
+void unit_simplex(simplex_t* simplex, unsigned dimensions)
+{
+    simplex->vertex[0].term[0] = 1.0;
+    for (unsigned i = 0; i < dimensions; ++i) {
+        for (unsigned j = 0; j < i; ++j)
+            simplex->vertex[j].term[i] = 0.0;
+
+        if (i > 0) {
+            double a = simplex->vertex[i-1].term[i-1];
+            double b = simplex->vertex[i  ].term[i-1];
+            simplex->vertex[i].term[i] = sqrt(a * a - b * b);
+        }
+
+        double portion = simplex->vertex[i].term[i] / (dimensions - i);
+        for (unsigned j = i + 1; j <= dimensions; ++j)
+            simplex->vertex[j].term[i] = -portion;
+    }
+}
+
+// Check that a simplex is within the bounds of its search space,
+// shifting the entire simplex as necessary.  If shifting the simplex
+// will not resolve the issue (i.e., the simplex is larger than the
+// search space), return -1.
+//
+// This function only considers the first D+1 vertices, where D is the
+// number of search space dimensions.
+//
+int validate_simplex(simplex_t* simplex, const hspace_t* space)
+{
+    // Process each dimension in isolation.
+    for (unsigned i = 0; i < space->len; ++i) {
+        // Find the lowest and highest value for the i'th term.
+        double low = simplex->vertex[0].term[i];
+        double high = simplex->vertex[0].term[i];
+        for (unsigned j = 1; j <= space->len; ++j) {
+            if (low > simplex->vertex[j].term[i])
+                low = simplex->vertex[j].term[i];
+            if (high < simplex->vertex[j].term[i])
+                high = simplex->vertex[j].term[i];
+        }
+
+        /* Verify that simplex is not larger than the search space. */
+        double min;
+        double max;
+        if (hrange_finite(&space->dim[i])) {
+            min = 0.0;
+            max = nextafter(1.0, 0.0);
+        }
+        else {
+            min = space->dim[i].bounds.r.min;
+            max = space->dim[i].bounds.r.max;
+        }
+
+        // Fail if simplex is larger than the search space.
+        if ((high - low) >= (max - min))
+            return -1;
+
+        // Shift all vertices up, if necessary.
+        if (low < min) {
+            double shift = min - low;
+            for (unsigned j = 0; j < simplex->len; ++j)
+                simplex->vertex[j].term[i] += shift;
+        }
+
+        // Shift all vertices down, if necessary.
+        if (high >= max) {
+            double shift = high - max;
+            for (unsigned j = 0; j < simplex->len; ++j)
+                simplex->vertex[j].term[i] -= shift;
+        }
+    }
+    return 0;
+}
+
+// Convert a fractional value [0, 1) to a raw value.
+hval_t value(double fraction, const hrange_t* range)
+{
+    unsigned long index;
+
+    fraction *= hrange_limit(range);
+    index = (unsigned long) fraction;
+
+    return hrange_value(range, index);
 }

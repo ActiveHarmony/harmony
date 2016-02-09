@@ -42,18 +42,8 @@ double application(long ival, double rval, const char* string)
 int main(int argc, char* argv[])
 {
     hdesc_t* hd;
-    int i, retval;
+    int i, retval = 0;
     double perf;
-    char* filename = "session.cfg";
-
-    retval = 0;
-    for (i = 1; i < argc; ++i) {
-        if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
-            fprintf(stderr, "Usage: %s [filename]"
-                    " [KEY_1=VAL_1] ... [KEY_N=VAL_N]\n\n", argv[0]);
-            return 0;
-        }
-    }
 
     /* Initialize a Harmony client. */
     hd = ah_init();
@@ -63,19 +53,23 @@ int main(int argc, char* argv[])
     }
     ah_args(hd, &argc, argv);
 
-    if (argc > 1)
-        filename = argv[1];
-
-    /* Load a session definition file. */
-    if (ah_load(hd, filename) != 0) {
-        fprintf(stderr, "Error loading session file");
-        goto error;
+    int help = 0;
+    for (i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+            help = 1;
+            break;
+        }
+    }
+    if (help || argc < 2) {
+        fprintf(stderr, "Usage: %s <session_name>"
+                    " [KEY_1=VAL_1] ... [KEY_N=VAL_N]\n\n", argv[0]);
+        return -1;
     }
 
     /* Begin a new tuning session. */
     printf("Starting Harmony...\n");
-    if (ah_launch(hd, NULL, 0, filename) != 0) {
-        fprintf(stderr, "Error launching tuning session");
+    if (ah_join(hd, NULL, 0, argv[1]) != 0) {
+        fprintf(stderr, "Error joining tuning session");
         goto error;
     }
 
@@ -85,6 +79,11 @@ int main(int argc, char* argv[])
         if (hresult < 0) {
             fprintf(stderr, "Error fetching values from tuning session");
             goto error;
+        }
+        else if (hresult == 0) {
+            printf("No testing point available.  Waiting.\n");
+            sleep(1);
+            continue;
         }
 
         /* Run one full iteration of the application (or code variant).
@@ -101,12 +100,12 @@ int main(int argc, char* argv[])
          */
         perf = application(ah_get_int(hd, "i_var"),
                            ah_get_real(hd, "r_var"),
-                           ah_get_enum(hd, "fruits"));
+                           ah_get_enum(hd, "s_var"));
 
         printf("(%4ld, %.4lf, \"%s\") = %lf\n",
                ah_get_int(hd, "i_var"),
                ah_get_real(hd, "r_var"),
-               ah_get_enum(hd, "fruits"),
+               ah_get_enum(hd, "s_var"),
                perf);
 
         /* Report the performance we've just measured. */
@@ -128,12 +127,12 @@ int main(int argc, char* argv[])
     }
     perf = application(ah_get_int(hd, "i_var"),
                        ah_get_real(hd, "r_var"),
-                       ah_get_enum(hd, "fruits"));
+                       ah_get_enum(hd, "s_var"));
 
     printf("(%4ld, %.4lf, \"%s\") = %lf (* Best point found. *)\n",
            ah_get_int(hd, "i_var"),
            ah_get_real(hd, "r_var"),
-           ah_get_enum(hd, "fruits"),
+           ah_get_enum(hd, "s_var"),
            perf);
     goto cleanup;
 
@@ -143,9 +142,10 @@ int main(int argc, char* argv[])
 
   cleanup:
     /* Leave the tuning session. */
-    if (ah_leave(hd) != 0)
-        fprintf(stderr, "Error disconnecting from Harmony session: %s.\n",
-                ah_error_string(hd));
+    if (ah_leave(hd) != 0) {
+        fprintf(stderr, "Error disconnecting from Harmony session");
+        goto error;
+    }
 
     ah_fini(hd);
     return retval;

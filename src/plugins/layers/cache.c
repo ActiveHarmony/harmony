@@ -32,7 +32,7 @@
  */
 
 #include "session-core.h"
-#include "hsignature.h"
+#include "hspace.h"
 #include "hpoint.h"
 #include "hperf.h"
 #include "hutil.h"
@@ -60,7 +60,7 @@ hcfg_info_t plugin_keyinfo[] = {
 
 typedef struct {
     hpoint_t point;
-    hperf_t* perf;
+    hperf_t perf;
 } cache_t;
 
 typedef struct {
@@ -72,10 +72,9 @@ typedef struct {
 int find_max_strlen(void);
 int load_logger_file(const char* logger);
 int safe_scanstr(FILE* fd, int bounds_idx, const char** match);
-int pt_equiv(const hpoint_t* a, const hpoint_t* b);
 visited_t* find_visited(const hpoint_t* a);
 
-static hrange_t* range;
+static hrange_t* dim;
 static cache_t* cache;
 static int cache_len, cache_cap;
 static visited_t* visited;
@@ -89,18 +88,18 @@ static int buflen;
 /* Initialize global variables.  Also loads data into cache from a log
  * file if configuration variable CACHE_FILE is defined.
  */
-int cache_init(hsignature_t* sig)
+int cache_init(hspace_t* space)
 {
     const char* filename;
 
-    i_cnt = sig->range_len;
+    i_cnt = space->len;
     o_cnt = hcfg_int(session_cfg, CFGKEY_PERF_COUNT);
     if (o_cnt < 1) {
         session_error("Invalid value for " CFGKEY_PERF_COUNT
                       " configuration key.");
         return -1;
     }
-    range = sig->range;
+    dim = space->dim;
 
     cache = NULL;
     cache_len = cache_cap = 0;
@@ -157,8 +156,8 @@ int cache_generate(hflow_t* flow, htrial_t* trial)
 
     /* For now, we rely on a linear cache lookup. */
     for (i = 0; i < cache_len; ++i) {
-        if (pt_equiv(&trial->point, &cache[i].point)) {
-            hperf_copy(trial->perf, cache[i].perf);
+        if (hpoint_cmp(&trial->point, &cache[i].point) == 0) {
+            hperf_copy(&trial->perf, &cache[i].perf);
             skip = 1;
             flow->status = HFLOW_RETURN;
             pt_num++;
@@ -201,9 +200,9 @@ int cache_analyze(hflow_t* flow, htrial_t* trial)
             }
         }
 
-        hpoint_init(&cache[cache_len].point, trial->point.n);
+        hpoint_init(&cache[cache_len].point, trial->point.len);
         hpoint_copy(&cache[cache_len].point, &trial->point);
-        cache[cache_len].perf = hperf_clone(trial->perf);
+        hperf_copy(&cache[cache_len].perf, &trial->perf);
         ++cache_len;
     }
     skip = 0;
@@ -218,7 +217,7 @@ int cache_analyze(hflow_t* flow, htrial_t* trial)
           visited = realloc(visited, sizeof(visited_t) * visited_cap);
       }
       memset(visited + visited_len, 0, sizeof(visited_t));
-      hpoint_init(&visited[visited_len].point, trial->point.n);
+      hpoint_init(&visited[visited_len].point, trial->point.len);
       hpoint_copy(&visited[visited_len].point, &trial->point);
       visited[visited_len].count = 2;  // looking for the 2nd occurance next time we get to generate
       visited_len++;
@@ -235,7 +234,7 @@ int cache_fini(void)
 
     for (i = 0; i < cache_len; ++i) {
         hpoint_fini(&cache[i].point);
-        hperf_fini(cache[i].perf);
+        hperf_fini(&cache[i].perf);
     }
     free(cache);
 
@@ -247,12 +246,12 @@ int cache_fini(void)
  */
 int find_max_strlen(void)
 {
-    int i, j, len, max = 0;
+    int max = 0;
 
-    for (i = 0; i < i_cnt; ++i) {
-        if (range[i].type == HVAL_STR) {
-            for (j = 0; j < range[i].bounds.s.set_len; ++j) {
-                len = strlen(range[i].bounds.s.set[j]) + 1;
+    for (int i = 0; i < i_cnt; ++i) {
+        if (dim[i].type == HVAL_STR) {
+            for (int j = 0; j < dim[i].bounds.e.len; ++j) {
+                int len = strlen(dim[i].bounds.e.set[j]) + 1;
                 if (max < len)
                     max = len;
             }
@@ -300,20 +299,19 @@ int load_logger_file(const char* filename)
             }
         }
         hpoint_init(&cache[cache_len].point, i_cnt);
-        cache[cache_len].perf = hperf_alloc(o_cnt);
-        if (!cache[cache_len].perf) {
+        if (hperf_init(&cache[cache_len].perf, o_cnt) != 0) {
             session_error("Error allocating memory for performance in cache");
             return -1;
         }
 
         /* Parse point data. */
         for (i = 0; i < i_cnt; ++i) {
-            hval_t* v = &cache[cache_len].point.val[i];
+            hval_t* v = &cache[cache_len].point.term[i];
 
             if (i > 0) SKIP_PATTERN(fp, " ,");
 
-            v->type = range[i].type;
-            switch (range[i].type) {
+            v->type = dim[i].type;
+            switch (dim[i].type) {
             case HVAL_INT:  ret = fscanf(fp, "%ld", &v->value.i); break;
             case HVAL_REAL: ret = fscanf(fp, "%*f[%la]", &v->value.r); break;
             case HVAL_STR:  ret = safe_scanstr(fp, i, &v->value.s); break;
@@ -332,7 +330,7 @@ int load_logger_file(const char* filename)
         SKIP_PATTERN(fp, " ) => (");
         for (i = 0; i < o_cnt; ++i) {
             if (i > 0) SKIP_PATTERN(fp, " ,");
-            if (fscanf(fp, " %*f[%la]", &cache[cache_len].perf->p[i]) != 1) {
+            if (fscanf(fp, " %*f[%la]", &cache[cache_len].perf.obj[i]) != 1) {
                 session_error("Error parsing performance data from logfile");
                 return -1;
             }
@@ -357,7 +355,7 @@ int load_logger_file(const char* filename)
 int safe_scanstr(FILE* fp, int bounds_idx, const char** match)
 {
     int i;
-    str_bounds_t* str_bounds = &range[bounds_idx].bounds.s;
+    range_enum_t* bounds = &dim[bounds_idx].bounds.e;
 
     SKIP_PATTERN(fp, " \"");
     for (i = 0; i < buflen; ++i) {
@@ -376,52 +374,16 @@ int safe_scanstr(FILE* fp, int bounds_idx, const char** match)
     }
     buf[i] = '\0';
 
-    for (i = 0; i < str_bounds->set_len; ++i) {
-        if (strcmp(buf, str_bounds->set[i]) == 0)
+    for (i = 0; i < bounds->len; ++i) {
+        if (strcmp(buf, bounds->set[i]) == 0)
             break;
     }
-    if (i == str_bounds->set_len) {
+    if (i == bounds->len) {
         session_error("Invalid HVAL_STR value");
         return 0;
     }
 
-    *match = str_bounds->set[i];
-    return 1;
-}
-
-int pt_equiv(const hpoint_t* a, const hpoint_t* b)
-{
-    int i;
-
-    if (a->n != b->n)
-        return 0;
-
-    for (i = 0; i < a->n; ++i) {
-        if (a->val[i].type != b->val[i].type)
-            return 0;
-
-        switch (a->val[i].type) {
-        case HVAL_INT:
-            if (a->val[i].value.i != b->val[i].value.i)
-                return 0;
-            break;
-
-        case HVAL_REAL:
-            if (a->val[i].value.r < b->val[i].value.r ||
-                a->val[i].value.r > b->val[i].value.r)
-                return 0;
-            break;
-
-        case HVAL_STR:
-            if (strcmp(a->val[i].value.s, b->val[i].value.s))
-                return 0;
-            break;
-
-        default:
-            session_error("Invalid point value type");
-            return 0;
-        }
-    }
+    *match = bounds->set[i];
     return 1;
 }
 
@@ -430,7 +392,7 @@ visited_t *find_visited(const struct hpoint *a)
     int i;
 
     for(i = 0;i < visited_len;i++) {
-        if(pt_equiv(a, &visited[i].point))
+        if(hpoint_cmp(a, &visited[i].point) == 0)
             return visited + i;
     }
 

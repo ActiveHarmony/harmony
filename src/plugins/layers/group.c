@@ -25,7 +25,7 @@
  * input variables not in the current search group remain constant.
  *
  * Input variables are specified via a zero-based index, determined by
- * the order they are defined in the session signature.  For instance,
+ * the order they are defined in the session search space.  For instance,
  * the first variable defined via harmony_int(), harmony_real(), or
  * harmony_enum() can be referenced via the index 0.
  *
@@ -50,7 +50,7 @@
  */
 
 #include "session-core.h"
-#include "hsignature.h"
+#include "hspace.h"
 #include "hpoint.h"
 #include "hutil.h"
 #include "hcfg.h"
@@ -60,6 +60,7 @@
 #include <string.h>
 #include <strings.h>
 #include <ctype.h>
+#include <math.h>
 
 /*
  * Name used to identify this plugin layer.
@@ -80,7 +81,7 @@ int parse_group(const char* buf);
 
 typedef struct group_def {
     int* idx;
-    int idx_len;
+    int  idx_len;
 } group_def_t;
 
 static char internal_restart_req;
@@ -92,7 +93,7 @@ static int glist_len, glist_cap;
 static int glist_curr;
 static hpoint_t best;
 
-int group_init(hsignature_t* sig)
+int group_init(hspace_t* space)
 {
     const char* ptr;
 
@@ -109,15 +110,15 @@ int group_init(hsignature_t* sig)
     }
 
     /* The maximum group size is the number of input ranges. */
-    cap_max = sig->range_len;
+    cap_max = space->len;
 
-    locked_val = calloc(cap_max, sizeof(hval_t));
+    locked_val = calloc(cap_max, sizeof(*locked_val));
     if (!locked_val) {
         session_error("Could not allocate memory for locked value list.");
         return -1;
     }
 
-    hint_val = calloc(cap_max, sizeof(hval_t));
+    hint_val = calloc(cap_max, sizeof(*hint_val));
     if (!hint_val) {
         session_error("Could not allocate memory for hint value list.");
         return -1;
@@ -135,15 +136,15 @@ int group_init(hsignature_t* sig)
 
 int group_setcfg(const char* key, const char* val)
 {
-    int i, retval = 0;
+    int retval = 0;
 
     if (strcmp(key, CFGKEY_CONVERGED) == 0 && val && *val == '1') {
         session_best(&best);
 
         /* Update locked values with converged group. */
-        for (i = 0; i < glist[glist_curr].idx_len; ++i) {
+        for (int i = 0; i < glist[glist_curr].idx_len; ++i) {
             int idx = glist[glist_curr].idx[i];
-            locked_val[idx] = best.val[idx];
+            locked_val[idx] = best.term[idx];
         }
 
         if (++glist_curr < glist_len) {
@@ -157,31 +158,32 @@ int group_setcfg(const char* key, const char* val)
 
 int group_generate(hflow_t* flow, htrial_t* trial)
 {
-    int i;
+    int ptlen = cap_max * sizeof(*hint_val);
 
     if (glist_curr < glist_len) {
-        hval_t* trial_val = trial->point.val;
-
         /* Initialize locked values, if needed. */
-        for (i = 0; i < cap_max; ++i) {
+        for (int i = 0; i < cap_max; ++i) {
             if (locked_val[i].type == HVAL_UNKNOWN)
-                locked_val[i] = trial_val[i];
+                locked_val[i] = trial->point.term[i];
         }
 
         /* Base hint values on locked values. */
-        memcpy(hint_val, locked_val, sizeof(hval_t) * cap_max);
+        memcpy(hint_val, locked_val, ptlen);
 
         /* Allow current group values from the trial point to pass through. */
-        for (i = 0; i < glist[glist_curr].idx_len; ++i) {
+        for (int i = 0; i < glist[glist_curr].idx_len; ++i) {
             int idx = glist[glist_curr].idx[i];
-            hint_val[idx] = trial_val[idx];
+            hint_val[idx] = trial->point.term[idx];
         }
 
         /* If any values differ from our hint, reject it. */
-        if (memcmp(hint_val, trial_val, sizeof(hval_t) * cap_max) != 0) {
-            flow->point.id = 0;
-            flow->point.n = cap_max;
-            flow->point.val = hint_val;
+        if (memcmp(hint_val, trial->point.term, ptlen) != 0) {
+            if (hpoint_init(&flow->point, cap_max) != 0) {
+                session_error("Could not initialize rejection hint point");
+                return -1;
+            }
+            memcpy((void *) flow->point.term, hint_val, ptlen);
+
             flow->status = HFLOW_REJECT;
             return 0;
         }

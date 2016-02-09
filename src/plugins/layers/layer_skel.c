@@ -25,7 +25,7 @@
  */
 
 #include "session-core.h"
-#include "hsignature.h"
+#include "hspace.h"
 #include "hpoint.h"
 #include "hcfg.h"
 
@@ -48,13 +48,13 @@ hcfg_info_t plugin_keyinfo[] = {
  * Invoked once on module load, and during subsequent session restarts.
  *
  * Param:
- *   sig - Details of the parameter space (dimensions, bounds, etc.).
+ *   space - Details of the parameter space (dimensions, bounds, etc.).
  *
  * Upon error, this function should call session_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int <plugin>_init(hsignature_t* sig)
+int <plugin>_init(hspace_t* space)
 {
     return 0;
 }

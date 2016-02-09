@@ -53,12 +53,17 @@ int socket_read(int fd, const void* data, unsigned datalen);
 int socket_launch(const char* path, char* const argv[], pid_t* return_pid);
 
 /**
- * send a message on the given socket
+ * Send a message on the given socket
  **/
 int mesg_send(int sock, hmesg_t* mesg);
 
 /**
- * read a message from the given socket
+ * Forward a message on the given socket
+ **/
+int mesg_forward(int sock, hmesg_t* mesg);
+
+/**
+ * Read a message from the given socket
  **/
 int mesg_recv(int sock, hmesg_t* mesg);
 

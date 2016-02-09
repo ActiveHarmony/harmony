@@ -20,9 +20,10 @@
 #ifndef __HMESG_H__
 #define __HMESG_H__
 
+#include "hspace.h"
+#include "hcfg.h"
 #include "hpoint.h"
 #include "hperf.h"
-#include "hsession.h"
 
 /* Message header layout:
  *
@@ -32,14 +33,24 @@
  * |---------------------------------|
  * |          Message Length         |
  * |---------------------------------|
- * |  HMESG_VERSION |  Message Data  |
- * |-----------------                |
- * |  Message Data (cont.)           |
- * |                                 |
+ * |  HMESG_VERSION |   Origin ID    |
+ * |---------------------------------|
+ * |          Message Data           |
+ * |               ...               |
  */
 
+/* Offset and size of static header members in a byte-stream. */
+#define HMESG_MAGIC_OFFSET    0
+#define HMESG_MAGIC_SIZE      4
+#define HMESG_LENGTH_OFFSET   4
+#define HMESG_LENGTH_SIZE     4
+#define HMESG_VERSION_OFFSET  8
+#define HMESG_VERSION_SIZE    2
+#define HMESG_ORIGIN_OFFSET  10
+#define HMESG_ORIGIN_SIZE     2
+#define HMESG_HDR_SIZE       12
+
 /* Magic number for messages between the harmony server and its clients.    */
-#define HMESG_HDRLEN    10         /* int32 + char[4] + char[2]             */
 #define HMESG_OLD_MAGIC 0x5261793a /* Magic number for packets (pre v4.5).  */
 #define HMESG_MAGIC     0x5261797c /* Magic number for packet.              */
 #define HMESG_VERSION   0x05       /* Protocol version.                     */
@@ -77,33 +88,44 @@ typedef enum {
 
 /** \brief The hmesg_t structure.
  */
-typedef struct {
-    int dest;
+typedef struct hmesg {
+    int origin;
     hmesg_type type;
     hmesg_status status;
-    const char* src_id;
 
-    union {
-        hsession_t session;
-        hsignature_t join;
-        hpoint_t point;
-        struct mesg_report {
-            int cand_id;
-            hperf_t* perf;
-        } report;
-        const char* string;
+    // External state access pointers.
+    struct hmesg_state {
+        const hspace_t* space;
+        const hpoint_t* best;
+        const char*     client;
+    } state;
+
+    // External data access pointers.
+    struct hmesg_data {
+        const hcfg_t*   cfg;
+        const hpoint_t* point;
+        const hperf_t*  perf;
+        const char*     string;
     } data;
 
-    char* buf;
-    int buflen;
-} hmesg_t;
-extern const hmesg_t HMESG_INITIALIZER;
+    // Storage space for *_unpack() routines.
+    hspace_t unpacked_space;
+    hpoint_t unpacked_best;
+    hcfg_t   unpacked_cfg;
+    hpoint_t unpacked_point;
+    hperf_t  unpacked_perf;
 
-void hmesg_init(hmesg_t* mesg);
-void hmesg_scrub(hmesg_t* mesg);
+    char* recv_buf;
+    int   recv_len;
+    char* send_buf;
+    int   send_len;
+} hmesg_t;
+#define HMESG_INITIALIZER {0}
+extern const hmesg_t hmesg_zero;
+
 void hmesg_fini(hmesg_t* mesg);
-int  hmesg_serialize(hmesg_t* mesg);
-int  hmesg_deserialize(hmesg_t* mesg);
+int  hmesg_pack(hmesg_t* mesg);
+int  hmesg_unpack(hmesg_t* mesg);
 
 #ifdef __cplusplus
 }

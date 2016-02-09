@@ -37,7 +37,7 @@
  */
 
 #include "session-core.h"
-#include "hsignature.h"
+#include "hspace.h"
 #include "hpoint.h"
 #include "hutil.h"
 #include "hcfg.h"
@@ -85,7 +85,7 @@ typedef struct cinfo {
 } cinfo_t;
 cinfo_t* client = NULL;
 
-hsignature_t sess_sig;
+hspace_t sess_space;
 int param_max;
 int client_max;
 int save_counter = 0;
@@ -106,7 +106,7 @@ void harmony_taudb_get_secondary_metadata(TAUDB_THREAD* thread, char* opsys,
 /* Initialization of TAUdb
  * Return 0 for success, -1 for error
  */
-int TAUdb_init(hsignature_t* sig)
+int TAUdb_init(hspace_t* space)
 {
     char* tmpstr;
 
@@ -123,7 +123,7 @@ int TAUdb_init(hsignature_t* sig)
     taudb_check_connection(connection);
 
     /* Initializing Trial */
-    if (harmony_taudb_trial_init(sig->name, sig->name) != 0) {
+    if (harmony_taudb_trial_init(space->name, space->name) != 0) {
         session_error("Failed to create TAUdb trial");
         return -1;
     }
@@ -138,7 +138,7 @@ int TAUdb_init(hsignature_t* sig)
     timer_group->name = taudb_strdup("Harmony Perf");
     taudb_add_timer_group_to_trial(taudb_trial, timer_group);
 
-    param_max = sig->range_len;
+    param_max = space->len;
     client_max = hcfg_int(session_cfg, CFGKEY_CLIENT_COUNT);
     taudb_trial->node_count = client_max;
 
@@ -166,9 +166,8 @@ int TAUdb_init(hsignature_t* sig)
     }
     memset(client, 0, client_max * sizeof(cinfo_t));
 
-    sess_sig = HSIGNATURE_INITIALIZER;
-    if (hsignature_copy(&sess_sig, sig) != 0) {
-        session_error("Internal error: Could not copy session signature");
+    if (hspace_copy(&sess_space, space) != 0) {
+        session_error("Could not copy session search space");
         return -1;
     }
     return 0;
@@ -248,8 +247,8 @@ int TAUdb_analyze(hflow_t* flow, htrial_t* ah_trial)
     taudb_add_timer_call_data_to_trial(taudb_trial, timer_call_data);
 
     timer_value->metric = metric;
-    timer_value->inclusive = hperf_unify(ah_trial->perf);
-    timer_value->exclusive = hperf_unify(ah_trial->perf);
+    timer_value->inclusive = hperf_unify(&ah_trial->perf);
+    timer_value->exclusive = hperf_unify(&ah_trial->perf);
     timer_value->inclusive_percentage = 100.0;
     timer_value->exclusive_percentage = 100.0;
     timer_value->sum_exclusive_squared = 0.0;
@@ -329,32 +328,34 @@ int client_idx(void)
 int save_timer_parameter(TAUDB_TIMER* timer, htrial_t* trial)
 {
     int i;
-    char value[32];
+    char buf[32];
     TAUDB_TIMER_PARAMETER* param = taudb_create_timer_parameters(param_max);
 
     for (i = 0; i < param_max; i++) {
+        const hval_t* val = &trial->point.term[i];
+
         /*Save name*/
-        param[i].name = taudb_strdup(sess_sig.range[i].name);
+        param[i].name = taudb_strdup(sess_space.dim[i].name);
 
         /*get value*/
-        switch (trial->point.val[i].type) {
+        switch (val->type) {
         case HVAL_INT:
-            snprintf(value, sizeof(value), "%ld", trial->point.val[i].value.i);
+            snprintf(buf, sizeof(buf), "%ld", val->value.i);
             break;
 
         case HVAL_REAL:
-            snprintf(value, sizeof(value), "%f", trial->point.val[i].value.r);
+            snprintf(buf, sizeof(buf), "%f", val->value.r);
             break;
 
         case HVAL_STR:
-            snprintf(value, sizeof(value), "%s", trial->point.val[i].value.s);
+            snprintf(buf, sizeof(buf), "%s", val->value.s);
             break;
 
         default:
             session_error("Invalid point value detected");
             return -1;
         }
-        param[i].value = taudb_strdup(value);
+        param[i].value = taudb_strdup(buf);
         taudb_add_timer_parameter_to_timer(timer, &param[i]);
     }
 

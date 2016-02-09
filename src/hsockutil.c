@@ -164,18 +164,49 @@ int socket_launch(const char* path, char* const argv[], pid_t* return_pid)
  */
 int mesg_send(int sock, hmesg_t* mesg)
 {
-    int msglen;
-
-    msglen = hmesg_serialize(mesg);
+    int msglen = hmesg_pack(mesg);
     if (msglen < 0)
         return -1;
 
-    /* fprintf(stderr, "(%2d)<<< '%s'\n", sock, mesg->buf); */
-    if (socket_write(sock, mesg->buf, msglen) < msglen)
+    // fprintf(stderr, "(%2d)<<< '%s'\n", sock, mesg->send_buf);
+    if (socket_write(sock, mesg->send_buf, msglen) < msglen)
         return -1;
 
-    hmesg_scrub(mesg);
-    mesg->type = HMESG_UNKNOWN;
+    return 1;
+}
+
+/*
+ * Forward a message to the given socket.
+ *
+ * If no changes were made to an hmesg_t after it was unpacked, the
+ * original payload may be forwarded to a different destination by
+ * replacing null bytes with the string delimiting character (").
+ */
+int mesg_forward(int sock, hmesg_t* mesg)
+{
+    if (mesg->origin < -1 || mesg->origin >= 255) {
+        fprintf(stderr, "Error: mesg_forward():"
+                "Origin (%d) is out of range [-1, 254]\n", mesg->origin);
+        return -1;
+    }
+
+    int msglen;
+    if (sscanf(mesg->recv_buf + HMESG_LENGTH_OFFSET, "%4d", &msglen) < 1)
+        return -1;
+
+    for (int i = 0; i < msglen; ++i) {
+        if (mesg->recv_buf[i] == '\0')
+            mesg->recv_buf[i] = '"';
+    }
+
+    char origin[HMESG_ORIGIN_SIZE + 1];
+    snprintf(origin, sizeof(origin), "%02x", mesg->origin);
+    memcpy(mesg->recv_buf + HMESG_ORIGIN_OFFSET, origin, HMESG_ORIGIN_SIZE);
+
+    // fprintf(stderr, "(%2d)<<< '%s'\n", sock, mesg->recv_buf);
+    if (socket_write(sock, mesg->recv_buf, msglen) < msglen)
+        return -1;
+
     return 1;
 }
 
@@ -184,42 +215,41 @@ int mesg_send(int sock, hmesg_t* mesg)
  */
 int mesg_recv(int sock, hmesg_t* mesg)
 {
-    char hdr[HMESG_HDRLEN + 1];
+    char hdr[HMESG_HDR_SIZE + 1];
     char* newbuf;
     int msglen, retval;
     unsigned int magic, msgver;
 
-    retval = recv(sock, hdr, sizeof(hdr), MSG_PEEK);
+    retval = recv(sock, hdr, HMESG_HDR_SIZE, MSG_PEEK);
     if (retval <  0) goto error;
     if (retval == 0) return 0;
 
-    memcpy(&magic, hdr, sizeof(magic));
+    memcpy(&magic, hdr, HMESG_MAGIC_SIZE);
     if (ntohl(magic) != HMESG_MAGIC)
         goto invalid;
 
-    hdr[HMESG_HDRLEN] = '\0';
-    if (sscanf(hdr + sizeof(magic), "%4d%2x", &msglen, &msgver) < 2)
+    hdr[HMESG_HDR_SIZE] = '\0';
+    if (sscanf(hdr + HMESG_LENGTH_OFFSET, "%4d%2x", &msglen, &msgver) < 2)
         goto invalid;
 
     if (msgver != HMESG_VERSION)
         goto invalid;
 
-    if (mesg->buflen <= msglen) {
-        newbuf = realloc(mesg->buf, msglen + 1);
+    if (mesg->recv_len <= msglen) {
+        newbuf = realloc(mesg->recv_buf, msglen + 1);
         if (!newbuf)
             goto error;
-        mesg->buf = newbuf;
-        mesg->buflen = msglen;
+        mesg->recv_buf = newbuf;
+        mesg->recv_len = msglen + 1;
     }
 
-    retval = socket_read(sock, mesg->buf, msglen);
+    retval = socket_read(sock, mesg->recv_buf, msglen);
     if (retval == 0) return 0;
     if (retval < msglen) goto error;
-    mesg->buf[retval] = '\0';  /* A strlen() safety net. */
-    /* fprintf(stderr, "(%2d)>>> '%s'\n", sock, mesg->buf); */
+    mesg->recv_buf[retval] = '\0';  /* A strlen() safety net. */
+    // fprintf(stderr, "(%2d)>>> '%s'\n", sock, mesg->recv_buf);
 
-    hmesg_scrub(mesg);
-    if (hmesg_deserialize(mesg) < 0)
+    if (hmesg_unpack(mesg) < 0)
         goto error;
 
     return 1;

@@ -6,9 +6,9 @@ LIB_SRCS=hcfg.c \
          hmesg.c \
          hpoint.c \
          hperf.c \
-         hsession.c \
-         hsignature.c \
+         hrange.c \
          hsockutil.c \
+         hspace.c \
          hutil.c \
          hval.c
 CLI_SRCS=hclient.c

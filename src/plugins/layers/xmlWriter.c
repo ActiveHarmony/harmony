@@ -51,7 +51,7 @@
 #include <libxml/xmlwriter.h>
 
 #include "session-core.h"
-#include "hsignature.h"
+#include "hspace.h"
 #include "hpoint.h"
 #include "hutil.h"
 #include "hcfg.h"
@@ -73,7 +73,7 @@ hcfg_info_t plugin_keyinfo[] = {
 
 #define MY_ENCODING "ISO-8859-1"
 
-hsignature_t sess_sig;
+hspace_t sess_space;
 /* clock_t file_create_time; */
 char filename[128];
 char create_time[128];
@@ -82,7 +82,7 @@ int paramNum;
 int harmony_xmlWriteAppName(const char* appName);
 int harmony_xmlWriteParamInfo(void);
 
-int xmlWriter_init(hsignature_t* sig)
+int xmlWriter_init(hspace_t* space)
 {
     int rc;
     const char* tmpstr;
@@ -104,7 +104,7 @@ int xmlWriter_init(hsignature_t* sig)
         strncpy(filename, tmpstr, sizeof(filename));
     else
         snprintf(filename, sizeof(filename), "%s_%s.xml",
-                 sig->name, create_time);
+                 space->name, create_time);
 
     doc = xmlNewDoc(BAD_CAST XML_DEFAULT_VERSION);
     if (!doc) {
@@ -176,16 +176,16 @@ int xmlWriter_init(hsignature_t* sig)
     xmlFreeDoc(doc);
 
     /* Writing primary metadata */
-    hsignature_copy(&sess_sig, sig);
+    hspace_copy(&sess_space, space);
 
     /* Write appName */
-    if (harmony_xmlWriteAppName(sig->name) != 0)
+    if (harmony_xmlWriteAppName(space->name) != 0)
         return -1;
 
     /* Write nodeInfo */
 
     /* Write param info */
-    paramNum = sig->range_len;
+    paramNum = space->len;
     if (harmony_xmlWriteParamInfo() != 0)
         return -1;
 
@@ -213,7 +213,7 @@ int xmlWriter_generate(hflow_t* flow, htrial_t* trial)
              current->tm_min, current->tm_sec);
 
     char performance[32];
-    sprintf(performance, "%lf", hperf_unify(trial->perf));
+    sprintf(performance, "%lf", hperf_unify(&trial->perf));
 
     doc = xmlReadFile(filename, NULL, 0);
     if (doc == NULL) {
@@ -240,9 +240,9 @@ int xmlWriter_generate(hflow_t* flow, htrial_t* trial)
 
             /* Start adding param and corresponding config */
             for (i = 0; i < paramNum; i++) {
-                hval_t* val = &trial->point.val[i];
+                const hval_t* val = &trial->point.term[i];
 
-                snprintf(temp, sizeof(temp), "%s", sess_sig.range[i].name);
+                snprintf(temp, sizeof(temp), "%s", sess_space.dim[i].name);
                 switch (val->type) {
                 case HVAL_INT:
                     snprintf(confstr, sizeof(confstr), "%ld", val->value.i);
@@ -396,26 +396,26 @@ int harmony_xmlWriteParamInfo(void)
 
             for (i = 0; i < paramNum; i++) {
                 snprintf(paramName, sizeof(paramName), "%s",
-                         sess_sig.range[i].name);
+                         sess_space.dim[i].name);
 
                 /*Type sensitive*/
-                switch (sess_sig.range[i].type) {
+                switch (sess_space.dim[i].type) {
                 case HVAL_INT:
                     snprintf(paramMin, sizeof(paramMin), "%ld",
-                             sess_sig.range[i].bounds.i.min);
+                             sess_space.dim[i].bounds.i.min);
                     snprintf(paramMax, sizeof(paramMax), "%ld",
-                             sess_sig.range[i].bounds.i.max);
+                             sess_space.dim[i].bounds.i.max);
                     snprintf(paramStep, sizeof(paramStep), "%ld",
-                             sess_sig.range[i].bounds.i.step);
+                             sess_space.dim[i].bounds.i.step);
                     break;
 
                 case HVAL_REAL:
                     snprintf(paramMin, sizeof(paramMin), "%f",
-                             sess_sig.range[i].bounds.r.min);
+                             sess_space.dim[i].bounds.r.min);
                     snprintf(paramMax, sizeof(paramMax), "%f",
-                             sess_sig.range[i].bounds.r.max);
+                             sess_space.dim[i].bounds.r.max);
                     snprintf(paramStep, sizeof(paramStep), "%f",
-                             sess_sig.range[i].bounds.r.step);
+                             sess_space.dim[i].bounds.r.step);
                     break;
 
                 case HVAL_STR:

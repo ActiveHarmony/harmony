@@ -28,7 +28,7 @@
  */
 
 #include "session-core.h"
-#include "hsignature.h"
+#include "hspace.h"
 #include "hpoint.h"
 #include "hperf.h"
 #include "hutil.h"
@@ -57,14 +57,14 @@ hcfg_info_t plugin_keyinfo[] = {
     { NULL }
 };
 
-void perf_mean(hperf_t* dst, hperf_t* src[], int count);
+void perf_mean(hperf_t* dst, hperf_t* src, int count);
 int  perf_sort(const void* _a, const void* _b);
 int  add_storage(void);
 
 typedef struct store {
     int id;
     int count;
-    hperf_t** trial;
+    hperf_t* trial;
 } store_t;
 
 typedef enum aggfunc {
@@ -80,7 +80,7 @@ int trial_per_point;
 store_t* slist;
 int slist_len;
 
-int agg_init(hsignature_t* sig)
+int agg_init(hspace_t* space)
 {
     const char* val;
 
@@ -127,10 +127,9 @@ int agg_analyze(hflow_t* flow, htrial_t* trial)
         store->count = 0;
     }
 
-    if (store->trial[ store->count ] == NULL)
-        store->trial[ store->count ] = hperf_clone(trial->perf);
-    else
-        hperf_copy(store->trial[ store->count ], trial->perf);
+    if (hperf_copy(&store->trial[ store->count ], &trial->perf) != 0)
+        return -1;
+
     ++store->count;
 
     if (store->count < trial_per_point) {
@@ -141,28 +140,28 @@ int agg_analyze(hflow_t* flow, htrial_t* trial)
     switch (agg_type) {
     case AGG_MIN:
         for (i = 0; i < trial_per_point; ++i)
-            if (hperf_cmp(trial->perf, store->trial[i]) > 0)
-                hperf_copy(trial->perf, store->trial[i]);
+            if (hperf_cmp(&trial->perf, &store->trial[i]) > 0)
+                hperf_copy(&trial->perf, &store->trial[i]);
         break;
 
     case AGG_MAX:
         for (i = 0; i < trial_per_point; ++i)
-            if (hperf_cmp(trial->perf, store->trial[i]) < 0)
-                hperf_copy(trial->perf, store->trial[i]);
+            if (hperf_cmp(&trial->perf, &store->trial[i]) < 0)
+                hperf_copy(&trial->perf, &store->trial[i]);
         break;
 
     case AGG_MEAN:
-        perf_mean(trial->perf, store->trial, trial_per_point);
+        perf_mean(&trial->perf, store->trial, trial_per_point);
         break;
 
     case AGG_MEDIAN:
-        qsort(store->trial, trial_per_point, sizeof(hperf_t*), perf_sort);
+        qsort(store->trial, trial_per_point, sizeof(hperf_t), perf_sort);
 
         i = (trial_per_point - 1) / 2;
         if (i % 2)
-            hperf_copy(trial->perf, store->trial[i]);
+            hperf_copy(&trial->perf, &store->trial[i]);
         else
-            perf_mean(trial->perf, &store->trial[i], 2);
+            perf_mean(&trial->perf, &store->trial[i], 2);
         break;
 
     default:
@@ -178,31 +177,37 @@ int agg_analyze(hflow_t* flow, htrial_t* trial)
 
 int agg_fini(void)
 {
+    for (int i = 0; i < slist_len; ++i) {
+        for (int j = 0; j < trial_per_point; ++j)
+            hperf_fini(&slist[i].trial[j]);
+        free(slist[i].trial);
+    }
     free(slist);
+
     return 0;
 }
 
-void perf_mean(hperf_t* dst, hperf_t* src[], int count)
+void perf_mean(hperf_t* dst, hperf_t* src, int count)
 {
     int i, j;
 
     /* Initialize the destination hperf_t. */
-    for (i = 0; i < dst->n; ++i)
-        dst->p[i] = 0.0;
+    for (i = 0; i < dst->len; ++i)
+        dst->obj[i] = 0.0;
 
     /* Calculate the mean of each objective individually. */
     for (j = 0; j < count; ++j)
-        for (i = 0; i < dst->n; ++i)
-            dst->p[i] += src[j]->p[i];
+        for (i = 0; i < dst->len; ++i)
+            dst->obj[i] += src[j].obj[i];
 
-    for (i = 0; i < dst->n; ++i)
-        dst->p[i] /= trial_per_point;
+    for (i = 0; i < dst->len; ++i)
+        dst->obj[i] /= trial_per_point;
 }
 
 int perf_sort(const void* _a, const void* _b)
 {
-    double a = hperf_unify(* ((const hperf_t**)_a));
-    double b = hperf_unify(* ((const hperf_t**)_b));
+    double a = hperf_unify((const hperf_t*)_a);
+    double b = hperf_unify((const hperf_t*)_b);
 
     return (a > b) - (a < b);
 }
@@ -218,7 +223,7 @@ int add_storage(void)
 
     while (prev_len < slist_len) {
         slist[prev_len].id = -1;
-        slist[prev_len].trial = calloc(trial_per_point, sizeof(hperf_t*));
+        slist[prev_len].trial = calloc(trial_per_point, sizeof(hperf_t));
         if (!slist[prev_len].trial) {
             session_error("Could not allocate memory for trial list");
             return -1;

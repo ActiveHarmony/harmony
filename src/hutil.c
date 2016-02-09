@@ -224,22 +224,29 @@ int file_read_line(FILE* fp, char** buf, int* cap,
     return -1;
 }
 
-int array_grow(void* buf, int* capacity, int elem_size)
+int array_grow(void* oldbuf, int* oldcap, int size)
 {
-    void* new_buf;
-    int new_capacity = 8;
+    char* newbuf;
+    int   newcap = 8;
 
-    if (*capacity >= new_capacity)
-        new_capacity = *capacity << 1;
+    if (*oldcap >= newcap)
+        newcap = *oldcap << 1;
 
-    new_buf = realloc(*(void**)buf, new_capacity * elem_size);
-    if (new_buf == NULL)
-        return -1;
+    if (*(void**)oldbuf == NULL) {
+        newbuf = calloc(newcap, size);
+        if (!newbuf)
+            return -1;
+    }
+    else {
+        newbuf = realloc(*(void**)oldbuf, newcap * size);
+        if (!newbuf)
+            return -1;
 
-    memset(((char*)new_buf) + (*capacity * elem_size), 0,
-           (new_capacity - *capacity) * elem_size);
-    *(void**)buf = new_buf;
-    *capacity = new_capacity;
+        memset(newbuf + (*oldcap * size), 0, (newcap - *oldcap) * size);
+    }
+    *(void**)oldbuf = newbuf;
+    *oldcap = newcap;
+
     return 0;
 }
 
@@ -367,8 +374,8 @@ int snprintf_serial(char** buf, int* buflen, const char* fmt, ...)
 
 int printstr_serial(char** buf, int* buflen, const char* str)
 {
-    if (!str) return snprintf_serial(buf, buflen, "0\"0\" ");
-    return snprintf_serial(buf, buflen, "%u\"%s\" ", strlen(str), str);
+    if (!str) return snprintf_serial(buf, buflen, " 0\"0\"");
+    return snprintf_serial(buf, buflen, " %u\"%s\"", strlen(str), str);
 }
 
 int scanstr_serial(const char** str, char* buf)
@@ -376,7 +383,7 @@ int scanstr_serial(const char** str, char* buf)
     int count;
     unsigned int len;
 
-    if (sscanf(buf, "%u\"%n", &len, &count) < 1)
+    if (sscanf(buf, " %u\"%n", &len, &count) < 1)
         goto invalid;
     buf += count;
 
@@ -395,4 +402,63 @@ int scanstr_serial(const char** str, char* buf)
   invalid:
     errno = EINVAL;
     return -1;
+}
+
+int unquote_string(const char* buf, char** token, const char** errptr)
+{
+    const char* src;
+    int cap = 0;
+
+    while (1) {
+        src = buf;
+        // Skip leading whitespace.
+        while (isspace(*src)) ++src;
+
+        char* dst = *token;
+        int   len = cap;
+        char  quote = '\0';
+        while (*src) {
+            if (!quote) {
+                if      (*src == '\'')  { quote = '\''; ++src; continue; }
+                else if (*src ==  '"')  { quote =  '"'; ++src; continue; }
+                else if (*src ==  ',')  { break; }
+                else if (isspace(*src)) { break; }
+            }
+            else {
+                if      (*src == '\\')  { ++src; }
+                else if (*src == quote) { quote = '\0'; ++src; continue; }
+            }
+
+            if (len-- > 0)
+                *(dst++) = *(src++);
+            else
+                ++src;
+        }
+        if (len-- > 0)
+            *dst = '\0';
+
+        if (quote != '\0') {
+            if (errptr)
+                *errptr = "Non-terminated quote detected";
+            return -1;
+        }
+
+        if (len < -1) {
+            // Token buffer size is -len;
+            cap += -len;
+            *token = malloc(cap * sizeof(**token));
+            if (!*token) {
+                if (errptr)
+                    *errptr = "Could not allocate memory in unquote_string()";
+                return -1;
+            }
+        }
+        else if (len == -1) {
+            // Empty token.
+            *token = NULL;
+            break;
+        }
+        else break; // Loop exit.
+    }
+    return src - buf;
 }

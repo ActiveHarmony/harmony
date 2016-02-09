@@ -19,13 +19,14 @@
 #define _XOPEN_SOURCE 600 // Needed for gethostname()
 
 #include "hclient.h"
-#include "hsession.h"
-#include "hutil.h"
-#include "hmesg.h"
+#include "hcfg.h"
+#include "hspace.h"
 #include "hpoint.h"
 #include "hperf.h"
+#include "hval.h"
+#include "hmesg.h"
+#include "hutil.h"
 #include "hsockutil.h"
-#include "hcfg.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -47,24 +48,21 @@ typedef enum harmony_state_t {
     HARMONY_STATE_MAX
 } harmony_state_t;
 
-typedef struct hvarloc_t {
-    void* ptr;
-    hval_t val;
-} hvarloc_t;
-
 struct hdesc_t {
     harmony_state_t state;
     int socket;
     char* id;
 
-    hsession_t sess;
+    hspace_t space;
+    hcfg_t cfg;
     hmesg_t mesg;
 
-    hvarloc_t* varloc;
+    void** varloc;
     int varloc_cap;
 
-    hperf_t* perf;
-    hpoint_t curr, best;
+    hperf_t perf;
+    hpoint_t test, best;
+    hpoint_t *curr;
 
     char* buf;
     int buflen;
@@ -80,8 +78,7 @@ int extend_varloc(hdesc_t* hd);
 int find_var(hdesc_t* hd, const char* name);
 int send_request(hdesc_t* hd, hmesg_type msg_type);
 int set_varloc(hdesc_t* hd, const char* name, void* ptr);
-int write_values(hdesc_t* hd, const hpoint_t* pt);
-int update_best(hdesc_t* hd, const hpoint_t* pt);
+int write_values(hdesc_t* hd);
 
 static int debug_mode = 0;
 
@@ -115,29 +112,14 @@ static int debug_mode = 0;
  */
 hdesc_t* ah_init()
 {
-    hdesc_t* hd = malloc( sizeof(*hd) );
+    hdesc_t* hd = calloc(1, sizeof(*hd));
     if (!hd)
         return NULL;
 
-    hd->sess = HSESSION_INITIALIZER;
-    if (hcfg_init(&hd->sess.cfg) != 0)
+    if (hcfg_init(&hd->cfg) != 0)
         return NULL;
 
-    hd->mesg = HMESG_INITIALIZER;
     hd->state = HARMONY_STATE_INIT;
-
-    hd->varloc = NULL;
-    hd->varloc_cap = 0;
-
-    hd->curr = HPOINT_INITIALIZER;
-    hd->best = HPOINT_INITIALIZER;
-
-    hd->buf = NULL;
-    hd->buflen = 0;
-    hd->errstr = NULL;
-
-    hd->id = NULL;
-
     return hd;
 }
 
@@ -171,7 +153,7 @@ int ah_args(hdesc_t* hd, int* argc, char** argv)
         if (strcmp(argv[i], "--") == 0)
             skip = 1;
 
-        if (skip || hcfg_parse(&hd->sess.cfg, argv[i], &hd->errstr) != 1)
+        if (skip || hcfg_parse(&hd->cfg, argv[i], &hd->errstr) != 1)
             argv[tail++] = argv[i];
     }
 
@@ -194,10 +176,11 @@ void ah_fini(hdesc_t* hd)
         }
 
         hmesg_fini(&hd->mesg);
-        hsession_fini(&hd->sess);
-        hpoint_fini(&hd->curr);
+        hcfg_fini(&hd->cfg);
+        hspace_fini(&hd->space);
+        hpoint_fini(&hd->test);
         hpoint_fini(&hd->best);
-        hperf_fini(hd->perf);
+        hperf_fini(&hd->perf);
 
         if (hd->id)
             free(hd->id);
@@ -283,7 +266,7 @@ int ah_load(hdesc_t* hd, const char* filename)
     FILE* fp;
     int retval = 0;
 
-    if (hsignature_name(&hd->sess.sig, filename) != 0) {
+    if (hspace_name(&hd->space, filename) != 0) {
         hd->errstr = "Could not copy session name from filename";
         return -1;
     }
@@ -315,11 +298,11 @@ int ah_load(hdesc_t* hd, const char* filename)
             (strncmp(line, "real", 4) == 0 && isspace(line[4])) ||
             (strncmp(line, "enum", 4) == 0 && isspace(line[4])))
         {
-            if (hsignature_parse(&hd->sess.sig, line, &hd->errstr) == -1)
+            if (hspace_parse(&hd->space, line, &hd->errstr) == -1)
                 goto error;
         }
         else {
-            if (hcfg_parse(&hd->sess.cfg, line, &hd->errstr) == -1)
+            if (hcfg_parse(&hd->cfg, line, &hd->errstr) == -1)
                 goto error;
         }
         linenum += count;
@@ -349,10 +332,9 @@ int ah_load(hdesc_t* hd, const char* filename)
  *
  * \return Returns 0 on success, and -1 otherwise.
  */
-int ah_int(hdesc_t* hd, const char* name,
-           long min, long max, long step)
+int ah_int(hdesc_t* hd, const char* name, long min, long max, long step)
 {
-    return hsignature_int(&hd->sess.sig, name, min, max, step);
+    return hspace_int(&hd->space, name, min, max, step);
 }
 
 /**
@@ -366,10 +348,9 @@ int ah_int(hdesc_t* hd, const char* name,
  *
  * \return Returns 0 on success, and -1 otherwise.
  */
-int ah_real(hdesc_t* hd, const char* name,
-                 double min, double max, double step)
+int ah_real(hdesc_t* hd, const char* name, double min, double max, double step)
 {
-    return hsignature_real(&hd->sess.sig, name, min, max, step);
+    return hspace_real(&hd->space, name, min, max, step);
 }
 
 /**
@@ -384,7 +365,7 @@ int ah_real(hdesc_t* hd, const char* name,
  */
 int ah_enum(hdesc_t* hd, const char* name, const char* value)
 {
-    return hsignature_enum(&hd->sess.sig, name, value);
+    return hspace_enum(&hd->space, name, value);
 }
 
 /**
@@ -397,7 +378,7 @@ int ah_enum(hdesc_t* hd, const char* name, const char* value)
  */
 int ah_strategy(hdesc_t* hd, const char* strategy)
 {
-    return hcfg_set(&hd->sess.cfg, CFGKEY_STRATEGY, strategy);
+    return hcfg_set(&hd->cfg, CFGKEY_STRATEGY, strategy);
 }
 
 /**
@@ -415,7 +396,7 @@ int ah_strategy(hdesc_t* hd, const char* strategy)
  */
 int ah_layers(hdesc_t* hd, const char* list)
 {
-    return hcfg_set(&hd->sess.cfg, CFGKEY_LAYERS, list);
+    return hcfg_set(&hd->cfg, CFGKEY_LAYERS, list);
 }
 
 /**
@@ -452,7 +433,7 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
         return -1;
     }
 
-    if (hd->sess.sig.range_len < 1) {
+    if (hd->space.len < 1) {
         hd->errstr = "No tuning variables defined";
         errno = EINVAL;
         return -1;
@@ -465,17 +446,17 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
         return -1;
 
     if (!host)
-        host = hcfg_get(&hd->sess.cfg, CFGKEY_HARMONY_HOST);
+        host = hcfg_get(&hd->cfg, CFGKEY_HARMONY_HOST);
 
     if (port == 0)
-        port = hcfg_int(&hd->sess.cfg, CFGKEY_HARMONY_PORT);
+        port = hcfg_int(&hd->cfg, CFGKEY_HARMONY_PORT);
 
     if (!host) {
         char* path;
         const char* home;
 
         /* Find the Active Harmony installation. */
-        home = hcfg_get(&hd->sess.cfg, CFGKEY_HARMONY_HOME);
+        home = hcfg_get(&hd->cfg, CFGKEY_HARMONY_HOME);
         if (!home) {
             hd->errstr = "No host or " CFGKEY_HARMONY_HOME " specified";
             errno = EINVAL;
@@ -484,7 +465,15 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
 
         /* Fork a local tuning session. */
         path = sprintf_alloc("%s/libexec/" SESSION_CORE_EXECFILE, home);
-        hd->socket = socket_launch(path, NULL, NULL);
+        if (!path) {
+            hd->errstr = "Could not allocate memory for session filename";
+            return -1;
+        }
+
+        char* const child_argv[] = {path,
+                                    (char*)home,
+                                    NULL};
+        hd->socket = socket_launch(path, child_argv, NULL);
         free(path);
     }
     else {
@@ -504,18 +493,17 @@ int ah_launch(hdesc_t* hd, const char* host, int port, const char* name)
     }
 
     /* Provide a default name, if necessary. */
-    if (!name && !hd->sess.sig.name)
+    if (!name && !hd->space.name)
         name = hd->id;
 
-    if (name && hsignature_name(&hd->sess.sig, name) != 0) {
+    if (name && hspace_name(&hd->space, name) != 0) {
         hd->errstr = "Error setting session name";
         return -1;
     }
 
     /* Prepare a Harmony message. */
-    hmesg_scrub(&hd->mesg);
-    hd->mesg.data.session = HSESSION_INITIALIZER;
-    hsession_copy(&hd->mesg.data.session, &hd->sess);
+    hd->mesg.state.space = &hd->space;
+    hd->mesg.data.cfg = &hd->cfg;
 
     if (send_request(hd, HMESG_SESSION) != 0)
         return -1;
@@ -567,10 +555,10 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
 {
     if (hd->state < HARMONY_STATE_CONNECTED) {
         if (!host)
-            host = hcfg_get(&hd->sess.cfg, CFGKEY_HARMONY_HOST);
+            host = hcfg_get(&hd->cfg, CFGKEY_HARMONY_HOST);
 
         if (port == 0)
-            port = hcfg_int(&hd->sess.cfg, CFGKEY_HARMONY_PORT);
+            port = hcfg_int(&hd->cfg, CFGKEY_HARMONY_PORT);
 
         if (!host) {
             hd->errstr = "No host specified";
@@ -593,7 +581,7 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
             return -1;
         }
 
-        if (hsignature_name(&hd->sess.sig, name) != 0) {
+        if (hspace_name(&hd->space, name) != 0) {
             hd->errstr = "Error setting session name";
             return -1;
         }
@@ -604,12 +592,7 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
         }
 
         /* Prepare a Harmony message. */
-        hmesg_scrub(&hd->mesg);
-        hd->mesg.data.join = HSIGNATURE_INITIALIZER;
-        if (hsignature_copy(&hd->mesg.data.join, &hd->sess.sig) != 0) {
-            hd->errstr = "Internal error copying signature data";
-            return -1;
-        }
+        hd->mesg.data.string = name;
 
         /* send the client registration message */
         if (send_request(hd, HMESG_JOIN) != 0)
@@ -621,9 +604,8 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
             return -1;
         }
 
-        hsignature_fini(&hd->sess.sig);
-        if (hsignature_copy(&hd->sess.sig, &hd->mesg.data.join) != 0) {
-            hd->errstr = "Error copying received signature structure";
+        if (hspace_copy(&hd->space, hd->mesg.state.space) != 0) {
+            hd->errstr = "Error copying received search space structure";
             return -1;
         }
 
@@ -637,7 +619,7 @@ int ah_join(hdesc_t* hd, const char* host, int port, const char* name)
     }
     else {
         // Descriptor was already joined.  Make sure the session names match.
-        if (name && strcmp(hd->sess.sig.name, name) != 0) {
+        if (name && strcmp(hd->space.name, name) != 0) {
             hd->errstr = "Descriptor already joined with an existing session";
             errno = EINVAL;
             return -1;
@@ -770,9 +752,9 @@ int ah_leave(hdesc_t* hd)
     if (close(hd->socket) != 0 && debug_mode)
         perror("Error closing socket during ah_leave()");
 
-    /* Reset the hsession_t to prepare for harmony descriptor reuse. */
-    hsignature_fini(&hd->sess.sig);
-    hd->best.id = -1;
+    /* Reset the descriptor entries to prepare for reuse. */
+    hd->space.len = 0;
+    hd->best.id = 0;
 
     return 0;
 }
@@ -806,11 +788,11 @@ long ah_get_int(hdesc_t* hd, const char* name)
 {
     int idx = find_var(hd, name);
 
-    if (idx >= 0 && hd->sess.sig.range[idx].type == HVAL_INT) {
-        if (hd->varloc[idx].ptr)
-            return *(long*)hd->varloc[idx].ptr;
+    if (idx >= 0 && hd->space.dim[idx].type == HVAL_INT) {
+        if (hd->varloc[idx])
+            return *(long*)hd->varloc[idx];
         else
-            return hd->varloc[idx].val.value.i;
+            return hd->curr->term[idx].value.i;
     }
 
     errno = EINVAL;
@@ -834,11 +816,11 @@ double ah_get_real(hdesc_t* hd, const char* name)
 {
     int idx = find_var(hd, name);
 
-    if (idx >= 0 && hd->sess.sig.range[idx].type == HVAL_REAL) {
-        if (hd->varloc[idx].ptr)
-            return *(double*)hd->varloc[idx].ptr;
+    if (idx >= 0 && hd->space.dim[idx].type == HVAL_REAL) {
+        if (hd->varloc[idx])
+            return *(double*)hd->varloc[idx];
         else
-            return hd->varloc[idx].val.value.r;
+            return hd->curr->term[idx].value.r;
     }
 
     errno = EINVAL;
@@ -862,11 +844,11 @@ const char* ah_get_enum(hdesc_t* hd, const char* name)
 {
     int idx = find_var(hd, name);
 
-    if (idx >= 0 && hd->sess.sig.range[idx].type == HVAL_STR) {
-        if (hd->varloc[idx].ptr)
-            return *(char**)hd->varloc[idx].ptr;
+    if (idx >= 0 && hd->space.dim[idx].type == HVAL_STR) {
+        if (hd->varloc[idx])
+            return *(const char**)hd->varloc[idx];
         else
-            return hd->varloc[idx].val.value.s;
+            return hd->curr->term[idx].value.s;
     }
 
     errno = EINVAL;
@@ -894,11 +876,10 @@ char* ah_get_cfg(hdesc_t* hd, const char* key)
 
     if (hd->state < HARMONY_STATE_CONNECTED) {
         // Use the local CFG environment.
-        return hcfg_get(&hd->sess.cfg, key);
+        return hcfg_get(&hd->cfg, key);
     }
 
     /* Prepare a Harmony message. */
-    hmesg_scrub(&hd->mesg);
     hd->mesg.data.string = key;
 
     if (send_request(hd, HMESG_GETCFG) != 0)
@@ -910,8 +891,15 @@ char* ah_get_cfg(hdesc_t* hd, const char* key)
         return NULL;
     }
 
-    snprintf_grow(&hd->buf, &hd->buflen, "%s", hd->mesg.data.string);
-    if (hcfg_set(&hd->sess.cfg, key, hd->buf) != 0) {
+    const char* val = strchr(hd->mesg.data.string, '=');
+    if (!val) {
+        hd->errstr = "Malformed message received from server";
+        return NULL;
+    }
+    ++val;
+
+    snprintf_grow(&hd->buf, &hd->buflen, "%s", val);
+    if (hcfg_set(&hd->cfg, key, hd->buf) != 0) {
         hd->errstr = "Error setting local CFG cache";
         return NULL;
     }
@@ -954,7 +942,6 @@ char* ah_set_cfg(hdesc_t* hd, const char* key, const char* val)
         }
 
         /* Prepare a Harmony message. */
-        hmesg_scrub(&hd->mesg);
         hd->mesg.data.string = buf;
 
         retval = send_request(hd, HMESG_SETCFG);
@@ -971,12 +958,12 @@ char* ah_set_cfg(hdesc_t* hd, const char* key, const char* val)
     }
     else {
         // Use the local CFG environment.
-        const char* cfgval = hcfg_get(&hd->sess.cfg, key);
+        const char* cfgval = hcfg_get(&hd->cfg, key);
         if (!cfgval) cfgval = "";
         snprintf_grow(&hd->buf, &hd->buflen, "%s", cfgval);
     }
 
-    if (hcfg_set(&hd->sess.cfg, key, val) != 0) {
+    if (hcfg_set(&hd->cfg, key, val) != 0) {
         hd->errstr = "Error setting local CFG cache";
         return NULL;
     }
@@ -998,43 +985,33 @@ char* ah_set_cfg(hdesc_t* hd, const char* key, const char* val)
  */
 int ah_fetch(hdesc_t* hd)
 {
-    int i;
-
     if (hd->state < HARMONY_STATE_CONNECTED) {
         hd->errstr = "Descriptor not currently joined to any session";
         errno = EINVAL;
         return -1;
     }
 
-
     if (hd->state == HARMONY_STATE_READY) {
         /* Prepare a Harmony message. */
-        hmesg_scrub(&hd->mesg);
-
         if (send_request(hd, HMESG_FETCH) != 0)
             return -1;
 
         if (hd->mesg.status == HMESG_STATUS_BUSY) {
-            /* No new data is ready. */
-            if (update_best(hd, &hd->mesg.data.point) != 0)
-                return -1;
-
-            if (hd->best.id == -1) {
-                /* No best point is available either.  Do not set values. */
+            if (!hd->best.id) {
+                /* No best point is available yet.  Do not set values. */
                 return 0;
             }
 
             /* Set current point to best point. */
-            if (hpoint_copy(&hd->curr, &hd->best) != 0) {
-                hd->errstr = "Error copying best point data";
-                return -1;
-            }
+            hd->curr = &hd->best;
         }
         else if (hd->mesg.status == HMESG_STATUS_OK) {
-            if (hpoint_copy(&hd->curr, &hd->mesg.data.point) != 0) {
+            if (hpoint_copy(&hd->test, hd->mesg.data.point) != 0) {
                 hd->errstr = "Error copying current point data";
                 return -1;
             }
+            hd->curr = &hd->test;
+            hd->state = HARMONY_STATE_TESTING;
         }
         else {
             hd->errstr = "Invalid message received from server";
@@ -1044,15 +1021,14 @@ int ah_fetch(hdesc_t* hd)
     }
 
     /* Update the variables from the content of the message. */
-    if (write_values(hd, &hd->curr) != 0)
+    if (write_values(hd) != 0)
         return -1;
 
     /* Initialize our internal performance array. */
-    for (i = 0; i < hd->perf->n; ++i)
-        hd->perf->p[i] = NAN;
+    for (int i = 0; i < hd->perf.len; ++i)
+        hd->perf.obj[i] = NAN;
 
     /* Client variables were changed.  Inform the user by returning 1. */
-    hd->state = HARMONY_STATE_TESTING;
     return 1;
 }
 
@@ -1098,10 +1074,10 @@ int ah_report(hdesc_t* hd, double* perf)
         return 0;
 
     if (perf)
-        memcpy(hd->perf->p, perf, sizeof(double) * hd->perf->n);
+        memcpy(hd->perf.obj, perf, sizeof(*hd->perf.obj) * hd->perf.len);
 
-    for (i = 0; i < hd->perf->n; ++i) {
-        if (isnan(hd->perf->p[i])) {
+    for (i = 0; i < hd->perf.len; ++i) {
+        if (isnan(hd->perf.obj[i])) {
             hd->errstr = "Insufficient performance values to report";
             errno = EINVAL;
             return -1;
@@ -1109,13 +1085,8 @@ int ah_report(hdesc_t* hd, double* perf)
     }
 
     /* Prepare a Harmony message. */
-    hmesg_scrub(&hd->mesg);
-    hd->mesg.data.report.cand_id = hd->curr.id;
-    hd->mesg.data.report.perf = hperf_clone(hd->perf);
-    if (!hd->mesg.data.report.perf) {
-        hd->errstr = "Error allocating performance array for message";
-        return -1;
-    }
+    hd->mesg.data.point = &hd->test;
+    hd->mesg.data.perf = &hd->perf;
 
     if (send_request(hd, HMESG_REPORT) != 0)
         return -1;
@@ -1153,14 +1124,14 @@ int ah_report_one(hdesc_t* hd, int index, double value)
         return -1;
     }
 
-    if (index != 0 || index >= hd->perf->n) {
+    if (index != 0 || index >= hd->perf.len) {
         hd->errstr = "Invalid performance index";
         errno = EINVAL;
         return -1;
     }
 
     if (hd->state == HARMONY_STATE_TESTING)
-        hd->perf->p[index] = value;
+        hd->perf.obj[index] = value;
 
     return 0;
 }
@@ -1187,8 +1158,6 @@ int ah_best(hdesc_t* hd)
 
     if (hd->state >= HARMONY_STATE_CONNECTED) {
         /* Prepare a Harmony message. */
-        hmesg_scrub(&hd->mesg);
-
         if (send_request(hd, HMESG_BEST) != 0)
             return -1;
 
@@ -1196,21 +1165,17 @@ int ah_best(hdesc_t* hd)
             hd->errstr = "Invalid message received from server";
             return -1;
         }
-
-        if (hd->best.id < hd->mesg.data.point.id) {
-            if (update_best(hd, &hd->mesg.data.point) != 0)
-                return -1;
-            retval = 1;
-        }
+        retval = 1;
     }
 
     /* Make sure our best known point is valid. */
-    if (hd->best.id < 0) {
+    if (!hd->best.id) {
         errno = EINVAL;
         return -1;
     }
 
-    if (write_values(hd, &hd->best) != 0)
+    hd->curr = &hd->best;
+    if (write_values(hd) != 0)
         return -1;
 
     return retval;
@@ -1296,7 +1261,7 @@ int harmony_enum(hdesc_t* hd, const char* name, const char* value)
 
 int harmony_session_name(hdesc_t* hd, const char* name)
 {
-    return hsignature_name(&hd->sess.sig, name);
+    return hspace_name(&hd->space, name);
 }
 
 int harmony_strategy(hdesc_t* hd, const char* strategy)
@@ -1411,8 +1376,8 @@ int find_var(hdesc_t* hd, const char* name)
 {
     int idx;
 
-    for (idx = 0; idx < hd->sess.sig.range_len; ++idx) {
-        if (strcmp(hd->sess.sig.range[idx].name, name) == 0)
+    for (idx = 0; idx < hd->space.len; ++idx) {
+        if (strcmp(hd->space.dim[idx].name, name) == 0)
             return idx;
     }
     return -1;
@@ -1435,8 +1400,7 @@ int extend_perf(hdesc_t* hd)
         return -1;
     }
 
-    hd->perf = hperf_alloc(perf_len);
-    if (!hd->perf) {
+    if (hperf_init(&hd->perf, perf_len) != 0) {
         hd->errstr = "Error allocating performance array";
         return -1;
     }
@@ -1446,18 +1410,9 @@ int extend_perf(hdesc_t* hd)
 
 int extend_varloc(hdesc_t* hd)
 {
-    if (hd->varloc_cap < hd->sess.sig.range_cap) {
-        int i;
-        hvarloc_t* tmp = realloc(hd->varloc,
-                                 hd->sess.sig.range_cap * sizeof(*tmp));
-        if (!tmp)
+    if (hd->varloc_cap < hd->space.cap) {
+        if (array_grow(&hd->varloc, &hd->varloc_cap, sizeof(*hd->varloc)) != 0)
             return -1;
-
-        for (i = hd->varloc_cap; i < hd->sess.sig.range_cap; ++i)
-            tmp[i].ptr = NULL;
-
-        hd->varloc = tmp;
-        hd->varloc_cap = i;
     }
     return 0;
 }
@@ -1484,7 +1439,10 @@ int send_request(hdesc_t* hd, hmesg_type msg_type)
 {
     hd->mesg.type = msg_type;
     hd->mesg.status = HMESG_STATUS_REQ;
-    hd->mesg.src_id = hd->id;
+
+    hd->mesg.state.space = &hd->space;
+    hd->mesg.state.best = &hd->best;
+    hd->mesg.state.client = hd->id;
 
     if (mesg_send(hd->socket, &hd->mesg) < 1) {
         hd->errstr = "Error sending Harmony message to server";
@@ -1500,10 +1458,10 @@ int send_request(hdesc_t* hd, hmesg_type msg_type)
         }
 
         /* If the httpinfo layer is enabled during a stand-alone session,
-         * it will generate extraneous messages where dest == -1.
+         * it will generate extraneous messages where origin == -1.
          * Make sure to ignore these messages.
          */
-    } while (hd->mesg.dest == -1);
+    } while (hd->mesg.origin == -1);
 
     if (hd->mesg.type != msg_type) {
         hd->mesg.status = HMESG_STATUS_FAIL;
@@ -1514,6 +1472,25 @@ int send_request(hdesc_t* hd, hmesg_type msg_type)
     if (hd->mesg.status == HMESG_STATUS_FAIL) {
         hd->errstr = hd->mesg.data.string;
         return -1;
+    }
+    else {
+        // Update local state from server.
+        if (hd->space.id < hd->mesg.state.space->id) {
+            if (hspace_copy(&hd->space, hd->mesg.state.space) != 0) {
+                hd->errstr = "Could not update session search space";
+                return -1;
+            }
+        }
+        if (hd->best.id < hd->mesg.state.best->id) {
+            if (hpoint_copy(&hd->best, hd->mesg.state.best) != 0) {
+                hd->errstr = "Could not update best known point";
+                return -1;
+            }
+            if (hpoint_align(&hd->best, &hd->space) != 0) {
+                hd->errstr = "Could not align best point to search space";
+                return -1;
+            }
+        }
     }
     return 0;
 }
@@ -1527,50 +1504,30 @@ int set_varloc(hdesc_t* hd, const char* name, void* ptr)
         return -1;
     }
 
-    extend_varloc(hd);
-    hd->varloc[idx].ptr = ptr;
-    return 0;
-}
-
-int update_best(hdesc_t* hd, const hpoint_t* pt)
-{
-    if (hd->best.id >= pt->id)
-        return 0;
-
-    if (hpoint_copy(&hd->best, pt) != 0) {
-        hd->errstr = "Error copying point data";
-        errno = EINVAL;
+    if (extend_varloc(hd) != 0)
         return -1;
-    }
+
+    hd->varloc[idx] = ptr;
     return 0;
 }
 
-int write_values(hdesc_t* hd, const hpoint_t* pt)
+int write_values(hdesc_t* hd)
 {
-    int i;
-
-    if (hd->sess.sig.range_len != pt->n) {
+    if (hd->space.len != hd->curr->len) {
         hd->errstr = "Invalid internal point structure";
         return -1;
     }
 
-    for (i = 0; i < pt->n; ++i) {
-        if (hd->varloc[i].ptr == NULL) {
-            hd->varloc[i].val = pt->val[i];
-        }
-        else {
-            switch (pt->val[i].type) {
-            case HVAL_INT:
-                *(long*)hd->varloc[i].ptr = pt->val[i].value.i;
-                break;
-            case HVAL_REAL:
-                *(double*)hd->varloc[i].ptr = pt->val[i].value.r;
-                break;
-            case HVAL_STR:
-                *(const char**)hd->varloc[i].ptr = pt->val[i].value.s;
-                break;
+    for (int i = 0; i < hd->space.len; ++i) {
+        const hval_t* val = &hd->curr->term[i];
+
+        if (hd->varloc[i]) {
+            switch (hd->space.dim[i].type) {
+            case HVAL_INT:  *(long*)       hd->varloc[i] = val->value.i; break;
+            case HVAL_REAL: *(double*)     hd->varloc[i] = val->value.r; break;
+            case HVAL_STR:  *(const char**)hd->varloc[i] = val->value.s; break;
             default:
-                hd->errstr = "Invalid signature value type";
+                hd->errstr = "Invalid space dimension value type";
                 return -1;
             }
         }

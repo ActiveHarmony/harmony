@@ -42,6 +42,7 @@
 #include <arpa/inet.h>
 #include <sys/select.h>
 
+#include "hspace.h"
 #include "hcfg.h"
 #include "hmesg.h"
 #include "hpoint.h"
@@ -51,8 +52,6 @@
 /*
  * Session and configuration information from the Harmony Server.
  */
-hsession_t sess;
-
 using namespace std;
 
 typedef struct {
@@ -74,7 +73,7 @@ int codeserver_init(string& filename);
 int dir_erase(string& dirname);
 int parse_slave_list(const char* hostlist);
 int slave_complete(pid_t pid);
-vector<long> values_of(hpoint_t* pt);
+vector<long> values_of(const hpoint_t* pt);
 string vector_to_string(vector<long>& v);
 string vector_to_bash_array_local(vector<long>& v);
 string vector_to_bash_array_remote(vector<long>& v);
@@ -104,7 +103,7 @@ string appname, slave_path;
 url_t local_url, reply_url, target_url;
 
 /*
- * generators: These are the real work-horses. For each new configuration, we 
+ * generators: These are the real work-horses. For each new configuration, we
  *  fork a new process to generate code. These processes die after the code
  *  generation is complete. We block all the signals because we do not want to
  *  interrupt any code generation activity.
@@ -140,7 +139,7 @@ void generator_main(generator_t& gen)
     //  make a call to chill_script.appname.sh
     // Note that appname has to match the name given to this session.
 
-    vector<long> values = values_of(&gen.mesg.data.point);
+    vector<long> values = values_of(gen.mesg.data.point);
 
     /* Print a message to the logger */
     log_message.str("");
@@ -214,8 +213,6 @@ int main(int argc, char* argv[])
 
     local_url.path = argv[1];
     local_url.host.clear();
-
-    sess = HSESSION_INITIALIZER;
 
     // main loop starts here
     // update the log file
@@ -325,10 +322,9 @@ int codeserver_init(string& filename)
         return -1;
     }
 
-    hsession_copy(&sess, &init_mesg.data.session);
-    appname = sess.sig.name;
+    appname = init_mesg.state.space->name;
 
-    cfgval = hcfg_get(&sess.cfg, CFGKEY_SERVER_URL);
+    cfgval = hcfg_get(init_mesg.data.cfg, CFGKEY_SERVER_URL);
     if (!cfgval) {
         cerr << "Session does not define local URL.\n";
         return -1;
@@ -338,7 +334,7 @@ int codeserver_init(string& filename)
         return -1;
     }
 
-    cfgval = hcfg_get(&sess.cfg, CFGKEY_TARGET_URL);
+    cfgval = hcfg_get(init_mesg.data.cfg, CFGKEY_TARGET_URL);
     if (!cfgval) {
         cerr << "Session does not define target URL.\n";
         return -1;
@@ -348,7 +344,7 @@ int codeserver_init(string& filename)
         return -1;
     }
 
-    cfgval = hcfg_get(&sess.cfg, CFGKEY_REPLY_URL);
+    cfgval = hcfg_get(init_mesg.data.cfg, CFGKEY_REPLY_URL);
     if (!cfgval) {
         cerr << "Session does not define reply URL.\n";
         return -1;
@@ -358,7 +354,7 @@ int codeserver_init(string& filename)
         return -1;
     }
 
-    cfgval = hcfg_get(&sess.cfg, CFGKEY_SLAVE_LIST);
+    cfgval = hcfg_get(init_mesg.data.cfg, CFGKEY_SLAVE_LIST);
     if (!cfgval) {
         cerr << "Session does not define slave list.\n";
         return -1;
@@ -369,7 +365,7 @@ int codeserver_init(string& filename)
         return -1;
     }
 
-    cfgval = hcfg_get(&sess.cfg, CFGKEY_SLAVE_PATH);
+    cfgval = hcfg_get(init_mesg.data.cfg, CFGKEY_SLAVE_PATH);
     if (!cfgval) {
         cerr << "Session does not define slave directory.\n";
         return -1;
@@ -523,12 +519,12 @@ void logger(const string& message)
     string line;
     ofstream out_file;
     out_file.open(log_file.c_str(),ios::app);
-    if(!out_file) 
+    if(!out_file)
     {
         cerr << "Error file could not be opened \n";
         exit(1);
     }
-    
+
     out_file << message;
     out_file.flush();
     out_file.close();
@@ -551,12 +547,12 @@ int parse_slave_list(const char* hostlist)
 
     while (gen_list.size()) {
         if (gen_list.back().pid)
-            hmesg_scrub(&gen_list.back().mesg);
+            hmesg_fini(&gen_list.back().mesg);
         gen_list.pop_back();
     }
 
     newgen.pid = 0;
-    newgen.mesg = HMESG_INITIALIZER;
+    newgen.mesg = hmesg_zero;
 
     end = hostlist + strlen(hostlist);
     head = hostlist;
@@ -604,7 +600,7 @@ int parse_slave_list(const char* hostlist)
 
             while (gen_list.size()) {
                 if (gen_list.back().pid)
-                    hmesg_scrub(&gen_list.back().mesg);
+                    hmesg_fini(&gen_list.back().mesg);
                 gen_list.pop_back();
             }
             return -1;
@@ -629,7 +625,7 @@ int slave_complete(pid_t pid)
             if (mesg_write(gen_list[i].mesg, gen_list[i].step) != 0) {
                 return -1;
             }
-            hmesg_scrub(&gen_list[i].mesg);
+            hmesg_fini(&gen_list[i].mesg);
             gen_list[i].pid = 0;
             return 0;
         }
@@ -639,17 +635,17 @@ int slave_complete(pid_t pid)
     return -1;
 }
 
-vector<long> values_of(hpoint_t* pt)
+vector<long> values_of(const hpoint_t* pt)
 {
     vector<long> retval;
 
-    for (int i = 0; i < pt->n; ++i) {
-        if (pt->val[i].type != HVAL_INT) {
+    for (int i = 0; i < pt->len; ++i) {
+        if (pt->term[i].type != HVAL_INT) {
             cerr << "Codeserver only implemented for int ranges for now.\n";
             retval.clear();
             break;
         }
-        retval.push_back(pt->val[i].value.i);
+        retval.push_back(pt->term[i].value.i);
     }
     return retval;
 }
@@ -713,7 +709,6 @@ int file_type(const char* fileName)
 int mesg_read(const char* filename, hmesg_t* msg)
 {
     int msglen, fd, retries, retval;
-    char* newbuf;
     struct stat sb;
     struct timeval polltime;
 
@@ -735,19 +730,19 @@ int mesg_read(const char* filename, hmesg_t* msg)
     }
 
     msglen = sb.st_size + 1;
-    if (msg->buflen < msglen) {
-        newbuf = reinterpret_cast<char*>(realloc(msg->buf, msglen));
+    if (msg->recv_len < msglen) {
+        char* newbuf = reinterpret_cast<char*>(realloc(msg->recv_buf, msglen));
         if (!newbuf) {
             cerr << "Could not allocate memory for message data.\n";
             retval = -1;
             goto cleanup;
         }
-        msg->buf = newbuf;
-        msg->buflen = msglen;
+        msg->recv_buf = newbuf;
+        msg->recv_len = msglen;
     }
-    msg->buf[sb.st_size] = '\0';
+    msg->recv_buf[sb.st_size] = '\0';
 
-    if (read_loop(fd, msg->buf, sb.st_size) != 0) {
+    if (read_loop(fd, msg->recv_buf, sb.st_size) != 0) {
         cerr << "Error reading message file. Retrying.\n";
         goto retry;
     }
@@ -759,7 +754,7 @@ int mesg_read(const char* filename, hmesg_t* msg)
     }
     fd = -1;
 
-    if (hmesg_deserialize(msg) < 0) {
+    if (hmesg_unpack(msg) < 0) {
         cerr << "Error decoding message file. Retrying.\n";
         goto retry;
     }
@@ -801,13 +796,13 @@ int mesg_write(hmesg_t& mesg, int step)
         return -1;
 
     mesg.status = HMESG_STATUS_OK;
-    msglen = hmesg_serialize(&mesg);
+    msglen = hmesg_pack(&mesg);
     if (msglen < 0) {
         cerr << "Error encoding message file.\n";
         return -1;
     }
 
-    if (write_loop(fd, mesg.buf, msglen) < 0)
+    if (write_loop(fd, mesg.send_buf, msglen) < 0)
         return -1;
 
     if (close(fd) < 0)

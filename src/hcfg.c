@@ -17,6 +17,7 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "hcfg.h"
+#include "hmesg.h"
 #include "hutil.h"
 
 #include <stdio.h>
@@ -29,7 +30,7 @@
 #include <ctype.h>
 #include <math.h> /* For NAN */
 
-const hcfg_t HCFG_INITIALIZER = {0};
+const hcfg_t hcfg_zero = HCFG_INITIALIZER;
 
 /* -------------------------------------------
  * Default values for configuration variables.
@@ -62,6 +63,7 @@ const hcfg_info_t hcfg_global_keys[] = {
 };
 
 /* Internal helper function prototypes. */
+static void   free_data(hcfg_t* cfg);
 static int    key_find(const hcfg_t* cfg, const char* key, char** val);
 static char*  key_val(const hcfg_t* cfg, const char* key);
 static char*  key_val_index(const hcfg_t* cfg, const char* key, int idx);
@@ -112,22 +114,34 @@ int hcfg_reginfo(hcfg_t* cfg, const hcfg_info_t* info)
 
 int hcfg_copy(hcfg_t* dst, const hcfg_t* src)
 {
-    dst->len = src->len;
-    dst->cap = src->len;
-    dst->env = malloc(dst->len * sizeof(*dst->env));
-    if (!dst->env) return -1;
+    // Free heap data allocated by the destination structure.
+    free_data(dst);
 
-    for (int i = 0; i < dst->len; ++i) {
-        dst->env[i] = stralloc( src->env[i] );
-        if (!dst->env[i]) return -1;
+    if (dst->cap < src->cap) {
+        char** newbuf = realloc(dst->env, src->cap * sizeof(*dst->env));
+        if (!newbuf)
+            return -1;
+
+        dst->env = newbuf;
+        dst->cap = src->cap;
+    }
+
+    for (dst->len = 0; dst->len < src->len; ++dst->len) {
+        dst->env[ dst->len ] = stralloc( src->env[ dst->len ] );
+        if (!dst->env[ dst->len ])
+            return -1;
     }
     return 0;
 }
 
 void hcfg_fini(hcfg_t* cfg)
 {
-    for (int i = 0; i < cfg->len; ++i)
-        free(cfg->env[i]);
+    free_data(cfg);
+    free(cfg->env);
+}
+
+void hcfg_scrub(hcfg_t* cfg)
+{
     free(cfg->env);
 }
 
@@ -250,11 +264,11 @@ int hcfg_write(const hcfg_t* cfg, const char* filename)
     return 0;
 }
 
-int hcfg_serialize(char** buf, int* buflen, const hcfg_t* cfg)
+int hcfg_pack(char** buf, int* buflen, const hcfg_t* cfg)
 {
     int count, total;
 
-    count = snprintf_serial(buf, buflen, "hcfg: %d ", cfg->len);
+    count = snprintf_serial(buf, buflen, " cfg:%d", cfg->len);
     if (count < 0) goto invalid;
     total = count;
 
@@ -270,23 +284,26 @@ int hcfg_serialize(char** buf, int* buflen, const hcfg_t* cfg)
     return -1;
 }
 
-int hcfg_deserialize(hcfg_t* cfg, char* buf)
+int hcfg_unpack(hcfg_t* cfg, char* buf)
 {
     int total = 0;
-
-    sscanf(buf, " hcfg: %d%n", &cfg->len, &total);
+    sscanf(buf, " cfg:%d%n", &cfg->len, &total);
     if (!total)
         goto invalid;
 
-    cfg->cap = cfg->len;
-    cfg->env = malloc(cfg->len * sizeof(*cfg->env));
+    if (cfg->cap < cfg->len) {
+        char** newbuf = realloc(cfg->env, cfg->len * sizeof(*cfg->env));
+        if (!newbuf)
+            return -1;
+
+        cfg->env = newbuf;
+        cfg->cap = cfg->len;
+    }
+
     for (int i = 0; i < cfg->len; ++i) {
-        const char* line;
-        int count = scanstr_serial((const char**)&line, buf + total);
+        int count = scanstr_serial((const char**)&cfg->env[i], buf + total);
         if (count < 0) goto invalid;
         total += count;
-
-        cfg->env[i] = stralloc(line);
     }
     return total;
 
@@ -332,6 +349,11 @@ int hcfg_parse(hcfg_t* cfg, const char* buf, const char** errptr)
 /*
  * Internal helper functions.
  */
+void free_data(hcfg_t* cfg) {
+    for (int i = 0; i < cfg->len; ++i)
+        free(cfg->env[i]);
+}
+
 int key_find(const hcfg_t* cfg, const char* key, char** val)
 {
     int i;
@@ -393,7 +415,7 @@ void key_del(hcfg_t* cfg, const char* key)
 
     if (i < cfg->len) {
         free(cfg->env[i]);
-        --cfg->len;
+        cfg->env[i] = cfg->env[ --cfg->len ];
     }
 }
 

@@ -62,7 +62,7 @@
 #include <signal.h>
 
 #include "session-core.h"
-#include "hsignature.h"
+#include "hspace.h"
 #include "hpoint.h"
 #include "hutil.h"
 #include "hsockutil.h"
@@ -98,17 +98,17 @@ hcfg_info_t plugin_keyinfo[] = {
 #define MAX_TEXT_LEN 1024
 
 /* Forward function declarations. */
-int strategy_cfg(hsignature_t* sig);
-int build_vars_text(hsignature_t* sig);
-int build_bounds_text(hsignature_t* sig);
+int strategy_cfg(hspace_t* space);
+int build_vars_text(hspace_t* space);
+int build_bounds_text(hspace_t* space);
 int build_user_text(void);
 int build_point_text(hpoint_t* point);
-int update_bounds(hsignature_t* sig);
+int update_bounds(hspace_t* space);
 int check_validity(hpoint_t* point);
 char* call_omega_calc(const char* cmd);
 
 /* Keep copy of session information */
-hsignature_t local_sig;
+hspace_t local_space;
 
 const char* omega_bin   = "oc";
 char constraints[MAX_TEXT_LEN];
@@ -121,32 +121,32 @@ char point_text[MAX_TEXT_LEN];
 /* Some global variables */
 int quiet;
 
-int constraint_init(hsignature_t* sig)
+int constraint_init(hspace_t* space)
 {
-    /* Make a copy of the signature. */
-    hsignature_copy(&local_sig, sig);
+    /* Make a copy of the search space. */
+    hspace_copy(&local_space, space);
 
     /* Initialize layer variables. */
-    if (strategy_cfg(sig) != 0)
+    if (strategy_cfg(space) != 0)
         return -1;
 
-    if (build_vars_text(sig) != 0)
+    if (build_vars_text(space) != 0)
         return -1;
 
-    if (build_bounds_text(sig) != 0)
+    if (build_bounds_text(space) != 0)
         return -1;
 
     if (build_user_text() != 0)
         return -1;
 
     /* Calculate the range for each tuning variable, given the constraints. */
-    if (update_bounds(sig) != 0)
+    if (update_bounds(space) != 0)
         return -1;
 
     return 0;
 }
 
-int strategy_cfg(hsignature_t* sig)
+int strategy_cfg(hspace_t* space)
 {
     const char* cfgval;
 
@@ -206,8 +206,6 @@ int strategy_cfg(hsignature_t* sig)
 
 int constraint_generate(hflow_t* flow, hpoint_t* point)
 {
-    int i;
-
     flow->status = HFLOW_ACCEPT;
     if (!check_validity(point)) {
         flow->status = HFLOW_REJECT;
@@ -215,17 +213,16 @@ int constraint_generate(hflow_t* flow, hpoint_t* point)
 
         if (!quiet) {
             fprintf(stderr, "Rejecting point: {");
-            for (i = 0; i < point->n; ++i) {
-                hval_t* val = &point->val[i];
+            for (int i = 0; i < point->len; ++i) {
+                const hval_t* val = &point->term[i];
 
-                switch (val->type) {
+                switch (local_space.dim[i].type) {
                 case HVAL_INT:  fprintf(stderr, "%ld", val->value.i); break;
-                case HVAL_REAL: fprintf(stderr, "%lf", val->value.r); break;
-                case HVAL_STR:  fprintf(stderr, "%s",  val->value.s); break;
+                case HVAL_REAL: fprintf(stderr, "%g", val->value.r); break;
+                case HVAL_STR:  fprintf(stderr, "%s", val->value.s); break;
                 default:        fprintf(stderr, "<INV>");
                 }
-
-                if (i < point->n - 1)
+                if (i < point->len - 1)
                     fprintf(stderr, ", ");
             }
             fprintf(stderr, "}\n");
@@ -236,32 +233,32 @@ int constraint_generate(hflow_t* flow, hpoint_t* point)
 
 int constraint_fini(void)
 {
-    hsignature_fini(&local_sig);
+    hspace_fini(&local_space);
     return 0;
 }
 
-int build_vars_text(hsignature_t* sig)
+int build_vars_text(hspace_t* space)
 {
     int i;
 
     vars_text[0] = '\0';
-    for (i = 0; i < sig->range_len; ++i) {
-        strcat(vars_text, sig->range[i].name);
-        if (i < sig->range_len - 1)
+    for (i = 0; i < space->len; ++i) {
+        strcat(vars_text, space->dim[i].name);
+        if (i < space->len - 1)
             strcat(vars_text, ", ");
     }
     return 0;
 }
 
-int build_bounds_text(hsignature_t* sig)
+int build_bounds_text(hspace_t* space)
 {
     int i;
     char* ptr = bounds_text;
     char* end = bounds_text + sizeof(bounds_text);
 
     bounds_text[0] = '\0';
-    for (i = 0; i < sig->range_len; ++i) {
-        hrange_t* range = &sig->range[i];
+    for (i = 0; i < space->len; ++i) {
+        hrange_t* range = &space->dim[i];
 
         /* Fetch min and max according to variable type */
         switch (range->type) {
@@ -282,7 +279,7 @@ int build_bounds_text(hsignature_t* sig)
             return -1;
         }
 
-        if (i < sig->range_len - 1)
+        if (i < space->len - 1)
             ptr += snprintf(ptr, end - ptr, " && ");
     }
     return 0;
@@ -325,19 +322,17 @@ int build_point_text(hpoint_t* point)
     char* end = point_text + sizeof(point_text);
 
     point_text[0] = '\0';
-    for (i = 0; i < point->n; ++i) {
-        hval_t* val = &point->val[i];
-
+    for (i = 0; i < point->len; ++i) {
         /* Fetch min and max according to variable type */
-        switch (val->type) {
+        switch (local_space.dim[i].type) {
         case HVAL_INT:
             ptr += snprintf(ptr, end - ptr, "%s = %ld",
-                            local_sig.range[i].name, val->value.i);
+                            local_space.dim[i].name, point->term[i].value.i);
             break;
 
         case HVAL_REAL:
             ptr += snprintf(ptr, end - ptr, "%s = %f",
-                            local_sig.range[i].name, val->value.r);
+                            local_space.dim[i].name, point->term[i].value.r);
             break;
 
         case HVAL_STR:
@@ -345,23 +340,23 @@ int build_point_text(hpoint_t* point)
             return -1;
         }
 
-        if (i < point->n - 1)
+        if (i < point->len - 1)
             ptr += snprintf(ptr, end - ptr, " && ");
     }
     return 0;
 }
 
-/* XXX - We don't actually update the session signature just yet,
+/* XXX - We don't actually update the session search space just yet,
  * resulting in correct, but less optimal point generation.
  */
-int update_bounds(hsignature_t* sig)
+int update_bounds(hspace_t* space)
 {
     char cmd[MAX_CMD_LEN];
     char* retstr;
     int i, retval = 0;
 
-    for (i = 0; i < local_sig.range_len; ++i) {
-        hrange_t* range = &local_sig.range[i];
+    for (i = 0; i < local_space.len; ++i) {
+        hrange_t* range = &local_space.dim[i];
 
         /* Write the domain text with variable constraints to the file */
         snprintf(cmd, sizeof(cmd),
@@ -414,12 +409,12 @@ int update_bounds(hsignature_t* sig)
     }
 
     if (!quiet) {
-        if (!hsignature_equal(sig, &local_sig)) {
+        if (!hspace_equal(space, &local_space)) {
             fprintf(stderr, "For the given constraints, we suggest re-running"
                     " the session with these bounds:\n");
 
-            for (i = 0; i < local_sig.range_len; ++i) {
-                hrange_t* range = &local_sig.range[i];
+            for (i = 0; i < local_space.len; ++i) {
+                hrange_t* range = &local_space.dim[i];
 
                 switch (range->type) {
                 case HVAL_INT:

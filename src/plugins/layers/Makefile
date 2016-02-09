@@ -6,7 +6,6 @@ SRCS=agg.c \
      codegen-helper.c \
      constraint.c \
      group.c \
-     httpinfo.c \
      log.c \
      TAUdb.c \
      xmlWriter.c
@@ -17,7 +16,6 @@ LIBEXEC_TGTS=agg.so \
              codegen-helper \
              constraint.so \
              group.so \
-             httpinfo.so \
              log.so
 SHARED_OBJS=$(filter %.so, $(LIBEXEC_TGTS))
 
