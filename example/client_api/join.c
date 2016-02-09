@@ -145,10 +145,9 @@ int main(int argc, char* argv[])
 
   cleanup:
     // Leave the tuning session.
-    if (ah_leave(hd) != 0) {
-        fprintf(stderr, "Error disconnecting from Harmony session");
-        goto error;
-    }
+    if (ah_leave(hd) != 0)
+        fprintf(stderr, "Error disconnecting from Harmony session: %s.\n",
+                ah_error_string(hd));
 
     ah_fini(hd);
     return retval;
