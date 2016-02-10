@@ -29,8 +29,9 @@ extern "C" {
  * performance value.
  */
 typedef struct hperf {
-    int     len;
     double* obj;
+    int     len;
+    int     cap;
 } hperf_t;
 #define HPERF_INITIALIZER {0}
 extern const hperf_t hperf_zero;
@@ -38,7 +39,7 @@ extern const hperf_t hperf_zero;
 /*
  * Base structure management interface.
  */
-int    hperf_init(hperf_t* perf, int len);
+int    hperf_init(hperf_t* perf, int newcap);
 void   hperf_reset(hperf_t* perf);
 int    hperf_copy(hperf_t* src, const hperf_t* dst);
 void   hperf_fini(hperf_t* perf);

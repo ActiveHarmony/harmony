@@ -1411,11 +1411,14 @@ int extend_perf(hdesc_t* hd)
         return -1;
     }
 
-    if (hperf_init(&hd->perf, perf_len) != 0) {
-        hd->errstr = "Error allocating performance array";
-        return -1;
+    if (hd->perf.cap < perf_len) {
+        if (hperf_init(&hd->perf, perf_len) != 0) {
+            hd->errstr = "Error allocating performance array";
+            return -1;
+        }
     }
 
+    hd->perf.len = perf_len;
     return 0;
 }
 

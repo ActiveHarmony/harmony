@@ -32,15 +32,15 @@ const hperf_t hperf_zero = HPERF_INITIALIZER;
 /*
  * Base structure management implementation.
  */
-int hperf_init(hperf_t* perf, int len)
+int hperf_init(hperf_t* perf, int newcap)
 {
-    if (perf->len != len) {
-        double* newbuf = realloc(perf->obj, sizeof(*perf->obj) * len);
+    if (perf->cap < newcap) {
+        double* newbuf = realloc(perf->obj, newcap * sizeof(*perf->obj));
         if (!newbuf)
             return -1;
 
         perf->obj = newbuf;
-        perf->len = len;
+        perf->cap = newcap;
     }
     return 0;
 }
@@ -53,11 +53,13 @@ void hperf_reset(hperf_t* perf)
 
 int hperf_copy(hperf_t* dst, const hperf_t* src)
 {
-    if (dst->len != src->len) {
+    if (dst->cap < src->len) {
         if (hperf_init(dst, src->len) != 0)
             return -1;
     }
-    memcpy(dst->obj, src->obj, sizeof(*dst->obj) * src->len);
+
+    memcpy(dst->obj, src->obj, src->len * sizeof(*dst->obj));
+    dst->len = src->len;
     return 0;
 }
 
@@ -118,20 +120,24 @@ int hperf_pack(char** buf, int* buflen, const hperf_t* perf)
 
 int hperf_unpack(hperf_t* perf, char* buf)
 {
-    int count, total, len;
+    int count, total, newlen;
 
-    if (sscanf(buf, " perf:%d%n", &len, &count) < 1)
+    if (sscanf(buf, " perf:%d%n", &newlen, &count) < 1)
         goto invalid;
     total = count;
 
-    if (hperf_init(perf, len) != 0)
-        goto error;
+    if (perf->cap < newlen) {
+        if (hperf_init(perf, newlen) != 0)
+            goto error;
+    }
 
-    for (int i = 0; i < len; ++i) {
+    for (int i = 0; i < newlen; ++i) {
         if (sscanf(buf + total, " %la%n", &perf->obj[i], &count) < 1)
             goto invalid;
         total += count;
     }
+
+    perf->len = newlen;
     return total;
 
   invalid:
