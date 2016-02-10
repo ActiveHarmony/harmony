@@ -327,16 +327,18 @@ void increment(void)
 
 int make_hpoint(const unit_u* unit, hpoint_t* point)
 {
-    if (point->len != space->len) {
+    if (point->cap < space->len) {
         if (hpoint_init(point, space->len) != 0)
             return -1;
     }
 
-    for (int i = 0; i < point->len; ++i) {
+    for (int i = 0; i < space->len; ++i) {
         if (hrange_finite(&space->dim[i]))
             point->term[i] = hrange_value(&space->dim[i], unit[i].index);
         else
             point->term[i].value.r = unit[i].value;
     }
+
+    point->len = space->len;
     return 0;
 }

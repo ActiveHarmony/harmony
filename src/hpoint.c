@@ -39,30 +39,26 @@ static int align_str(hval_t* val, const hrange_t* range);
 /*
  * Base structure management implementation.
  */
-int hpoint_init(hpoint_t* point, int newlen)
+int hpoint_init(hpoint_t* point, int newcap)
 {
-    while (point->len > newlen)
-        hval_fini(&point->term[ --point->len ]);
-
-    if (point->len < newlen) {
-        hval_t* oldbuf = point->term;
-        hval_t* newbuf = realloc(oldbuf, newlen * sizeof(*newbuf));
+    if (point->cap < newcap) {
+        hval_t* newbuf = realloc(point->term, newcap * sizeof(*point->term));
         if (!newbuf)
             return -1;
 
         // Initialize any newly created hval_t structures.
-        memset(newbuf + point->len, 0,
-               (newlen - point->len) * sizeof(*newbuf));
+        memset(newbuf + point->cap, 0,
+               (newcap - point->cap) * sizeof(*point->term));
 
         point->term = newbuf;
-        point->len  = newlen;
+        point->cap  = newcap;
     }
     return 0;
 }
 
 int hpoint_copy(hpoint_t* dst, const hpoint_t* src)
 {
-    if (dst->len != src->len) {
+    if (dst->cap < src->len) {
         if (hpoint_init(dst, src->len) != 0)
             return -1;
     }
@@ -71,14 +67,15 @@ int hpoint_copy(hpoint_t* dst, const hpoint_t* src)
         if (hval_copy(&dst->term[i], &src->term[i]) != 0)
             return -1;
     }
-    dst->id = src->id;
+    dst->len = src->len;
+    dst->id  = src->id;
 
     return 0;
 }
 
 void hpoint_fini(hpoint_t* point)
 {
-    for (int i = 0; i < point->len; ++i)
+    for (int i = 0; i < point->cap; ++i)
         hval_fini(&point->term[i]);
     free(point->term);
 }
@@ -154,23 +151,24 @@ int hpoint_unpack(hpoint_t* point, char* buf)
             return -1;
         total += count;
 
-        if (point->len != newlen) {
+        if (point->cap < newlen) {
             if (hpoint_init(point, newlen) != 0)
                 return -1;
         }
 
-        for (int i = 0; i < point->len; ++i) {
+        for (int i = 0; i < newlen; ++i) {
             count = hval_unpack(&point->term[i], buf + total);
             if (count < 0) return -1;
             total += count;
         }
+        point->len = newlen;
     }
     return total;
 }
 
 int hpoint_parse(hpoint_t* point, const char* buf, const hspace_t* space)
 {
-    if (point->len != space->len)
+    if (point->cap < space->len)
         hpoint_init(point, space->len);
 
     for (int i = 0; i < space->len; ++i) {
@@ -187,6 +185,7 @@ int hpoint_parse(hpoint_t* point, const char* buf, const hspace_t* space)
     if (*buf != '\0')
         return -1;
 
+    point->len = space->len;
     return 0;
 }
 

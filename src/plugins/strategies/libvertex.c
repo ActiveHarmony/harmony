@@ -220,7 +220,7 @@ double vertex_norm(const vertex_t* a, const vertex_t* b, vertex_norm_t norm)
 int vertex_point(const vertex_t* vertex, const hspace_t* space,
                  hpoint_t* point)
 {
-    if (point->len != space->len) {
+    if (point->cap < space->len) {
         if (hpoint_init(point, space->len) != 0)
             return -1;
     }
@@ -234,8 +234,9 @@ int vertex_point(const vertex_t* vertex, const hspace_t* space,
             point->term[i].value.r = vertex->term[i];
         }
     }
-    point->id = vertex->id;
 
+    point->len = space->len;
+    point->id  = vertex->id;
     return 0;
 }
 

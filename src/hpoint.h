@@ -34,6 +34,7 @@ typedef struct hpoint {
     unsigned id;
     hval_t*  term;
     int      len;
+    int      cap;
 } hpoint_t;
 
 #define HPOINT_INITIALIZER {0}
@@ -42,7 +43,7 @@ extern const hpoint_t hpoint_zero;
 /*
  * Base structure management interface.
  */
-int  hpoint_init(hpoint_t* point, int newlen);
+int  hpoint_init(hpoint_t* point, int newcap);
 int  hpoint_copy(hpoint_t* dst, const hpoint_t* src);
 void hpoint_fini(hpoint_t* point);
 void hpoint_scrub(hpoint_t* point);

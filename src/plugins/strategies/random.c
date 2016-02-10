@@ -88,6 +88,8 @@ int strategy_init(hspace_t* space_ptr)
             session_error("Could not initialize point structure");
             return -1;
         }
+        next.len = space_ptr->len;
+
         space = space_ptr;
     }
 
