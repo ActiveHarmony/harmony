@@ -145,7 +145,7 @@ int main(int argc, char* argv[])
 
     parse_opts(argc, argv);
 
-    if (perturb)
+    if (perturb > 0.0)
         fprintf(stdout, "Seed value: %ld\n", seed);
     srand((int) seed);
     srand48(seed);
@@ -308,7 +308,7 @@ void parse_opts(int argc, char* argv[])
 
         case 'p':
             perturb = strtod(optarg, &end);
-            if (*end != '\0' || perturb < 0) {
+            if (*end != '\0' || perturb < 0.0) {
                 fprintf(stderr, "Invalid perturbation value '%s'.\n", optarg);
                 exit(-1);
             }
@@ -589,7 +589,7 @@ void eval_func(void)
         fprintf(stdout, "]");
     }
 
-    if (quantize) {
+    if (quantize > 0.0) {
         for (i = 0; i < o_cnt; ++i)
             perf[i] = quantize_value(perf[i]);
 
@@ -601,7 +601,7 @@ void eval_func(void)
         }
     }
 
-    if (perturb) {
+    if (perturb > 0.0) {
         for (i = 0; i < o_cnt; ++i)
             perf[i] += random_value(0.0, perturb);
 

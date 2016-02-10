@@ -1,4 +1,5 @@
 STRICT_FLAGS=$(strip -Weverything -Werror \
+                     -Wno-cast-qual \
                      -Wno-disabled-macro-expansion \
                      -Wno-documentation \
                      -Wno-documentation-unknown-command \
@@ -11,11 +12,13 @@ STRICT_FLAGS=$(strip -Weverything -Werror \
                      -Wno-missing-prototypes \
                      -Wno-missing-noreturn \
                      -Wno-missing-variable-declarations \
+                     -Wno-reserved-id-macro \
                      -Wno-shorten-64-to-32 \
                      -Wno-sign-compare \
                      -Wno-sign-conversion \
                      -Wno-switch-enum \
                      -Wno-unknown-attributes \
+                     -Wno-unknown-warning-option \
                      -Wno-unused-parameter \
               )
 
