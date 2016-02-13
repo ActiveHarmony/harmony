@@ -90,9 +90,6 @@ const hcfg_info_t plugin_keyinfo[] = {
     { NULL }
 };
 
-hpoint_t best_point;
-hperf_t  best_perf;
-
 typedef enum reject_method {
     REJECT_METHOD_UNKNOWN = 0,
     REJECT_METHOD_PENALTY,
@@ -114,62 +111,77 @@ typedef enum simplex_state {
 } simplex_state_t;
 
 /*
+ * Structure to hold data for an individual Nelder-Mead search instance.
+ */
+typedef struct data {
+    hspace_t* space;
+    hpoint_t  best;
+    hperf_t   best_perf;
+
+    // Search options.
+    vertex_t        init_point;
+    double          init_radius;
+    reject_method_t reject_type;
+
+    double reflect_val;
+    double expand_val;
+    double contract_val;
+    double shrink_val;
+    double fval_tol;
+    double size_tol;
+
+    // Search state.
+    vertex_t        centroid;
+    vertex_t        reflect;
+    vertex_t        expand;
+    vertex_t        contract;
+    simplex_t       simplex;
+    simplex_state_t state;
+
+    vertex_t* next;
+    int index_best;
+    int index_worst;
+    int index_curr; // For INIT or SHRINK.
+    int next_id;
+} data_t;
+
+static data_t *data;
+
+/*
  * Internal helper function prototypes.
  */
-static void check_convergence(void);
-static int  config_strategy(void);
-static int  nm_algorithm(void);
-static int  nm_state_transition(void);
-static int  nm_next_vertex(void);
-static int  update_centroid(void);
-
-/*
- * Variables to control search properties.
- */
-vertex_t        init_point;
-double          init_radius;
-reject_method_t reject_type;
-
-double reflect_val;
-double expand_val;
-double contract_val;
-double shrink_val;
-double fval_tol;
-double size_tol;
-
-/*
- * Variables to track current search state.
- */
-hspace_t*       space;
-vertex_t        centroid;
-vertex_t        reflect;
-vertex_t        expand;
-vertex_t        contract;
-simplex_t       simplex;
-simplex_state_t state;
-
-vertex_t* next;
-int index_best;
-int index_worst;
-int index_curr; // For INIT or SHRINK.
-int next_id;
+static data_t* alloc_data(void);
+static void    check_convergence(void);
+static int     config_strategy(void);
+static int     nm_algorithm(void);
+static int     nm_state_transition(void);
+static int     nm_next_vertex(void);
+static int     update_centroid(void);
 
 /*
  * Invoked once on strategy load.
  */
-int strategy_init(hspace_t* space_ptr)
+int strategy_init(hspace_t* space)
 {
-    if (!space) {
-        // One time memory allocation and/or initialization.
-        next_id = 1;
+    if (!data) {
+        // One-time search instance initialization.
+        data = alloc_data();
+        if (!data) {
+            session_error("Could not allocate data for Nelder-Mead strategy");
+            return -1;
+        }
     }
 
-    // Initialization for subsequent calls to strategy_init().
-    space = space_ptr;
+    // Remaining setup needed for every initialization, including
+    // re-initialization due to a restarted search.
+    //
+    data->space = space;
     if (config_strategy() != 0)
         return -1;
 
-    if (simplex_set(&simplex, space, &init_point, init_radius) != 0) {
+    if (simplex_set(&data->simplex, space,
+                    &data->init_point, data->init_radius) != 0)
+    {
         session_error("Could not generate initial simplex");
         return -1;
     }
@@ -179,8 +191,8 @@ int strategy_init(hspace_t* space_ptr)
         return -1;
     }
 
-    index_curr = 0;
-    state = SIMPLEX_STATE_INIT;
+    data->index_curr = 0;
+    data->state = SIMPLEX_STATE_INIT;
     if (nm_next_vertex() != 0) {
         session_error("Could not initiate test vertex.");
         return -1;
@@ -194,13 +206,13 @@ int strategy_init(hspace_t* space_ptr)
  */
 int strategy_generate(hflow_t* flow, hpoint_t* point)
 {
-    if (next->id == next_id) {
+    if (data->next->id == data->next_id) {
         flow->status = HFLOW_WAIT;
         return 0;
     }
 
-    next->id = next_id;
-    if (vertex_point(next, space, point) != 0) {
+    data->next->id = data->next_id;
+    if (vertex_point(data->next, data->space, point) != 0) {
         session_error("Could not make point from vertex during generate");
         return -1;
     }
@@ -219,7 +231,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
     if (hint->id) {
         // Update our state to include the hint point.
         hint->id = point->id;
-        if (vertex_set(next, space, hint) != 0) {
+        if (vertex_set(data->next, data->space, hint) != 0) {
             session_error("Could not copy hint into simplex during reject");
             return -1;
         }
@@ -229,31 +241,31 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
             return -1;
         }
     }
-    else if (reject_type == REJECT_METHOD_PENALTY) {
+    else if (data->reject_type == REJECT_METHOD_PENALTY) {
         // Apply an infinite penalty to the invalid point and
         // allow the algorithm to determine the next point to try.
         //
-        hperf_reset(&next->perf);
+        hperf_reset(&data->next->perf);
         if (nm_algorithm() != 0) {
             session_error("Nelder-Mead algorithm failure");
             return -1;
         }
 
-        next->id = next_id;
-        if (vertex_point(next, space, point) != 0) {
+        data->next->id = data->next_id;
+        if (vertex_point(data->next, data->space, point) != 0) {
             session_error("Could not copy next point during reject");
             return -1;
         }
     }
-    else if (reject_type == REJECT_METHOD_RANDOM) {
+    else if (data->reject_type == REJECT_METHOD_RANDOM) {
         // Replace the rejected point with a random point.
-        if (vertex_random(next, space, 1.0) != 0) {
+        if (vertex_random(data->next, data->space, 1.0) != 0) {
             session_error("Could not randomize point during reject");
             return -1;
         }
 
-        next->id = next_id;
-        if (vertex_point(next, space, point) != 0) {
+        data->next->id = data->next_id;
+        if (vertex_point(data->next, data->space, point) != 0) {
             session_error("Could not copy random point during reject");
             return -1;
         }
@@ -268,10 +280,10 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
  */
 int strategy_analyze(htrial_t* trial)
 {
-    if (trial->point.id != next->id)
+    if (trial->point.id != data->next->id)
         return 0;
 
-    if (hperf_copy(&next->perf, &trial->perf) != 0) {
+    if (hperf_copy(&data->next->perf, &trial->perf) != 0) {
         session_error("Could not copy performance to vertex");
         return -1;
     }
@@ -282,20 +294,20 @@ int strategy_analyze(htrial_t* trial)
     }
 
     // Update the best performing point, if necessary.
-    if (hperf_cmp(&best_perf, &trial->perf) > 0) {
-        if (hperf_copy(&best_perf, &trial->perf) != 0) {
+    if (hperf_cmp(&data->best_perf, &trial->perf) > 0) {
+        if (hperf_copy(&data->best_perf, &trial->perf) != 0) {
             session_error("Could not store best performance");
             return -1;
         }
 
-        if (hpoint_copy(&best_point, &trial->point) != 0) {
+        if (hpoint_copy(&data->best, &trial->point) != 0) {
             session_error("Could not copy best point during analyze");
             return -1;
         }
     }
 
-    if (state != SIMPLEX_STATE_CONVERGED)
-        ++next_id;
+    if (data->state != SIMPLEX_STATE_CONVERGED)
+        ++data->next_id;
 
     return 0;
 }
@@ -305,7 +317,7 @@ int strategy_analyze(htrial_t* trial)
  */
 int strategy_best(hpoint_t* point)
 {
-    if (hpoint_copy(point, &best_point) != 0) {
+    if (hpoint_copy(point, &data->best) != 0) {
         session_error("Could not copy best point during strategy_best()");
         return -1;
     }
@@ -315,71 +327,85 @@ int strategy_best(hpoint_t* point)
 /*
  * Internal helper function implementations.
  */
+data_t* alloc_data(void)
+{
+    data_t* retval = calloc(1, sizeof(*retval));
+    if (!retval)
+        return NULL;
+
+    hperf_reset(&retval->best_perf);
+    retval->next_id = 1;
+
+    return retval;
+}
+
 void check_convergence(void)
 {
     double fval_err, size_max;
-    double avg_perf = hperf_unify(&centroid.perf);
+    double avg_perf = hperf_unify(&data->centroid.perf);
 
-    if (simplex_collapsed(&simplex, space))
+    if (simplex_collapsed(&data->simplex, data->space))
         goto converged;
 
     fval_err = 0.0;
-    for (int i = 0; i < simplex.len; ++i) {
-        double point_perf = hperf_unify(&simplex.vertex[i].perf);
+    for (int i = 0; i < data->simplex.len; ++i) {
+        double point_perf = hperf_unify(&data->simplex.vertex[i].perf);
         fval_err += ((point_perf - avg_perf) * (point_perf - avg_perf));
     }
-    fval_err /= simplex.len;
+    fval_err /= data->simplex.len;
 
     size_max = 0.0;
-    for (int i = 0; i < simplex.len; ++i) {
-        double dist = vertex_norm(&simplex.vertex[i], &centroid,
+    for (int i = 0; i < data->simplex.len; ++i) {
+        double dist = vertex_norm(&data->simplex.vertex[i], &data->centroid,
                                   VERTEX_NORM_L2);
         if (size_max < dist)
             size_max = dist;
     }
 
-    if (fval_err < fval_tol && size_max < size_tol)
+    if (fval_err < data->fval_tol && size_max < data->size_tol)
         goto converged;
 
     return;
 
   converged:
-    state = SIMPLEX_STATE_CONVERGED;
+    data->state = SIMPLEX_STATE_CONVERGED;
     session_setcfg(CFGKEY_CONVERGED, "1");
 }
 
 int config_strategy(void)
 {
-    const char* cfgval;
+    const char* cfgstr;
+    double cfgval;
 
-    cfgval = hcfg_get(session_cfg, CFGKEY_INIT_POINT);
-    if (cfgval) {
-        if (vertex_parse(&init_point, space, cfgval) != 0) {
+    cfgstr = hcfg_get(session_cfg, CFGKEY_INIT_POINT);
+    if (cfgstr) {
+        if (vertex_parse(&data->init_point, data->space, cfgstr) != 0) {
             session_error("Could not convert initial point to vertex");
             return -1;
         }
     }
     else {
-        if (vertex_center(&init_point, space) != 0) {
+        if (vertex_center(&data->init_point, data->space) != 0) {
             session_error("Could not create central vertex");
             return -1;
         }
     }
 
-    init_radius = hcfg_real(session_cfg, CFGKEY_INIT_RADIUS);
-    if (isnan(init_radius) || init_radius <= 0 || init_radius > 1) {
+    cfgval = hcfg_real(session_cfg, CFGKEY_INIT_RADIUS);
+    if (isnan(cfgval) || cfgval <= 0 || cfgval > 1) {
         session_error("Configuration key " CFGKEY_INIT_RADIUS
                       " must be between 0.0 and 1.0 (exclusive).");
         return -1;
     }
+    data->init_radius = cfgval;
 
-    cfgval = hcfg_get(session_cfg, CFGKEY_REJECT_METHOD);
-    if (cfgval) {
-        if (strcmp(cfgval, "penalty") == 0) {
-            reject_type = REJECT_METHOD_PENALTY;
+    cfgstr = hcfg_get(session_cfg, CFGKEY_REJECT_METHOD);
+    if (cfgstr) {
+        if (strcmp(cfgstr, "penalty") == 0) {
+            data->reject_type = REJECT_METHOD_PENALTY;
         }
-        else if (strcmp(cfgval, "random") == 0) {
-            reject_type = REJECT_METHOD_RANDOM;
+        else if (strcmp(cfgstr, "random") == 0) {
+            data->reject_type = REJECT_METHOD_RANDOM;
         }
         else {
             session_error("Invalid value for "
@@ -388,67 +414,74 @@ int config_strategy(void)
         }
     }
 
-    reflect_val = hcfg_real(session_cfg, CFGKEY_REFLECT);
-    if (isnan(reflect_val) || reflect_val <= 0.0) {
+    cfgval = hcfg_real(session_cfg, CFGKEY_REFLECT);
+    if (isnan(cfgval) || cfgval <= 0.0) {
         session_error("Configuration key " CFGKEY_REFLECT
                       " must be positive.");
         return -1;
     }
+    data->reflect_val = cfgval;
 
-    expand_val = hcfg_real(session_cfg, CFGKEY_EXPAND);
-    if (isnan(expand_val) || expand_val <= reflect_val) {
+    cfgval = hcfg_real(session_cfg, CFGKEY_EXPAND);
+    if (isnan(cfgval) || cfgval <= data->reflect_val) {
         session_error("Configuration key " CFGKEY_EXPAND
                       " must be greater than the reflect coefficient.");
         return -1;
     }
+    data->expand_val = hcfg_real(session_cfg, CFGKEY_EXPAND);
 
-    contract_val = hcfg_real(session_cfg, CFGKEY_CONTRACT);
-    if (isnan(contract_val) || contract_val <= 0.0 || contract_val >= 1.0) {
+    cfgval = hcfg_real(session_cfg, CFGKEY_CONTRACT);
+    if (isnan(cfgval) || cfgval <= 0.0 || cfgval >= 1.0) {
         session_error("Configuration key " CFGKEY_CONTRACT
                       " must be between 0.0 and 1.0 (exclusive).");
         return -1;
     }
+    data->contract_val = cfgval;
 
-    shrink_val = hcfg_real(session_cfg, CFGKEY_SHRINK);
-    if (isnan(shrink_val) || shrink_val <= 0.0 || shrink_val >= 1.0) {
+    cfgval = hcfg_real(session_cfg, CFGKEY_SHRINK);
+    if (isnan(cfgval) || cfgval <= 0.0 || cfgval >= 1.0) {
         session_error("Configuration key " CFGKEY_SHRINK
                       " must be between 0.0 and 1.0 (exclusive).");
         return -1;
     }
+    data->shrink_val = cfgval;
 
-    fval_tol = hcfg_real(session_cfg, CFGKEY_FVAL_TOL);
-    if (isnan(fval_tol)) {
+    cfgval = hcfg_real(session_cfg, CFGKEY_FVAL_TOL);
+    if (isnan(cfgval)) {
         session_error("Configuration key " CFGKEY_FVAL_TOL " is invalid.");
         return -1;
     }
+    data->fval_tol = cfgval;
 
-    size_tol = hcfg_real(session_cfg, CFGKEY_SIZE_TOL);
-    if (isnan(size_tol) || size_tol <= 0.0 || size_tol >= 1.0) {
+    cfgval = hcfg_real(session_cfg, CFGKEY_SIZE_TOL);
+    if (isnan(cfgval) || cfgval <= 0.0 || cfgval >= 1.0) {
         session_error("Configuration key " CFGKEY_SIZE_TOL
                       " must be between 0.0 and 1.0 (exclusive).");
         return -1;
     }
+    data->size_tol = cfgval;
 
     // Use the expand and reflect vertex variables as temporaries to
     // calculate the size tolerance.
-    if (vertex_minimum(&expand, space) != 0 ||
-        vertex_maximum(&reflect, space) != 0)
+    if (vertex_minimum(&data->expand, data->space) != 0 ||
+        vertex_maximum(&data->reflect, data->space) != 0)
         return -1;
 
-    size_tol *= vertex_norm(&expand, &reflect, VERTEX_NORM_L2);
+    data->size_tol *= vertex_norm(&data->expand, &data->reflect,
+                                  VERTEX_NORM_L2);
     return 0;
 }
 
 int nm_algorithm(void)
 {
     do {
-        if (state == SIMPLEX_STATE_CONVERGED)
+        if (data->state == SIMPLEX_STATE_CONVERGED)
             break;
 
         if (nm_state_transition() != 0)
             return -1;
 
-        if (state == SIMPLEX_STATE_REFLECT) {
+        if (data->state == SIMPLEX_STATE_REFLECT) {
             if (update_centroid() != 0)
                 return -1;
 
@@ -458,54 +491,58 @@ int nm_algorithm(void)
         if (nm_next_vertex() != 0)
             return -1;
 
-    } while (!vertex_inbounds(next, space));
+    } while (!vertex_inbounds(data->next, data->space));
 
     return 0;
 }
 
 int nm_state_transition(void)
 {
-    switch (state) {
+    switch (data->state) {
     case SIMPLEX_STATE_INIT:
     case SIMPLEX_STATE_SHRINK:
         // Simplex vertex performance value.
-        if (++index_curr == space->len + 1)
-            state = SIMPLEX_STATE_REFLECT;
+        if (++data->index_curr == data->space->len + 1)
+            data->state = SIMPLEX_STATE_REFLECT;
 
         break;
 
     case SIMPLEX_STATE_REFLECT:
-        if (hperf_cmp(&reflect.perf, &simplex.vertex[index_best].perf) < 0) {
+        if (hperf_cmp(&data->reflect.perf,
+                      &data->simplex.vertex[data->index_best].perf) < 0)
+        {
             // Reflected point performs better than all simplex points.
             // Attempt expansion.
             //
-            state = SIMPLEX_STATE_EXPAND;
+            data->state = SIMPLEX_STATE_EXPAND;
         }
-        else if (hperf_cmp(&reflect.perf,
-                           &simplex.vertex[index_worst].perf) < 0)
+        else if (hperf_cmp(&data->reflect.perf,
+                           &data->simplex.vertex[data->index_worst].perf) < 0)
         {
             // Reflected point performs better than worst simplex point.
             // Replace the worst simplex point with reflected point
             // and attempt reflection again.
             //
-            if (vertex_copy(&simplex.vertex[index_worst], &reflect) != 0)
+            if (vertex_copy(&data->simplex.vertex[data->index_worst],
+                            &data->reflect) != 0)
                 return -1;
         }
         else {
             // Reflected point does not improve the current simplex.
             // Attempt contraction.
             //
-            state = SIMPLEX_STATE_CONTRACT;
+            data->state = SIMPLEX_STATE_CONTRACT;
         }
         break;
 
     case SIMPLEX_STATE_EXPAND:
-        if (hperf_cmp(&expand.perf, &reflect.perf) < 0) {
+        if (hperf_cmp(&data->expand.perf, &data->reflect.perf) < 0) {
             // Expanded point performs even better than reflected point.
             // Replace the worst simplex point with the expanded point
             // and attempt reflection again.
             //
-            if (vertex_copy(&simplex.vertex[index_worst], &expand) != 0)
+            if (vertex_copy(&data->simplex.vertex[data->index_worst],
+                            &data->expand) != 0)
                 return -1;
         }
         else {
@@ -513,32 +550,34 @@ int nm_state_transition(void)
             // Replace the worst simplex point with the original
             // reflected point and attempt reflection again.
             //
-            if (vertex_copy(&simplex.vertex[index_worst], &reflect) != 0)
+            if (vertex_copy(&data->simplex.vertex[data->index_worst],
+                            &data->reflect) != 0)
                 return -1;
         }
-        state = SIMPLEX_STATE_REFLECT;
+        data->state = SIMPLEX_STATE_REFLECT;
         break;
 
     case SIMPLEX_STATE_CONTRACT:
-        if (hperf_cmp(&contract.perf,
-                      &simplex.vertex[index_worst].perf) < 0)
+        if (hperf_cmp(&data->contract.perf,
+                      &data->simplex.vertex[data->index_worst].perf) < 0)
         {
             // Contracted point performs better than the worst simplex point.
             //
             // Replace the worst simplex point with contracted point
             // and attempt reflection.
             //
-            if (vertex_copy(&simplex.vertex[index_worst], &contract) != 0)
+            if (vertex_copy(&data->simplex.vertex[data->index_worst],
+                            &data->contract) != 0)
                 return -1;
 
-            state = SIMPLEX_STATE_REFLECT;
+            data->state = SIMPLEX_STATE_REFLECT;
         }
         else {
             // Contracted test vertex has worst known performance.
             // Shrink the entire simplex towards the best point.
             //
-            index_curr = -1; // Indicates the beginning of SHRINK.
-            state = SIMPLEX_STATE_SHRINK;
+            data->index_curr = -1; // Indicates the beginning of SHRINK.
+            data->state = SIMPLEX_STATE_SHRINK;
         }
         break;
 
@@ -550,96 +589,100 @@ int nm_state_transition(void)
 
 int nm_next_vertex(void)
 {
-    switch (state) {
+    switch (data->state) {
     case SIMPLEX_STATE_INIT:
         // Test individual vertices of the initial simplex.
-        next = &simplex.vertex[index_curr];
+        data->next = &data->simplex.vertex[data->index_curr];
         break;
 
     case SIMPLEX_STATE_REFLECT:
         // Test a vertex reflected from the worst performing vertex
         // through the centroid point.
         //
-        if (vertex_transform(&centroid, &simplex.vertex[index_worst],
-                             reflect_val, &reflect) != 0)
+        if (vertex_transform(&data->centroid,
+                             &data->simplex.vertex[data->index_worst],
+                             data->reflect_val, &data->reflect) != 0)
             return -1;
 
-        next = &reflect;
+        data->next = &data->reflect;
         break;
 
     case SIMPLEX_STATE_EXPAND:
         // Test a vertex that expands the reflected vertex even
         // further from the the centroid point.
         //
-        if (vertex_transform(&centroid, &simplex.vertex[index_worst],
-                             expand_val, &expand) != 0)
+        if (vertex_transform(&data->centroid,
+                             &data->simplex.vertex[data->index_worst],
+                             data->expand_val, &data->expand) != 0)
             return -1;
 
-        next = &expand;
+        data->next = &data->expand;
         break;
 
     case SIMPLEX_STATE_CONTRACT:
         // Test a vertex contracted from the worst performing vertex
         // towards the centroid point.
         //
-        if (vertex_transform(&simplex.vertex[index_worst], &centroid,
-                             -contract_val, &contract) != 0)
+        if (vertex_transform(&data->simplex.vertex[data->index_worst],
+                             &data->centroid,
+                             -data->contract_val, &data->contract) != 0)
             return -1;
 
-        next = &contract;
+        data->next = &data->contract;
         break;
 
     case SIMPLEX_STATE_SHRINK:
-        if (index_curr == -1) {
+        if (data->index_curr == -1) {
             // Shrink the entire simplex towards the best known vertex
             // thus far.
             //
-            if (simplex_transform(&simplex, &simplex.vertex[index_best],
-                                  -shrink_val, &simplex) != 0)
+            if (simplex_transform(&data->simplex,
+                                  &data->simplex.vertex[data->index_best],
+                                  -data->shrink_val, &data->simplex) != 0)
                 return -1;
 
-            index_curr = 0;
+            data->index_curr = 0;
         }
 
         // Test individual vertices of the initial simplex.
-        next = &simplex.vertex[index_curr];
+        data->next = &data->simplex.vertex[data->index_curr];
         break;
 
     case SIMPLEX_STATE_CONVERGED:
         // Simplex has converged.  Nothing to do.
         // In the future, we may consider new search at this point.
         //
-        next = &simplex.vertex[index_best];
+        data->next = &data->simplex.vertex[data->index_best];
         break;
 
     default:
         return -1;
     }
 
-    hperf_reset(&next->perf);
+    hperf_reset(&data->next->perf);
     return 0;
 }
 
 int update_centroid(void)
 {
-    index_best = 0;
-    index_worst = 0;
+    data->index_best = 0;
+    data->index_worst = 0;
 
-    for (int i = 1; i < simplex.len; ++i) {
-        if (hperf_cmp(&simplex.vertex[i].perf,
-                      &simplex.vertex[index_best].perf) < 0)
-            index_best = i;
+    for (int i = 1; i < data->simplex.len; ++i) {
+        if (hperf_cmp(&data->simplex.vertex[i].perf,
+                      &data->simplex.vertex[data->index_best].perf) < 0)
+            data->index_best = i;
 
-        if (hperf_cmp(&simplex.vertex[i].perf,
-                      &simplex.vertex[index_worst].perf) > 0)
-            index_worst = i;
+        if (hperf_cmp(&data->simplex.vertex[i].perf,
+                      &data->simplex.vertex[data->index_worst].perf) > 0)
+            data->index_worst = i;
     }
 
-    unsigned stashed_id = simplex.vertex[index_worst].id;
-    simplex.vertex[index_worst].id = 0;
-    if (simplex_centroid(&simplex, &centroid) != 0)
+    unsigned stashed_id = data->simplex.vertex[data->index_worst].id;
+    data->simplex.vertex[data->index_worst].id = 0;
+    if (simplex_centroid(&data->simplex, &data->centroid) != 0)
         return -1;
 
-    simplex.vertex[index_worst].id = stashed_id;
+    data->simplex.vertex[data->index_worst].id = stashed_id;
     return 0;
 }
