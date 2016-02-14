@@ -31,6 +31,7 @@
 #include "hcfg.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <time.h>
 #include <string.h>
 #include <errno.h>
@@ -54,10 +55,37 @@ hcfg_info_t plugin_keyinfo[] = {
     { NULL }
 };
 
-FILE* fd;
+/*
+ * Structure to hold all data needed by an individual search instance.
+ *
+ * To support multiple parallel search sessions, no global variables
+ * should be defined or used in this plug-in layer.
+ */
+typedef struct data {
+    FILE* fd;
+} data_t;
+
+static data_t* data;
+
+/*
+ * Internal helper function prototypes.
+ */
+static data_t* alloc_data(void);
 
 int logger_init(hspace_t* space)
 {
+    if (!data) {
+        // One-time search instance initialization.
+        data = alloc_data();
+        if (!data) {
+            session_error("Could not allocate data for Logger layer");
+            return -1;
+        }
+    }
+
+    // Remaining setup needed for every initialization, including
+    // re-initialization due to a restarted search.
+    //
     const char* filename = hcfg_get(session_cfg, CFGKEY_LOG_FILE);
     const char* mode     = hcfg_get(session_cfg, CFGKEY_LOG_MODE);
     time_t tm;
@@ -67,53 +95,55 @@ int logger_init(hspace_t* space)
         return -1;
     }
 
-    fd = fopen(filename, mode);
-    if (!fd) {
+    data->fd = fopen(filename, mode);
+    if (!data->fd) {
         session_error( strerror(errno) );
         return -1;
     }
 
     tm = time(NULL);
-    fprintf(fd, "* Begin tuning session log.\n");
-    fprintf(fd, "* Timestamp: %s", asctime( localtime(&tm) ));
+    fprintf(data->fd, "* Begin tuning session log.\n");
+    fprintf(data->fd, "* Timestamp: %s", asctime( localtime(&tm) ));
 
     return 0;
 }
 
 int logger_join(const char* id)
 {
-    fprintf(fd, "Client \"%s\" joined the tuning session.\n", id);
+    fprintf(data->fd, "Client \"%s\" joined the tuning session.\n", id);
     return 0;
 }
 
 int logger_analyze(hflow_t* flow, htrial_t* trial)
 {
-    fprintf(fd, "Point #%d: (", trial->point.id);
+    fprintf(data->fd, "Point #%d: (", trial->point.id);
     for (int i = 0; i < trial->point.len; ++i) {
-        if (i > 0) fprintf(fd, ",");
+        if (i > 0) fprintf(data->fd, ",");
 
         const hval_t* v = &trial->point.term[i];
         switch (v->type) {
-        case HVAL_INT:  fprintf(fd, "%ld", v->value.i); break;
-        case HVAL_REAL: fprintf(fd, "%lf[%la]", v->value.r, v->value.r); break;
-        case HVAL_STR:  fprintf(fd, "\"%s\"", v->value.s); break;
+        case HVAL_INT:  fprintf(data->fd, "%ld", v->value.i); break;
+        case HVAL_REAL: fprintf(data->fd, "%lf[%la]",
+                                v->value.r, v->value.r); break;
+        case HVAL_STR:  fprintf(data->fd, "\"%s\"", v->value.s); break;
         default:
             session_error("Invalid point value type");
             return -1;
         }
     }
-    fprintf(fd, ") ");
+    fprintf(data->fd, ") ");
 
     if (trial->perf.len > 1) {
-        fprintf(fd, "=> (");
+        fprintf(data->fd, "=> (");
         for (int i = 0; i < trial->perf.len; ++i) {
-            if (i > 0) fprintf(fd, ",");
-            fprintf(fd, "%lf[%la]", trial->perf.obj[i], trial->perf.obj[i]);
+            if (i > 0) fprintf(data->fd, ",");
+            fprintf(data->fd, "%lf[%la]",
+                    trial->perf.obj[i], trial->perf.obj[i]);
         }
-        fprintf(fd, ") ");
+        fprintf(data->fd, ") ");
     }
-    fprintf(fd, "=> %lf\n", hperf_unify(&trial->perf));
-    fflush(fd);
+    fprintf(data->fd, "=> %lf\n", hperf_unify(&trial->perf));
+    fflush(data->fd);
 
     flow->status = HFLOW_ACCEPT;
     return 0;
@@ -121,14 +151,28 @@ int logger_analyze(hflow_t* flow, htrial_t* trial)
 
 int logger_fini(void)
 {
-    fprintf(fd, "*\n");
-    fprintf(fd, "* End tuning session.\n");
-    fprintf(fd, "*\n");
+    fprintf(data->fd, "*\n");
+    fprintf(data->fd, "* End tuning session.\n");
+    fprintf(data->fd, "*\n");
 
-    if (fclose(fd) != 0) {
+    if (fclose(data->fd) != 0) {
         session_error( strerror(errno) );
         return -1;
     }
 
+    free(data);
+    data = NULL;
     return 0;
+}
+
+/*
+ * Internal helper function implementation.
+ */
+data_t* alloc_data(void)
+{
+    data_t* retval = calloc(1, sizeof(*retval));
+    if (!retval)
+        return NULL;
+
+    return retval;
 }
