@@ -45,6 +45,16 @@ hcfg_info_t plugin_keyinfo[] = {
 };
 
 /*
+ * Structure to hold all data needed by an individual search instance.
+ *
+ * To support multiple parallel search sessions, no global variables
+ * should be defined or used in this plug-in layer.
+ */
+typedef struct data {
+    // Per-search variables go here.
+} data_t;
+
+/*
  * Invoked once on module load, and during subsequent session restarts.
  *
  * Param:
