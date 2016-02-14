@@ -289,7 +289,7 @@ int cglog_insert(const hpoint_t* point)
 int cglog_find(const hpoint_t* point)
 {
     for (int i = 0; i < cglog_len; ++i) {
-        if (hpoint_cmp(point, &cglog[i].point) == 0)
+        if (hpoint_eq(point, &cglog[i].point))
             return i;
     }
     return -1;

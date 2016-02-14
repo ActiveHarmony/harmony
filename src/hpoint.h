@@ -52,7 +52,7 @@ void hpoint_scrub(hpoint_t* point);
  * Point comparison interface.
  */
 int hpoint_align(hpoint_t* point, const hspace_t* space);
-int hpoint_cmp(const hpoint_t* a, const hpoint_t* b);
+int hpoint_eq(const hpoint_t* a, const hpoint_t* b);
 
 /*
  * Data transmission interface.

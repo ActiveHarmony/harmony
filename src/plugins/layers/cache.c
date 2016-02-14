@@ -162,7 +162,7 @@ int cache_generate(hflow_t* flow, htrial_t* trial)
 
     // For now, we rely on a linear cache lookup.
     for (i = 0; i < cache_len; ++i) {
-        if (hpoint_cmp(&trial->point, &cache[i].point) == 0) {
+        if (hpoint_eq(&trial->point, &cache[i].point)) {
             hperf_copy(&trial->perf, &cache[i].perf);
             skip = 1;
             flow->status = HFLOW_RETURN;
@@ -407,7 +407,7 @@ visited_t *find_visited(const struct hpoint *a)
     int i;
 
     for(i = 0;i < visited_len;i++) {
-        if(hpoint_cmp(a, &visited[i].point) == 0)
+        if(hpoint_eq(a, &visited[i].point))
             return visited + i;
     }
 
