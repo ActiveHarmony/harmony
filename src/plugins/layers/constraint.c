@@ -98,36 +98,56 @@ hcfg_info_t plugin_keyinfo[] = {
 #define MAX_TEXT_LEN 1024
 
 /*
- * Internal helper function prototypes.
+ * Structure to hold all data needed by an individual search instance.
+ *
+ * To support multiple parallel search sessions, no global variables
+ * should be defined or used in this plug-in layer.
  */
-int strategy_cfg(hspace_t* space);
-int build_vars_text(hspace_t* space);
-int build_bounds_text(hspace_t* space);
-int build_user_text(void);
-int build_point_text(hpoint_t* point);
-int update_bounds(hspace_t* space);
-int check_validity(hpoint_t* point);
-char* call_omega_calc(const char* cmd);
+typedef struct data {
+    hspace_t local_space;
+
+    const char* omega_bin;
+    char constraints[MAX_TEXT_LEN];
+
+    char vars_text[MAX_TEXT_LEN];
+    char bounds_text[MAX_TEXT_LEN];
+    char user_text[MAX_TEXT_LEN];
+    char point_text[MAX_TEXT_LEN];
+
+    int quiet;
+} data_t;
+
+static data_t* data;
 
 /*
- * Global variables.
+ * Internal helper function prototypes.
  */
-hspace_t local_space;
-
-const char* omega_bin   = "oc";
-char constraints[MAX_TEXT_LEN];
-
-char vars_text[MAX_TEXT_LEN];
-char bounds_text[MAX_TEXT_LEN];
-char user_text[MAX_TEXT_LEN];
-char point_text[MAX_TEXT_LEN];
-
-int quiet;
+static data_t* alloc_data(void);
+static int     strategy_cfg(hspace_t* space);
+static int     build_vars_text(hspace_t* space);
+static int     build_bounds_text(hspace_t* space);
+static int     build_user_text(void);
+static int     build_point_text(hpoint_t* point);
+static int     update_bounds(hspace_t* space);
+static int     check_validity(hpoint_t* point);
+static char*   call_omega_calc(const char* cmd);
 
 int constraint_init(hspace_t* space)
 {
+    if (!data) {
+        // One-time search instance initialization.
+        data = alloc_data();
+        if (!data) {
+            session_error("Could not allocate data for Constraint layer");
+            return -1;
+        }
+    }
+
+    // Remaining setup needed for every initialization, including
+    // re-initialization due to a restarted search.
+
     // Make a copy of the search space.
-    hspace_copy(&local_space, space);
+    hspace_copy(&data->local_space, space);
 
     // Initialize layer variables.
     if (strategy_cfg(space) != 0)
@@ -156,12 +176,12 @@ int constraint_generate(hflow_t* flow, hpoint_t* point)
         flow->status = HFLOW_REJECT;
         flow->point.id = -1;
 
-        if (!quiet) {
+        if (!data->quiet) {
             fprintf(stderr, "Rejecting point: {");
             for (int i = 0; i < point->len; ++i) {
                 const hval_t* val = &point->term[i];
 
-                switch (local_space.dim[i].type) {
+                switch (data->local_space.dim[i].type) {
                 case HVAL_INT:  fprintf(stderr, "%ld", val->value.i); break;
                 case HVAL_REAL: fprintf(stderr, "%g", val->value.r); break;
                 case HVAL_STR:  fprintf(stderr, "%s", val->value.s); break;
@@ -178,36 +198,47 @@ int constraint_generate(hflow_t* flow, hpoint_t* point)
 
 int constraint_fini(void)
 {
-    hspace_fini(&local_space);
+    hspace_fini(&data->local_space);
+    free(data);
+    data = NULL;
     return 0;
 }
 
 /*
  * Internal helper function implementation.
  */
+data_t* alloc_data(void)
+{
+    data_t* retval = calloc(1, sizeof(*retval));
+    if (!retval)
+        return NULL;
+
+    return retval;
+}
+
 int strategy_cfg(hspace_t* space)
 {
     const char* cfgval;
 
-    omega_bin = hcfg_get(session_cfg, CFGKEY_OC_BIN);
-    if (!file_exists(omega_bin)) {
-        omega_bin = search_path(omega_bin);
-        if (!omega_bin) {
+    data->omega_bin = hcfg_get(session_cfg, CFGKEY_OC_BIN);
+    if (!file_exists(data->omega_bin)) {
+        data->omega_bin = search_path(data->omega_bin);
+        if (!data->omega_bin) {
             session_error("Could not find Omega Calculator executable. "
                           "Use " CFGKEY_OC_BIN " to specify its location.");
             return -1;
         }
     }
 
-    quiet = hcfg_bool(session_cfg, CFGKEY_OC_QUIET);
+    data->quiet = hcfg_bool(session_cfg, CFGKEY_OC_QUIET);
 
     cfgval = hcfg_get(session_cfg, CFGKEY_OC_CONSTRAINTS);
     if (cfgval) {
-        if (strlen(cfgval) >= sizeof(constraints)) {
+        if (strlen(cfgval) >= sizeof(data->constraints)) {
             session_error("Constraint string too long.");
             return -1;
         }
-        strncpy(constraints, cfgval, sizeof(constraints));
+        strncpy(data->constraints, cfgval, sizeof(data->constraints));
     }
     else {
         size_t retval;
@@ -227,10 +258,11 @@ int strategy_cfg(hspace_t* space)
             return -1;
         }
 
-        retval = fread(constraints, sizeof(char), sizeof(constraints), fp);
-        constraints[sizeof(constraints) - 1] = '\0';
+        retval = fread(data->constraints, sizeof(char),
+                       sizeof(data->constraints), fp);
+        data->constraints[sizeof(data->constraints) - 1] = '\0';
 
-        if (retval >= sizeof(constraints)) {
+        if (retval >= sizeof(data->constraints)) {
             session_error("Constraint file too large.");
             return -1;
         }
@@ -245,25 +277,22 @@ int strategy_cfg(hspace_t* space)
 
 int build_vars_text(hspace_t* space)
 {
-    int i;
-
-    vars_text[0] = '\0';
-    for (i = 0; i < space->len; ++i) {
-        strcat(vars_text, space->dim[i].name);
+    data->vars_text[0] = '\0';
+    for (int i = 0; i < space->len; ++i) {
+        strcat(data->vars_text, space->dim[i].name);
         if (i < space->len - 1)
-            strcat(vars_text, ", ");
+            strcat(data->vars_text, ", ");
     }
     return 0;
 }
 
 int build_bounds_text(hspace_t* space)
 {
-    int i;
-    char* ptr = bounds_text;
-    char* end = bounds_text + sizeof(bounds_text);
+    char* ptr = data->bounds_text;
+    char* end = data->bounds_text + sizeof(data->bounds_text);
 
-    bounds_text[0] = '\0';
-    for (i = 0; i < space->len; ++i) {
+    data->bounds_text[0] = '\0';
+    for (int i = 0; i < space->len; ++i) {
         hrange_t* range = &space->dim[i];
 
         // Fetch min and max according to variable type.
@@ -293,7 +322,7 @@ int build_bounds_text(hspace_t* space)
 
 int build_user_text(void)
 {
-    const char* ptr = constraints;
+    const char* ptr = data->constraints;
     const char* end;
     int len = 0;
 
@@ -302,17 +331,17 @@ int build_user_text(void)
         end = ptr + strcspn(ptr, "\n");
 
         len += end - ptr;
-        if (len < sizeof(user_text))
-            strncat(user_text, ptr, end - ptr);
+        if (len < sizeof(data->user_text))
+            strncat(data->user_text, ptr, end - ptr);
 
         while (isspace(*end)) ++end;
         if (*end) {
             len += 4;
-            if (len < sizeof(user_text))
-                strcat(user_text, " && ");
+            if (len < sizeof(data->user_text))
+                strcat(data->user_text, " && ");
         }
 
-        if (len >= sizeof(user_text)) {
+        if (len >= sizeof(data->user_text)) {
             session_error("User constraint string overflow");
             return -1;
         }
@@ -323,22 +352,23 @@ int build_user_text(void)
 
 int build_point_text(hpoint_t* point)
 {
-    int i;
-    char* ptr = point_text;
-    char* end = point_text + sizeof(point_text);
+    char* ptr = data->point_text;
+    char* end = data->point_text + sizeof(data->point_text);
 
-    point_text[0] = '\0';
-    for (i = 0; i < point->len; ++i) {
+    data->point_text[0] = '\0';
+    for (int i = 0; i < point->len; ++i) {
         // Fetch min and max according to variable type.
-        switch (local_space.dim[i].type) {
+        switch (data->local_space.dim[i].type) {
         case HVAL_INT:
             ptr += snprintf(ptr, end - ptr, "%s = %ld",
-                            local_space.dim[i].name, point->term[i].value.i);
+                            data->local_space.dim[i].name,
+                            point->term[i].value.i);
             break;
 
         case HVAL_REAL:
             ptr += snprintf(ptr, end - ptr, "%s = %f",
-                            local_space.dim[i].name, point->term[i].value.r);
+                            data->local_space.dim[i].name,
+                            point->term[i].value.r);
             break;
 
         case HVAL_STR:
@@ -360,17 +390,18 @@ int update_bounds(hspace_t* space)
 {
     char cmd[MAX_CMD_LEN];
     char* retstr;
-    int i, retval = 0;
+    int retval = 0;
 
-    for (i = 0; i < local_space.len; ++i) {
-        hrange_t* range = &local_space.dim[i];
+    for (int i = 0; i < data->local_space.len; ++i) {
+        hrange_t* range = &data->local_space.dim[i];
 
         // Write the domain text with variable constraints to the file.
         snprintf(cmd, sizeof(cmd),
                  "symbolic %s;\n"
                  "D:={[%s]: %s && %s};\n"
                  "range D;",
-                 range->name, vars_text, bounds_text, user_text);
+                 range->name, data->vars_text,
+                 data->bounds_text, data->user_text);
 
         // Call omega calculator.
         retstr = call_omega_calc(cmd);
@@ -415,13 +446,13 @@ int update_bounds(hspace_t* space)
         }
     }
 
-    if (!quiet) {
-        if (!hspace_equal(space, &local_space)) {
+    if (!data->quiet) {
+        if (!hspace_equal(space, &data->local_space)) {
             fprintf(stderr, "For the given constraints, we suggest re-running"
                     " the session with these bounds:\n");
 
-            for (i = 0; i < local_space.len; ++i) {
-                hrange_t* range = &local_space.dim[i];
+            for (int i = 0; i < data->local_space.len; ++i) {
+                hrange_t* range = &data->local_space.dim[i];
 
                 switch (range->type) {
                 case HVAL_INT:
@@ -460,7 +491,8 @@ int check_validity(hpoint_t* point)
     snprintf(cmd, sizeof(cmd),
              "D:={[%s]: %s && %s && %s};\n"
              "D;",
-             vars_text, bounds_text, user_text, point_text);
+             data->vars_text, data->bounds_text,
+             data->user_text, data->point_text);
 
     // Call omega test.
     retstr = call_omega_calc(cmd);
@@ -503,9 +535,9 @@ char* call_omega_calc(const char* cmd)
             return NULL;
     }
 
-    child_argv[0] = (char*) omega_bin;
+    child_argv[0] = (char*) data->omega_bin;
     child_argv[1] = NULL;
-    fd = socket_launch(omega_bin, child_argv, &oc_pid);
+    fd = socket_launch(data->omega_bin, child_argv, &oc_pid);
     if (!fd) {
         session_error("Could not launch Omega Calculator");
         return NULL;
