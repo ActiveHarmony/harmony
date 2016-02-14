@@ -29,6 +29,8 @@
 extern "C" {
 #endif
 
+typedef struct hsearch hsearch_t;
+
 typedef enum hflow_status {
     HFLOW_UNKNOWN,
     HFLOW_ACCEPT,
@@ -95,7 +97,7 @@ int session_restart(void);
  * strategies and layers that define setcfg hooks.
  */
 extern const hcfg_t* session_cfg; // Used for reading.
-int session_setcfg(const char* key, const char* val); // Used for writing.
+int session_setcfg(const char* key, const char* val);
 
 // Central interface for error messages from pluggable modules.
 void session_error(const char* msg);
