@@ -69,21 +69,35 @@ typedef struct {
     unsigned int total_num; // how many times this point appears in data
 } visited_t;
 
-int find_max_strlen(void);
-int load_logger_file(const char* logger);
-int safe_scanstr(FILE* fd, int bounds_idx, const char** match);
-visited_t* find_visited(const hpoint_t* a);
+/*
+ * Structure to hold all data needed by an individual search instance.
+ *
+ * To support multiple parallel search sessions, no global variables
+ * should be defined or used in this plug-in layer.
+ */
+typedef struct data {
+    hrange_t*  dim;
+    cache_t*   cache;
+    int        cache_len, cache_cap;
+    visited_t* visited;
+    int        visited_len, visited_cap;
+    int        skip;
+    int        i_cnt;
+    int        o_cnt;
+    char*      buf;
+    int        buflen;
+} data_t;
 
-static hrange_t* dim;
-static cache_t* cache;
-static int cache_len, cache_cap;
-static visited_t* visited;
-static int visited_len, visited_cap;
-static int skip;
-static int i_cnt;
-static int o_cnt;
-static char* buf;
-static int buflen;
+static data_t* data;
+
+/*
+ * Internal helper function prototypes.
+ */
+static data_t*    alloc_data(void);
+static int        find_max_strlen(void);
+static int        load_logger_file(const char* logger);
+static int        safe_scanstr(FILE* fd, int bounds_idx, const char** match);
+static visited_t* find_visited(const hpoint_t* a);
 
 /* Initialize global variables.  Also loads data into cache from a log
  * file if configuration variable CACHE_FILE is defined.
@@ -92,26 +106,38 @@ int cache_init(hspace_t* space)
 {
     const char* filename;
 
-    i_cnt = space->len;
-    o_cnt = hcfg_int(session_cfg, CFGKEY_PERF_COUNT);
-    if (o_cnt < 1) {
+    if (!data) {
+        // One-time search instance initialization.
+        data = alloc_data();
+        if (!data) {
+            session_error("Could not allocate data for Cache layer");
+            return -1;
+        }
+    }
+
+    // Remaining setup needed for every initialization, including
+    // re-initialization due to a restarted search.
+    //
+    data->i_cnt = space->len;
+    data->o_cnt = hcfg_int(session_cfg, CFGKEY_PERF_COUNT);
+    if (data->o_cnt < 1) {
         session_error("Invalid value for " CFGKEY_PERF_COUNT
                       " configuration key.");
         return -1;
     }
-    dim = space->dim;
+    data->dim = space->dim;
 
-    cache = NULL;
-    cache_len = cache_cap = 0;
+    data->cache = NULL;
+    data->cache_len = data->cache_cap = 0;
 
-    visited = NULL;
-    visited_len = visited_cap = 0;
+    data->visited = NULL;
+    data->visited_len = data->visited_cap = 0;
 
     filename = hcfg_get(session_cfg, CFGKEY_CACHE_FILE);
     if (filename) {
-        buflen = find_max_strlen() + 1;
-        buf = malloc(sizeof(char) * buflen);
-        if (!buf) {
+        data->buflen = find_max_strlen() + 1;
+        data->buf = malloc(data->buflen * sizeof(char));
+        if (!data->buf) {
             session_error("Could not allocate memory for string buffer");
             return -1;
         }
@@ -119,7 +145,7 @@ int cache_init(hspace_t* space)
         if (load_logger_file(filename) != 0)
             return -1;
 
-        free(buf);
+        free(data->buf);
     }
 
     return 0;
@@ -134,59 +160,63 @@ int cache_init(hspace_t* space)
  */
 int cache_generate(hflow_t* flow, htrial_t* trial)
 {
-    int i, pt_num;
-    visited_t *visited_pt;
+    int pt_num;
+    visited_t* visited_pt;
 
     // So the client gets a chance to do something when the search is
     // converged not really part of cache, but gemm example client
     // will never terminate or do anything if this isn't present (it
     // never knows when strat is converged)
     //
-    if(strncmp(hcfg_get(session_cfg, CFGKEY_CONVERGED), "1", 1) == 0) {
-      return HFLOW_ACCEPT;
+    if (strncmp(hcfg_get(session_cfg, CFGKEY_CONVERGED), "1", 1) == 0) {
+        return HFLOW_ACCEPT;
     }
 
     visited_pt = find_visited(&trial->point);
 
-    if(visited_pt != NULL) {
+    if (visited_pt != NULL) {
         // wrapping around (i.e. if point occurs twice, and we're
         // coming back for the third time we should give back the
         // first point
         //
-        if(visited_pt->total_num > 0 && visited_pt->count > visited_pt->total_num)
+        if (visited_pt->total_num > 0 &&
+            visited_pt->count > visited_pt->total_num)
+        {
             visited_pt->count = visited_pt->count % visited_pt->total_num + 1;
+        }
     }
 
-    cache_lookup:
+  cache_lookup:
     pt_num = 0;
 
     // For now, we rely on a linear cache lookup.
-    for (i = 0; i < cache_len; ++i) {
-        if (hpoint_eq(&trial->point, &cache[i].point)) {
-            hperf_copy(&trial->perf, &cache[i].perf);
-            skip = 1;
+    for (int i = 0; i < data->cache_len; ++i) {
+        if (hpoint_eq(&trial->point, &data->cache[i].point)) {
+            hperf_copy(&trial->perf, &data->cache[i].perf);
+            data->skip = 1;
             flow->status = HFLOW_RETURN;
             pt_num++;
 
-            if(visited_pt != NULL) {
-              if(pt_num == visited_pt->count || visited_pt->count == 0) {
-                return 0; // Point found, is % nth point listed
-                          // (where n = times visited).
-              }
-            } else {
-                return 0; // Point found, never visited.
+            if (visited_pt != NULL) {
+                if (pt_num == visited_pt->count || visited_pt->count == 0) {
+                    return 0; // Point found, is % nth point listed
+                              // (where n = times visited).
+                }
+            }
+            else {
+                return 0;     // Point found, never visited.
             }
         }
     }
 
-    if(visited_pt != NULL) {
+    if (visited_pt != NULL) {
         // Reached end of data = we know how many times this point appears.
         visited_pt->total_num = pt_num;
         visited_pt->count = visited_pt->count % visited_pt->total_num;
         goto cache_lookup;
     }
 
-    if(! skip)
+    if (!data->skip)
         flow->status = HFLOW_ACCEPT; // Point not found.
 
     return 0;
@@ -199,58 +229,77 @@ int cache_generate(hflow_t* flow, htrial_t* trial)
  */
 int cache_analyze(hflow_t* flow, htrial_t* trial)
 {
-    visited_t *visited_pt;
+    visited_t* visited_pt;
 
-    if (!skip) {
-        if (cache_len == cache_cap) {
-            if (array_grow(&cache, &cache_cap, sizeof(cache_t)) != 0) {
+    if (!data->skip) {
+        if (data->cache_len == data->cache_cap) {
+            if (array_grow(&data->cache, &data->cache_cap,
+                           sizeof(*data->cache)) != 0)
+            {
                 session_error("Could not allocate more memory for cache");
                 return -1;
             }
         }
 
-        hpoint_init(&cache[cache_len].point, trial->point.len);
-        hpoint_copy(&cache[cache_len].point, &trial->point);
-        hperf_copy(&cache[cache_len].perf, &trial->perf);
-        ++cache_len;
+        hpoint_copy(&data->cache[data->cache_len].point, &trial->point);
+        hperf_copy(&data->cache[data->cache_len].perf, &trial->perf);
+        ++data->cache_len;
     }
-    skip = 0;
-    session_error("cache_analyze");
-    flow->status = HFLOW_ACCEPT;
+    data->skip = 0;
 
     visited_pt = find_visited(&trial->point);
     // Add to list of visited points.
-    if(visited_pt == NULL) {
-      if(visited_cap == visited_len) {
-          visited_cap += 10;
-          visited = realloc(visited, sizeof(visited_t) * visited_cap);
-      }
-      memset(visited + visited_len, 0, sizeof(visited_t));
-      hpoint_init(&visited[visited_len].point, trial->point.len);
-      hpoint_copy(&visited[visited_len].point, &trial->point);
+    if (visited_pt == NULL) {
+        if (data->visited_cap == data->visited_len) {
+            if (array_grow(&data->visited, &data->visited_cap,
+                           sizeof(*data->visited)) != 0)
+            {
+                session_error("Could not allocate memory for visited array");
+                return -1;
+            }
+        }
+        hpoint_copy(&data->visited[data->visited_len].point, &trial->point);
 
-      // Looking for the 2nd occurrence next time we get to generate().
-      visited[visited_len].count = 2;
-      visited_len++;
-    } else {
-      // Or update existing visited point info.
-      visited_pt->count++;
+        // Looking for the 2nd occurrence next time we get to generate().
+        data->visited[data->visited_len].count = 2;
+        ++data->visited_len;
+    }
+    else {
+        // Or update existing visited point info.
+        ++visited_pt->count;
     }
 
+    flow->status = HFLOW_ACCEPT;
     return 0;
 }
 
 int cache_fini(void)
 {
-    int i;
-
-    for (i = 0; i < cache_len; ++i) {
-        hpoint_fini(&cache[i].point);
-        hperf_fini(&cache[i].perf);
+    for (int i = 0; i < data->cache_cap; ++i) {
+        hpoint_fini(&data->cache[i].point);
+        hperf_fini(&data->cache[i].perf);
     }
-    free(cache);
+    free(data->cache);
 
+    for (int i = 0; i < data->visited_cap; ++i)
+        hpoint_fini(&data->visited[i].point);
+    free(data->visited);
+
+    free(data);
+    data = NULL;
     return 0;
+}
+
+/*
+ * Internal helper function implementation.
+ */
+data_t* alloc_data(void)
+{
+    data_t* retval = calloc(1, sizeof(*retval));
+    if (!retval)
+        return NULL;
+
+    return retval;
 }
 
 /*
@@ -261,10 +310,10 @@ int find_max_strlen(void)
 {
     int max = 0;
 
-    for (int i = 0; i < i_cnt; ++i) {
-        if (dim[i].type == HVAL_STR) {
-            for (int j = 0; j < dim[i].bounds.e.len; ++j) {
-                int len = strlen(dim[i].bounds.e.set[j]) + 1;
+    for (int i = 0; i < data->i_cnt; ++i) {
+        if (data->dim[i].type == HVAL_STR) {
+            for (int j = 0; j < data->dim[i].bounds.e.len; ++j) {
+                int len = strlen(data->dim[i].bounds.e.set[j]) + 1;
                 if (max < len)
                     max = len;
             }
@@ -306,26 +355,34 @@ int load_logger_file(const char* filename)
         SKIP_PATTERN(fp, "oint #%*d: ( ");
 
         // Prepare a new point in the memory cache.
-        if (cache_len == cache_cap) {
-            if (array_grow(&cache, &cache_cap, sizeof(cache_t)) != 0) {
+        if (data->cache_len == data->cache_cap) {
+            if (array_grow(&data->cache, &data->cache_cap,
+                           sizeof(*data->cache)) != 0)
+            {
                 session_error("Could not allocate more memory for cache");
                 return -1;
             }
         }
-        hpoint_init(&cache[cache_len].point, i_cnt);
-        if (hperf_init(&cache[cache_len].perf, o_cnt) != 0) {
+        if (hpoint_init(&data->cache[data->cache_len].point, data->i_cnt) != 0)
+        {
+            session_error("Error allocating memory for point in cache");
+            return -1;
+        }
+
+        if (hperf_init(&data->cache[data->cache_len].perf, data->o_cnt) != 0)
+        {
             session_error("Error allocating memory for performance in cache");
             return -1;
         }
 
         // Parse point data.
-        for (i = 0; i < i_cnt; ++i) {
-            hval_t* v = &cache[cache_len].point.term[i];
+        for (i = 0; i < data->i_cnt; ++i) {
+            hval_t* v = &data->cache[data->cache_len].point.term[i];
 
             if (i > 0) SKIP_PATTERN(fp, " ,");
 
-            v->type = dim[i].type;
-            switch (dim[i].type) {
+            v->type = data->dim[i].type;
+            switch (data->dim[i].type) {
             case HVAL_INT:  ret = fscanf(fp, "%ld", &v->value.i); break;
             case HVAL_REAL: ret = fscanf(fp, "%*f[%la]", &v->value.r); break;
             case HVAL_STR:  ret = safe_scanstr(fp, i, &v->value.s); break;
@@ -342,9 +399,11 @@ int load_logger_file(const char* filename)
 
         // Parse performance data.
         SKIP_PATTERN(fp, " ) => (");
-        for (i = 0; i < o_cnt; ++i) {
+        for (i = 0; i < data->o_cnt; ++i) {
             if (i > 0) SKIP_PATTERN(fp, " ,");
-            if (fscanf(fp, " %*f[%la]", &cache[cache_len].perf.obj[i]) != 1) {
+            if (fscanf(fp, " %*f[%la]",
+                       &data->cache[data->cache_len].perf.obj[i]) != 1)
+            {
                 session_error("Error parsing performance data from logfile");
                 return -1;
             }
@@ -355,7 +414,7 @@ int load_logger_file(const char* filename)
             session_error("Error parsing point data from logfile");
             return -1;
         }
-        ++cache_len;
+        ++data->cache_len;
     }
     fclose(fp);
     return 0;
@@ -370,10 +429,10 @@ int load_logger_file(const char* filename)
 int safe_scanstr(FILE* fp, int bounds_idx, const char** match)
 {
     int i;
-    range_enum_t* bounds = &dim[bounds_idx].bounds.e;
+    range_enum_t* bounds = &data->dim[bounds_idx].bounds.e;
 
     SKIP_PATTERN(fp, " \"");
-    for (i = 0; i < buflen; ++i) {
+    for (i = 0; i < data->buflen; ++i) {
         int c = fgetc(fp);
 
         if (c == '\\')
@@ -381,16 +440,16 @@ int safe_scanstr(FILE* fp, int bounds_idx, const char** match)
         if (c == '\"' || c == EOF)
             break;
 
-        buf[i] = (char)c;
+        data->buf[i] = (char)c;
     }
-    if (i == sizeof(buf)) {
+    if (i == data->buflen) {
         session_error("Input HVAL_STR overrun");
         return EOF;
     }
-    buf[i] = '\0';
+    data->buf[i] = '\0';
 
     for (i = 0; i < bounds->len; ++i) {
-        if (strcmp(buf, bounds->set[i]) == 0)
+        if (strcmp(data->buf, bounds->set[i]) == 0)
             break;
     }
     if (i == bounds->len) {
@@ -402,14 +461,11 @@ int safe_scanstr(FILE* fp, int bounds_idx, const char** match)
     return 1;
 }
 
-visited_t *find_visited(const struct hpoint *a)
+visited_t* find_visited(const hpoint_t* a)
 {
-    int i;
-
-    for(i = 0;i < visited_len;i++) {
-        if(hpoint_eq(a, &visited[i].point))
-            return visited + i;
+    for (int i = 0; i < data->visited_len; ++i) {
+        if (hpoint_eq(a, &data->visited[i].point))
+            return data->visited + i;
     }
-
-    return 0;
+    return NULL;
 }
