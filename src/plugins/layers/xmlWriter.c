@@ -73,14 +73,28 @@ hcfg_info_t plugin_keyinfo[] = {
 
 #define MY_ENCODING "ISO-8859-1"
 
-hspace_t sess_space;
-//clock_t file_create_time;
-char filename[128];
-char create_time[128];
-int paramNum;
+/*
+ * Structure to hold all data needed by an individual search instance.
+ *
+ * To support multiple parallel search sessions, no global variables
+ * should be defined or used in this plug-in layer.
+ */
+typedef struct data {
+    hspace_t* space;
+    //clock_t file_create_time;
+    char filename[128];
+    char create_time[128];
+    int paramNum;
+} data_t;
 
-int harmony_xmlWriteAppName(const char* appName);
-int harmony_xmlWriteParamInfo(void);
+static data_t* data;
+
+/*
+ * Internal helper function prototypes.
+ */
+static data_t* alloc_data(void);
+static int     harmony_xmlWriteAppName(const char* appName);
+static int     harmony_xmlWriteParamInfo(void);
 
 int xmlWriter_init(hspace_t* space)
 {
@@ -91,27 +105,39 @@ int xmlWriter_init(hspace_t* space)
     xmlDocPtr doc;
     xmlNodePtr node;
 
+    if (!data) {
+        // One-time search instance initialization.
+        data = alloc_data();
+        if (!data) {
+            session_error("Could not allocate data for XML Writer layer");
+            return -1;
+        }
+    }
+
+    // Remaining setup needed for every initialization, including
+    // re-initialization due to a restarted search.
+
     // Using create time to name xml file and initialize.
     time_t now;
     struct tm* current;
     now = time(0);
     current = localtime(&now);
-    snprintf(create_time, 64, "%d%d%d", (int)current->tm_hour,
+    snprintf(data->create_time, 64, "%d%d%d", (int)current->tm_hour,
              (int)current->tm_min, (int)current->tm_sec);
 
     tmpstr = hcfg_get(session_cfg, CFGKEY_XML_FILE);
     if (tmpstr)
-        strncpy(filename, tmpstr, sizeof(filename));
+        strncpy(data->filename, tmpstr, sizeof(data->filename));
     else
-        snprintf(filename, sizeof(filename), "%s_%s.xml",
-                 space->name, create_time);
+        snprintf(data->filename, sizeof(data->filename), "%s_%s.xml",
+                 space->name, data->create_time);
 
     doc = xmlNewDoc(BAD_CAST XML_DEFAULT_VERSION);
     if (!doc) {
         session_error("Error creating the xml document tree");
         return -1;
     }
-    xmlSaveFileEnc(filename, doc, MY_ENCODING);
+    xmlSaveFileEnc(data->filename, doc, MY_ENCODING);
 
     node = xmlNewDocNode(doc, NULL, BAD_CAST "Harmony", NULL);
     if (node == NULL) {
@@ -158,7 +184,7 @@ int xmlWriter_init(hspace_t* space)
 
     // Start and close starttime.
     rc = xmlTextWriterWriteFormatElement(writer, BAD_CAST "StartTime",
-                                         "%s", create_time);
+                                         "%s", data->create_time);
 
     // Close the element Metadata.
     rc = xmlTextWriterEndElement(writer);
@@ -173,11 +199,11 @@ int xmlWriter_init(hspace_t* space)
     rc = xmlTextWriterEndDocument(writer);
 
     xmlFreeTextWriter(writer);
-    xmlSaveFileEnc(filename, doc, MY_ENCODING);
+    xmlSaveFileEnc(data->filename, doc, MY_ENCODING);
     xmlFreeDoc(doc);
 
     // Writing primary metadata.
-    hspace_copy(&sess_space, space);
+    data->space = space;
 
     // Write appName.
     if (harmony_xmlWriteAppName(space->name) != 0)
@@ -186,7 +212,7 @@ int xmlWriter_init(hspace_t* space)
     // Write nodeInfo
 
     // Write param info.
-    paramNum = space->len;
+    data->paramNum = space->len;
     if (harmony_xmlWriteParamInfo() != 0)
         return -1;
 
@@ -216,7 +242,7 @@ int xmlWriter_generate(hflow_t* flow, htrial_t* trial)
     char performance[32];
     sprintf(performance, "%lf", hperf_unify(&trial->perf));
 
-    doc = xmlReadFile(filename, NULL, 0);
+    doc = xmlReadFile(data->filename, NULL, 0);
     if (doc == NULL) {
         session_error("Failed to parse the xml file");
         return -1;
@@ -240,10 +266,10 @@ int xmlWriter_generate(hflow_t* flow, htrial_t* trial)
             curNode = newNode;
 
             // Start adding param and corresponding config.
-            for (i = 0; i < paramNum; i++) {
+            for (i = 0; i < data->paramNum; i++) {
                 const hval_t* val = &trial->point.term[i];
 
-                snprintf(temp, sizeof(temp), "%s", sess_space.dim[i].name);
+                snprintf(temp, sizeof(temp), "%s", data->space->dim[i].name);
                 switch (val->type) {
                 case HVAL_INT:
                     snprintf(confstr, sizeof(confstr), "%ld", val->value.i);
@@ -271,12 +297,31 @@ int xmlWriter_generate(hflow_t* flow, htrial_t* trial)
             xmlNewTextChild(dataNode, NULL, (xmlChar*)"Client",
                             (xmlChar*)hcfg_get(session_cfg,
                                                CFGKEY_CURRENT_CLIENT));
-            xmlSaveFileEnc(filename, doc, MY_ENCODING);
+            xmlSaveFileEnc(data->filename, doc, MY_ENCODING);
             break;
         }
         curNode = curNode->next;
     }
     return 0;
+}
+
+int xmlWriter_fini(void)
+{
+    free(data);
+    data = NULL;
+    return 0;
+}
+
+/*
+ * Internal helper function implementation.
+ */
+data_t* alloc_data(void)
+{
+    data_t* retval = calloc(1, sizeof(*retval));
+    if (!retval)
+        return NULL;
+
+    return retval;
 }
 
 int harmony_xmlWriteNodeInfo(int clientID, char* nodeinfo, char* sysName,
@@ -291,11 +336,11 @@ int harmony_xmlWriteNodeInfo(int clientID, char* nodeinfo, char* sysName,
     char proc_num[2];
     char client[4];
 
-    snprintf(filename, 128, "%s.xml", create_time);
+    snprintf(data->filename, 128, "%s.xml", data->create_time);
     snprintf(proc_num, 2, "%d", core_num);
     snprintf(client, 2, "%d", clientID);
 
-    doc = xmlReadFile(filename, NULL, 0);
+    doc = xmlReadFile(data->filename, NULL, 0);
     if (!doc) {
         session_error("Failed to parse the xml file");
         return -1;
@@ -330,7 +375,7 @@ int harmony_xmlWriteNodeInfo(int clientID, char* nodeinfo, char* sysName,
             xmlNewTextChild(curNode, NULL, (xmlChar*)"ClientID",
                             (xmlChar*)client);
 
-            xmlSaveFileEnc(filename, doc, MY_ENCODING);
+            xmlSaveFileEnc(data->filename, doc, MY_ENCODING);
             break;
         }
         curNode = curNode->next;
@@ -344,7 +389,7 @@ int harmony_xmlWriteAppName(const char* appName)
     xmlNode* curNode;
     xmlNode* root_element = NULL;
 
-    doc = xmlReadFile(filename, NULL, 0);
+    doc = xmlReadFile(data->filename, NULL, 0);
     if (!doc) {
         session_error("Failed to parse the xml file");
         return -1;
@@ -357,7 +402,7 @@ int harmony_xmlWriteAppName(const char* appName)
         if (!xmlStrcmp(curNode->name, (const xmlChar*)"AppName")) {
             xmlNewTextChild(curNode, NULL, (xmlChar*)"appName",
                             (xmlChar*)appName);
-            xmlSaveFileEnc(filename, doc, MY_ENCODING);
+            xmlSaveFileEnc(data->filename, doc, MY_ENCODING);
             break;
         }
         curNode = curNode->next;
@@ -383,7 +428,7 @@ int harmony_xmlWriteParamInfo(void)
     char paramMax[16];
     char paramStep[16];
 
-    doc = xmlReadFile(filename, NULL, 0);
+    doc = xmlReadFile(data->filename, NULL, 0);
     if (doc == NULL) {
         session_error("Failed to parse the xml file");
         return -1;
@@ -396,28 +441,28 @@ int harmony_xmlWriteParamInfo(void)
     while (curNode != NULL) {
         if (!xmlStrcmp(curNode->name, (const xmlChar*)"ParamList")) {
 
-            for (i = 0; i < paramNum; i++) {
+            for (i = 0; i < data->paramNum; i++) {
                 snprintf(paramName, sizeof(paramName), "%s",
-                         sess_space.dim[i].name);
+                         data->space->dim[i].name);
 
                 // Type sensitive.
-                switch (sess_space.dim[i].type) {
+                switch (data->space->dim[i].type) {
                 case HVAL_INT:
                     snprintf(paramMin, sizeof(paramMin), "%ld",
-                             sess_space.dim[i].bounds.i.min);
+                             data->space->dim[i].bounds.i.min);
                     snprintf(paramMax, sizeof(paramMax), "%ld",
-                             sess_space.dim[i].bounds.i.max);
+                             data->space->dim[i].bounds.i.max);
                     snprintf(paramStep, sizeof(paramStep), "%ld",
-                             sess_space.dim[i].bounds.i.step);
+                             data->space->dim[i].bounds.i.step);
                     break;
 
                 case HVAL_REAL:
                     snprintf(paramMin, sizeof(paramMin), "%f",
-                             sess_space.dim[i].bounds.r.min);
+                             data->space->dim[i].bounds.r.min);
                     snprintf(paramMax, sizeof(paramMax), "%f",
-                             sess_space.dim[i].bounds.r.max);
+                             data->space->dim[i].bounds.r.max);
                     snprintf(paramStep, sizeof(paramStep), "%f",
-                             sess_space.dim[i].bounds.r.step);
+                             data->space->dim[i].bounds.r.step);
                     break;
 
                 case HVAL_STR:
@@ -437,7 +482,7 @@ int harmony_xmlWriteParamInfo(void)
                                 (xmlChar*)paramMax);
                 xmlNewTextChild(newNode, NULL, (xmlChar*)"paramStep",
                                 (xmlChar*)paramStep);
-                xmlSaveFileEnc(filename, doc, MY_ENCODING);
+                xmlSaveFileEnc(data->filename, doc, MY_ENCODING);
             }
 
         }
