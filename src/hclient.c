@@ -1451,6 +1451,13 @@ int generate_id(hdesc_t* hd)
 
 int send_request(hdesc_t* hd, hmesg_type msg_type)
 {
+    // For now, send messages to search that most recently responded.
+    // We'll change this once multiple destinations per hdesc_t is a
+    // possibility.
+    //
+    hd->mesg.dest = hd->mesg.src;
+
+    hd->mesg.src = 0;
     hd->mesg.type = msg_type;
     hd->mesg.status = HMESG_STATUS_REQ;
 
@@ -1464,18 +1471,11 @@ int send_request(hdesc_t* hd, hmesg_type msg_type)
         return -1;
     }
 
-    do {
-        if (mesg_recv(hd->socket, &hd->mesg) < 1) {
-            hd->errstr = "Error retrieving Harmony message from server";
-            errno = EIO;
-            return -1;
-        }
-
-        /* If the httpinfo layer is enabled during a stand-alone session,
-         * it will generate extraneous messages where origin == -1.
-         * Make sure to ignore these messages.
-         */
-    } while (hd->mesg.origin == -1);
+    if (mesg_recv(hd->socket, &hd->mesg) < 1) {
+        hd->errstr = "Error retrieving Harmony message from server";
+        errno = EIO;
+        return -1;
+    }
 
     if (hd->mesg.type != msg_type) {
         hd->mesg.status = HMESG_STATUS_FAIL;

@@ -295,6 +295,11 @@ int main(int argc, char* argv[])
             }
             hcfg_set(&search->cfg, CFGKEY_CURRENT_CLIENT, NULL);
 
+            // Swap the source and destination fields to reply.
+            mesg.src  ^= mesg.dest;
+            mesg.dest ^= mesg.src;
+            mesg.src  ^= mesg.dest;
+
             if (mesg_send(STDIN_FILENO, &mesg) < 1)
                 goto error;
 

@@ -450,19 +450,15 @@ int handle_client_socket(int fd)
 
     sess = NULL;
     retval = mesg_recv(fd, &mesg);
-    if (retval == 0)
-        goto shutdown;
-    if (retval < 0)
-        goto error;
+    if (retval == 0) goto shutdown;
+    if (retval <  0) goto error;
 
-    if (mesg.origin == -1) {
-        // Message was intended to be ignored.
-        return 0;
-    }
+    // Overwrite the destination with the client fd.
+    mesg.src = fd;
 
     // Sanity check input.
     if (mesg.type != HMESG_SESSION && mesg.type != HMESG_JOIN) {
-        idx = mesg.origin;
+        idx = mesg.dest;
         if (idx < 0 || idx >= slist_cap || slist[idx].name == NULL) {
             errno = EINVAL;
             goto error;
@@ -485,11 +481,13 @@ int handle_client_socket(int fd)
         break;
 
     case HMESG_SESSION:
-        sess = session_open();
-        if (!sess) {
+        idx = session_open();
+        if (idx == -1) {
             errno = EINVAL;
             goto error;
         }
+        mesg.dest = idx; // Set the message destination to the session index.
+        sess = &slist[idx];
 
         // Add the initiating client to the session.
         idx = available_index(&sess->client, &sess->client_cap);
@@ -513,6 +511,7 @@ int handle_client_socket(int fd)
             errno = EINVAL;
             goto error;
         }
+        mesg.dest = idx; // Set the message destination to the session index.
         sess = &slist[idx];
 
         idx = available_index(&sess->client, &sess->client_cap);
@@ -565,7 +564,6 @@ int handle_client_socket(int fd)
         goto error;
     }
 
-    mesg.origin = fd;
     if (mesg_forward(sess->fd, &mesg) < 1) {
         perror("Error forwarding message to session");
         goto shutdown;
@@ -651,15 +649,13 @@ int handle_session_socket(int idx)
         goto error;
     }
 
-    // Messages with a negative "origin" field came within hserver itself.
+    // Messages with a negative destination field came within hserver itself.
     // No need to forward those messages.
     //
-    if (mesg.origin >= 0) {
-        int dest = mesg.origin;
-        mesg.origin = idx;
-        if (mesg_forward(dest, &mesg) < 1) {
+    if (mesg.dest >= 0) {
+        if (mesg_forward(mesg.dest, &mesg) < 1) {
             perror("Error forwarding message to client");
-            client_close(dest);
+            client_close(mesg.dest);
         }
     }
     return 0;
@@ -669,7 +665,7 @@ int handle_session_socket(int idx)
     return -1;
 }
 
-session_state_t* session_open(void)
+int session_open(void)
 {
     int i, idx = -1;
     session_state_t* sess;
@@ -684,7 +680,7 @@ session_state_t* session_open(void)
         else if (strcmp(slist[i].name, mesg.state.space->name) == 0) {
             mesg.status = HMESG_STATUS_FAIL;
             mesg.data.string = "Session name already exists.";
-            return NULL;
+            return -1;
         }
     }
 
@@ -692,14 +688,14 @@ session_state_t* session_open(void)
     if (idx == -1) {
         idx = slist_cap;
         if (array_grow(&slist, &slist_cap, sizeof(session_state_t)) < 0)
-            return NULL;
+            return -1;
     }
     sess = &slist[idx];
 
     // Add the new session to the session list.
     sess->name = stralloc(mesg.state.space->name);
     if (!sess->name)
-        return NULL;
+        return -1;
 
     sess->client_len = 0;
     sess->best_perf = HUGE_VAL;
@@ -738,12 +734,12 @@ session_state_t* session_open(void)
     if (highest_socket < sess->fd)
         highest_socket = sess->fd;
 
-    return sess;
+    return idx;
 
   error:
     free(sess->name);
     sess->name = NULL;
-    return NULL;
+    return -1;
 }
 
 void session_close(session_state_t* sess)
@@ -902,7 +898,7 @@ int session_setcfg(session_state_t* sess, const char* key, const char* val)
     char* buf = sprintf_alloc("%s=%s", key, val ? val : "");
     int retval = 0;
 
-    mesg.origin = -1;
+    mesg.src = -1;
     mesg.type = HMESG_SETCFG;
     mesg.status = HMESG_STATUS_REQ;
     mesg.data.string = buf;
@@ -919,7 +915,7 @@ int session_setcfg(session_state_t* sess, const char* key, const char* val)
 
 int session_refresh(session_state_t* sess)
 {
-    mesg.origin = -1;
+    mesg.src = -1;
     mesg.type = HMESG_GETCFG;
     mesg.status = HMESG_STATUS_REQ;
     mesg.state.space = &sess->space;
@@ -941,7 +937,7 @@ int session_restart(session_state_t* sess)
 {
     int retval = 0;
 
-    mesg.origin = -1;
+    mesg.src = -1;
     mesg.type = HMESG_RESTART;
     mesg.status = HMESG_STATUS_REQ;
     mesg.state.space = &sess->space;

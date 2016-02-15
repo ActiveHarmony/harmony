@@ -62,7 +62,7 @@ typedef struct session_state {
 extern session_state_t* slist;
 extern int slist_cap;
 
-session_state_t* session_open();
+int session_open(void);
 void session_close(session_state_t* sess);
 const char* session_getcfg(session_state_t* sess, const char* key);
 int session_setcfg(session_state_t* sess, const char* key, const char* val);

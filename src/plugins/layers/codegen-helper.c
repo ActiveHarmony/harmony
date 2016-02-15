@@ -533,16 +533,16 @@ int mesg_write(int id)
         return -1;
     }
 
-    int msglen;
-    if (sscanf(mesg.recv_buf + HMESG_LENGTH_OFFSET, "%4d", &msglen) < 1)
-        return -1;
+    unsigned short pkt_len;
+    memcpy(&pkt_len, mesg.recv_buf + HMESG_LEN_OFFSET, HMESG_LEN_SIZE);
+    pkt_len = ntohs(pkt_len);
 
-    for (int i = 0; i < msglen; ++i) {
+    for (int i = 0; i < pkt_len; ++i) {
         if (mesg.recv_buf[i] == '\0')
             mesg.recv_buf[i] = '"';
     }
 
-    if (write_loop(fd, mesg.recv_buf, msglen) != 0) {
+    if (write_loop(fd, mesg.recv_buf, pkt_len) != 0) {
         mesg.data.string = strerror(errno);
         return -1;
     }
