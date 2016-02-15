@@ -93,31 +93,33 @@ static data_t* data;
 /*
  * Internal helper function prototypes.
  */
-static data_t*    alloc_data(void);
 static int        find_max_strlen(void);
 static int        load_logger_file(const char* logger);
 static int        safe_scanstr(FILE* fd, int bounds_idx, const char** match);
 static visited_t* find_visited(const hpoint_t* a);
 
-/* Initialize global variables.  Also loads data into cache from a log
- * file if configuration variable CACHE_FILE is defined.
+/*
+ * Allocate memory for a new search instance.
+ */
+void* cache_alloc(void)
+{
+    data_t* retval = calloc(1, sizeof(*retval));
+    if (!retval)
+        return NULL;
+
+    return retval;
+}
+
+/*
+ * Initialize (or re-initialize) data for this search instance.
+ *
+ * Also loads data into cache from a log file if configuration
+ * variable CACHE_FILE is defined.
  */
 int cache_init(hspace_t* space)
 {
     const char* filename;
 
-    if (!data) {
-        // One-time search instance initialization.
-        data = alloc_data();
-        if (!data) {
-            session_error("Could not allocate data for Cache layer");
-            return -1;
-        }
-    }
-
-    // Remaining setup needed for every initialization, including
-    // re-initialization due to a restarted search.
-    //
     data->i_cnt = space->len;
     data->o_cnt = hcfg_int(session_cfg, CFGKEY_PERF_COUNT);
     if (data->o_cnt < 1) {
@@ -293,14 +295,6 @@ int cache_fini(void)
 /*
  * Internal helper function implementation.
  */
-data_t* alloc_data(void)
-{
-    data_t* retval = calloc(1, sizeof(*retval));
-    if (!retval)
-        return NULL;
-
-    return retval;
-}
 
 /*
  * Search the parameter space for any HVAL_STR dimensions, and return

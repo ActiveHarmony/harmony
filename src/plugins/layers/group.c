@@ -106,29 +106,32 @@ static data_t* data;
 /*
  * Internal helper function prototypes.
  */
-static data_t* alloc_data(void);
-static int     parse_group(const char* buf);
+static int parse_group(const char* buf);
 
+/*
+ * Allocate memory for a new search instance.
+ */
+void* group_alloc(void)
+{
+    data_t* retval = calloc(1, sizeof(*retval));
+    if (!retval)
+        return NULL;
+
+    return retval;
+}
+
+/*
+ * Initialize (or re-initialize) data for this search instance.
+ */
 int group_init(hspace_t* space)
 {
     const char* ptr;
 
-    if (!data) {
-        // One-time search instance initialization.
-        data = alloc_data();
-        if (!data) {
-            session_error("Could not allocate data for Group layer");
-            return -1;
-        }
-    }
-    else if (data->internal_restart_req) {
+    if (data->internal_restart_req) {
         // Ignore our own requests to re-initialize.
         return 0;
     }
 
-    // Remaining setup needed for every initialization, including
-    // re-initialization due to a restarted search.
-    //
     ptr = hcfg_get(session_cfg, CFGKEY_GROUP_LIST);
     if (!ptr) {
         session_error(CFGKEY_GROUP_LIST
@@ -239,15 +242,6 @@ int group_fini(void)
 /*
  * Internal helper function implementation.
  */
-data_t* alloc_data(void)
-{
-    data_t* retval = calloc(1, sizeof(*retval));
-    if (!retval)
-        return NULL;
-
-    return retval;
-}
-
 int parse_group(const char* buf)
 {
     int i, j, count, success;

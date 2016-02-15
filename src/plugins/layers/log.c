@@ -68,24 +68,22 @@ typedef struct data {
 static data_t* data;
 
 /*
- * Internal helper function prototypes.
+ * Allocate memory for a new search instance.
  */
-static data_t* alloc_data(void);
+void* logger_alloc(void)
+{
+    data_t* retval = calloc(1, sizeof(*retval));
+    if (!retval)
+        return NULL;
 
+    return retval;
+}
+
+/*
+ * Initialize (or re-initialize) data for this search instance.
+ */
 int logger_init(hspace_t* space)
 {
-    if (!data) {
-        // One-time search instance initialization.
-        data = alloc_data();
-        if (!data) {
-            session_error("Could not allocate data for Logger layer");
-            return -1;
-        }
-    }
-
-    // Remaining setup needed for every initialization, including
-    // re-initialization due to a restarted search.
-    //
     const char* filename = hcfg_get(session_cfg, CFGKEY_LOG_FILE);
     const char* mode     = hcfg_get(session_cfg, CFGKEY_LOG_MODE);
     time_t tm;
@@ -163,16 +161,4 @@ int logger_fini(void)
     free(data);
     data = NULL;
     return 0;
-}
-
-/*
- * Internal helper function implementation.
- */
-data_t* alloc_data(void)
-{
-    data_t* retval = calloc(1, sizeof(*retval));
-    if (!retval)
-        return NULL;
-
-    return retval;
 }

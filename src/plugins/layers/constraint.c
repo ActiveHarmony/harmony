@@ -122,30 +122,32 @@ static data_t* data;
 /*
  * Internal helper function prototypes.
  */
-static data_t* alloc_data(void);
-static int     strategy_cfg(hspace_t* space);
-static int     build_vars_text(hspace_t* space);
-static int     build_bounds_text(hspace_t* space);
-static int     build_user_text(void);
-static int     build_point_text(hpoint_t* point);
-static int     update_bounds(hspace_t* space);
-static int     check_validity(hpoint_t* point);
-static char*   call_omega_calc(const char* cmd);
+static int   strategy_cfg(hspace_t* space);
+static int   build_vars_text(hspace_t* space);
+static int   build_bounds_text(hspace_t* space);
+static int   build_user_text(void);
+static int   build_point_text(hpoint_t* point);
+static int   update_bounds(hspace_t* space);
+static int   check_validity(hpoint_t* point);
+static char* call_omega_calc(const char* cmd);
 
+/*
+ * Allocate memory for a new search instance.
+ */
+void* constraint_alloc(void)
+{
+    data_t* retval = calloc(1, sizeof(*retval));
+    if (!retval)
+        return NULL;
+
+    return retval;
+}
+
+/*
+ * Initialize (or re-initialize) data for this search instance.
+ */
 int constraint_init(hspace_t* space)
 {
-    if (!data) {
-        // One-time search instance initialization.
-        data = alloc_data();
-        if (!data) {
-            session_error("Could not allocate data for Constraint layer");
-            return -1;
-        }
-    }
-
-    // Remaining setup needed for every initialization, including
-    // re-initialization due to a restarted search.
-
     // Make a copy of the search space.
     hspace_copy(&data->local_space, space);
 
@@ -207,15 +209,6 @@ int constraint_fini(void)
 /*
  * Internal helper function implementation.
  */
-data_t* alloc_data(void)
-{
-    data_t* retval = calloc(1, sizeof(*retval));
-    if (!retval)
-        return NULL;
-
-    return retval;
-}
-
 int strategy_cfg(hspace_t* space)
 {
     const char* cfgval;

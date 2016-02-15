@@ -96,7 +96,18 @@ int strategy_best(hpoint_t* point);
  */
 
 /*
- * Invoked once on strategy load.
+ * Allocate plug-in state data for a new search instance.  This
+ * function is invoked prior to any other plug-in interface function.
+ *
+ * Upon error, this function should call session_error() with a
+ * human-readable string explaining the problem and return NULL.
+ * Otherwise, a non-NULL address the plug-in can use to track an
+ * individual search instance should be returned.
+ */
+void* strategy_alloc(void);
+
+/*
+ * Initialize (or re-initialize) data for this search instance.
  *
  * Param:
  *   space - Details of the parameter space (dimensions, bounds, etc.).

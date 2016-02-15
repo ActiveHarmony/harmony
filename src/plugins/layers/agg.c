@@ -89,27 +89,29 @@ static data_t* data;
 /*
  * Internal helper function prototypes.
  */
-static data_t* alloc_data(void);
-static void    perf_mean(hperf_t* dst, hperf_t* src, int count);
-static int     perf_sort(const void* _a, const void* _b);
-static int     add_storage(void);
+static void perf_mean(hperf_t* dst, hperf_t* src, int count);
+static int  perf_sort(const void* _a, const void* _b);
+static int  add_storage(void);
 
+/*
+ * Allocate memory for a new search instance.
+ */
+void* agg_alloc(void)
+{
+    data_t* retval = calloc(1, sizeof(*retval));
+    if (!retval)
+        return NULL;
+
+    return retval;
+}
+
+/*
+ * Initialize (or re-initialize) data for this search instance.
+ */
 int agg_init(hspace_t* space)
 {
     const char* val;
 
-    if (!data) {
-        // One-time search instance initialization.
-        data = alloc_data();
-        if (!data) {
-            session_error("Could not allocate data for Aggregator layer");
-            return -1;
-        }
-    }
-
-    // Remaining setup needed for every initialization, including
-    // re-initialization due to a restarted search.
-    //
     val = hcfg_get(session_cfg, CFGKEY_AGG_FUNC);
     if (!val) {
         session_error(CFGKEY_AGG_FUNC " configuration key empty.");
@@ -218,15 +220,6 @@ int agg_fini(void)
 /*
  * Internal helper function prototypes.
  */
-data_t* alloc_data(void)
-{
-    data_t* retval = calloc(1, sizeof(*retval));
-    if (!retval)
-        return NULL;
-
-    return retval;
-}
-
 void perf_mean(hperf_t* dst, hperf_t* src, int count)
 {
     int i, j;

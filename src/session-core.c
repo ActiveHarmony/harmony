@@ -45,6 +45,7 @@
  */
 typedef struct hplugin {
     const char* name;
+    void*       data;
 
     struct hook_strategy {
         strategy_generate_t generate;
@@ -58,6 +59,7 @@ typedef struct hplugin {
         layer_analyze_t  analyze;
     } layer;
 
+    hook_alloc_t  alloc;
     hook_init_t   init;
     hook_join_t   join;
     hook_setcfg_t setcfg;
@@ -931,10 +933,17 @@ int load_strategy(hsearch_t* search, const char* file)
         }
     }
 
+    search->pstack[0].alloc  =  (hook_alloc_t) dlfptr(lib, "strategy_alloc");
     search->pstack[0].init   =   (hook_init_t) dlfptr(lib, "strategy_init");
     search->pstack[0].join   =   (hook_join_t) dlfptr(lib, "strategy_join");
     search->pstack[0].setcfg = (hook_setcfg_t) dlfptr(lib, "strategy_setcfg");
     search->pstack[0].fini   =   (hook_fini_t) dlfptr(lib, "strategy_fini");
+
+    if (search->pstack[0].alloc) {
+        search->pstack[0].data = search->pstack[0].alloc();
+        if (!search->pstack[0].data)
+            return -1;
+    }
 
     if (search->pstack[0].init) {
         if (search->pstack[0].init(&search->space) != 0)
@@ -991,6 +1000,12 @@ int load_layers(hsearch_t* search, const char* list)
         }
         search->pstack[tail].name = prefix;
 
+        if (snprintf_grow(&path, &path_len, "%s_alloc", prefix) < 0) {
+            retval = -1;
+            goto cleanup;
+        }
+        search->pstack[tail].alloc = (hook_alloc_t) dlfptr(lib, path);
+
         if (snprintf_grow(&path, &path_len, "%s_init", prefix) < 0) {
             retval = -1;
             goto cleanup;
@@ -1033,6 +1048,14 @@ int load_layers(hsearch_t* search, const char* list)
         if (keyinfo) {
             if (hcfg_reginfo(&search->cfg, keyinfo) != 0) {
                 search->errmsg = "Error registering strategy default config";
+                retval = -1;
+                goto cleanup;
+            }
+        }
+
+        if (search->pstack[tail].alloc) {
+            search->pstack[tail].data = search->pstack[tail].alloc();
+            if (!search->pstack[tail].data) {
                 retval = -1;
                 goto cleanup;
             }

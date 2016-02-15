@@ -139,27 +139,31 @@ static data_t *data;
 /*
  * Internal helper function prototypes.
  */
-static data_t* alloc_data(void);
-static int     config_strategy(void);
-static int     pro_algorithm(void);
-static int     pro_next_state(void);
-static int     pro_next_simplex(void);
-static int     check_convergence(void);
+static int config_strategy(void);
+static int pro_algorithm(void);
+static int pro_next_state(void);
+static int pro_next_simplex(void);
+static int check_convergence(void);
 
+/*
+ * Allocate memory for a new search instance.
+ */
+void* strategy_alloc(void)
+{
+    data_t* retval = calloc(1, sizeof(*retval));
+    if (!retval)
+        return NULL;
+
+    retval->next_id = 1;
+
+    return retval;
+}
+
+/*
+ * Initialize (or re-initialize) data for this search instance.
+ */
 int strategy_init(hspace_t* space)
 {
-    if (!data) {
-        // One-time search instance initialization.
-        data = alloc_data();
-        if (!data) {
-            session_error("Could not allocate data for Nelder-Mead strategy");
-            return -1;
-        }
-    }
-
-    // Remaining setup needed for every initialization, including
-    // re-initialization due to a restarted search.
-    //
     if (data->space != space) {
         if (simplex_init(&data->simplex, space->len) != 0) {
             session_error("Could not initialize base simplex");
@@ -377,18 +381,6 @@ int strategy_best(hpoint_t* point)
 /*
  * Internal helper function implementation.
  */
-data_t* alloc_data(void)
-{
-    data_t* retval = calloc(1, sizeof(*retval));
-    if (!retval)
-        return NULL;
-
-    hperf_reset(&retval->best_perf);
-    retval->next_id = 1;
-
-    return retval;
-}
-
 int config_strategy(void)
 {
     const char* cfgstr;

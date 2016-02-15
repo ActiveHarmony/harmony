@@ -125,32 +125,29 @@ static int codegen_callback(int fd, hflow_t* flow, int n, htrial_t** trial);
 /*
  * Internal helper function prototypes.
  */
-static data_t* alloc_data(void);
-static int     cglog_find(const hpoint_t* pt);
-static int     cglog_insert(const hpoint_t* pt);
-static int     url_connect(const char* url);
+static int cglog_find(const hpoint_t* pt);
+static int cglog_insert(const hpoint_t* pt);
+static int url_connect(const char* url);
 
 /*
- * Invoked once on module load.
- *
- * This routine should return 0 on success, and -1 otherwise.
+ * Allocate memory for a new search instance.
+ */
+void* codegen_alloc(void)
+{
+    data_t* retval = calloc(1, sizeof(*retval));
+    if (!retval)
+        return NULL;
+
+    return retval;
+}
+
+/*
+ * Initialize (or re-initialize) data for this search instance.
  */
 int codegen_init(hspace_t* space)
 {
     const char* url;
 
-    if (!data) {
-        // One-time search instance initialization.
-        data = alloc_data();
-        if (!data) {
-            session_error("Could not allocate data for Codegen layer");
-            return -1;
-        }
-    }
-
-    // Remaining setup needed for every initialization, including
-    // re-initialization due to a restarted search.
-    //
     url = hcfg_get(session_cfg, CFGKEY_TARGET_URL);
     if (!url || url[0] == '\0') {
         session_error("Destination URL for"
@@ -280,15 +277,6 @@ int codegen_callback(int fd, hflow_t* flow, int n, htrial_t** trial)
 /*
  * Internal helper function implementation.
  */
-data_t* alloc_data(void)
-{
-    data_t* retval = calloc(1, sizeof(*retval));
-    if (!retval)
-        return NULL;
-
-    return retval;
-}
-
 int cglog_find(const hpoint_t* point)
 {
     for (int i = 0; i < data->cglog_len; ++i) {

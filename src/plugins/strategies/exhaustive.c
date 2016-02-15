@@ -85,28 +85,30 @@ static data_t *data;
 /*
  * Internal helper function prototypes.
  */
-static data_t* alloc_data(void);
-static int     config_strategy(void);
-static void    increment(void);
-static int     make_hpoint(const unit_u* index, hpoint_t* point);
+static int  config_strategy(void);
+static void increment(void);
+static int  make_hpoint(const unit_u* index, hpoint_t* point);
 
 /*
- * Invoked once on strategy load.
+ * Allocate memory for a new search instance.
+ */
+void* strategy_alloc(void)
+{
+    data_t* retval = calloc(1, sizeof(*retval));
+    if (!retval)
+        return NULL;
+
+    retval->best_perf = HUGE_VAL;
+    retval->next_id = 1;
+
+    return retval;
+}
+
+/*
+ * Initialize (or re-initialize) data for this search instance.
  */
 int strategy_init(hspace_t* space)
 {
-    if (!data) {
-        // One-time search instance initialization.
-        data = alloc_data();
-        if (!data) {
-            session_error("Could not allocate data for exhaustive strategy");
-            return -1;
-        }
-    }
-
-    // Remaining setup needed for every initialization, including
-    // re-initialization due to a restarted search.
-    //
     if (data->space != space) {
         free(data->head);
         data->head = malloc(space->len * sizeof(*data->head));
@@ -267,18 +269,6 @@ int strategy_best(hpoint_t* point)
 /*
  * Internal helper function implementation.
  */
-data_t* alloc_data(void)
-{
-    data_t* retval = calloc(1, sizeof(*retval));
-    if (!retval)
-        return NULL;
-
-    retval->best_perf = HUGE_VAL;
-    retval->next_id = 1;
-
-    return retval;
-}
-
 int config_strategy()
 {
     const char* cfgstr;

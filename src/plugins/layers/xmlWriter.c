@@ -92,10 +92,24 @@ static data_t* data;
 /*
  * Internal helper function prototypes.
  */
-static data_t* alloc_data(void);
-static int     harmony_xmlWriteAppName(const char* appName);
-static int     harmony_xmlWriteParamInfo(void);
+static int harmony_xmlWriteAppName(const char* appName);
+static int harmony_xmlWriteParamInfo(void);
 
+/*
+ * Allocate memory for a new search instance.
+ */
+void* xmlWriter_alloc(void)
+{
+    data_t* retval = calloc(1, sizeof(*retval));
+    if (!retval)
+        return NULL;
+
+    return retval;
+}
+
+/*
+ * Initialize (or re-initialize) data for this search instance.
+ */
 int xmlWriter_init(hspace_t* space)
 {
     int rc;
@@ -104,18 +118,6 @@ int xmlWriter_init(hspace_t* space)
     //xmlChar* tmp;
     xmlDocPtr doc;
     xmlNodePtr node;
-
-    if (!data) {
-        // One-time search instance initialization.
-        data = alloc_data();
-        if (!data) {
-            session_error("Could not allocate data for XML Writer layer");
-            return -1;
-        }
-    }
-
-    // Remaining setup needed for every initialization, including
-    // re-initialization due to a restarted search.
 
     // Using create time to name xml file and initialize.
     time_t now;
@@ -315,15 +317,6 @@ int xmlWriter_fini(void)
 /*
  * Internal helper function implementation.
  */
-data_t* alloc_data(void)
-{
-    data_t* retval = calloc(1, sizeof(*retval));
-    if (!retval)
-        return NULL;
-
-    return retval;
-}
-
 int harmony_xmlWriteNodeInfo(int clientID, char* nodeinfo, char* sysName,
                              char* release, char* machine, int core_num,
                              char* cpu_vendor, char* cpu_model,

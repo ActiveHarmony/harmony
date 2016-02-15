@@ -53,10 +53,11 @@ typedef struct htrial {
 } htrial_t;
 
 // Generic plug-in event-hook signatures.
-typedef int (*hook_init_t)(hspace_t* space);
-typedef int (*hook_join_t)(const char* id);
-typedef int (*hook_setcfg_t)(const char* key, const char* val);
-typedef int (*hook_fini_t)(void);
+typedef void* (*hook_alloc_t)(void);
+typedef int   (*hook_init_t)(hspace_t* space);
+typedef int   (*hook_join_t)(const char* id);
+typedef int   (*hook_setcfg_t)(const char* key, const char* val);
+typedef int   (*hook_fini_t)(void);
 
 // Strategy plug-in function signatures.
 typedef int (*strategy_generate_t)(hflow_t* flow, hpoint_t* point);

@@ -106,7 +106,6 @@ static data_t* data;
 /*
  * Internal helper function prototypes.
  */
-static data_t* alloc_data(void);
 static int client_idx(void);
 static int save_timer_parameter(TAUDB_TIMER* timer, htrial_t* trial);
 static int harmony_taudb_trial_init(const char* appName,
@@ -121,24 +120,23 @@ static void harmony_taudb_get_secondary_metadata(TAUDB_THREAD* thread,
                                                  char* cachesize);
 
 /*
- * Initialization of TAUdb.
- * Return 0 for success, -1 for error
+ * Allocate memory for a new search instance.
+ */
+void* TAUdb_alloc(void)
+{
+    data_t* retval = calloc(1, sizeof(*retval));
+    if (!retval)
+        return NULL;
+
+    return retval;
+}
+
+/*
+ * Initialize (or re-initialize) data for this search instance.
  */
 int TAUdb_init(hspace_t* space)
 {
     char* tmpstr;
-
-    if (!data) {
-        // One-time search instance initialization.
-        data = alloc_data();
-        if (!data) {
-            session_error("Could not allocate data for TAUdb layer");
-            return -1;
-        }
-    }
-
-    // Remaining setup needed for every initialization, including
-    // re-initialization due to a restarted search.
 
     // Connecting to TAUdb.
     tmpstr = hcfg_get(session_cfg, CFGKEY_TAUDB_NAME);
@@ -334,15 +332,6 @@ int TAUdb_fini(void)
 /*
  * Internal helper function implementation.
  */
-data_t* alloc_data(void)
-{
-    data_t* retval = calloc(1, sizeof(*retval));
-    if (!retval)
-        return NULL;
-
-    return retval;
-}
-
 int client_idx(void)
 {
     int i;
