@@ -20,7 +20,7 @@
 #define __DEFAULTS_H__
 
 #define SESSION_CORE_EXECFILE "session-core"
-#define SESSION_LAYER_SEP     ':'
+#define SESSION_LAYER_SEP     ":;, \t\n"
 #define DEFAULT_HOST "localhost"
 #define DEFAULT_PORT 1979
 
