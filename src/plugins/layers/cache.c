@@ -121,10 +121,10 @@ int cache_init(hspace_t* space)
     const char* filename;
 
     data->i_cnt = space->len;
-    data->o_cnt = hcfg_int(session_cfg, CFGKEY_PERF_COUNT);
+    data->o_cnt = hcfg_int(search_cfg, CFGKEY_PERF_COUNT);
     if (data->o_cnt < 1) {
-        session_error("Invalid value for " CFGKEY_PERF_COUNT
-                      " configuration key.");
+        search_error("Invalid value for " CFGKEY_PERF_COUNT
+                     " configuration key");
         return -1;
     }
     data->dim = space->dim;
@@ -135,12 +135,12 @@ int cache_init(hspace_t* space)
     data->visited = NULL;
     data->visited_len = data->visited_cap = 0;
 
-    filename = hcfg_get(session_cfg, CFGKEY_CACHE_FILE);
+    filename = hcfg_get(search_cfg, CFGKEY_CACHE_FILE);
     if (filename) {
         data->buflen = find_max_strlen() + 1;
         data->buf = malloc(data->buflen * sizeof(char));
         if (!data->buf) {
-            session_error("Could not allocate memory for string buffer");
+            search_error("Could not allocate memory for string buffer");
             return -1;
         }
 
@@ -170,7 +170,7 @@ int cache_generate(hflow_t* flow, htrial_t* trial)
     // will never terminate or do anything if this isn't present (it
     // never knows when strat is converged)
     //
-    if (strncmp(hcfg_get(session_cfg, CFGKEY_CONVERGED), "1", 1) == 0) {
+    if (strncmp(hcfg_get(search_cfg, CFGKEY_CONVERGED), "1", 1) == 0) {
         return HFLOW_ACCEPT;
     }
 
@@ -238,7 +238,7 @@ int cache_analyze(hflow_t* flow, htrial_t* trial)
             if (array_grow(&data->cache, &data->cache_cap,
                            sizeof(*data->cache)) != 0)
             {
-                session_error("Could not allocate more memory for cache");
+                search_error("Could not allocate more memory for cache");
                 return -1;
             }
         }
@@ -256,7 +256,7 @@ int cache_analyze(hflow_t* flow, htrial_t* trial)
             if (array_grow(&data->visited, &data->visited_cap,
                            sizeof(*data->visited)) != 0)
             {
-                session_error("Could not allocate memory for visited array");
+                search_error("Could not allocate memory for visited array");
                 return -1;
             }
         }
@@ -325,7 +325,7 @@ int find_max_strlen(void)
  */
 #define SKIP_PATTERN(fp, pattern)                                       \
     if (fscanf(fp, pattern) == EOF) {                                   \
-        session_error("Error parsing logger file: Invalid input.");     \
+        search_error("Error parsing logger file: Invalid input");       \
         return -1;                                                      \
     }
 int load_logger_file(const char* filename)
@@ -336,7 +336,7 @@ int load_logger_file(const char* filename)
 
     fp = fopen(filename, "r");
     if (!fp) {
-        session_error("Could not open log file.");
+        search_error("Could not open log file");
         return -1;
     }
 
@@ -353,19 +353,19 @@ int load_logger_file(const char* filename)
             if (array_grow(&data->cache, &data->cache_cap,
                            sizeof(*data->cache)) != 0)
             {
-                session_error("Could not allocate more memory for cache");
+                search_error("Could not allocate more memory for cache");
                 return -1;
             }
         }
         if (hpoint_init(&data->cache[data->cache_len].point, data->i_cnt) != 0)
         {
-            session_error("Error allocating memory for point in cache");
+            search_error("Error allocating memory for point in cache");
             return -1;
         }
 
         if (hperf_init(&data->cache[data->cache_len].perf, data->o_cnt) != 0)
         {
-            session_error("Error allocating memory for performance in cache");
+            search_error("Error allocating memory for performance in cache");
             return -1;
         }
 
@@ -381,12 +381,12 @@ int load_logger_file(const char* filename)
             case HVAL_REAL: ret = fscanf(fp, "%*f[%la]", &v->value.r); break;
             case HVAL_STR:  ret = safe_scanstr(fp, i, &v->value.s); break;
             default:
-                session_error("Invalid point value type");
+                search_error("Invalid point value type");
                 return -1;
             }
 
             if (ret != 1) {
-                session_error("Error parsing point data from logfile");
+                search_error("Error parsing point data from logfile");
                 return -1;
             }
         }
@@ -398,14 +398,14 @@ int load_logger_file(const char* filename)
             if (fscanf(fp, " %*f[%la]",
                        &data->cache[data->cache_len].perf.obj[i]) != 1)
             {
-                session_error("Error parsing performance data from logfile");
+                search_error("Error parsing performance data from logfile");
                 return -1;
             }
         }
 
         // Discard the rest of the line after the right parenthesis.
         if (fscanf(fp, " %c%*[^\n]", &c) != 1 || c != ')') {
-            session_error("Error parsing point data from logfile");
+            search_error("Error parsing point data from logfile");
             return -1;
         }
         ++data->cache_len;
@@ -437,7 +437,7 @@ int safe_scanstr(FILE* fp, int bounds_idx, const char** match)
         data->buf[i] = (char)c;
     }
     if (i == data->buflen) {
-        session_error("Input HVAL_STR overrun");
+        search_error("Input HVAL_STR overrun");
         return EOF;
     }
     data->buf[i] = '\0';
@@ -447,7 +447,7 @@ int safe_scanstr(FILE* fp, int bounds_idx, const char** match)
             break;
     }
     if (i == bounds->len) {
-        session_error("Invalid HVAL_STR value");
+        search_error("Invalid HVAL_STR value");
         return 0;
     }
 

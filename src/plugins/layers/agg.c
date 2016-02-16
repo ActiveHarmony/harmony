@@ -112,9 +112,9 @@ int agg_init(hspace_t* space)
 {
     const char* val;
 
-    val = hcfg_get(session_cfg, CFGKEY_AGG_FUNC);
+    val = hcfg_get(search_cfg, CFGKEY_AGG_FUNC);
     if (!val) {
-        session_error(CFGKEY_AGG_FUNC " configuration key empty.");
+        search_error(CFGKEY_AGG_FUNC " configuration key empty");
         return -1;
     }
     if      (strcasecmp(val, "MIN") == 0)    data->agg_type = AGG_MIN;
@@ -122,13 +122,13 @@ int agg_init(hspace_t* space)
     else if (strcasecmp(val, "MEAN") == 0)   data->agg_type = AGG_MEAN;
     else if (strcasecmp(val, "MEDIAN") == 0) data->agg_type = AGG_MEDIAN;
     else {
-        session_error("Invalid " CFGKEY_AGG_FUNC " configuration value.");
+        search_error("Invalid " CFGKEY_AGG_FUNC " configuration value");
         return -1;
     }
 
-    data->trial_per_point = hcfg_int(session_cfg, CFGKEY_AGG_TIMES);
+    data->trial_per_point = hcfg_int(search_cfg, CFGKEY_AGG_TIMES);
     if (data->trial_per_point < 2) {
-        session_error("Invalid " CFGKEY_AGG_TIMES " configuration value.");
+        search_error("Invalid " CFGKEY_AGG_TIMES " configuration value");
         return -1;
     }
 
@@ -193,7 +193,7 @@ int agg_analyze(hflow_t* flow, htrial_t* trial)
         break;
 
     default:
-        session_error("Internal error: Invalid AGG type");
+        search_error("Invalid AGG type");
         return -1;
     }
 
@@ -252,7 +252,7 @@ int add_storage(void)
     if (array_grow(&data->slist, &data->slist_len,
                    sizeof(*data->slist)) != 0)
     {
-        session_error("Could not allocate memory for aggregator list");
+        search_error("Could not allocate memory for aggregator list");
         return -1;
     }
 
@@ -261,7 +261,7 @@ int add_storage(void)
         data->slist[prev_len].trial = calloc(data->trial_per_point,
                                              sizeof(hperf_t));
         if (!data->slist[prev_len].trial) {
-            session_error("Could not allocate memory for trial list");
+            search_error("Could not allocate memory for trial list");
             return -1;
         }
         ++prev_len;

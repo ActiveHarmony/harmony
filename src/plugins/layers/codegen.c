@@ -148,22 +148,22 @@ int codegen_init(hspace_t* space)
 {
     const char* url;
 
-    url = hcfg_get(session_cfg, CFGKEY_TARGET_URL);
+    url = hcfg_get(search_cfg, CFGKEY_TARGET_URL);
     if (!url || url[0] == '\0') {
-        session_error("Destination URL for"
-                      " generated code objects not specified.");
+        search_error("Destination URL for"
+                     " generated code objects not specified");
         return -1;
     }
 
-    url = hcfg_get(session_cfg, CFGKEY_SERVER_URL);
+    url = hcfg_get(search_cfg, CFGKEY_SERVER_URL);
     if (!url || url[0] == '\0') {
-        session_error("Codegen server URL not specified.");
+        search_error("Codegen server URL not specified");
         return -1;
     }
 
     data->sockfd = url_connect(url);
     if (data->sockfd == -1) {
-        session_error("Invalid codegen server URL");
+        search_error("Invalid codegen server URL");
         return -1;
     }
 
@@ -174,7 +174,7 @@ int codegen_init(hspace_t* space)
     data->mesg.type = HMESG_SESSION;
     data->mesg.status = HMESG_STATUS_REQ;
     data->mesg.state.space = space;
-    data->mesg.data.cfg = session_cfg;
+    data->mesg.data.cfg = search_cfg;
 
     if (mesg_send(data->sockfd, &data->mesg) < 1)
         return -1;
@@ -183,8 +183,8 @@ int codegen_init(hspace_t* space)
         return -1;
 
     // TODO: Need a way to unregister a callback for re-initialization.
-    if (callback_generate(data->sockfd, codegen_callback) != 0) {
-        session_error("Could not register callback for codegen plugin");
+    if (search_callback_generate(data->sockfd, codegen_callback) != 0) {
+        search_error("Could not register callback for codegen plugin");
         return -1;
     }
 
@@ -196,7 +196,7 @@ int codegen_init(hspace_t* space)
  * that point is returned to the client API.
  *
  * This routine should fill the flow variable appropriately and return
- * 0 upon success.  Otherwise, it should call session_error() with a
+ * 0 upon success.  Otherwise, it should call search_error() with a
  * human-readable error message and return -1.
  */
 int codegen_generate(hflow_t* flow, htrial_t* trial)
@@ -215,7 +215,7 @@ int codegen_generate(hflow_t* flow, htrial_t* trial)
     }
 
     if (cglog_insert(&trial->point) != 0) {
-        session_error("Internal error: Could not grow codegen log");
+        search_error("Could not grow codegen log");
         return -1;
     }
 
@@ -224,7 +224,7 @@ int codegen_generate(hflow_t* flow, htrial_t* trial)
     data->mesg.data.point = &trial->point;
 
     if (mesg_send(data->sockfd, &data->mesg) < 1) {
-        session_error( strerror(errno) );
+        search_error( strerror(errno) );
         return -1;
     }
 
@@ -257,7 +257,7 @@ int codegen_callback(int fd, hflow_t* flow, int n, htrial_t** trial)
 
     i = cglog_find(data->mesg.data.point);
     if (i < 0) {
-        session_error("Could not find point from code server in log");
+        search_error("Could not find point from code server in log");
         return -1;
     }
     data->cglog[i].status = CODEGEN_STATUS_COMPLETE;
@@ -270,7 +270,7 @@ int codegen_callback(int fd, hflow_t* flow, int n, htrial_t** trial)
         }
     }
 
-    session_error("Could not find point from code server in waitlist");
+    search_error("Could not find point from code server in waitlist");
     return -1;
 }
 
@@ -314,7 +314,7 @@ int url_connect(const char* url)
     if (strncmp("dir:", url, ptr - url) == 0 ||
         strncmp("ssh:", url, ptr - url) == 0)
     {
-        ptr = hcfg_get(session_cfg, CFGKEY_HARMONY_HOME);
+        ptr = hcfg_get(search_cfg, CFGKEY_HARMONY_HOME);
         if (!ptr)
             return -1;
 

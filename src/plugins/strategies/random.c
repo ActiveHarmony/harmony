@@ -93,7 +93,7 @@ int strategy_init(hspace_t* space)
 {
     if (data->space != space) {
         if (hpoint_init(&data->next, space->len) != 0) {
-            session_error("Could not initialize point structure");
+            search_error("Could not initialize point structure");
             return -1;
         }
         data->next.len = space->len;
@@ -103,8 +103,8 @@ int strategy_init(hspace_t* space)
     if (config_strategy() != 0)
         return -1;
 
-    if (session_setcfg(CFGKEY_CONVERGED, "0") != 0) {
-        session_error("Could not set " CFGKEY_CONVERGED " config variable.");
+    if (search_setcfg(CFGKEY_CONVERGED, "0") != 0) {
+        search_error("Could not set " CFGKEY_CONVERGED " config variable");
         return -1;
     }
     return 0;
@@ -116,7 +116,7 @@ int strategy_init(hspace_t* space)
 int strategy_generate(hflow_t* flow, hpoint_t* point)
 {
     if (hpoint_copy(point, &data->next) != 0) {
-        session_error("Could not copy point during generation.");
+        search_error("Could not copy point during generation");
         return -1;
     }
 
@@ -138,7 +138,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
 
         hint->id = point->id;
         if (hpoint_copy(point, hint) != 0) {
-            session_error("Internal error: Could not copy point.");
+            search_error("Could not copy hint point during reject");
             return -1;
         }
     }
@@ -160,7 +160,7 @@ int strategy_analyze(htrial_t* trial)
     if (data->best_perf > perf) {
         data->best_perf = perf;
         if (hpoint_copy(&data->best, &trial->point) != 0) {
-            session_error("Internal error: Could not copy point.");
+            search_error("Could not copy best point");
             return -1;
         }
     }
@@ -173,7 +173,7 @@ int strategy_analyze(htrial_t* trial)
 int strategy_best(hpoint_t* point)
 {
     if (hpoint_copy(point, &data->best) != 0) {
-        session_error("Internal error: Could not copy point.");
+        search_error("Could not copy best point out of strategy");
         return -1;
     }
     return 0;
@@ -184,15 +184,15 @@ int strategy_best(hpoint_t* point)
  */
 int config_strategy(void)
 {
-    const char* cfgval = hcfg_get(session_cfg, CFGKEY_INIT_POINT);
+    const char* cfgval = hcfg_get(search_cfg, CFGKEY_INIT_POINT);
     if (cfgval) {
         if (hpoint_parse(&data->next, cfgval, data->space) != 0) {
-            session_error("Error parsing point from " CFGKEY_INIT_POINT ".");
+            search_error("Error parsing point from " CFGKEY_INIT_POINT);
             return -1;
         }
 
         if (hpoint_align(&data->next, data->space) != 0) {
-            session_error("Could not align initial point to search space");
+            search_error("Could not align initial point to search space");
             return -1;
         }
     }

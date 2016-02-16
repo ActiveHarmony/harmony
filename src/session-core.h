@@ -73,35 +73,16 @@ typedef int (*layer_analyze_t)(hflow_t* flow, htrial_t* trial);
 typedef int (*cb_func_t)(int fd, hflow_t* flow, int n, htrial_t** trial);
 
 /*
- * Interface for pluggable modules to register callbacks.
- *
- * When data is available to read on the given file descriptor, the
- * associated routine will be launched.
+ * Interface for plug-in modules to access their associated search.
  */
-int callback_generate(int fd, cb_func_t func);
-int callback_analyze(int fd, cb_func_t func);
+int  search_best(hpoint_t* best);
+int  search_callback_generate(int fd, cb_func_t func);
+int  search_callback_analyze(int fd, cb_func_t func);
+void search_error(const char* msg);
+int  search_restart(void);
+int  search_setcfg(const char* key, const char* val);
 
-/*
- * Interface for plugins to retrieve the best known configuration.
- */
-int session_best(hpoint_t* best);
-
-/*
- * Interface for plugins to trigger a restart of the search session.
- */
-int session_restart(void);
-
-/*
- * Central interface for shared configuration between pluggable modules.
- *
- * Requests through this interface will propagate through all
- * strategies and layers that define setcfg hooks.
- */
-extern const hcfg_t* session_cfg; // Used for reading.
-int session_setcfg(const char* key, const char* val);
-
-// Central interface for error messages from pluggable modules.
-void session_error(const char* msg);
+extern const hcfg_t* search_cfg;
 
 #ifdef __cplusplus
 }

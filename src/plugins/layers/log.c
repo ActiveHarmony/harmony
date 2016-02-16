@@ -84,18 +84,18 @@ void* logger_alloc(void)
  */
 int logger_init(hspace_t* space)
 {
-    const char* filename = hcfg_get(session_cfg, CFGKEY_LOG_FILE);
-    const char* mode     = hcfg_get(session_cfg, CFGKEY_LOG_MODE);
+    const char* filename = hcfg_get(search_cfg, CFGKEY_LOG_FILE);
+    const char* mode     = hcfg_get(search_cfg, CFGKEY_LOG_MODE);
     time_t tm;
 
     if (!filename) {
-        session_error(CFGKEY_LOG_FILE " config key empty.");
+        search_error(CFGKEY_LOG_FILE " config key empty");
         return -1;
     }
 
     data->fd = fopen(filename, mode);
     if (!data->fd) {
-        session_error( strerror(errno) );
+        search_error( strerror(errno) );
         return -1;
     }
 
@@ -125,7 +125,7 @@ int logger_analyze(hflow_t* flow, htrial_t* trial)
                                 v->value.r, v->value.r); break;
         case HVAL_STR:  fprintf(data->fd, "\"%s\"", v->value.s); break;
         default:
-            session_error("Invalid point value type");
+            search_error("Invalid point value type");
             return -1;
         }
     }
@@ -154,7 +154,7 @@ int logger_fini(void)
     fprintf(data->fd, "*\n");
 
     if (fclose(data->fd) != 0) {
-        session_error( strerror(errno) );
+        search_error( strerror(errno) );
         return -1;
     }
 

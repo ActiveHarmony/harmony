@@ -113,21 +113,21 @@ int strategy_init(hspace_t* space)
         free(data->head);
         data->head = malloc(space->len * sizeof(*data->head));
         if (!data->head) {
-            session_error("Could not allocate head index array");
+            search_error("Could not allocate head index array");
             return -1;
         }
 
         free(data->next);
         data->next = malloc(space->len * sizeof(*data->next));
         if (!data->next) {
-            session_error("Could not allocate next index array");
+            search_error("Could not allocate next index array");
             return -1;
         }
 
         free(data->wrap);
         data->wrap = malloc(space->len * sizeof(*data->wrap));
         if (!data->wrap) {
-            session_error("Could not allocate wrap index array");
+            search_error("Could not allocate wrap index array");
             return -1;
         }
         data->space = space;
@@ -147,8 +147,8 @@ int strategy_init(hspace_t* space)
     // Initialize the next point.
     memcpy(data->next, data->head, space->len * sizeof(*data->next));
 
-    if (session_setcfg(CFGKEY_CONVERGED, "0") != 0) {
-        session_error("Could not set " CFGKEY_CONVERGED " config variable.");
+    if (search_setcfg(CFGKEY_CONVERGED, "0") != 0) {
+        search_error("Could not set " CFGKEY_CONVERGED " config variable");
         return -1;
     }
     return 0;
@@ -161,7 +161,7 @@ int strategy_generate(hflow_t* flow, hpoint_t* point)
 {
     if (data->remaining_passes > 0) {
         if (make_hpoint(data->next, point) != 0) {
-            session_error("Could not make point from index during generate");
+            search_error("Could not make point from index during generate");
             return -1;
         }
         point->id = data->next_id;
@@ -171,7 +171,7 @@ int strategy_generate(hflow_t* flow, hpoint_t* point)
     }
     else {
         if (hpoint_copy(point, &data->best) != 0) {
-            session_error("Could not copy best point during generation.");
+            search_error("Could not copy best point during generation");
             return -1;
         }
     }
@@ -195,13 +195,13 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
 
         hint->id = point->id;
         if (hpoint_copy(point, hint) != 0) {
-            session_error("Could not copy hint during reject.");
+            search_error("Could not copy hint during reject");
             return -1;
         }
     }
     else {
         if (make_hpoint(data->next, point) != 0) {
-            session_error("Could not make point from index during reject");
+            search_error("Could not make point from index during reject");
             return -1;
         }
         increment();
@@ -222,14 +222,14 @@ int strategy_analyze(htrial_t* trial)
     if (data->best_perf > perf) {
         data->best_perf = perf;
         if (hpoint_copy(&data->best, &trial->point) != 0) {
-            session_error("Internal error: Could not copy point.");
+            search_error("Could not copy best point during analyze");
             return -1;
         }
     }
 
     if (trial->point.id == data->final_id) {
-        if (session_setcfg(CFGKEY_CONVERGED, "1") != 0) {
-            session_error("Internal error: Could not set convergence status.");
+        if (search_setcfg(CFGKEY_CONVERGED, "1") != 0) {
+            search_error("Could not set convergence status");
             return -1;
         }
     }
@@ -245,8 +245,8 @@ int strategy_analyze(htrial_t* trial)
     // Converged when the final point has been received, and there are
     // no outstanding points.
     if (data->outstanding_points <= 0 && data->final_point_received) {
-        if (session_setcfg(CFGKEY_CONVERGED, "1") != 0) {
-            session_error("Internal error: Could not set convergence status.");
+        if (search_setcfg(CFGKEY_CONVERGED, "1") != 0) {
+            search_error("Could not set convergence status");
             return -1;
         }
     }
@@ -260,7 +260,7 @@ int strategy_analyze(htrial_t* trial)
 int strategy_best(hpoint_t* point)
 {
     if (hpoint_copy(point, &data->best) != 0) {
-        session_error("Could not copy best point during request for best.");
+        search_error("Could not copy best point during request for best");
         return -1;
     }
     return 0;
@@ -273,23 +273,23 @@ int config_strategy()
 {
     const char* cfgstr;
 
-    data->remaining_passes = hcfg_int(session_cfg, CFGKEY_PASSES);
+    data->remaining_passes = hcfg_int(search_cfg, CFGKEY_PASSES);
     if (data->remaining_passes < 0) {
-        session_error("Invalid value for " CFGKEY_PASSES ".");
+        search_error("Invalid value for " CFGKEY_PASSES);
         return -1;
     }
 
-    cfgstr = hcfg_get(session_cfg, CFGKEY_INIT_POINT);
+    cfgstr = hcfg_get(search_cfg, CFGKEY_INIT_POINT);
     if (cfgstr) {
         hpoint_t init;
 
         if (hpoint_parse(&init, cfgstr, data->space) != 0) {
-            session_error("Error parsing point from " CFGKEY_INIT_POINT ".");
+            search_error("Error parsing point from " CFGKEY_INIT_POINT);
             return -1;
         }
 
         if (!hpoint_align(&init, data->space) != 0) {
-            session_error("Could not align initial point to search space");
+            search_error("Could not align initial point to search space");
             return -1;
         }
 

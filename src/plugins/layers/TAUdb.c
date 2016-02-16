@@ -139,9 +139,9 @@ int TAUdb_init(hspace_t* space)
     char* tmpstr;
 
     // Connecting to TAUdb.
-    tmpstr = hcfg_get(session_cfg, CFGKEY_TAUDB_NAME);
+    tmpstr = hcfg_get(search_cfg, CFGKEY_TAUDB_NAME);
     if (!tmpstr) {
-        session_error("TAUdb connection failed: config file not found.");
+        search_error("TAUdb connection failed: config file not found");
         return -1;
     }
 
@@ -152,7 +152,7 @@ int TAUdb_init(hspace_t* space)
 
     // Initializing trial.
     if (harmony_taudb_trial_init(space->name, space->name) != 0) {
-        session_error("Failed to create TAUdb trial");
+        search_error("Failed to create TAUdb trial");
         return -1;
     }
 
@@ -167,10 +167,10 @@ int TAUdb_init(hspace_t* space)
     taudb_add_timer_group_to_trial(data->taudb_trial, data->timer_group);
 
     data->param_max = space->len;
-    data->client_max = hcfg_int(session_cfg, CFGKEY_CLIENT_COUNT);
+    data->client_max = hcfg_int(search_cfg, CFGKEY_CLIENT_COUNT);
     data->taudb_trial->node_count = data->client_max;
 
-    tmpstr = hcfg_get(session_cfg, CFGKEY_TAUDB_STORE_METHOD);
+    tmpstr = hcfg_get(search_cfg, CFGKEY_TAUDB_STORE_METHOD);
     if (strcmp(tmpstr, "real_time") == 0) {
         data->taudb_store_type = 0;
     }
@@ -178,18 +178,18 @@ int TAUdb_init(hspace_t* space)
         data->taudb_store_type = 1;
     }
     else {
-        session_error("Invalid value for " CFGKEY_TAUDB_STORE_METHOD
-                      " configuration key.");
+        search_error("Invalid value for " CFGKEY_TAUDB_STORE_METHOD
+                     " configuration key");
         return -1;
     }
-    data->total_record_num = hcfg_int(session_cfg, CFGKEY_TAUDB_STORE_NUM);
+    data->total_record_num = hcfg_int(search_cfg, CFGKEY_TAUDB_STORE_NUM);
 
     data->thread = harmony_taudb_create_thread(data->client_max);
 
     // Client id map to thread id.
     data->client = malloc(data->client_max * sizeof(cinfo_t));
     if (!data->client) {
-        session_error("Internal error: Could not allocate client list");
+        search_error("Could not allocate client list");
         return -1;
     }
     memset(data->client, 0, data->client_max * sizeof(cinfo_t));
@@ -337,9 +337,9 @@ int client_idx(void)
     int i;
     const char* curr_id;
 
-    curr_id = hcfg_get(session_cfg, CFGKEY_CURRENT_CLIENT);
+    curr_id = hcfg_get(search_cfg, CFGKEY_CURRENT_CLIENT);
     if (!curr_id) {
-        session_error("Request detected from invalid client");
+        search_error("Request detected from invalid client");
         return -1;
     }
 
@@ -349,13 +349,13 @@ int client_idx(void)
     }
 
     if (i == data->client_max) {
-        session_error("Too few clients estimated by " CFGKEY_CLIENT_COUNT);
+        search_error("Too few clients estimated by " CFGKEY_CLIENT_COUNT);
         return -1;
     }
 
     data->client[i].id = stralloc(curr_id);
     if (!data->client[i].id) {
-        session_error("Internal error: Could not allocate client id memory");
+        search_error("Could not allocate client id memory");
         return -1;
     }
     return i;
@@ -389,7 +389,7 @@ int save_timer_parameter(TAUDB_TIMER* timer, htrial_t* trial)
             break;
 
         default:
-            session_error("Invalid point value detected");
+            search_error("Invalid point value detected");
             return -1;
         }
         param[i].value = taudb_strdup(buf);

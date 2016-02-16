@@ -127,7 +127,7 @@ int xmlWriter_init(hspace_t* space)
     snprintf(data->create_time, 64, "%d%d%d", (int)current->tm_hour,
              (int)current->tm_min, (int)current->tm_sec);
 
-    tmpstr = hcfg_get(session_cfg, CFGKEY_XML_FILE);
+    tmpstr = hcfg_get(search_cfg, CFGKEY_XML_FILE);
     if (tmpstr)
         strncpy(data->filename, tmpstr, sizeof(data->filename));
     else
@@ -136,7 +136,7 @@ int xmlWriter_init(hspace_t* space)
 
     doc = xmlNewDoc(BAD_CAST XML_DEFAULT_VERSION);
     if (!doc) {
-        session_error("Error creating the xml document tree");
+        search_error("Error creating the xml document tree");
         return -1;
     }
     xmlSaveFileEnc(data->filename, doc, MY_ENCODING);
@@ -153,19 +153,19 @@ int xmlWriter_init(hspace_t* space)
     // Create a new xmlWriter for DOM tree, with no compression.
     writer = xmlNewTextWriterTree(doc, node, 0);
     if (!writer) {
-        session_error("Error creating the xml writer");
+        search_error("Error creating the xml writer");
         return -1;
     }
 
     rc = xmlTextWriterStartDocument(writer, NULL, MY_ENCODING, NULL);
     if (rc < 0) {
-        session_error("Error at xmlTestWriterStartDocument");
+        search_error("Error at xmlTestWriterStartDocument");
         return -1;
     }
     rc = xmlTextWriterStartElement(writer, BAD_CAST "HarmonyData");
     rc = xmlTextWriterStartElement(writer, BAD_CAST "Metadata");
     if (rc < 0) {
-        session_error("Error at xmlTextWriterStartElement");
+        search_error("Error at xmlTextWriterStartElement");
         return -1;
     }
 
@@ -246,7 +246,7 @@ int xmlWriter_generate(hflow_t* flow, htrial_t* trial)
 
     doc = xmlReadFile(data->filename, NULL, 0);
     if (doc == NULL) {
-        session_error("Failed to parse the xml file");
+        search_error("Failed to parse the xml file");
         return -1;
     }
 
@@ -297,7 +297,7 @@ int xmlWriter_generate(hflow_t* flow, htrial_t* trial)
             xmlNewTextChild(dataNode, NULL, (xmlChar*)"Time",
                             (xmlChar*)timestr);
             xmlNewTextChild(dataNode, NULL, (xmlChar*)"Client",
-                            (xmlChar*)hcfg_get(session_cfg,
+                            (xmlChar*)hcfg_get(search_cfg,
                                                CFGKEY_CURRENT_CLIENT));
             xmlSaveFileEnc(data->filename, doc, MY_ENCODING);
             break;
@@ -335,7 +335,7 @@ int harmony_xmlWriteNodeInfo(int clientID, char* nodeinfo, char* sysName,
 
     doc = xmlReadFile(data->filename, NULL, 0);
     if (!doc) {
-        session_error("Failed to parse the xml file");
+        search_error("Failed to parse the xml file");
         return -1;
     }
 
@@ -384,7 +384,7 @@ int harmony_xmlWriteAppName(const char* appName)
 
     doc = xmlReadFile(data->filename, NULL, 0);
     if (!doc) {
-        session_error("Failed to parse the xml file");
+        search_error("Failed to parse the xml file");
         return -1;
     }
 
@@ -423,7 +423,7 @@ int harmony_xmlWriteParamInfo(void)
 
     doc = xmlReadFile(data->filename, NULL, 0);
     if (doc == NULL) {
-        session_error("Failed to parse the xml file");
+        search_error("Failed to parse the xml file");
         return -1;
     }
 

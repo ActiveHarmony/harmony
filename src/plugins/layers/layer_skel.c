@@ -58,7 +58,7 @@ typedef struct data {
  * Allocate plug-in state data for a new search instance.  This
  * function is invoked prior to any other plug-in interface function.
  *
- * Upon error, this function should call session_error() with a
+ * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return NULL.
  * Otherwise, a non-NULL address the plug-in can use to track an
  * individual search instance should be returned.
@@ -71,7 +71,7 @@ void* <plugin>_alloc(void);
  * Param:
  *   space - Details of the parameter space (dimensions, bounds, etc.).
  *
- * Upon error, this function should call session_error() with a
+ * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
@@ -86,7 +86,7 @@ int <plugin>_init(hspace_t* space)
  * Params:
  *   id - Uniquely identifying string for the new client.
  *
- * Upon error, this function should call session_error() with a
+ * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
@@ -102,7 +102,7 @@ int <plugin>_join(const char* id)
  *   key - Configuration key to be modified.
  *   val - New value for configuration key.
  *
- * Upon error, this function should call session_error() with a
+ * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
@@ -119,7 +119,7 @@ int <plugin>_setcfg(const char* key, const char* val)
  *   flow  - Controls how the plug-in manager will process the point.
  *   trial - Candidate point, value, and other auxiliary trial information.
  *
- * Upon error, this function should call session_error() with a
+ * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, this routine should return 0, and the contents of the
  * "flow" variable should be set appropriately.
@@ -138,7 +138,7 @@ int <plugin>_generate(hflow_t* flow, htrial_t* trial)
  *   flow  - Controls how the plug-in manager will process the point.
  *   trial - Candidate point, value, and other auxiliary trial information.
  *
- * Upon error, this function should call session_error() with a
+ * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, this routine should return 0, and the contents of the
  * "flow" variable should be set appropriately.
@@ -152,7 +152,7 @@ int <plugin>_analyze(hflow_t* flow, htrial_t* trial)
 /*
  * Invoked after the tuning session completes.
  *
- * Upon error, this function should call session_error() with a
+ * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */

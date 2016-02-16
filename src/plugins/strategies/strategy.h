@@ -42,7 +42,7 @@ extern "C" {
  *   flow  - Inform plug-in manager of search state.
  *   point - New candidate point to be sent to a client.
  *
- * Upon error, this function should call session_error() with a
+ * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, this routine should return 0, and the contents of the
  * "flow" variable should be set appropriately.
@@ -57,7 +57,7 @@ int strategy_generate(hflow_t* flow, hpoint_t* point);
  *           hint from the rejecting layer.
  *   point - Rejected candidate point to regenerate.
  *
- * Upon error, this function should call session_error() with a
+ * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, this routine should return 0, and the contents of the
  * "flow" variable should be set appropriately.
@@ -70,7 +70,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point);
  * Params:
  *   trial - Observed point/performance pair.
  *
- * Upon error, this function should call session_error() with a
+ * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
@@ -82,7 +82,7 @@ int strategy_analyze(htrial_t* trial);
  * Params:
  *   point - Location to store best performing configuration point data.
  *
- * Upon error, this function should call session_error() with a
+ * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
@@ -99,7 +99,7 @@ int strategy_best(hpoint_t* point);
  * Allocate plug-in state data for a new search instance.  This
  * function is invoked prior to any other plug-in interface function.
  *
- * Upon error, this function should call session_error() with a
+ * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return NULL.
  * Otherwise, a non-NULL address the plug-in can use to track an
  * individual search instance should be returned.
@@ -112,7 +112,7 @@ void* strategy_alloc(void);
  * Param:
  *   space - Details of the parameter space (dimensions, bounds, etc.).
  *
- * Upon error, this function should call session_error() with a
+ * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
@@ -124,7 +124,7 @@ int strategy_init(hspace_t* space);
  * Params:
  *   id - Uniquely identifying string for the new client.
  *
- * Upon error, this function should call session_error() with a
+ * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
@@ -137,7 +137,7 @@ int strategy_join(const char* id);
  *   key - Configuration key to be modified.
  *   val - New value for configuration key.
  *
- * Upon error, this function should call session_error() with a
+ * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
@@ -146,7 +146,7 @@ int strategy_setcfg(const char* key, const char* val);
 /*
  * Invoked on session exit.
  *
- * Upon error, this function should call session_error() with a
+ * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */

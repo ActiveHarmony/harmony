@@ -213,22 +213,22 @@ int strategy_cfg(hspace_t* space)
 {
     const char* cfgval;
 
-    data->omega_bin = hcfg_get(session_cfg, CFGKEY_OC_BIN);
+    data->omega_bin = hcfg_get(search_cfg, CFGKEY_OC_BIN);
     if (!file_exists(data->omega_bin)) {
         data->omega_bin = search_path(data->omega_bin);
         if (!data->omega_bin) {
-            session_error("Could not find Omega Calculator executable. "
-                          "Use " CFGKEY_OC_BIN " to specify its location.");
+            search_error("Could not find Omega Calculator executable. "
+                         "Use " CFGKEY_OC_BIN " to specify its location");
             return -1;
         }
     }
 
-    data->quiet = hcfg_bool(session_cfg, CFGKEY_OC_QUIET);
+    data->quiet = hcfg_bool(search_cfg, CFGKEY_OC_QUIET);
 
-    cfgval = hcfg_get(session_cfg, CFGKEY_OC_CONSTRAINTS);
+    cfgval = hcfg_get(search_cfg, CFGKEY_OC_CONSTRAINTS);
     if (cfgval) {
         if (strlen(cfgval) >= sizeof(data->constraints)) {
-            session_error("Constraint string too long.");
+            search_error("Constraint string too long");
             return -1;
         }
         strncpy(data->constraints, cfgval, sizeof(data->constraints));
@@ -237,17 +237,17 @@ int strategy_cfg(hspace_t* space)
         size_t retval;
         FILE* fp;
 
-        cfgval = hcfg_get(session_cfg, CFGKEY_OC_FILE);
+        cfgval = hcfg_get(search_cfg, CFGKEY_OC_FILE);
         if (!cfgval) {
-            session_error("No constraints specified.  Either "
-                          CFGKEY_OC_CONSTRAINTS " or " CFGKEY_OC_FILE
-                          " must be defined.");
+            search_error("No constraints specified.  Either "
+                         CFGKEY_OC_CONSTRAINTS " or " CFGKEY_OC_FILE
+                         " must be defined");
             return -1;
         }
 
         fp = fopen(cfgval, "r");
         if (!fp) {
-            session_error("Could not open constraint file.");
+            search_error("Could not open constraint file");
             return -1;
         }
 
@@ -256,12 +256,12 @@ int strategy_cfg(hspace_t* space)
         data->constraints[sizeof(data->constraints) - 1] = '\0';
 
         if (retval >= sizeof(data->constraints)) {
-            session_error("Constraint file too large.");
+            search_error("Constraint file too large");
             return -1;
         }
 
         if (fclose(fp) != 0) {
-            session_error("Could not close constraint file.");
+            search_error("Could not close constraint file");
             return -1;
         }
     }
@@ -335,7 +335,7 @@ int build_user_text(void)
         }
 
         if (len >= sizeof(data->user_text)) {
-            session_error("User constraint string overflow");
+            search_error("User constraint string overflow");
             return -1;
         }
         ptr = end;
@@ -419,7 +419,7 @@ int update_bounds(hspace_t* space)
 
             case HVAL_STR:
             default:
-                session_error("Constraint layer cannot handle string types");
+                search_error("Constraint layer cannot handle string types");
                 return -1;
             }
 
@@ -434,7 +434,7 @@ int update_bounds(hspace_t* space)
                 ++retstr;
         }
         if (retval != 2) {
-            session_error("Error parsing Omega Calculator output");
+            search_error("Error parsing Omega Calculator output");
             return -1;
         }
     }
@@ -532,17 +532,17 @@ char* call_omega_calc(const char* cmd)
     child_argv[1] = NULL;
     fd = socket_launch(data->omega_bin, child_argv, &oc_pid);
     if (!fd) {
-        session_error("Could not launch Omega Calculator");
+        search_error("Could not launch Omega Calculator");
         return NULL;
     }
 
     if (socket_write(fd, cmd, strlen(cmd)) < 0) {
-        session_error("Could not send command to Omega Calculator");
+        search_error("Could not send command to Omega Calculator");
         return NULL;
     }
 
     if (shutdown(fd, SHUT_WR) != 0) {
-        session_error("Internal error: Could not shutdown write to Omega");
+        search_error("Internal error: Could not shutdown write to Omega");
         return NULL;
     }
 
@@ -551,8 +551,8 @@ char* call_omega_calc(const char* cmd)
         ptr += count;
         if (ptr == buf + buf_cap) {
             if (array_grow(&buf, &buf_cap, sizeof(char)) != 0) {
-                session_error("Internal error: Could not grow buffer for"
-                              " Omega Calculator input");
+                search_error("Internal error: Could not grow buffer for"
+                             " Omega Calculator input");
                 return NULL;
             }
             ptr = buf + strlen(buf);
@@ -560,17 +560,17 @@ char* call_omega_calc(const char* cmd)
         *ptr = '\0';
     }
     if (count < 0) {
-        session_error("Could not read output from Omega Calculator");
+        search_error("Could not read output from Omega Calculator");
         return NULL;
     }
 
     if (close(fd) != 0) {
-        session_error("Internal error: Could not close Omega socket");
+        search_error("Internal error: Could not close Omega socket");
         return NULL;
     }
 
     if (waitpid(oc_pid, NULL, 0) != oc_pid) {
-        session_error("Internal error: Could not reap Omega process");
+        search_error("Internal error: Could not reap Omega process");
         return NULL;
     }
 

@@ -215,12 +215,12 @@ int strategy_init(hspace_t* space)
         return -1;
 
     if (make_initial_simplex() != 0) {
-        session_error("Could not initialize initial simplex.");
+        search_error("Could not initialize initial simplex");
         return -1;
     }
 
-    if (session_setcfg(CFGKEY_CONVERGED, "0") != 0) {
-        session_error("Could not set " CFGKEY_CONVERGED " config variable.");
+    if (search_setcfg(CFGKEY_CONVERGED, "0") != 0) {
+        search_error("Could not set " CFGKEY_CONVERGED " config variable");
         return -1;
     }
 
@@ -229,7 +229,7 @@ int strategy_init(hspace_t* space)
         return -1;
 
     if (nm_next_vertex() != 0) {
-        session_error("Could not initiate test vertex.");
+        search_error("Could not initiate test vertex");
         return -1;
     }
 
@@ -248,7 +248,7 @@ int strategy_generate(hflow_t* flow, hpoint_t* point)
 
     data->next->id = data->next_id;
     if (vertex_point(data->next, data->space, point) != 0) {
-        session_error("Could not make point from vertex during generate");
+        search_error("Could not make point from vertex during generate");
         return -1;
     }
 
@@ -267,12 +267,12 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
         // Update our state to include the hint point.
         hint->id = point->id;
         if (vertex_set(data->next, data->space, hint) != 0) {
-            session_error("Could not copy hint into simplex during reject");
+            search_error("Could not copy hint into simplex during reject");
             return -1;
         }
 
         if (hpoint_copy(point, hint) != 0) {
-            session_error("Could not return hint during reject");
+            search_error("Could not return hint during reject");
             return -1;
         }
     }
@@ -282,26 +282,26 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
 
         // Allow the algorithm to choose the next point.
         if (nm_algorithm() != 0) {
-            session_error("Nelder-Mead algorithm failure");
+            search_error("Nelder-Mead algorithm failure");
             return -1;
         }
 
         data->next->id = data->next_id;
         if (vertex_point(data->next, data->space, point) != 0) {
-            session_error("Could not copy next point during reject");
+            search_error("Could not copy next point during reject");
             return -1;
         }
     }
     else if (data->reject_type == REJECT_METHOD_RANDOM) {
         // Replace the rejected point with a random point.
         if (vertex_random(data->next, data->space, 1.0) != 0) {
-            session_error("Could not randomize point during reject");
+            search_error("Could not randomize point during reject");
             return -1;
         }
 
         data->next->id = data->next_id;
         if (vertex_point(data->next, data->space, point) != 0) {
-            session_error("Could not copy random point during reject");
+            search_error("Could not copy random point during reject");
             return -1;
         }
     }
@@ -316,7 +316,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
 int strategy_analyze(htrial_t* trial)
 {
     if (trial->point.id != data->next->id) {
-        session_error("Rouge points not supported.");
+        search_error("Rouge points not supported");
         return -1;
     }
     hperf_copy(&data->next->perf, &trial->perf);
@@ -361,18 +361,18 @@ int strategy_analyze(htrial_t* trial)
         data->best_perf.obj[data->phase] > data->next->perf.obj[data->phase])
     {
         if (hperf_copy(&data->best_perf, &data->next->perf) != 0) {
-            session_error("Could not store best performance");
+            search_error("Could not store best performance");
             return -1;
         }
 
         if (hpoint_copy(&data->best, &trial->point) != 0) {
-            session_error("Could not copy best point during analyze");
+            search_error("Could not copy best point during analyze");
             return -1;
         }
     }
 
     if (nm_algorithm() != 0) {
-        session_error("Nelder-Mead algorithm failure");
+        search_error("Nelder-Mead algorithm failure");
         return -1;
     }
 
@@ -388,7 +388,7 @@ int strategy_analyze(htrial_t* trial)
 int strategy_best(hpoint_t* point)
 {
     if (hpoint_copy(point, &data->best) != 0) {
-        session_error("Could not copy best point during strategy_best()");
+        search_error("Could not copy best point during strategy_best()");
         return -1;
     }
     return 0;
@@ -402,7 +402,7 @@ int allocate_structures(void)
     void* newbuf;
 
     if (simplex_init(&data->init_simplex, data->space->len) != 0) {
-        session_error("Could not allocate initial simplex");
+        search_error("Could not allocate initial simplex");
         return -1;
     }
 
@@ -410,19 +410,19 @@ int allocate_structures(void)
         if (hperf_init(&data->init_simplex.vertex[i].perf,
                        data->perf_n) != 0)
         {
-            session_error("Could not allocate initial simplex performance");
+            search_error("Could not allocate initial simplex performance");
             return -1;
         }
     }
 
     if (simplex_init(&data->simplex, data->space->len) != 0) {
-        session_error("Could not allocate base simplex");
+        search_error("Could not allocate base simplex");
         return -1;
     }
 
     for (int i = 0; i < data->simplex.len; ++i) {
         if (hperf_init(&data->simplex.vertex[i].perf, data->perf_n) != 0) {
-            session_error("Could not allocate initial simplex performance");
+            search_error("Could not allocate initial simplex performance");
             return -1;
         }
     }
@@ -430,48 +430,48 @@ int allocate_structures(void)
     if (hpoint_init(&data->best, data->space->len) != 0 ||
         hperf_init(&data->best_perf, data->perf_n) != 0)
     {
-        session_error("Could not allocate best point");
+        search_error("Could not allocate best point");
         return -1;
     }
 
     if (vertex_init(&data->reflect, data->space->len) != 0 ||
         hperf_init(&data->reflect.perf, data->perf_n) != 0)
     {
-        session_error("Could not allocate reflection vertex");
+        search_error("Could not allocate reflection vertex");
         return -1;
     }
 
     if (vertex_init(&data->expand, data->space->len) != 0 ||
         hperf_init(&data->expand.perf, data->perf_n) != 0)
     {
-        session_error("Could not allocate expansion vertex");
+        search_error("Could not allocate expansion vertex");
         return -1;
     }
 
     if (vertex_init(&data->contract, data->space->len) != 0 ||
         hperf_init(&data->contract.perf, data->perf_n) != 0)
     {
-        session_error("Could not allocate contraction vertex");
+        search_error("Could not allocate contraction vertex");
         return -1;
     }
 
     newbuf = realloc(data->leeway, (data->perf_n - 1) * sizeof(*data->leeway));
     if (!newbuf) {
-        session_error("Could not allocate leeway vector");
+        search_error("Could not allocate leeway vector");
         return -1;
     }
     data->leeway = newbuf;
 
     newbuf = realloc(data->span, data->perf_n * sizeof(*data->span));
     if (!newbuf) {
-        session_error("Could not allocate span container");
+        search_error("Could not allocate span container");
         return -1;
     }
     data->span = newbuf;
 
     newbuf = realloc(data->thresh, (data->perf_n - 1) * sizeof(*data->thresh));
     if (!newbuf) {
-        session_error("Could not allocate threshold container");
+        search_error("Could not allocate threshold container");
         return -1;
     }
     data->thresh = newbuf;
@@ -484,27 +484,27 @@ int config_strategy(void)
     const char* cfgstr;
     double cfgval;
 
-    data->loose = hcfg_bool(session_cfg, CFGKEY_ANGEL_LOOSE);
-    data->anchor = hcfg_bool(session_cfg, CFGKEY_ANGEL_ANCHOR);
-    data->samesimplex = hcfg_bool(session_cfg, CFGKEY_ANGEL_SAMESIMPLEX);
+    data->loose = hcfg_bool(search_cfg, CFGKEY_ANGEL_LOOSE);
+    data->anchor = hcfg_bool(search_cfg, CFGKEY_ANGEL_ANCHOR);
+    data->samesimplex = hcfg_bool(search_cfg, CFGKEY_ANGEL_SAMESIMPLEX);
 
-    cfgval = hcfg_real(session_cfg, CFGKEY_ANGEL_MULT);
+    cfgval = hcfg_real(search_cfg, CFGKEY_ANGEL_MULT);
     if (isnan(cfgval)) {
-        session_error("Invalid value for " CFGKEY_ANGEL_MULT
-                      " configuration key.");
+        search_error("Invalid value for " CFGKEY_ANGEL_MULT
+                     " configuration key");
         return -1;
     }
     data->mult = cfgval;
 
-    cfgval = hcfg_real(session_cfg, CFGKEY_INIT_RADIUS);
+    cfgval = hcfg_real(search_cfg, CFGKEY_INIT_RADIUS);
     if (cfgval <= 0 || cfgval > 1) {
-        session_error("Configuration key " CFGKEY_INIT_RADIUS
-                      " must be between 0.0 and 1.0 (exclusive).");
+        search_error("Configuration key " CFGKEY_INIT_RADIUS
+                     " must be between 0.0 and 1.0 (exclusive)");
         return -1;
     }
     data->init_radius = cfgval;
 
-    cfgstr = hcfg_get(session_cfg, CFGKEY_REJECT_METHOD);
+    cfgstr = hcfg_get(search_cfg, CFGKEY_REJECT_METHOD);
     if (cfgstr) {
         if (strcmp(cfgstr, "penalty") == 0) {
             data->reject_type = REJECT_METHOD_PENALTY;
@@ -513,47 +513,47 @@ int config_strategy(void)
             data->reject_type = REJECT_METHOD_RANDOM;
         }
         else {
-            session_error("Invalid value for "
-                          CFGKEY_REJECT_METHOD " configuration key.");
+            search_error("Invalid value for "
+                         CFGKEY_REJECT_METHOD " configuration key");
             return -1;
         }
     }
 
-    cfgval = hcfg_real(session_cfg, CFGKEY_REFLECT);
+    cfgval = hcfg_real(search_cfg, CFGKEY_REFLECT);
     if (isnan(cfgval) || cfgval <= 0.0) {
-        session_error("Configuration key " CFGKEY_REFLECT
-                      " must be positive.");
+        search_error("Configuration key " CFGKEY_REFLECT
+                     " must be positive");
         return -1;
     }
-    data->reflect_val = hcfg_real(session_cfg, CFGKEY_REFLECT);
+    data->reflect_val = hcfg_real(search_cfg, CFGKEY_REFLECT);
 
-    cfgval = hcfg_real(session_cfg, CFGKEY_EXPAND);
+    cfgval = hcfg_real(search_cfg, CFGKEY_EXPAND);
     if (isnan(cfgval) || cfgval <= data->reflect_val) {
-        session_error("Configuration key " CFGKEY_EXPAND
-                      " must be greater than the reflect coefficient.");
+        search_error("Configuration key " CFGKEY_EXPAND
+                     " must be greater than the reflect coefficient");
         return -1;
     }
     data->expand_val = cfgval;
 
-    cfgval = hcfg_real(session_cfg, CFGKEY_CONTRACT);
+    cfgval = hcfg_real(search_cfg, CFGKEY_CONTRACT);
     if (isnan(cfgval) || cfgval <= 0.0 || cfgval >= 1.0) {
-        session_error("Configuration key " CFGKEY_CONTRACT
-                      " must be between 0.0 and 1.0 (exclusive).");
+        search_error("Configuration key " CFGKEY_CONTRACT
+                     " must be between 0.0 and 1.0 (exclusive)");
         return -1;
     }
     data->contract_val = cfgval;
 
-    cfgval = hcfg_real(session_cfg, CFGKEY_SHRINK);
+    cfgval = hcfg_real(search_cfg, CFGKEY_SHRINK);
     if (isnan(cfgval) || cfgval <= 0.0 || cfgval >= 1.0) {
-        session_error("Configuration key " CFGKEY_SHRINK
-                      " must be between 0.0 and 1.0 (exclusive).");
+        search_error("Configuration key " CFGKEY_SHRINK
+                     " must be between 0.0 and 1.0 (exclusive)");
         return -1;
     }
     data->shrink_val = cfgval;
 
-    data->perf_n = hcfg_int(session_cfg, CFGKEY_PERF_COUNT);
+    data->perf_n = hcfg_int(search_cfg, CFGKEY_PERF_COUNT);
     if (data->perf_n < 1) {
-        session_error("Invalid value for " CFGKEY_PERF_COUNT
+        search_error("Invalid value for " CFGKEY_PERF_COUNT
                       " configuration key.");
         return -1;
     }
@@ -569,60 +569,60 @@ int config_strategy(void)
     data->space_size = vertex_norm(&data->expand, &data->reflect,
                                    VERTEX_NORM_L2);
 
-    cfgval = hcfg_real(session_cfg, CFGKEY_DIST_TOL);
+    cfgval = hcfg_real(search_cfg, CFGKEY_DIST_TOL);
     if (!isnan(cfgval)) {
         if (cfgval <= 0.0 || cfgval >= 1.0) {
-            session_error("Configuration key " CFGKEY_DIST_TOL
-                          " must be between 0.0 and 1.0 (exclusive).");
+            search_error("Configuration key " CFGKEY_DIST_TOL
+                         " must be between 0.0 and 1.0 (exclusive)");
             return -1;
         }
         data->dist_tol = cfgval * data->space_size;
 
-        data->tol_cnt = hcfg_int(session_cfg, CFGKEY_TOL_CNT);
+        data->tol_cnt = hcfg_int(search_cfg, CFGKEY_TOL_CNT);
         if (data->tol_cnt < 1) {
-            session_error("Configuration key " CFGKEY_TOL_CNT
-                          " must be greater than zero");
+            search_error("Configuration key " CFGKEY_TOL_CNT
+                         " must be greater than zero");
             return -1;
         }
     }
     else {
         // CFGKEY_DIST_TOL is not defined.  Use the size/fval method.
-        data->fval_tol = hcfg_real(session_cfg, CFGKEY_FVAL_TOL);
+        data->fval_tol = hcfg_real(search_cfg, CFGKEY_FVAL_TOL);
         if (isnan(data->fval_tol)) {
-            session_error("Invalid value for " CFGKEY_FVAL_TOL
-                          " configuration key.");
+            search_error("Invalid value for " CFGKEY_FVAL_TOL
+                         " configuration key");
             return -1;
         }
 
-        cfgval = hcfg_real(session_cfg, CFGKEY_SIZE_TOL);
+        cfgval = hcfg_real(search_cfg, CFGKEY_SIZE_TOL);
         if (isnan(cfgval) || cfgval <= 0.0 || cfgval >= 1.0) {
-            session_error("Configuration key " CFGKEY_SIZE_TOL
-                          " must be between 0.0 and 1.0 (exclusive).");
+            search_error("Configuration key " CFGKEY_SIZE_TOL
+                         " must be between 0.0 and 1.0 (exclusive)");
             return -1;
         }
         data->size_tol = cfgval * data->space_size;
     }
 
-    if (hcfg_get(session_cfg, CFGKEY_ANGEL_LEEWAY)) {
-        if (hcfg_arr_len(session_cfg, CFGKEY_ANGEL_LEEWAY) !=
+    if (hcfg_get(search_cfg, CFGKEY_ANGEL_LEEWAY)) {
+        if (hcfg_arr_len(search_cfg, CFGKEY_ANGEL_LEEWAY) !=
             data->perf_n - 1)
         {
-            session_error("Incorrect number of leeway values provided.");
+            search_error("Incorrect number of leeway values provided");
             return -1;
         }
 
         for (int i = 0; i < data->perf_n - 1; ++i) {
-            data->leeway[i] = hcfg_arr_real(session_cfg,
+            data->leeway[i] = hcfg_arr_real(search_cfg,
                                             CFGKEY_ANGEL_LEEWAY, i);
             if (isnan(data->leeway[i])) {
-                session_error("Invalid value for " CFGKEY_ANGEL_LEEWAY
-                              " configuration key.");
+                search_error("Invalid value for " CFGKEY_ANGEL_LEEWAY
+                             " configuration key");
                 return -1;
             }
         }
     }
     else {
-        session_error(CFGKEY_ANGEL_LEEWAY " must be defined.");
+        search_error(CFGKEY_ANGEL_LEEWAY " must be defined");
         return -1;
     }
 
@@ -699,7 +699,7 @@ void check_convergence(void)
   converged:
     if (data->phase == data->perf_n - 1) {
         data->state = SIMPLEX_STATE_CONVERGED;
-        session_setcfg(CFGKEY_CONVERGED, "1");
+        search_setcfg(CFGKEY_CONVERGED, "1");
     }
     else {
         increment_phase();
@@ -721,20 +721,20 @@ int increment_phase(void)
 
     char intbuf[16];
     snprintf(intbuf, sizeof(intbuf), "%d", data->phase);
-    session_setcfg(CFGKEY_ANGEL_PHASE, intbuf);
+    search_setcfg(CFGKEY_ANGEL_PHASE, intbuf);
 
     // Use the centroid to store the previous phase's best vertex.
     if (vertex_copy(&data->centroid,
                     &data->simplex.vertex[data->index_best]) != 0)
     {
-        session_error("Could not copy best vertex during phase increment");
+        search_error("Could not copy best vertex during phase increment");
         return -1;
     }
 
     if (!data->samesimplex) {
         // Re-initialize the initial simplex, if needed.
         if (make_initial_simplex() != 0) {
-            session_error("Could not reinitialize the initial simplex.");
+            search_error("Could not reinitialize the initial simplex");
             return -1;
         }
     }
@@ -757,7 +757,7 @@ int increment_phase(void)
             if (vertex_copy(&data->simplex.vertex[idx],
                             &data->centroid) != 0)
             {
-                session_error("Could not anchor simplex to best point");
+                search_error("Could not anchor simplex to best point");
                 return -1;
             }
         }
@@ -973,16 +973,16 @@ int nm_next_vertex(void)
 
 int make_initial_simplex(void)
 {
-    const char* cfgval = hcfg_get(session_cfg, CFGKEY_INIT_POINT);
+    const char* cfgval = hcfg_get(search_cfg, CFGKEY_INIT_POINT);
     if (cfgval) {
         if (vertex_parse(&data->init_point, data->space, cfgval) != 0) {
-            session_error("Could not convert initial point to vertex");
+            search_error("Could not convert initial point to vertex");
             return -1;
         }
     }
     else {
         if (vertex_center(&data->init_point, data->space) != 0) {
-            session_error("Could not create central vertex");
+            search_error("Could not create central vertex");
             return -1;
         }
     }
@@ -990,7 +990,7 @@ int make_initial_simplex(void)
     if (simplex_set(&data->init_simplex, data->space,
                     &data->init_point, data->init_radius) != 0)
     {
-        session_error("Could not generate initial simplex");
+        search_error("Could not generate initial simplex");
         return -1;
     }
 
