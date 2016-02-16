@@ -47,8 +47,9 @@ hcfg_info_t plugin_keyinfo[] = {
 /*
  * Structure to hold all data needed by an individual search instance.
  *
- * To support multiple parallel search sessions, no global variables
- * should be defined or used in this plug-in layer.
+ * To support multiple parallel search instances, no global variables
+ * should be defined or used in this plug-in layer.  They should
+ * instead be defined as a part of this structure.
  */
 typedef struct data {
     // Per-search variables go here.
@@ -63,7 +64,7 @@ typedef struct data {
  * Otherwise, a non-NULL address the plug-in can use to track an
  * individual search instance should be returned.
  */
-void* <plugin>_alloc(void);
+data_t* <plugin>_alloc(void);
 
 /*
  * Initialize (or re-initialize) data for this search instance.
@@ -75,7 +76,7 @@ void* <plugin>_alloc(void);
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int <plugin>_init(hspace_t* space)
+int <plugin>_init(data_t* data, hspace_t* space)
 {
     return 0;
 }
@@ -84,13 +85,13 @@ int <plugin>_init(hspace_t* space)
  * Invoked when a client joins the tuning session.
  *
  * Params:
- *   id - Uniquely identifying string for the new client.
+ *   client - Uniquely identifying string for the new client.
  *
  * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int <plugin>_join(const char* id)
+int <plugin>_join(data_t* data, const char* client)
 {
     return 0;
 }
@@ -106,7 +107,7 @@ int <plugin>_join(const char* id)
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int <plugin>_setcfg(const char* key, const char* val)
+int <plugin>_setcfg(data_t* data, const char* key, const char* val)
 {
     return 0;
 }
@@ -124,7 +125,7 @@ int <plugin>_setcfg(const char* key, const char* val)
  * Otherwise, this routine should return 0, and the contents of the
  * "flow" variable should be set appropriately.
  */
-int <plugin>_generate(hflow_t* flow, htrial_t* trial)
+int <plugin>_generate(data_t* data, hflow_t* flow, htrial_t* trial)
 {
     flow->status = HFLOW_ACCEPT;
     return 0;
@@ -143,7 +144,7 @@ int <plugin>_generate(hflow_t* flow, htrial_t* trial)
  * Otherwise, this routine should return 0, and the contents of the
  * "flow" variable should be set appropriately.
  */
-int <plugin>_analyze(hflow_t* flow, htrial_t* trial)
+int <plugin>_analyze(data_t* data, hflow_t* flow, htrial_t* trial)
 {
     flow->status = HFLOW_ACCEPT;
     return 0;
@@ -156,7 +157,7 @@ int <plugin>_analyze(hflow_t* flow, htrial_t* trial)
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int <plugin>_fini(void)
+int <plugin>_fini(data_t* data)
 {
     return 0;
 }

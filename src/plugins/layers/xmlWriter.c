@@ -76,8 +76,9 @@ hcfg_info_t plugin_keyinfo[] = {
 /*
  * Structure to hold all data needed by an individual search instance.
  *
- * To support multiple parallel search sessions, no global variables
- * should be defined or used in this plug-in layer.
+ * To support multiple parallel search instances, no global variables
+ * should be defined or used in this plug-in layer.  They should
+ * instead be defined as a part of this structure.
  */
 typedef struct data {
     hspace_t* space;
@@ -87,13 +88,19 @@ typedef struct data {
     int paramNum;
 } data_t;
 
-static data_t* data;
-
 /*
  * Internal helper function prototypes.
  */
-static int harmony_xmlWriteAppName(const char* appName);
-static int harmony_xmlWriteParamInfo(void);
+static int harmony_xmlWriteAppName(data_t* data, const char* appName);
+static int harmony_xmlWriteParamInfo(data_t* data);
+/*
+static int harmony_xmlWriteNodeInfo(data_t* data, int clientID,
+                                    char* nodeinfo, char* sysName,
+                                    char* release, char* machine,
+                                    int core_num, char* cpu_vendor,
+                                    char* cpu_model, char* cpu_freq,
+                                    char* cache_size);
+*/
 
 /*
  * Allocate memory for a new search instance.
@@ -110,7 +117,7 @@ void* xmlWriter_alloc(void)
 /*
  * Initialize (or re-initialize) data for this search instance.
  */
-int xmlWriter_init(hspace_t* space)
+int xmlWriter_init(data_t* data, hspace_t* space)
 {
     int rc;
     const char* tmpstr;
@@ -208,20 +215,20 @@ int xmlWriter_init(hspace_t* space)
     data->space = space;
 
     // Write appName.
-    if (harmony_xmlWriteAppName(space->name) != 0)
+    if (harmony_xmlWriteAppName(data, space->name) != 0)
         return -1;
 
     // Write nodeInfo
 
     // Write param info.
     data->paramNum = space->len;
-    if (harmony_xmlWriteParamInfo() != 0)
+    if (harmony_xmlWriteParamInfo(data) != 0)
         return -1;
 
     return 0;
 }
 
-int xmlWriter_generate(hflow_t* flow, htrial_t* trial)
+int xmlWriter_generate(data_t* data, hflow_t* flow, htrial_t* trial)
 {
     int i;
 
@@ -307,19 +314,20 @@ int xmlWriter_generate(hflow_t* flow, htrial_t* trial)
     return 0;
 }
 
-int xmlWriter_fini(void)
+int xmlWriter_fini(data_t* data)
 {
     free(data);
-    data = NULL;
     return 0;
 }
 
 /*
  * Internal helper function implementation.
  */
-int harmony_xmlWriteNodeInfo(int clientID, char* nodeinfo, char* sysName,
-                             char* release, char* machine, int core_num,
-                             char* cpu_vendor, char* cpu_model,
+
+/*
+int harmony_xmlWriteNodeInfo(data_t* data, int clientID, char* nodeinfo,
+                             char* sysName, char* release, char* machine,
+                             int core_num, char* cpu_vendor, char* cpu_model,
                              char* cpu_freq, char* cache_size)
 {
     xmlDoc* doc;
@@ -375,8 +383,9 @@ int harmony_xmlWriteNodeInfo(int clientID, char* nodeinfo, char* sysName,
     }
     return 0;
 }
+*/
 
-int harmony_xmlWriteAppName(const char* appName)
+int harmony_xmlWriteAppName(data_t* data, const char* appName)
 {
     xmlDoc* doc;
     xmlNode* curNode;
@@ -408,7 +417,7 @@ int harmony_xmlWriteAppName(const char* appName)
  * {Name Min Max Step Name Min Max Step ......}  And then parse this
  * formation and put it into the Metadata section of the xml file
  */
-int harmony_xmlWriteParamInfo(void)
+int harmony_xmlWriteParamInfo(data_t* data)
 {
     int i;
 

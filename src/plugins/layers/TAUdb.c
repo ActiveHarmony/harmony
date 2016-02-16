@@ -60,7 +60,7 @@ const char harmony_layer_name[] = "TAUdb";
  * Configuration variables used in this plugin.
  * These will automatically be registered by session-core upon load.
  */
-hcfg_info_t plugin_keyinfo[] = {
+const hcfg_info_t plugin_keyinfo[] = {
     { CFGKEY_TAUDB_NAME, NULL,
       "Name of the PostgreSQL database." },
     { CFGKEY_TAUDB_STORE_METHOD, "one_time",
@@ -81,8 +81,9 @@ typedef struct cinfo {
 /*
  * Structure to hold all data needed by an individual search instance.
  *
- * To support multiple parallel search sessions, no global variables
- * should be defined or used in this plug-in layer.
+ * To support multiple parallel search instances, no global variables
+ * should be defined or used in this plug-in layer.  They should
+ * instead be defined as a part of this structure.
  */
 typedef struct data {
     hspace_t* space;
@@ -101,28 +102,26 @@ typedef struct data {
     int total_record_num;
 } data_t;
 
-static data_t* data;
-
 /*
  * Internal helper function prototypes.
  */
-static int client_idx(void);
-static int save_timer_parameter(TAUDB_TIMER* timer, htrial_t* trial);
-static int harmony_taudb_trial_init(const char* appName,
-                                    const char* trialname);
-static TAUDB_THREAD* harmony_taudb_create_thread(int threadNum);
-static void harmony_taudb_get_secondary_metadata(TAUDB_THREAD* thread,
-                                                 char* opsys, char* machine,
-                                                 char* release, char* hostname,
-                                                 char* procnum,
-                                                 char* cpuvendor,
-                                                 char* cpumodel, char* clkfreq,
-                                                 char* cachesize);
+static int client_idx(data_t* data);
+static int save_timer_parameter(data_t* data,
+                                TAUDB_TIMER* timer, htrial_t* trial);
+static int init_tau_trial(data_t* data,
+                          const char* appName, const char* trialname);
+static TAUDB_THREAD* create_tau_thread(data_t* data, int threadNum);
+static void get_tau_metadata(data_t* data, TAUDB_THREAD* thread,
+                             char* opsys, char* machine,
+                             char* release, char* hostname,
+                             char* procnum, char* cpuvendor,
+                             char* cpumodel, char* clkfreq,
+                             char* cachesize);
 
 /*
  * Allocate memory for a new search instance.
  */
-void* TAUdb_alloc(void)
+data_t* TAUdb_alloc(void)
 {
     data_t* retval = calloc(1, sizeof(*retval));
     if (!retval)
@@ -134,7 +133,7 @@ void* TAUdb_alloc(void)
 /*
  * Initialize (or re-initialize) data for this search instance.
  */
-int TAUdb_init(hspace_t* space)
+int TAUdb_init(data_t* data, hspace_t* space)
 {
     char* tmpstr;
 
@@ -151,7 +150,7 @@ int TAUdb_init(hspace_t* space)
     taudb_check_connection(data->connection);
 
     // Initializing trial.
-    if (harmony_taudb_trial_init(space->name, space->name) != 0) {
+    if (init_tau_trial(data, space->name, space->name) != 0) {
         search_error("Failed to create TAUdb trial");
         return -1;
     }
@@ -184,7 +183,7 @@ int TAUdb_init(hspace_t* space)
     }
     data->total_record_num = hcfg_int(search_cfg, CFGKEY_TAUDB_STORE_NUM);
 
-    data->thread = harmony_taudb_create_thread(data->client_max);
+    data->thread = create_tau_thread(data, data->client_max);
 
     // Client id map to thread id.
     data->client = malloc(data->client_max * sizeof(cinfo_t));
@@ -198,7 +197,7 @@ int TAUdb_init(hspace_t* space)
     return 0;
 }
 
-int TAUdb_join(const char* id)
+int TAUdb_join(data_t* data, const char* client)
 {
     int idx;
     char node_name[REG_STR_LEN];
@@ -211,26 +210,25 @@ int TAUdb_join(const char* id)
     char cpu_freq[REG_STR_LEN];
     char cache_size[REG_STR_LEN];
 
-    idx = client_idx();
+    idx = client_idx(data);
     if (idx < 0)
         return -1;
 
-    sscanf(id, "%[^$$]$$%[^$$]$$%[^$$]$$%[^$$]$$"
+    sscanf(client, "%[^$$]$$%[^$$]$$%[^$$]$$%[^$$]$$"
            "%[0-9]$$%[^$$]$$%[^$$]$$%[^$$]$$%[^$$]\n",
            node_name, sys_name, release, machine,
            proc_num, cpu_vendor, cpu_model, cpu_freq, cache_size);
 
-    harmony_taudb_get_secondary_metadata(&data->thread[idx],
-                                         sys_name, machine, release,
-                                         node_name, proc_num, cpu_vendor,
-                                         cpu_model, cpu_freq, cache_size);
+    get_tau_metadata(data, &data->thread[idx], sys_name, machine, release,
+                     node_name, proc_num, cpu_vendor, cpu_model, cpu_freq,
+                     cache_size);
     return 0;
 }
 
 /* Invoked upon client reports performance
  * This routine stores the reported performance to TAUdb
  */
-int TAUdb_analyze(hflow_t* flow, htrial_t* ah_trial)
+int TAUdb_analyze(data_t* data, hflow_t* flow, htrial_t* ah_trial)
 {
     int idx;
     char timer_name[REG_STR_LEN];
@@ -244,7 +242,7 @@ int TAUdb_analyze(hflow_t* flow, htrial_t* ah_trial)
     TAUDB_TIMER_CALL_DATA* timer_call_data = taudb_create_timer_call_data(1);
     //TAUDB_TIMER_GROUP* timer_group = taudb_create_timer_groups(1);
 
-    idx = client_idx();
+    idx = client_idx(data);
     if (idx < 0)
         return -1;
 
@@ -280,7 +278,7 @@ int TAUdb_analyze(hflow_t* flow, htrial_t* ah_trial)
     timer_value->sum_exclusive_squared = 0.0;
     taudb_add_timer_value_to_timer_call_data(timer_call_data, timer_value);
 
-    if (save_timer_parameter(timer, ah_trial) != 0)
+    if (save_timer_parameter(data, timer, ah_trial) != 0)
         return -1;
 
     // Save the trial.
@@ -309,7 +307,7 @@ int TAUdb_analyze(hflow_t* flow, htrial_t* ah_trial)
 /*
  * Finalize a trial.
  */
-int TAUdb_fini(void)
+int TAUdb_fini(data_t* data)
 {
     boolean update = 1;
     boolean cascade = 1;
@@ -324,15 +322,13 @@ int TAUdb_fini(void)
     free(data->client);
 
     free(data);
-    data = NULL;
-
     return 0;
 }
 
 /*
  * Internal helper function implementation.
  */
-int client_idx(void)
+int client_idx(data_t* data)
 {
     int i;
     const char* curr_id;
@@ -361,7 +357,7 @@ int client_idx(void)
     return i;
 }
 
-int save_timer_parameter(TAUDB_TIMER* timer, htrial_t* trial)
+int save_timer_parameter(data_t* data, TAUDB_TIMER* timer, htrial_t* trial)
 {
     int i;
     char buf[32];
@@ -402,7 +398,7 @@ int save_timer_parameter(TAUDB_TIMER* timer, htrial_t* trial)
 /*
  * Initialize a trial.
  */
-int harmony_taudb_trial_init(const char* appName, const char* trialname)
+int init_tau_trial(data_t* data, const char* appName, const char* trialname)
 {
     char startTime[32];
     struct tm* current;
@@ -444,7 +440,7 @@ int harmony_taudb_trial_init(const char* appName, const char* trialname)
     return 0;
 }
 
-TAUDB_THREAD* harmony_taudb_create_thread(int num)
+TAUDB_THREAD* create_tau_thread(data_t* data, int num)
 {
     //int ctr = 0;
     data->thread = taudb_create_threads(num);
@@ -461,11 +457,10 @@ TAUDB_THREAD* harmony_taudb_create_thread(int num)
 /*
  * Get per client metadata.
  */
-void harmony_taudb_get_secondary_metadata(TAUDB_THREAD* thr, char* opsys,
-                                          char* machine, char* release,
-                                          char* hostname, char* procnum,
-                                          char* cpuvendor, char* cpumodel,
-                                          char* clkfreq, char* cachesize)
+void get_tau_metadata(data_t* data, TAUDB_THREAD* thr, char* opsys,
+                      char* machine, char* release, char* hostname,
+                      char* procnum, char* cpuvendor, char* cpumodel,
+                      char* clkfreq, char* cachesize)
 {
     //TAUDB_SECONDARY_METADATA* cur = taudb_create_secondary_metadata(1);
     TAUDB_SECONDARY_METADATA* sm = taudb_create_secondary_metadata(1);

@@ -58,19 +58,18 @@ hcfg_info_t plugin_keyinfo[] = {
 /*
  * Structure to hold all data needed by an individual search instance.
  *
- * To support multiple parallel search sessions, no global variables
- * should be defined or used in this plug-in layer.
+ * To support multiple parallel search instances, no global variables
+ * should be defined or used in this plug-in layer.  They should
+ * instead be defined as a part of this structure.
  */
 typedef struct data {
     FILE* fd;
 } data_t;
 
-static data_t* data;
-
 /*
  * Allocate memory for a new search instance.
  */
-void* logger_alloc(void)
+data_t* logger_alloc(void)
 {
     data_t* retval = calloc(1, sizeof(*retval));
     if (!retval)
@@ -82,7 +81,7 @@ void* logger_alloc(void)
 /*
  * Initialize (or re-initialize) data for this search instance.
  */
-int logger_init(hspace_t* space)
+int logger_init(data_t* data, hspace_t* space)
 {
     const char* filename = hcfg_get(search_cfg, CFGKEY_LOG_FILE);
     const char* mode     = hcfg_get(search_cfg, CFGKEY_LOG_MODE);
@@ -106,13 +105,13 @@ int logger_init(hspace_t* space)
     return 0;
 }
 
-int logger_join(const char* id)
+int logger_join(data_t* data, const char* client)
 {
-    fprintf(data->fd, "Client \"%s\" joined the tuning session.\n", id);
+    fprintf(data->fd, "Client \"%s\" joined the tuning session.\n", client);
     return 0;
 }
 
-int logger_analyze(hflow_t* flow, htrial_t* trial)
+int logger_analyze(data_t* data, hflow_t* flow, htrial_t* trial)
 {
     fprintf(data->fd, "Point #%d: (", trial->point.id);
     for (int i = 0; i < trial->point.len; ++i) {
@@ -147,7 +146,7 @@ int logger_analyze(hflow_t* flow, htrial_t* trial)
     return 0;
 }
 
-int logger_fini(void)
+int logger_fini(data_t* data)
 {
     fprintf(data->fd, "*\n");
     fprintf(data->fd, "* End tuning session.\n");
@@ -159,6 +158,5 @@ int logger_fini(void)
     }
 
     free(data);
-    data = NULL;
     return 0;
 }

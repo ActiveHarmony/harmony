@@ -47,7 +47,7 @@ const char harmony_layer_name[] = "agg";
  * Configuration variables used in this plugin.
  * These will automatically be registered by session-core upon load.
  */
-hcfg_info_t plugin_keyinfo[] = {
+const hcfg_info_t plugin_keyinfo[] = {
     { CFGKEY_AGG_FUNC, NULL,
       "Aggregation function to use.  Valid values are min, max, mean, "
       "and median." },
@@ -74,8 +74,9 @@ typedef enum aggfunc {
 /*
  * Structure to hold all data needed by an individual search instance.
  *
- * To support multiple parallel search sessions, no global variables
- * should be defined or used in this plug-in layer.
+ * To support multiple parallel search instances, no global variables
+ * should be defined or used in this plug-in layer.  They should
+ * instead be defined as a part of this structure.
  */
 typedef struct data {
     aggfunc_t agg_type;
@@ -84,19 +85,17 @@ typedef struct data {
     int       slist_len;
 } data_t;
 
-static data_t* data;
-
 /*
  * Internal helper function prototypes.
  */
-static void perf_mean(hperf_t* dst, hperf_t* src, int count);
+static void perf_mean(data_t* data, hperf_t* dst, hperf_t* src, int count);
 static int  perf_sort(const void* _a, const void* _b);
-static int  add_storage(void);
+static int  add_storage(data_t* data);
 
 /*
  * Allocate memory for a new search instance.
  */
-void* agg_alloc(void)
+data_t* agg_alloc(void)
 {
     data_t* retval = calloc(1, sizeof(*retval));
     if (!retval)
@@ -108,7 +107,7 @@ void* agg_alloc(void)
 /*
  * Initialize (or re-initialize) data for this search instance.
  */
-int agg_init(hspace_t* space)
+int agg_init(data_t* data, hspace_t* space)
 {
     const char* val;
 
@@ -134,10 +133,10 @@ int agg_init(hspace_t* space)
 
     data->slist = NULL;
     data->slist_len = 0;
-    return add_storage();
+    return add_storage(data);
 }
 
-int agg_analyze(hflow_t* flow, htrial_t* trial)
+int agg_analyze(data_t* data, hflow_t* flow, htrial_t* trial)
 {
     int i;
     store_t* store;
@@ -146,7 +145,7 @@ int agg_analyze(hflow_t* flow, htrial_t* trial)
         if (data->slist[i].id == trial->point.id || data->slist[i].id == -1)
             break;
     }
-    if (i == data->slist_len && add_storage() != 0)
+    if (i == data->slist_len && add_storage(data) != 0)
         return -1;
 
     store = &data->slist[i];
@@ -179,7 +178,7 @@ int agg_analyze(hflow_t* flow, htrial_t* trial)
         break;
 
     case AGG_MEAN:
-        perf_mean(&trial->perf, store->trial, data->trial_per_point);
+        perf_mean(data, &trial->perf, store->trial, data->trial_per_point);
         break;
 
     case AGG_MEDIAN:
@@ -189,7 +188,7 @@ int agg_analyze(hflow_t* flow, htrial_t* trial)
         if (i % 2)
             hperf_copy(&trial->perf, &store->trial[i]);
         else
-            perf_mean(&trial->perf, &store->trial[i], 2);
+            perf_mean(data, &trial->perf, &store->trial[i], 2);
         break;
 
     default:
@@ -203,7 +202,7 @@ int agg_analyze(hflow_t* flow, htrial_t* trial)
     return 0;
 }
 
-int agg_fini(void)
+int agg_fini(data_t* data)
 {
     for (int i = 0; i < data->slist_len; ++i) {
         for (int j = 0; j < data->trial_per_point; ++j)
@@ -213,14 +212,13 @@ int agg_fini(void)
     free(data->slist);
 
     free(data);
-    data = NULL;
     return 0;
 }
 
 /*
  * Internal helper function prototypes.
  */
-void perf_mean(hperf_t* dst, hperf_t* src, int count)
+void perf_mean(data_t* data, hperf_t* dst, hperf_t* src, int count)
 {
     int i, j;
 
@@ -245,7 +243,7 @@ int perf_sort(const void* _a, const void* _b)
     return (a > b) - (a < b);
 }
 
-int add_storage(void)
+int add_storage(data_t* data)
 {
     int prev_len = data->slist_len;
 

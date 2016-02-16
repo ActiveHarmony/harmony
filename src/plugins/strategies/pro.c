@@ -102,7 +102,7 @@ typedef enum simplex_state {
 /*
  * Structure to hold data for an individual PRO search instance.
  */
-typedef struct data {
+struct data {
     hspace_t* space;
     hpoint_t  best;
     hperf_t   best_perf;
@@ -132,23 +132,21 @@ typedef struct data {
     int        next_id;
     int        send_idx;
     int        reported;
-} data_t;
-
-static data_t *data;
+};
 
 /*
  * Internal helper function prototypes.
  */
-static int config_strategy(void);
-static int pro_algorithm(void);
-static int pro_next_state(void);
-static int pro_next_simplex(void);
-static int check_convergence(void);
+static int config_strategy(data_t* data);
+static int pro_algorithm(data_t* data);
+static int pro_next_state(data_t* data);
+static int pro_next_simplex(data_t* data);
+static int check_convergence(data_t* data);
 
 /*
  * Allocate memory for a new search instance.
  */
-void* strategy_alloc(void)
+data_t* strategy_alloc(void)
 {
     data_t* retval = calloc(1, sizeof(*retval));
     if (!retval)
@@ -162,7 +160,7 @@ void* strategy_alloc(void)
 /*
  * Initialize (or re-initialize) data for this search instance.
  */
-int strategy_init(hspace_t* space)
+int strategy_init(data_t* data, hspace_t* space)
 {
     if (data->space != space) {
         if (simplex_init(&data->simplex, space->len) != 0) {
@@ -182,7 +180,7 @@ int strategy_init(hspace_t* space)
         data->space = space;
     }
 
-    if (config_strategy() != 0)
+    if (config_strategy(data) != 0)
         return -1;
 
     if (simplex_set(&data->simplex, space,
@@ -199,7 +197,7 @@ int strategy_init(hspace_t* space)
 
     data->send_idx = 0;
     data->state = SIMPLEX_STATE_INIT;
-    if (pro_next_simplex() != 0) {
+    if (pro_next_simplex(data) != 0) {
         search_error("Could not initiate the simplex");
         return -1;
     }
@@ -211,7 +209,7 @@ int strategy_init(hspace_t* space)
 /*
  * Generate a new candidate configuration point.
  */
-int strategy_generate(hflow_t* flow, hpoint_t* point)
+int strategy_generate(data_t* data, hflow_t* flow, hpoint_t* point)
 {
     if (data->send_idx > data->space->len ||
         data->state == SIMPLEX_STATE_CONVERGED)
@@ -237,7 +235,7 @@ int strategy_generate(hflow_t* flow, hpoint_t* point)
 /*
  * Regenerate a point deemed invalid by a later plug-in.
  */
-int strategy_rejected(hflow_t* flow, hpoint_t* point)
+int strategy_rejected(data_t* data, hflow_t* flow, hpoint_t* point)
 {
     int reject_idx;
     hpoint_t* hint = &flow->point;
@@ -276,7 +274,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
             ++data->reported;
 
             if (data->reported > data->space->len) {
-                if (pro_algorithm() != 0) {
+                if (pro_algorithm(data) != 0) {
                     search_error("PRO algorithm failure");
                     return -1;
                 }
@@ -324,7 +322,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
 /*
  * Analyze the observed performance for this configuration point.
  */
-int strategy_analyze(htrial_t* trial)
+int strategy_analyze(data_t* data, htrial_t* trial)
 {
     int report_idx;
     for (report_idx = 0; report_idx <= data->space->len; ++report_idx) {
@@ -343,7 +341,7 @@ int strategy_analyze(htrial_t* trial)
         data->best_test = report_idx;
 
     if (data->reported > data->space->len) {
-        if (pro_algorithm() != 0) {
+        if (pro_algorithm(data) != 0) {
             search_error("PRO algorithm failure");
             return -1;
         }
@@ -369,7 +367,7 @@ int strategy_analyze(htrial_t* trial)
 /*
  * Return the best performing point thus far in the search.
  */
-int strategy_best(hpoint_t* point)
+int strategy_best(data_t* data, hpoint_t* point)
 {
     if (hpoint_copy(point, &data->best) != 0) {
         search_error("Could not copy best point during strategy_best()");
@@ -381,7 +379,7 @@ int strategy_best(hpoint_t* point)
 /*
  * Internal helper function implementation.
  */
-int config_strategy(void)
+int config_strategy(data_t* data)
 {
     const char* cfgstr;
     double cfgval;
@@ -473,21 +471,21 @@ int config_strategy(void)
     return 0;
 }
 
-int pro_algorithm(void)
+int pro_algorithm(data_t* data)
 {
     do {
         if (data->state == SIMPLEX_STATE_CONVERGED)
             break;
 
-        if (pro_next_state() != 0)
+        if (pro_next_state(data) != 0)
             return -1;
 
         if (data->state == SIMPLEX_STATE_REFLECT) {
-            if (check_convergence() != 0)
+            if (check_convergence(data) != 0)
                 return -1;
         }
 
-        if (pro_next_simplex() != 0)
+        if (pro_next_simplex(data) != 0)
             return -1;
 
     } while (!simplex_inbounds(data->next, data->space));
@@ -495,7 +493,7 @@ int pro_algorithm(void)
     return 0;
 }
 
-int pro_next_state(void)
+int pro_next_state(data_t* data)
 {
     switch (data->state) {
     case SIMPLEX_STATE_INIT:
@@ -581,7 +579,7 @@ int pro_next_state(void)
     return 0;
 }
 
-int pro_next_simplex(void)
+int pro_next_simplex(data_t* data)
 {
     switch (data->state) {
     case SIMPLEX_STATE_INIT:
@@ -647,7 +645,7 @@ int pro_next_simplex(void)
     return 0;
 }
 
-int check_convergence(void)
+int check_convergence(data_t* data)
 {
     if (simplex_centroid(&data->simplex, &data->centroid) != 0)
         return -1;

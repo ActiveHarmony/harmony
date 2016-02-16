@@ -113,7 +113,7 @@ typedef enum simplex_state {
 /*
  * Structure to hold data for an individual Nelder-Mead search instance.
  */
-typedef struct data {
+struct data {
     hspace_t* space;
     hpoint_t  best;
     hperf_t   best_perf;
@@ -143,24 +143,22 @@ typedef struct data {
     int index_worst;
     int index_curr; // For INIT or SHRINK.
     int next_id;
-} data_t;
-
-static data_t *data;
+};
 
 /*
  * Internal helper function prototypes.
  */
-static void check_convergence(void);
-static int  config_strategy(void);
-static int  nm_algorithm(void);
-static int  nm_state_transition(void);
-static int  nm_next_vertex(void);
-static int  update_centroid(void);
+static void check_convergence(data_t* data);
+static int  config_strategy(data_t* data);
+static int  nm_algorithm(data_t* data);
+static int  nm_state_transition(data_t* data);
+static int  nm_next_vertex(data_t* data);
+static int  update_centroid(data_t* data);
 
 /*
  * Allocate memory for a new search instance.
  */
-void* strategy_alloc(void)
+data_t* strategy_alloc(void)
 {
     data_t* retval = calloc(1, sizeof(*retval));
     if (!retval)
@@ -174,10 +172,10 @@ void* strategy_alloc(void)
 /*
  * Initialize (or re-initialize) data for this search instance.
  */
-int strategy_init(hspace_t* space)
+int strategy_init(data_t* data, hspace_t* space)
 {
     data->space = space;
-    if (config_strategy() != 0)
+    if (config_strategy(data) != 0)
         return -1;
 
     if (simplex_set(&data->simplex, space,
@@ -194,7 +192,7 @@ int strategy_init(hspace_t* space)
 
     data->index_curr = 0;
     data->state = SIMPLEX_STATE_INIT;
-    if (nm_next_vertex() != 0) {
+    if (nm_next_vertex(data) != 0) {
         search_error("Could not initiate test vertex");
         return -1;
     }
@@ -205,7 +203,7 @@ int strategy_init(hspace_t* space)
 /*
  * Generate a new candidate configuration point.
  */
-int strategy_generate(hflow_t* flow, hpoint_t* point)
+int strategy_generate(data_t* data, hflow_t* flow, hpoint_t* point)
 {
     if (data->next->id == data->next_id) {
         flow->status = HFLOW_WAIT;
@@ -225,7 +223,7 @@ int strategy_generate(hflow_t* flow, hpoint_t* point)
 /*
  * Regenerate a point deemed invalid by a later plug-in.
  */
-int strategy_rejected(hflow_t* flow, hpoint_t* point)
+int strategy_rejected(data_t* data, hflow_t* flow, hpoint_t* point)
 {
     hpoint_t* hint = &flow->point;
 
@@ -247,7 +245,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
         // allow the algorithm to determine the next point to try.
         //
         hperf_reset(&data->next->perf);
-        if (nm_algorithm() != 0) {
+        if (nm_algorithm(data) != 0) {
             search_error("Nelder-Mead algorithm failure");
             return -1;
         }
@@ -279,7 +277,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
 /*
  * Analyze the observed performance for this configuration point.
  */
-int strategy_analyze(htrial_t* trial)
+int strategy_analyze(data_t* data, htrial_t* trial)
 {
     if (trial->point.id != data->next->id)
         return 0;
@@ -289,7 +287,7 @@ int strategy_analyze(htrial_t* trial)
         return -1;
     }
 
-    if (nm_algorithm() != 0) {
+    if (nm_algorithm(data) != 0) {
         search_error("Nelder-Mead algorithm failure");
         return -1;
     }
@@ -316,7 +314,7 @@ int strategy_analyze(htrial_t* trial)
 /*
  * Return the best performing point thus far in the search.
  */
-int strategy_best(hpoint_t* point)
+int strategy_best(data_t* data, hpoint_t* point)
 {
     if (hpoint_copy(point, &data->best) != 0) {
         search_error("Could not copy best point during strategy_best()");
@@ -328,7 +326,7 @@ int strategy_best(hpoint_t* point)
 /*
  * Internal helper function implementations.
  */
-void check_convergence(void)
+void check_convergence(data_t* data)
 {
     double fval_err, size_max;
     double avg_perf = hperf_unify(&data->centroid.perf);
@@ -361,7 +359,7 @@ void check_convergence(void)
     search_setcfg(CFGKEY_CONVERGED, "1");
 }
 
-int config_strategy(void)
+int config_strategy(data_t* data)
 {
     const char* cfgstr;
     double cfgval;
@@ -461,23 +459,23 @@ int config_strategy(void)
     return 0;
 }
 
-int nm_algorithm(void)
+int nm_algorithm(data_t* data)
 {
     do {
         if (data->state == SIMPLEX_STATE_CONVERGED)
             break;
 
-        if (nm_state_transition() != 0)
+        if (nm_state_transition(data) != 0)
             return -1;
 
         if (data->state == SIMPLEX_STATE_REFLECT) {
-            if (update_centroid() != 0)
+            if (update_centroid(data) != 0)
                 return -1;
 
-            check_convergence();
+            check_convergence(data);
         }
 
-        if (nm_next_vertex() != 0)
+        if (nm_next_vertex(data) != 0)
             return -1;
 
     } while (!vertex_inbounds(data->next, data->space));
@@ -485,7 +483,7 @@ int nm_algorithm(void)
     return 0;
 }
 
-int nm_state_transition(void)
+int nm_state_transition(data_t* data)
 {
     switch (data->state) {
     case SIMPLEX_STATE_INIT:
@@ -576,7 +574,7 @@ int nm_state_transition(void)
     return 0;
 }
 
-int nm_next_vertex(void)
+int nm_next_vertex(data_t* data)
 {
     switch (data->state) {
     case SIMPLEX_STATE_INIT:
@@ -652,7 +650,7 @@ int nm_next_vertex(void)
     return 0;
 }
 
-int update_centroid(void)
+int update_centroid(data_t* data)
 {
     data->index_best = 0;
     data->index_worst = 0;

@@ -47,7 +47,7 @@
  * Configuration variables used in this plugin.
  * These will automatically be registered by session-core upon load.
  */
-hcfg_info_t plugin_keyinfo[] = {
+const hcfg_info_t plugin_keyinfo[] = {
     { CFGKEY_INIT_POINT, NULL, "Initial point begin testing from." },
     { NULL }
 };
@@ -55,26 +55,24 @@ hcfg_info_t plugin_keyinfo[] = {
 /*
  * Structure to hold data for an individual exhaustive search instance.
  */
-typedef struct data {
+struct data {
     hspace_t* space;
     hpoint_t  best;
     double    best_perf;
 
     hpoint_t  next;
-} data_t;
-
-static data_t *data;
+};
 
 /*
  * Internal helper function prototypes.
  */
-static int  config_strategy(void);
-static void randomize(hpoint_t* point);
+static int  config_strategy(data_t* data);
+static void randomize(data_t* data, hpoint_t* point);
 
 /*
  * Allocate memory for a new search instance.
  */
-void* strategy_alloc(void)
+data_t* strategy_alloc(void)
 {
     data_t* retval = calloc(1, sizeof(*retval));
     if (!retval)
@@ -89,7 +87,7 @@ void* strategy_alloc(void)
 /*
  * Initialize (or re-initialize) data for this search instance.
  */
-int strategy_init(hspace_t* space)
+int strategy_init(data_t* data, hspace_t* space)
 {
     if (data->space != space) {
         if (hpoint_init(&data->next, space->len) != 0) {
@@ -100,7 +98,7 @@ int strategy_init(hspace_t* space)
         data->space = space;
     }
 
-    if (config_strategy() != 0)
+    if (config_strategy(data) != 0)
         return -1;
 
     if (search_setcfg(CFGKEY_CONVERGED, "0") != 0) {
@@ -113,7 +111,7 @@ int strategy_init(hspace_t* space)
 /*
  * Generate a new candidate configuration.
  */
-int strategy_generate(hflow_t* flow, hpoint_t* point)
+int strategy_generate(data_t* data, hflow_t* flow, hpoint_t* point)
 {
     if (hpoint_copy(point, &data->next) != 0) {
         search_error("Could not copy point during generation");
@@ -121,7 +119,7 @@ int strategy_generate(hflow_t* flow, hpoint_t* point)
     }
 
     // Prepare a new random vertex for the next call to strategy_generate.
-    randomize(&data->next);
+    randomize(data, &data->next);
     ++data->next.id;
 
     flow->status = HFLOW_ACCEPT;
@@ -131,7 +129,7 @@ int strategy_generate(hflow_t* flow, hpoint_t* point)
 /*
  * Regenerate a point deemed invalid by a later plug-in.
  */
-int strategy_rejected(hflow_t* flow, hpoint_t* point)
+int strategy_rejected(data_t* data, hflow_t* flow, hpoint_t* point)
 {
     if (flow->point.id) {
         hpoint_t* hint = &flow->point;
@@ -143,7 +141,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
         }
     }
     else {
-        randomize(point);
+        randomize(data, point);
     }
 
     flow->status = HFLOW_ACCEPT;
@@ -153,7 +151,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
 /*
  * Analyze the observed performance for this configuration point.
  */
-int strategy_analyze(htrial_t* trial)
+int strategy_analyze(data_t* data, htrial_t* trial)
 {
     double perf = hperf_unify(&trial->perf);
 
@@ -170,7 +168,7 @@ int strategy_analyze(htrial_t* trial)
 /*
  * Return the best performing point thus far in the search.
  */
-int strategy_best(hpoint_t* point)
+int strategy_best(data_t* data, hpoint_t* point)
 {
     if (hpoint_copy(point, &data->best) != 0) {
         search_error("Could not copy best point out of strategy");
@@ -182,7 +180,7 @@ int strategy_best(hpoint_t* point)
 /*
  * Internal helper function implementation.
  */
-int config_strategy(void)
+int config_strategy(data_t* data)
 {
     const char* cfgval = hcfg_get(search_cfg, CFGKEY_INIT_POINT);
     if (cfgval) {
@@ -197,12 +195,12 @@ int config_strategy(void)
         }
     }
     else {
-        randomize(&data->next);
+        randomize(data, &data->next);
     }
     return 0;
 }
 
-void randomize(hpoint_t* point)
+void randomize(data_t* data, hpoint_t* point)
 {
     for (int i = 0; i < data->space->len; ++i)
         point->term[i] = hrange_random(&data->space->dim[i]);

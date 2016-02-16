@@ -64,7 +64,8 @@ typedef union unit {
 /*
  * Structure to hold data for an individual exhaustive search instance.
  */
-typedef struct data {
+struct data {
+    int       space_id;
     hspace_t* space;
     hpoint_t  best;
     double    best_perf;
@@ -78,21 +79,19 @@ typedef struct data {
     int final_id;
     int outstanding_points;
     int final_point_received;
-} data_t;
-
-static data_t *data;
+};
 
 /*
  * Internal helper function prototypes.
  */
-static int  config_strategy(void);
-static void increment(void);
-static int  make_hpoint(const unit_u* index, hpoint_t* point);
+static int  config_strategy(data_t* data);
+static void increment(data_t* data);
+static int  make_next_point(data_t* data, hpoint_t* point);
 
 /*
  * Allocate memory for a new search instance.
  */
-void* strategy_alloc(void)
+data_t* strategy_alloc(void)
 {
     data_t* retval = calloc(1, sizeof(*retval));
     if (!retval)
@@ -107,9 +106,9 @@ void* strategy_alloc(void)
 /*
  * Initialize (or re-initialize) data for this search instance.
  */
-int strategy_init(hspace_t* space)
+int strategy_init(data_t* data, hspace_t* space)
 {
-    if (data->space != space) {
+    if (data->space_id != space->id) {
         free(data->head);
         data->head = malloc(space->len * sizeof(*data->head));
         if (!data->head) {
@@ -133,7 +132,7 @@ int strategy_init(hspace_t* space)
         data->space = space;
     }
 
-    if (config_strategy() != 0)
+    if (config_strategy(data) != 0)
         return -1;
 
     // Determine each search dimension's upper limit.
@@ -157,16 +156,16 @@ int strategy_init(hspace_t* space)
 /*
  * Generate a new candidate configuration.
  */
-int strategy_generate(hflow_t* flow, hpoint_t* point)
+int strategy_generate(data_t* data, hflow_t* flow, hpoint_t* point)
 {
     if (data->remaining_passes > 0) {
-        if (make_hpoint(data->next, point) != 0) {
+        if (make_next_point(data, point) != 0) {
             search_error("Could not make point from index during generate");
             return -1;
         }
         point->id = data->next_id;
 
-        increment();
+        increment(data);
         ++data->next_id;
     }
     else {
@@ -188,7 +187,7 @@ int strategy_generate(hflow_t* flow, hpoint_t* point)
 /*
  * Regenerate a point deemed invalid by a later plug-in.
  */
-int strategy_rejected(hflow_t* flow, hpoint_t* point)
+int strategy_rejected(data_t* data, hflow_t* flow, hpoint_t* point)
 {
     if (flow->point.id) {
         hpoint_t* hint = &flow->point;
@@ -200,11 +199,11 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
         }
     }
     else {
-        if (make_hpoint(data->next, point) != 0) {
+        if (make_next_point(data, point) != 0) {
             search_error("Could not make point from index during reject");
             return -1;
         }
-        increment();
+        increment(data);
     }
 
     flow->status = HFLOW_ACCEPT;
@@ -214,7 +213,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
 /*
  * Analyze the observed performance for this configuration point.
  */
-int strategy_analyze(htrial_t* trial)
+int strategy_analyze(data_t* data, htrial_t* trial)
 {
     // Function local variables.
     double perf = hperf_unify(&trial->perf);
@@ -257,7 +256,7 @@ int strategy_analyze(htrial_t* trial)
 /*
  * Return the best performing point thus far in the search.
  */
-int strategy_best(hpoint_t* point)
+int strategy_best(data_t* data, hpoint_t* point)
 {
     if (hpoint_copy(point, &data->best) != 0) {
         search_error("Could not copy best point during request for best");
@@ -269,7 +268,7 @@ int strategy_best(hpoint_t* point)
 /*
  * Internal helper function implementation.
  */
-int config_strategy()
+int config_strategy(data_t* data)
 {
     const char* cfgstr;
 
@@ -308,7 +307,7 @@ int config_strategy()
     return 0;
 }
 
-void increment(void)
+void increment(data_t* data)
 {
     if (data->remaining_passes <= 0)
         return;
@@ -337,7 +336,7 @@ void increment(void)
         data->final_id = data->next_id;
 }
 
-int make_hpoint(const unit_u* unit, hpoint_t* point)
+int make_next_point(data_t* data, hpoint_t* point)
 {
     if (point->cap < data->space->len) {
         if (hpoint_init(point, data->space->len) != 0)
@@ -346,9 +345,10 @@ int make_hpoint(const unit_u* unit, hpoint_t* point)
 
     for (int i = 0; i < data->space->len; ++i) {
         if (hrange_finite(&data->space->dim[i]))
-            point->term[i] = hrange_value(&data->space->dim[i], unit[i].index);
+            point->term[i] = hrange_value(&data->space->dim[i],
+                                          data->next[i].index);
         else
-            point->term[i].value.r = unit[i].value;
+            point->term[i].value.r = data->next[i].value;
     }
 
     point->len = data->space->len;

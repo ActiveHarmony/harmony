@@ -72,8 +72,9 @@ typedef struct {
 /*
  * Structure to hold all data needed by an individual search instance.
  *
- * To support multiple parallel search sessions, no global variables
- * should be defined or used in this plug-in layer.
+ * To support multiple parallel search instances, no global variables
+ * should be defined or used in this plug-in layer.  They should
+ * instead be defined as a part of this structure.
  */
 typedef struct data {
     hrange_t*  dim;
@@ -88,20 +89,19 @@ typedef struct data {
     int        buflen;
 } data_t;
 
-static data_t* data;
-
 /*
  * Internal helper function prototypes.
  */
-static int        find_max_strlen(void);
-static int        load_logger_file(const char* logger);
-static int        safe_scanstr(FILE* fd, int bounds_idx, const char** match);
-static visited_t* find_visited(const hpoint_t* a);
+static int        find_max_strlen(data_t* data);
+static int        load_logger_file(data_t* data, const char* logger);
+static int        safe_scanstr(data_t* data, FILE* fd, int bounds_idx,
+                               const char** match);
+static visited_t* find_visited(data_t* data, const hpoint_t* a);
 
 /*
  * Allocate memory for a new search instance.
  */
-void* cache_alloc(void)
+data_t* cache_alloc(void)
 {
     data_t* retval = calloc(1, sizeof(*retval));
     if (!retval)
@@ -116,7 +116,7 @@ void* cache_alloc(void)
  * Also loads data into cache from a log file if configuration
  * variable CACHE_FILE is defined.
  */
-int cache_init(hspace_t* space)
+int cache_init(data_t* data, hspace_t* space)
 {
     const char* filename;
 
@@ -137,14 +137,14 @@ int cache_init(hspace_t* space)
 
     filename = hcfg_get(search_cfg, CFGKEY_CACHE_FILE);
     if (filename) {
-        data->buflen = find_max_strlen() + 1;
+        data->buflen = find_max_strlen(data) + 1;
         data->buf = malloc(data->buflen * sizeof(char));
         if (!data->buf) {
             search_error("Could not allocate memory for string buffer");
             return -1;
         }
 
-        if (load_logger_file(filename) != 0)
+        if (load_logger_file(data, filename) != 0)
             return -1;
 
         free(data->buf);
@@ -160,7 +160,7 @@ int cache_init(hspace_t* space)
  * retrieved value if the point is found.  Otherwise, sets status to
  * HFLOW_ACCEPT (pass point on in plugin workflow).
  */
-int cache_generate(hflow_t* flow, htrial_t* trial)
+int cache_generate(data_t* data, hflow_t* flow, htrial_t* trial)
 {
     int pt_num;
     visited_t* visited_pt;
@@ -174,7 +174,7 @@ int cache_generate(hflow_t* flow, htrial_t* trial)
         return HFLOW_ACCEPT;
     }
 
-    visited_pt = find_visited(&trial->point);
+    visited_pt = find_visited(data, &trial->point);
 
     if (visited_pt != NULL) {
         // wrapping around (i.e. if point occurs twice, and we're
@@ -229,7 +229,7 @@ int cache_generate(hflow_t* flow, htrial_t* trial)
  * observed point/performance pair to the cache unless it was a result
  * of a cache hit.
  */
-int cache_analyze(hflow_t* flow, htrial_t* trial)
+int cache_analyze(data_t* data, hflow_t* flow, htrial_t* trial)
 {
     visited_t* visited_pt;
 
@@ -249,7 +249,7 @@ int cache_analyze(hflow_t* flow, htrial_t* trial)
     }
     data->skip = 0;
 
-    visited_pt = find_visited(&trial->point);
+    visited_pt = find_visited(data, &trial->point);
     // Add to list of visited points.
     if (visited_pt == NULL) {
         if (data->visited_cap == data->visited_len) {
@@ -275,7 +275,7 @@ int cache_analyze(hflow_t* flow, htrial_t* trial)
     return 0;
 }
 
-int cache_fini(void)
+int cache_fini(data_t* data)
 {
     for (int i = 0; i < data->cache_cap; ++i) {
         hpoint_fini(&data->cache[i].point);
@@ -288,7 +288,6 @@ int cache_fini(void)
     free(data->visited);
 
     free(data);
-    data = NULL;
     return 0;
 }
 
@@ -300,7 +299,7 @@ int cache_fini(void)
  * Search the parameter space for any HVAL_STR dimensions, and return
  * the length of the largest possible string.
  */
-int find_max_strlen(void)
+int find_max_strlen(data_t* data)
 {
     int max = 0;
 
@@ -328,7 +327,7 @@ int find_max_strlen(void)
         search_error("Error parsing logger file: Invalid input");       \
         return -1;                                                      \
     }
-int load_logger_file(const char* filename)
+int load_logger_file(data_t* data, const char* filename)
 {
     char c;
     int i, ret;
@@ -379,7 +378,8 @@ int load_logger_file(const char* filename)
             switch (data->dim[i].type) {
             case HVAL_INT:  ret = fscanf(fp, "%ld", &v->value.i); break;
             case HVAL_REAL: ret = fscanf(fp, "%*f[%la]", &v->value.r); break;
-            case HVAL_STR:  ret = safe_scanstr(fp, i, &v->value.s); break;
+            case HVAL_STR:  ret = safe_scanstr(data, fp, i,
+                                               &v->value.s); break;
             default:
                 search_error("Invalid point value type");
                 return -1;
@@ -420,7 +420,7 @@ int load_logger_file(const char* filename)
  *
  * Return values designed to match scanf family.
  */
-int safe_scanstr(FILE* fp, int bounds_idx, const char** match)
+int safe_scanstr(data_t* data, FILE* fp, int bounds_idx, const char** match)
 {
     int i;
     range_enum_t* bounds = &data->dim[bounds_idx].bounds.e;
@@ -455,7 +455,7 @@ int safe_scanstr(FILE* fp, int bounds_idx, const char** match)
     return 1;
 }
 
-visited_t* find_visited(const hpoint_t* a)
+visited_t* find_visited(data_t* data, const hpoint_t* a)
 {
     for (int i = 0; i < data->visited_len; ++i) {
         if (hpoint_eq(a, &data->visited[i].point))

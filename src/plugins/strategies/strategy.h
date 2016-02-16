@@ -29,6 +29,23 @@ extern "C" {
 #endif
 
 /*
+ * Configuration variables used in this plugin.
+ *
+ * Any entries in this structure will automatically be loaded into the
+ * search environment.
+ */
+extern const hcfg_info_t plugin_keyinfo[];
+
+/*
+ * Structure to hold all data needed by an individual search instance.
+ *
+ * To support multiple parallel search instances, no global variables
+ * should be defined or used in this plug-in layer.  They should
+ * instead be defined as a part of this structure.
+ */
+typedef struct data data_t;
+
+/*
  * The following functions are required.
  *
  * Active Harmony will not recognize shared objects as search
@@ -47,7 +64,7 @@ extern "C" {
  * Otherwise, this routine should return 0, and the contents of the
  * "flow" variable should be set appropriately.
  */
-int strategy_generate(hflow_t* flow, hpoint_t* point);
+int strategy_generate(data_t* data, hflow_t* flow, hpoint_t* point);
 
 /*
  * Regenerate a rejected candidate configuration point.
@@ -62,7 +79,7 @@ int strategy_generate(hflow_t* flow, hpoint_t* point);
  * Otherwise, this routine should return 0, and the contents of the
  * "flow" variable should be set appropriately.
  */
-int strategy_rejected(hflow_t* flow, hpoint_t* point);
+int strategy_rejected(data_t* data, hflow_t* flow, hpoint_t* point);
 
 /*
  * Analyze the observed performance associated with a configuration point.
@@ -74,19 +91,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point);
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int strategy_analyze(htrial_t* trial);
-
-/*
- * Return the best performing configuration point thus far in the search.
- *
- * Params:
- *   point - Location to store best performing configuration point data.
- *
- * Upon error, this function should call search_error() with a
- * human-readable string explaining the problem and return -1.
- * Otherwise, returning 0 indicates success.
- */
-int strategy_best(hpoint_t* point);
+int strategy_analyze(data_t* data, htrial_t* trial);
 
 /*
  * The following functions are optional.
@@ -104,7 +109,7 @@ int strategy_best(hpoint_t* point);
  * Otherwise, a non-NULL address the plug-in can use to track an
  * individual search instance should be returned.
  */
-void* strategy_alloc(void);
+data_t* strategy_alloc(void);
 
 /*
  * Initialize (or re-initialize) data for this search instance.
@@ -116,19 +121,19 @@ void* strategy_alloc(void);
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int strategy_init(hspace_t* space);
+int strategy_init(data_t* data, hspace_t* space);
 
 /*
  * Invoked when a client joins the tuning session.
  *
  * Params:
- *   id - Uniquely identifying string for the new client.
+ *   client - Uniquely identifying string for the new client.
  *
  * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int strategy_join(const char* id);
+int strategy_join(data_t* data, const char* client);
 
 /*
  * Invoked when a client writes to the configuration system.
@@ -141,7 +146,7 @@ int strategy_join(const char* id);
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int strategy_setcfg(const char* key, const char* val);
+int strategy_setcfg(data_t* data, const char* key, const char* val);
 
 /*
  * Invoked on session exit.
@@ -150,7 +155,7 @@ int strategy_setcfg(const char* key, const char* val);
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int strategy_fini(void);
+int strategy_fini(data_t* data);
 
 #ifdef __cplusplus
 }

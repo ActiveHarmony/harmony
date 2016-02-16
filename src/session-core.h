@@ -29,8 +29,6 @@
 extern "C" {
 #endif
 
-typedef struct hsearch hsearch_t;
-
 typedef enum hflow_status {
     HFLOW_UNKNOWN,
     HFLOW_ACCEPT,
@@ -54,23 +52,24 @@ typedef struct htrial {
 
 // Generic plug-in event-hook signatures.
 typedef void* (*hook_alloc_t)(void);
-typedef int   (*hook_init_t)(hspace_t* space);
-typedef int   (*hook_join_t)(const char* id);
-typedef int   (*hook_setcfg_t)(const char* key, const char* val);
-typedef int   (*hook_fini_t)(void);
+typedef int   (*hook_init_t)(void* data, hspace_t* space);
+typedef int   (*hook_join_t)(void* data, const char* client);
+typedef int   (*hook_setcfg_t)(void* data, const char* key, const char* val);
+typedef int   (*hook_fini_t)(void* data);
 
 // Strategy plug-in function signatures.
-typedef int (*strategy_generate_t)(hflow_t* flow, hpoint_t* point);
-typedef int (*strategy_rejected_t)(hflow_t* flow, hpoint_t* point);
-typedef int (*strategy_analyze_t)(htrial_t* trial);
-typedef int (*strategy_best_t)(hpoint_t* point);
+typedef int (*strategy_generate_t)(void* data, hflow_t* flow, hpoint_t* point);
+typedef int (*strategy_rejected_t)(void* data, hflow_t* flow, hpoint_t* point);
+typedef int (*strategy_analyze_t)(void* data, htrial_t* trial);
+typedef int (*strategy_best_t)(void* data, hpoint_t* point);
 
 // Layer plug-in function signatures.
-typedef int (*layer_generate_t)(hflow_t* flow, htrial_t* trial);
-typedef int (*layer_analyze_t)(hflow_t* flow, htrial_t* trial);
+typedef int (*layer_generate_t)(void* data, hflow_t* flow, htrial_t* trial);
+typedef int (*layer_analyze_t)(void* data, hflow_t* flow, htrial_t* trial);
 
 // Callback function signatures.
-typedef int (*cb_func_t)(int fd, hflow_t* flow, int n, htrial_t** trial);
+typedef int (*cb_func_t)(int fd, void* data,
+                         hflow_t* flow, int n, htrial_t** trial);
 
 /*
  * Interface for plug-in modules to access their associated search.

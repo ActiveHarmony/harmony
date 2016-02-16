@@ -101,8 +101,9 @@ typedef struct codegen_log {
 /*
  * Structure to hold all data needed by an individual search instance.
  *
- * To support multiple parallel search sessions, no global variables
- * should be defined or used in this plug-in layer.
+ * To support multiple parallel search instances, no global variables
+ * should be defined or used in this plug-in layer.  They should
+ * instead be defined as a part of this structure.
  */
 typedef struct data {
     codegen_log_t* cglog;
@@ -115,24 +116,23 @@ typedef struct data {
     int buflen;
 } data_t;
 
-static data_t* data;
-
 /*
  * Long-running code generation callback prototype.
  */
-static int codegen_callback(int fd, hflow_t* flow, int n, htrial_t** trial);
+static int codegen_callback(int fd, void* data,
+                            hflow_t* flow, int n, htrial_t** trial);
 
 /*
  * Internal helper function prototypes.
  */
-static int cglog_find(const hpoint_t* pt);
-static int cglog_insert(const hpoint_t* pt);
-static int url_connect(const char* url);
+static int cglog_find(data_t* data, const hpoint_t* pt);
+static int cglog_insert(data_t* data, const hpoint_t* pt);
+static int url_connect(data_t* data, const char* url);
 
 /*
  * Allocate memory for a new search instance.
  */
-void* codegen_alloc(void)
+data_t* codegen_alloc(void)
 {
     data_t* retval = calloc(1, sizeof(*retval));
     if (!retval)
@@ -144,7 +144,7 @@ void* codegen_alloc(void)
 /*
  * Initialize (or re-initialize) data for this search instance.
  */
-int codegen_init(hspace_t* space)
+int codegen_init(data_t* data, hspace_t* space)
 {
     const char* url;
 
@@ -161,7 +161,7 @@ int codegen_init(hspace_t* space)
         return -1;
     }
 
-    data->sockfd = url_connect(url);
+    data->sockfd = url_connect(data, url);
     if (data->sockfd == -1) {
         search_error("Invalid codegen server URL");
         return -1;
@@ -199,11 +199,11 @@ int codegen_init(hspace_t* space)
  * 0 upon success.  Otherwise, it should call search_error() with a
  * human-readable error message and return -1.
  */
-int codegen_generate(hflow_t* flow, htrial_t* trial)
+int codegen_generate(data_t* data, hflow_t* flow, htrial_t* trial)
 {
     int i;
 
-    i = cglog_find(&trial->point);
+    i = cglog_find(data, &trial->point);
     if (i >= 0) {
         if (data->cglog[i].status == CODEGEN_STATUS_COMPLETE)
             flow->status = HFLOW_ACCEPT;
@@ -214,7 +214,7 @@ int codegen_generate(hflow_t* flow, htrial_t* trial)
         return 0;
     }
 
-    if (cglog_insert(&trial->point) != 0) {
+    if (cglog_insert(data, &trial->point) != 0) {
         search_error("Could not grow codegen log");
         return -1;
     }
@@ -235,7 +235,7 @@ int codegen_generate(hflow_t* flow, htrial_t* trial)
 /*
  * Invoked after the tuning session completes.
  */
-int codegen_fini(void)
+int codegen_fini(data_t* data)
 {
     close(data->sockfd);
     free(data->buf);
@@ -248,14 +248,16 @@ int codegen_fini(void)
 /*
  * Long-running code generation callback implementation.
  */
-int codegen_callback(int fd, hflow_t* flow, int n, htrial_t** trial)
+int codegen_callback(int fd, void* data_ptr,
+                     hflow_t* flow, int n, htrial_t** trial)
 {
+    data_t* data = (data_t*) data_ptr;
     int i;
 
     if (mesg_recv(fd, &data->mesg) < 1)
         return -1;
 
-    i = cglog_find(data->mesg.data.point);
+    i = cglog_find(data, data->mesg.data.point);
     if (i < 0) {
         search_error("Could not find point from code server in log");
         return -1;
@@ -277,7 +279,7 @@ int codegen_callback(int fd, hflow_t* flow, int n, htrial_t** trial)
 /*
  * Internal helper function implementation.
  */
-int cglog_find(const hpoint_t* point)
+int cglog_find(data_t* data, const hpoint_t* point)
 {
     for (int i = 0; i < data->cglog_len; ++i) {
         if (hpoint_eq(point, &data->cglog[i].point))
@@ -286,7 +288,7 @@ int cglog_find(const hpoint_t* point)
     return -1;
 }
 
-int cglog_insert(const hpoint_t* point)
+int cglog_insert(data_t* data, const hpoint_t* point)
 {
     if (data->cglog_len == data->cglog_cap) {
         if (array_grow(&data->cglog, &data->cglog_cap,
@@ -301,7 +303,7 @@ int cglog_insert(const hpoint_t* point)
     return 0;
 }
 
-int url_connect(const char* url)
+int url_connect(data_t* data, const char* url)
 {
     const char* ptr;
     char* helper_argv[2];

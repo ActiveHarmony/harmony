@@ -85,8 +85,9 @@ typedef struct group_def {
 /*
  * Structure to hold all data needed by an individual search instance.
  *
- * To support multiple parallel search sessions, no global variables
- * should be defined or used in this plug-in layer.
+ * To support multiple parallel search instances, no global variables
+ * should be defined or used in this plug-in layer.  They should
+ * instead be defined as a part of this structure.
  */
 typedef struct data {
     char internal_restart_req;
@@ -101,17 +102,15 @@ typedef struct data {
     hpoint_t best;
 } data_t;
 
-static data_t* data;
-
 /*
  * Internal helper function prototypes.
  */
-static int parse_group(const char* buf);
+static int parse_group(data_t* data, const char* buf);
 
 /*
  * Allocate memory for a new search instance.
  */
-void* group_alloc(void)
+data_t* group_alloc(void)
 {
     data_t* retval = calloc(1, sizeof(*retval));
     if (!retval)
@@ -123,7 +122,7 @@ void* group_alloc(void)
 /*
  * Initialize (or re-initialize) data for this search instance.
  */
-int group_init(hspace_t* space)
+int group_init(data_t* data, hspace_t* space)
 {
     const char* ptr;
 
@@ -161,10 +160,10 @@ int group_init(hspace_t* space)
 
     data->glist = NULL;
     data->glist_len = data->glist_cap = 0;
-    return parse_group(ptr);
+    return parse_group(data, ptr);
 }
 
-int group_setcfg(const char* key, const char* val)
+int group_setcfg(data_t* data, const char* key, const char* val)
 {
     int retval = 0;
 
@@ -186,7 +185,7 @@ int group_setcfg(const char* key, const char* val)
     return retval;
 }
 
-int group_generate(hflow_t* flow, htrial_t* trial)
+int group_generate(data_t* data, hflow_t* flow, htrial_t* trial)
 {
     int ptlen = data->cap_max * sizeof(*data->hint_val);
 
@@ -223,7 +222,7 @@ int group_generate(hflow_t* flow, htrial_t* trial)
     return 0;
 }
 
-int group_fini(void)
+int group_fini(data_t* data)
 {
     if (!data->internal_restart_req) {
         for (int i = 0; i < data->glist_len; ++i)
@@ -234,7 +233,6 @@ int group_fini(void)
         free(data->locked_val);
         free(data->hint_val);
         free(data);
-        data = NULL;
     }
     return 0;
 }
@@ -242,7 +240,7 @@ int group_fini(void)
 /*
  * Internal helper function implementation.
  */
-int parse_group(const char* buf)
+int parse_group(data_t* data, const char* buf)
 {
     int i, j, count, success;
 

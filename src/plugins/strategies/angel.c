@@ -126,7 +126,8 @@ typedef enum simplex_state {
 /*
  * Structure to hold data for an individual PRO search instance.
  */
-typedef struct data {
+struct data {
+    int       space_id;
     hspace_t* space;
     hpoint_t  best;
     hperf_t   best_perf;
@@ -172,27 +173,25 @@ typedef struct data {
     int     perf_n;
     double* thresh;
     span_t* span;
-} data_t;
-
-static data_t* data;
+};
 
 /*
  * Internal helper function prototypes.
  */
-static int  allocate_structures(void);
-static int  config_strategy(void);
-static void check_convergence(void);
-static int  increment_phase(void);
-static int  nm_algorithm(void);
-static int  nm_next_vertex(void);
-static int  nm_state_transition(void);
-static int  make_initial_simplex(void);
-static int  update_centroid(void);
+static int  allocate_structures(data_t* data);
+static int  config_strategy(data_t* data);
+static void check_convergence(data_t* data);
+static int  increment_phase(data_t* data);
+static int  nm_algorithm(data_t* data);
+static int  nm_next_vertex(data_t* data);
+static int  nm_state_transition(data_t* data);
+static int  make_initial_simplex(data_t* data);
+static int  update_centroid(data_t* data);
 
 /*
  * Allocate memory for a new search instance.
  */
-void* strategy_alloc(void)
+data_t* strategy_alloc(void)
 {
     data_t* retval = calloc(1, sizeof(*retval));
     if (!retval)
@@ -207,14 +206,14 @@ void* strategy_alloc(void)
 /*
  * Initialize (or re-initialize) data for this search instance.
  */
-int strategy_init(hspace_t* space)
+int strategy_init(data_t* data, hspace_t* space)
 {
     data->space = space;
 
-    if (config_strategy() != 0)
+    if (config_strategy(data) != 0)
         return -1;
 
-    if (make_initial_simplex() != 0) {
+    if (make_initial_simplex(data) != 0) {
         search_error("Could not initialize initial simplex");
         return -1;
     }
@@ -225,10 +224,10 @@ int strategy_init(hspace_t* space)
     }
 
     data->next_id = 1;
-    if (increment_phase() != 0)
+    if (increment_phase(data) != 0)
         return -1;
 
-    if (nm_next_vertex() != 0) {
+    if (nm_next_vertex(data) != 0) {
         search_error("Could not initiate test vertex");
         return -1;
     }
@@ -239,7 +238,7 @@ int strategy_init(hspace_t* space)
 /*
  * Generate a new candidate configuration point.
  */
-int strategy_generate(hflow_t* flow, hpoint_t* point)
+int strategy_generate(data_t* data, hflow_t* flow, hpoint_t* point)
 {
     if (data->next->id == data->next_id) {
         flow->status = HFLOW_WAIT;
@@ -259,7 +258,7 @@ int strategy_generate(hflow_t* flow, hpoint_t* point)
 /*
  * Regenerate a point deemed invalid by a later plug-in.
  */
-int strategy_rejected(hflow_t* flow, hpoint_t* point)
+int strategy_rejected(data_t* data, hflow_t* flow, hpoint_t* point)
 {
     hpoint_t* hint = &flow->point;
 
@@ -281,7 +280,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
         hperf_reset(&data->next->perf);
 
         // Allow the algorithm to choose the next point.
-        if (nm_algorithm() != 0) {
+        if (nm_algorithm(data) != 0) {
             search_error("Nelder-Mead algorithm failure");
             return -1;
         }
@@ -313,7 +312,7 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
 /*
  * Analyze the observed performance for this configuration point.
  */
-int strategy_analyze(htrial_t* trial)
+int strategy_analyze(data_t* data, htrial_t* trial)
 {
     if (trial->point.id != data->next->id) {
         search_error("Rouge points not supported");
@@ -371,7 +370,7 @@ int strategy_analyze(htrial_t* trial)
         }
     }
 
-    if (nm_algorithm() != 0) {
+    if (nm_algorithm(data) != 0) {
         search_error("Nelder-Mead algorithm failure");
         return -1;
     }
@@ -385,7 +384,7 @@ int strategy_analyze(htrial_t* trial)
 /*
  * Return the best performing point thus far in the search.
  */
-int strategy_best(hpoint_t* point)
+int strategy_best(data_t* data, hpoint_t* point)
 {
     if (hpoint_copy(point, &data->best) != 0) {
         search_error("Could not copy best point during strategy_best()");
@@ -397,7 +396,7 @@ int strategy_best(hpoint_t* point)
 /*
  * Internal helper function implementation.
  */
-int allocate_structures(void)
+int allocate_structures(data_t* data)
 {
     void* newbuf;
 
@@ -479,7 +478,7 @@ int allocate_structures(void)
     return 0;
 }
 
-int config_strategy(void)
+int config_strategy(data_t* data)
 {
     const char* cfgstr;
     double cfgval;
@@ -558,7 +557,7 @@ int config_strategy(void)
         return -1;
     }
 
-    if (allocate_structures() != 0)
+    if (allocate_structures(data) != 0)
         return -1;
 
     // Use the expand and reflect vertex variables as temporaries to
@@ -634,7 +633,7 @@ int config_strategy(void)
     return 0;
 }
 
-void check_convergence(void)
+void check_convergence(data_t* data)
 {
     static int flat_cnt;
 
@@ -702,11 +701,11 @@ void check_convergence(void)
         search_setcfg(CFGKEY_CONVERGED, "1");
     }
     else {
-        increment_phase();
+        increment_phase(data);
     }
 }
 
-int increment_phase(void)
+int increment_phase(data_t* data)
 {
     if (data->phase >= 0) {
         // Calculate the threshold for the previous phase.
@@ -733,7 +732,7 @@ int increment_phase(void)
 
     if (!data->samesimplex) {
         // Re-initialize the initial simplex, if needed.
-        if (make_initial_simplex() != 0) {
+        if (make_initial_simplex(data) != 0) {
             search_error("Could not reinitialize the initial simplex");
             return -1;
         }
@@ -769,23 +768,23 @@ int increment_phase(void)
     return 0;
 }
 
-int nm_algorithm(void)
+int nm_algorithm(data_t* data)
 {
     do {
         if (data->state == SIMPLEX_STATE_CONVERGED)
             break;
 
-        if (nm_state_transition() != 0)
+        if (nm_state_transition(data) != 0)
             return -1;
 
         if (data->state == SIMPLEX_STATE_REFLECT) {
-            if (update_centroid() != 0)
+            if (update_centroid(data) != 0)
                 return -1;
 
-            check_convergence();
+            check_convergence(data);
         }
 
-        if (nm_next_vertex() != 0)
+        if (nm_next_vertex(data) != 0)
             return -1;
 
     } while (!vertex_inbounds(data->next, data->space));
@@ -793,14 +792,14 @@ int nm_algorithm(void)
     return 0;
 }
 
-int nm_state_transition(void)
+int nm_state_transition(data_t* data)
 {
     switch (data->state) {
     case SIMPLEX_STATE_INIT:
     case SIMPLEX_STATE_SHRINK:
         // Simplex vertex performance value.
         if (++data->index_curr == data->space->len + 1) {
-            update_centroid();
+            update_centroid(data);
             data->state = SIMPLEX_STATE_REFLECT;
             data->index_curr = 0;
         }
@@ -826,7 +825,7 @@ int nm_state_transition(void)
                             &data->reflect) != 0)
                 return -1;
 
-            update_centroid();
+            update_centroid(data);
         }
         else {
             // Reflected point performs worse than all simplex points.
@@ -857,7 +856,7 @@ int nm_state_transition(void)
                             &data->reflect) != 0)
                 return -1;
         }
-        update_centroid();
+        update_centroid(data);
         data->state = SIMPLEX_STATE_REFLECT;
         break;
 
@@ -873,7 +872,7 @@ int nm_state_transition(void)
                             &data->contract) != 0)
                 return -1;
 
-            update_centroid();
+            update_centroid(data);
             data->state = SIMPLEX_STATE_REFLECT;
         }
         else {
@@ -891,7 +890,7 @@ int nm_state_transition(void)
     return 0;
 }
 
-int nm_next_vertex(void)
+int nm_next_vertex(data_t* data)
 {
     switch (data->state) {
     case SIMPLEX_STATE_INIT:
@@ -971,7 +970,7 @@ int nm_next_vertex(void)
     return 0;
 }
 
-int make_initial_simplex(void)
+int make_initial_simplex(data_t* data)
 {
     const char* cfgval = hcfg_get(search_cfg, CFGKEY_INIT_POINT);
     if (cfgval) {
@@ -997,7 +996,7 @@ int make_initial_simplex(void)
     return 0;
 }
 
-int update_centroid(void)
+int update_centroid(data_t* data)
 {
     data->index_best = 0;
     data->index_worst = 0;
