@@ -81,25 +81,29 @@ static int    copy_keyval(const char* buf, char** keyval, const char** errptr);
  */
 int hcfg_init(hcfg_t* cfg)
 {
-    extern char** environ;
-
     cfg->len = 0;
     cfg->cap = 32;
     cfg->env = malloc(cfg->cap * sizeof(*cfg->env));
     if (!cfg->env)
         return -1;
 
+    return hcfg_reginfo(cfg, hcfg_global_keys);
+}
+
+int hcfg_loadenv(hcfg_t* cfg)
+{
+    extern char** environ;
+
     // Incorporate environment variables into current configuration.
     for (int i = 0; environ[i]; ++i) {
         if (valid_id(environ[i], strcspn(environ[i], "="))) {
-            if (cfg->len == cfg->cap)
-                array_grow(&cfg->env, &cfg->cap, sizeof(char*));
+            char* pair = stralloc( environ[i] );
 
-            cfg->env[ cfg->len ] = stralloc( environ[i] );
-            ++cfg->len;
+            if (!pair || key_add(cfg, pair) != 0)
+                return -1;
         }
     }
-    return hcfg_reginfo(cfg, hcfg_global_keys);
+    return 0;
 }
 
 int hcfg_reginfo(hcfg_t* cfg, const hcfg_info_t* info)
@@ -134,6 +138,27 @@ int hcfg_copy(hcfg_t* dst, const hcfg_t* src)
     for (dst->len = 0; dst->len < src->len; ++dst->len) {
         dst->env[ dst->len ] = stralloc( src->env[ dst->len ] );
         if (!dst->env[ dst->len ])
+            return -1;
+    }
+    return 0;
+}
+
+int hcfg_merge(hcfg_t* dst, const hcfg_t* src)
+{
+    int newlen = dst->len + src->len;
+
+    if (dst->cap < newlen) {
+        char** newbuf = realloc(dst->env, newlen * sizeof(*dst->env));
+        if (!newbuf)
+            return -1;
+
+        dst->env = newbuf;
+        dst->cap = newlen;
+    }
+
+    for (int i = 0; i < src->len; ++i) {
+        char* pair = stralloc(src->env[i]);
+        if (!pair || key_add(dst, pair) != 0)
             return -1;
     }
     return 0;

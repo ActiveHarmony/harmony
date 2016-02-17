@@ -44,14 +44,15 @@ typedef struct hcfg_info {
     const char* val;
     const char* help;
 } hcfg_info_t;
-extern const hcfg_info_t hcfg_global_keys[];
 
 /*
  * Basic structure management interface.
  */
 int  hcfg_init(hcfg_t* cfg);
+int  hcfg_loadenv(hcfg_t* cfg);
 int  hcfg_reginfo(hcfg_t* cfg, const hcfg_info_t* info);
 int  hcfg_copy(hcfg_t* dst, const hcfg_t* src);
+int  hcfg_merge(hcfg_t* dst, const hcfg_t* src);
 void hcfg_fini(hcfg_t* cfg);
 void hcfg_scrub(hcfg_t* cfg);
 
