@@ -102,16 +102,16 @@ char recvbuf[10240]; // Static buffer used for incoming HTTP data.
 /*
  * Internal helper function prototypes.
  */
-const char* status_string(session_state_t* sess);
+const char* status_string(sinfo_t* sinfo);
 char* uri_decode(char* buf);
-session_state_t* find_session(const char* name);
+sinfo_t* find_search(const char* name);
 int http_request_handle(int fd, char* req);
 char* http_request_recv(int fd, char* buf, int buflen, char** data);
 int http_chunk_send(int fd, const char* data, int datalen);
 int http_send_overview(int fd);
-int http_send_init(int fd, session_state_t* sess);
-int http_send_refresh(int fd, session_state_t* sess, const char* arg);
-int report_append(char** buf, int* buflen, session_state_t* sess,
+int http_send_init(int fd, sinfo_t* sinfo);
+int http_send_refresh(int fd, sinfo_t* sinfo, const char* arg);
+int report_append(char** buf, int* buflen, sinfo_t* sinfo,
                   struct timeval* tv, const hpoint_t* pt, const double perf);
 
 int http_init(const char* basedir)
@@ -240,12 +240,12 @@ int handle_http_socket(int fd)
     return 0;
 }
 
-const char* status_string(session_state_t* sess)
+const char* status_string(sinfo_t* sinfo)
 {
-    if (sess->status & STATUS_PAUSED)
+    if (sinfo->status & STATUS_PAUSED)
         return "Paused";
 
-    if (sess->status & STATUS_CONVERGED)
+    if (sinfo->status & STATUS_CONVERGED)
         return "Converged";
 
     return "Searching";
@@ -276,7 +276,7 @@ char* uri_decode(char* buf)
     return buf;
 }
 
-session_state_t* find_session(const char* name)
+sinfo_t* find_search(const char* name)
 {
     int i;
 
@@ -289,20 +289,20 @@ session_state_t* find_session(const char* name)
 
 int http_request_handle(int fd, char* req)
 {
-    session_state_t* sess = NULL;
-    char* sess_name;
+    sinfo_t* sinfo = NULL;
+    char* search_name;
     char* arg = NULL;
     int i;
 
-    sess_name = strchr(req, '?');
-    if (sess_name) {
-        *(sess_name++) = '\0';
+    search_name = strchr(req, '?');
+    if (search_name) {
+        *(search_name++) = '\0';
 
-        arg = strchr(sess_name, '&');
+        arg = strchr(search_name, '&');
         if (arg)
             *(arg++) = '\0';
 
-        sess = find_session(sess_name);
+        sinfo = find_search(search_name);
     }
 
     if (strcmp(req, "/") == 0) {
@@ -331,8 +331,8 @@ int http_request_handle(int fd, char* req)
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        if (sess) {
-            http_send_init(fd, sess);
+        if (sinfo) {
+            http_send_init(fd, sinfo);
             opt_http_write(fd, "");
             return 0;
         }
@@ -346,9 +346,9 @@ int http_request_handle(int fd, char* req)
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        if (sess) {
-            session_refresh(sess);
-            http_send_refresh(fd, sess, arg);
+        if (sinfo) {
+            search_refresh(sinfo);
+            http_send_refresh(fd, sinfo, arg);
             opt_http_write(fd, "");
             return 0;
         }
@@ -362,8 +362,8 @@ int http_request_handle(int fd, char* req)
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        if (sess) {
-            session_close(sess);
+        if (sinfo) {
+            search_close(sinfo);
             opt_http_write(fd, "OK");
             opt_http_write(fd, "");
             return 0;
@@ -378,8 +378,8 @@ int http_request_handle(int fd, char* req)
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        if (sess) {
-            session_setcfg(sess, CFGKEY_PAUSED, "1");
+        if (sinfo) {
+            search_setcfg(sinfo, CFGKEY_PAUSED, "1");
             opt_http_write(fd, "OK");
             opt_http_write(fd, "");
             return 0;
@@ -394,8 +394,8 @@ int http_request_handle(int fd, char* req)
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        if (sess) {
-            session_setcfg(sess, CFGKEY_PAUSED, "0");
+        if (sinfo) {
+            search_setcfg(sinfo, CFGKEY_PAUSED, "0");
             opt_http_write(fd, "OK");
             opt_http_write(fd, "");
             return 0;
@@ -410,11 +410,11 @@ int http_request_handle(int fd, char* req)
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        if (sess) {
+        if (sinfo) {
             if (arg && strstr(arg, "_=") != arg) {
-                session_setcfg(sess, CFGKEY_INIT_POINT, arg);
+                search_setcfg(sinfo, CFGKEY_INIT_POINT, arg);
             }
-            session_restart(sess);
+            search_restart(sinfo);
             opt_http_write(fd, "OK");
             opt_http_write(fd, "");
             return 0;
@@ -600,7 +600,7 @@ int http_send_overview(int fd)
         total += count;
 
         if (total >= sizeof(sendbuf)) {
-            // Corner Case: No room for any session data.  Error out.
+            // Corner Case: No room for any search data.  Error out.
             if (ptr == sendbuf) {
                 opt_http_write(fd, "FAIL");
                 return -1;
@@ -623,7 +623,7 @@ int http_send_overview(int fd)
     return 0;
 }
 
-int http_send_init(int fd, session_state_t* sess)
+int http_send_init(int fd, sinfo_t* sinfo)
 {
     char* buf = sendbuf;
     int buflen = sizeof(sendbuf), total = 0;
@@ -634,9 +634,9 @@ int http_send_init(int fd, session_state_t* sess)
         goto error;
     total += count;
 
-    for (int i = 0; i < sess->space.len; ++i) {
+    for (int i = 0; i < sinfo->space.len; ++i) {
         char type;
-        hrange_t* range = &sess->space.dim[i];
+        hrange_t* range = &sinfo->space.dim[i];
 
         if (i > 0) {
             count = snprintf_serial(&buf, &buflen, ",");
@@ -668,7 +668,10 @@ int http_send_init(int fd, session_state_t* sess)
         }
     }
 
-    count = snprintf_serial(&buf, &buflen, "|strat:%s", sess->strategy);
+    if (sinfo->strategy)
+        count = snprintf_serial(&buf, &buflen, "|strat:%s", sinfo->strategy);
+    else
+        count = snprintf_serial(&buf, &buflen, "|strat:<unknown>");
     if (count < 0)
         goto error;
     total += count;
@@ -684,7 +687,7 @@ int http_send_init(int fd, session_state_t* sess)
     return -1;
 }
 
-int http_send_refresh(int fd, session_state_t* sess, const char* arg)
+int http_send_refresh(int fd, sinfo_t* sinfo, const char* arg)
 {
     char* ptr;
     char* buf = sendbuf;
@@ -701,8 +704,8 @@ int http_send_refresh(int fd, session_state_t* sess, const char* arg)
     count = snprintf_serial(&buf, &buflen,
                             "time:%ld%03ld|status:%s|clients:%d|index:%d",
                             tv.tv_sec, tv.tv_usec/1000,
-                            status_string(sess),
-                            sess->client_len,
+                            status_string(sinfo),
+                            sinfo->client_len,
                             idx);
     if (count < 0)
         goto error;
@@ -713,13 +716,13 @@ int http_send_refresh(int fd, session_state_t* sess, const char* arg)
         goto error;
     total += count;
 
-    count = report_append(&buf, &buflen, sess, NULL,
-                          &sess->best, sess->best_perf);
+    count = report_append(&buf, &buflen, sinfo, NULL,
+                          &sinfo->best, sinfo->best_perf);
     if (count < 0)
         goto error;
     total += count;
 
-    for (i = idx; i < sess->log_len; ++i) {
+    for (i = idx; i < sinfo->log_len; ++i) {
         ptr = buf;
 
         count = snprintf_serial(&buf, &buflen, "|trial:");
@@ -727,14 +730,14 @@ int http_send_refresh(int fd, session_state_t* sess, const char* arg)
             goto error;
         total += count;
 
-        count = report_append(&buf, &buflen, sess, &sess->log[i].stamp,
-                              &sess->log[i].pt, sess->log[i].perf);
+        count = report_append(&buf, &buflen, sinfo, &sinfo->log[i].stamp,
+                              &sinfo->log[i].pt, sinfo->log[i].perf);
         if (count < 0)
             goto error;
         total += count;
 
         if (total >= sizeof(sendbuf)) {
-            // Corner Case: No room for any session data.  Error out.
+            // Corner Case: No room for any search data.  Error out.
             if (ptr == sendbuf)
                 goto error;
 
@@ -758,7 +761,7 @@ int http_send_refresh(int fd, session_state_t* sess, const char* arg)
     return -1;
 }
 
-int report_append(char** buf, int* buflen, session_state_t* sess,
+int report_append(char** buf, int* buflen, sinfo_t* sinfo,
                   struct timeval* tv, const hpoint_t* pt, const double perf)
 {
     int count, total = 0;
@@ -772,15 +775,15 @@ int report_append(char** buf, int* buflen, session_state_t* sess,
     }
 
     if (!pt->id) {
-        for (int i = 0; i < sess->space.len; ++i) {
+        for (int i = 0; i < sinfo->space.len; ++i) {
             count = snprintf_serial(buf, buflen, ",");
             if (count < 0) return -1;
             total += count;
         }
     }
     else {
-        hrange_t* dim = sess->space.dim;
-        for (int i = 0; i < sess->space.len; ++i) {
+        hrange_t* dim = sinfo->space.dim;
+        for (int i = 0; i < sinfo->space.len; ++i) {
             const hval_t* v = &pt->term[i];
 
             switch (dim[i].type) {
@@ -795,7 +798,7 @@ int report_append(char** buf, int* buflen, session_state_t* sess,
                 total += count;
                 break;
             case HVAL_STR: {
-                unsigned long index = hrange_index(&sess->space.dim[i], v);
+                unsigned long index = hrange_index(&sinfo->space.dim[i], v);
                 count = snprintf_serial(buf, buflen, "%ld,", index);
                 if (count < 0) return -1;
                 total += count;

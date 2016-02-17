@@ -330,10 +330,13 @@ int main(int argc, char* argv[])
     }
 
     for (int i = 0; i < slist_cap; ++i) {
-        if (slist[i]->open)
-            close_search(slist[i]);
-        free_search(slist[i]);
+        if (slist[i]) {
+            if (slist[i]->open)
+                close_search(slist[i]);
+            free_search(slist[i]);
+        }
     }
+    free(slist);
     free(cbs);
     hmesg_fini(&mesg);
 
@@ -663,7 +666,13 @@ hsearch_t* find_search(hmesg_t* mesg)
                 continue;
             }
 
-            if (strcmp(mesg->state.space->name, slist[idx]->space.name) == 0)
+            const char* name;
+            if (mesg->type == HMESG_SESSION)
+                name = mesg->state.space->name;
+            else
+                name = mesg->data.string;
+
+            if (strcmp(name, slist[idx]->space.name) == 0)
                 return slist[idx];
         }
         if (open_slot == slist_cap) {
@@ -678,7 +687,7 @@ hsearch_t* find_search(hmesg_t* mesg)
     else {
         // Sanity check that the given index is valid and active.
         idx = mesg->dest;
-        if (idx >= 0 && idx < slist_cap && slist[idx]->open)
+        if (idx >= 0 && idx < slist_cap && slist[idx] && slist[idx]->open)
             return slist[idx];
     }
     return NULL;

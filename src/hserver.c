@@ -47,43 +47,51 @@
 /*
  * Internal helper function prototypes.
  */
-int verbose(const char* fmt, ...);
-int parse_opts(int argc, char* argv[]);
-int vars_init(int argc, char* argv[]);
-int network_init(void);
-int handle_new_connection(int fd);
-int handle_unknown_connection(int fd);
-int handle_client_socket(int fd);
-int handle_session_socket(int idx);
-int available_index(int** list, int* cap);
-void client_close(int fd);
-int update_flags(session_state_t* sess, const char* keyval);
-int update_state(session_state_t* sess);
-int append_http_log(session_state_t* sess, const hpoint_t* pt, double perf);
+static int  launch_session(void);
+static int  verbose(const char* fmt, ...);
+static int  parse_opts(int argc, char* argv[]);
+static int  vars_init(int argc, char* argv[]);
+static int  network_init(void);
+static int  handle_new_connection(int fd);
+static int  handle_unknown_connection(int fd);
+static int  handle_client_socket(int fd);
+static int  handle_session_socket(void);
+static int  available_index(int** list, int* cap);
+static int  count_client(int fd);
+static void client_close(int fd);
+static void update_flags(sinfo_t* sinfo, const char* keyval);
+static int  update_state(sinfo_t* sinfo);
+static int  append_http_log(sinfo_t* sinfo, const hpoint_t* pt, double perf);
+
+static sinfo_t* sinfo_by_id(int id);
+static sinfo_t* sinfo_by_name(const char* name);
+static sinfo_t* register_search(int src_fd);
+static sinfo_t* open_search(void);
 
 /*
  * Main variables
  */
-int listen_port = DEFAULT_PORT;
-int listen_socket;
-fd_set listen_fds;
-int highest_socket;
+static int    listen_port = DEFAULT_PORT;
+static int    listen_socket;
+static int    session_fd;
+static fd_set listen_fds;
+static int    highest_socket;
 
-int* unk_fds, unk_cap;
-int* client_fds, client_cap;
-int* http_fds, http_len, http_cap;
+static int* unk_fds, unk_cap;
+static int* client_fds, client_cap;
+static int* http_fds, http_len, http_cap;
 
-char* harmony_dir;
-char* session_bin;
-hmesg_t mesg = HMESG_INITIALIZER;
+static char* harmony_dir;
+static char* session_bin;
+static hmesg_t mesg;
 
-session_state_t* slist;
+sinfo_t* slist;
 int slist_cap;
 
 /*
  * Local variables
  */
-int verbose_flag;
+static int verbose_flag;
 
 void usage(const char* prog)
 {
@@ -115,6 +123,10 @@ int main(int argc, char* argv[])
     if (network_init() < 0)
         return -1;
 
+    // Launch the underlying search session.
+    if (launch_session() != 0)
+        return -1;
+
     while (1) {
         ready_fds = listen_fds;
         fd_count = select(highest_socket + 1, &ready_fds, NULL, NULL, NULL);
@@ -127,13 +139,11 @@ int main(int argc, char* argv[])
         }
 
         if (fd_count > 0) {
-            // Before all else, handle input from session instances.
-            for (i = 0; i < slist_cap; ++i) {
-                if (slist[i].name && FD_ISSET(slist[i].fd, &ready_fds)) {
-                    if (handle_session_socket(i) < 0) {
-                        FD_CLR(slist[i].fd, &listen_fds);
-                    }
-                }
+            // Before all else, handle input from session process.
+            if (FD_ISSET(session_fd, &ready_fds)) {
+                if (handle_session_socket() > 0)
+                    // Session socket was closed.  Begin shutdown.
+                    goto shutdown;
             }
 
             // Handle new connections.
@@ -164,7 +174,9 @@ int main(int argc, char* argv[])
                     continue;
 
                 if (FD_ISSET(client_fds[i], &ready_fds)) {
-                    if (handle_client_socket(client_fds[i]) < 0) {
+                    retval = handle_client_socket(client_fds[i]);
+                    if (retval > 0) goto shutdown;
+                    if (retval < 0) {
                         client_close(client_fds[i]);
                         client_fds[i] = -1;
                     }
@@ -186,6 +198,7 @@ int main(int argc, char* argv[])
             }
         }
     }
+shutdown:
     return 0;
 }
 
@@ -308,10 +321,12 @@ int vars_init(int argc, char* argv[])
 
     slist = NULL;
     slist_cap = 0;
-    if (array_grow(&slist, &slist_cap, sizeof(session_state_t)) < 0) {
+    if (array_grow(&slist, &slist_cap, sizeof(sinfo_t)) < 0) {
         perror("Could not allocate memory for session file descriptor list");
         return -1;
     }
+    for (int i = 0; i < slist_cap; ++i)
+        slist[i].id = -1; // Initialize slist with non-zero defaults.
 
     return 0;
 }
@@ -444,26 +459,24 @@ int handle_unknown_connection(int fd)
 
 int handle_client_socket(int fd)
 {
-    int idx, i, retval;
+    int idx;
     double perf;
-    session_state_t* sess;
+    sinfo_t* sinfo = NULL;
 
-    sess = NULL;
-    retval = mesg_recv(fd, &mesg);
-    if (retval == 0) goto shutdown;
+    int retval = mesg_recv(fd, &mesg);
     if (retval <  0) goto error;
-
-    // Overwrite the destination with the client fd.
-    mesg.src = fd;
+    if (retval == 0) {
+        client_close(fd);
+        return 0;
+    }
 
     // Sanity check input.
     if (mesg.type != HMESG_SESSION && mesg.type != HMESG_JOIN) {
-        idx = mesg.dest;
-        if (idx < 0 || idx >= slist_cap || slist[idx].name == NULL) {
-            errno = EINVAL;
+        sinfo = sinfo_by_id(mesg.dest);
+        if (!sinfo) {
+            mesg.data.string = "Invalid message destination";
             goto error;
         }
-        sess = &slist[idx];
     }
 
     switch (mesg.type) {
@@ -474,87 +487,63 @@ int handle_client_socket(int fd)
         break;
 
     case HMESG_SETCFG:
-        if (update_flags(sess, mesg.data.string) != 0) {
-            perror("Error updating session info from HMESG_SETCFG message");
-            goto error;
-        }
+        update_flags(sinfo, mesg.data.string);
         break;
 
     case HMESG_SESSION:
-        idx = session_open();
-        if (idx == -1) {
-            errno = EINVAL;
+        sinfo = register_search(fd);
+        if (!sinfo)
             goto error;
-        }
-        mesg.dest = idx; // Set the message destination to the session index.
-        sess = &slist[idx];
-
-        // Add the initiating client to the session.
-        idx = available_index(&sess->client, &sess->client_cap);
-        if (idx < 0) {
-            perror("Could not grow session client list");
-            goto error;
-        }
-        sess->client[idx] = fd;
-        ++sess->client_len;
-
         break;
 
     case HMESG_JOIN:
-        for (idx = 0; idx < slist_cap; ++idx) {
-            if (!slist[idx].name)
-                continue;
-            if (strcmp(slist[idx].name, mesg.data.string) == 0)
-                break;
-        }
-        if (idx == slist_cap) {
-            errno = EINVAL;
+        sinfo = sinfo_by_name(mesg.data.string);
+        if (!sinfo) {
+            mesg.data.string = "Could not find existing search info";
             goto error;
         }
-        mesg.dest = idx; // Set the message destination to the session index.
-        sess = &slist[idx];
 
-        idx = available_index(&sess->client, &sess->client_cap);
+        idx = available_index(&sinfo->client, &sinfo->client_cap);
         if (idx < 0) {
-            perror("Could not grow session client list");
+            mesg.data.string = "Could not grow search client list";
             goto error;
         }
 
-        sess->client[idx] = fd;
-        ++sess->client_len;
+        sinfo->client[idx] = fd;
+        ++sinfo->client_len;
         break;
 
     case HMESG_REPORT:
         perf = hperf_unify(mesg.data.perf);
 
-        for (i = 0; i < sess->fetched_len; ++i) {
-            if (sess->fetched[i].id == mesg.data.point->id)
+        for (idx = 0; idx < sinfo->fetched_len; ++idx) {
+            if (sinfo->fetched[idx].id == mesg.data.point->id)
                 break;
         }
-        if (i < sess->fetched_len) {
-            const hpoint_t* pt = &sess->fetched[i];
+        if (idx < sinfo->fetched_len) {
+            const hpoint_t* pt = &sinfo->fetched[idx];
 
             // Copy point from fetched list to HTTP log.
-            if (append_http_log(sess, pt, perf) != 0) {
-                perror("Internal error copying fetched point to HTTP log");
+            if (append_http_log(sinfo, pt, perf) != 0) {
+                mesg.data.string = "Could not append to HTTP log";
                 goto error;
             }
 
             // Remove point from fetched list.
-            --sess->fetched_len;
-            if (i < sess->fetched_len) {
-                if (hpoint_copy(&sess->fetched[i],
-                                &sess->fetched[sess->fetched_len]) != 0)
+            --sinfo->fetched_len;
+            if (idx < sinfo->fetched_len) {
+                if (hpoint_copy(&sinfo->fetched[idx],
+                                &sinfo->fetched[sinfo->fetched_len]) != 0)
                 {
-                    perror("Internal error copying hpoint within fetch log");
+                    mesg.data.string = "Could not remove fetch list point";
                     goto error;
                 }
             }
         }
         else {
             // Copy point from fetched list to HTTP log.
-            if (append_http_log(sess, &sess->best, perf) != 0) {
-                perror("Internal error copying best point to HTTP log");
+            if (append_http_log(sinfo, &sinfo->best, perf) != 0) {
+                mesg.data.string = "Could not copy best point to HTTP log";
                 goto error;
             }
         }
@@ -564,34 +553,52 @@ int handle_client_socket(int fd)
         goto error;
     }
 
-    if (mesg_forward(sess->fd, &mesg) < 1) {
-        perror("Error forwarding message to session");
-        goto shutdown;
-    }
+    // Overwrite the destination with the client fd.
+    mesg.src = fd;
 
+    retval = mesg_forward(session_fd, &mesg);
+    if (retval == 0) goto shutdown;
+    if (retval <  0) {
+        mesg.data.string = "Could not forward message to session";
+        goto error;
+    }
     return 0;
 
   error:
-    if (mesg.status != HMESG_STATUS_FAIL) {
-        mesg.status  = HMESG_STATUS_FAIL;
-        mesg.data.string = strerror(errno);
-    }
+    mesg.dest   = mesg.src;
+    mesg.src    = -1;
+    mesg.status = HMESG_STATUS_FAIL;
     mesg_send(fd, &mesg);
+    return -1;
 
   shutdown:
-    return -1;
+    fprintf(stderr, "Session socket closed. Shutting server down.\n");
+    return 1;
 }
 
-int handle_session_socket(int idx)
+int handle_session_socket(void)
 {
-    session_state_t* sess;
+    int retval = mesg_recv(session_fd, &mesg);
+    if (retval == 0) goto shutdown;
+    if (retval <  0) {
+        perror("Received malformed message from session");
+        return -1;
+    }
 
-    sess = &slist[idx];
-    if (mesg_recv(sess->fd, &mesg) < 1)
-        goto error;
+    sinfo_t* sinfo = NULL;
+    if (mesg.type != HMESG_SESSION) {
+        sinfo = sinfo_by_id(mesg.src);
+        if (!sinfo) {
+            mesg.data.string = "Server error: No sinfo for session message";
+            goto error;
+        }
+    }
 
     switch (mesg.type) {
     case HMESG_SESSION:
+        sinfo = open_search();
+        break;
+
     case HMESG_JOIN:
     case HMESG_SETCFG:
     case HMESG_BEST:
@@ -599,53 +606,50 @@ int handle_session_socket(int idx)
         break;
 
     case HMESG_GETCFG:
-        if (update_flags(sess, mesg.data.string) != 0) {
-            perror("Error updating session info from HMESG_GETCFG message");
-            goto error;
-        }
+        update_flags(sinfo, mesg.data.string);
         break;
 
     case HMESG_FETCH:
         if (mesg.status == HMESG_STATUS_OK) {
             // Log this point before we forward it to the client.
-            if (sess->fetched_len == sess->fetched_cap) {
-                if (array_grow(&sess->fetched, &sess->fetched_cap,
-                               sizeof(*sess->fetched)) != 0)
+            if (sinfo->fetched_len == sinfo->fetched_cap) {
+                if (array_grow(&sinfo->fetched, &sinfo->fetched_cap,
+                               sizeof(*sinfo->fetched)) != 0)
                 {
-                    perror("Could not grow fetch log");
+                    mesg.data.string = "Server error: Couldn't grow fetch log";
                     goto error;
                 }
             }
 
-            if (hpoint_copy(&sess->fetched[sess->fetched_len],
+            if (hpoint_copy(&sinfo->fetched[sinfo->fetched_len],
                             mesg.data.point) != 0)
             {
-                perror("Internal error copying hpoint to HTTP log");
+                mesg.data.string = "Server error: Couldn't add to HTTP log";
                 goto error;
             }
 
-            if (hpoint_align(&sess->fetched[sess->fetched_len],
-                             &sess->space) != 0)
+            if (hpoint_align(&sinfo->fetched[sinfo->fetched_len],
+                             &sinfo->space) != 0)
             {
-                perror("Could not align fetched point to search space");
+                mesg.data.string = "Server error: Couldn't align point";
                 goto error;
             }
-            ++sess->fetched_len;
+            ++sinfo->fetched_len;
         }
         break;
 
     case HMESG_REPORT:
         if (mesg.status == HMESG_STATUS_OK)
-            ++sess->reported;
+            ++sinfo->reported;
         break;
 
     default:
-        errno = EINVAL;
+        mesg.data.string = "Server error: Invalid message type from session";
         goto error;
     }
 
-    if (update_state(sess) != 0) {
-        perror("Error updating session state from message");
+    if (sinfo && update_state(sinfo) != 0) {
+        mesg.data.string = "Server error: Could not update search state";
         goto error;
     }
 
@@ -661,53 +665,64 @@ int handle_session_socket(int idx)
     return 0;
 
   error:
-    session_close(sess);
+    mesg.status = HMESG_STATUS_FAIL;
+    mesg_send(mesg.dest, &mesg);
     return -1;
+
+  shutdown:
+    fprintf(stderr, "Session socket closed. Shutting server down.\n");
+    return 1;
 }
 
-int session_open(void)
+int launch_session(void)
 {
-    int i, idx = -1;
-    session_state_t* sess;
-    const char* cfgstr;
+    // Fork and exec a session handler.
+    char* const child_argv[] = {session_bin,
+                                harmony_dir,
+                                NULL};
+    session_fd = socket_launch(session_bin, child_argv, NULL);
+    if (session_fd < 0) {
+        perror("Could not launch session process");
+        return -1;
+    }
 
-    // Check if session already exists, and return if it does.
-    for (i = 0; i < slist_cap; ++i) {
+    FD_SET(session_fd, &listen_fds);
+    if (highest_socket < session_fd)
+        highest_socket = session_fd;
+
+    return 0;
+}
+
+sinfo_t* register_search(int src_fd)
+{
+    int idx = -1;
+    for (int i = 0; i < slist_cap; ++i) {
         if (!slist[i].name) {
             if (idx < 0)
-                idx = i;
+                idx = i; // Mark first available index as we pass it.
         }
         else if (strcmp(slist[i].name, mesg.state.space->name) == 0) {
-            mesg.status = HMESG_STATUS_FAIL;
-            mesg.data.string = "Session name already exists.";
-            return -1;
+            mesg.data.string = "Search name already registered";
+            return NULL;
         }
     }
-
-    // Expand session list if necessary.
-    if (idx == -1) {
+    if (idx < 0) {
         idx = slist_cap;
-        if (array_grow(&slist, &slist_cap, sizeof(session_state_t)) < 0)
-            return -1;
+        if (array_grow(&slist, &slist_cap, sizeof(*slist)) != 0) {
+            mesg.data.string = "Could not extend search list";
+            return NULL;
+        }
+        for (int i = idx; i < slist_cap; ++i)
+            slist[i].id = -1; // Initialize slist with non-zero defaults.
     }
-    sess = &slist[idx];
 
-    // Add the new session to the session list.
-    sess->name = stralloc(mesg.state.space->name);
-    if (!sess->name)
-        return -1;
+    sinfo_t* sinfo = &slist[idx];
+    if (hspace_copy(&sinfo->space, mesg.state.space) != 0) {
+        mesg.data.string = "Could not copy space into search info";
+        return NULL;
+    }
 
-    sess->client_len = 0;
-    sess->best_perf = HUGE_VAL;
-
-    // Initialize HTTP server fields.
-    if (hspace_copy(&sess->space, mesg.state.space) != 0)
-        goto error;
-
-    if (gettimeofday(&sess->start, NULL) < 0)
-        goto error;
-
-    cfgstr = hcfg_get(mesg.data.cfg, CFGKEY_STRATEGY);
+    const char* cfgstr = hcfg_get(mesg.data.cfg, CFGKEY_STRATEGY);
     if (!cfgstr) {
         int clients = hcfg_int(mesg.data.cfg, CFGKEY_CLIENT_COUNT);
         if (clients < 1)
@@ -717,53 +732,112 @@ int session_open(void)
         else
             cfgstr = "pro.so";
     }
-    sess->strategy = stralloc( cfgstr );
-    sess->status = 0x0;
-    sess->log_len = 0;
-    sess->reported = 0;
+    sinfo->strategy = stralloc(cfgstr);
 
-    // Fork and exec a session handler.
-    char* const child_argv[] = {sess->name,
-                                harmony_dir,
-                                NULL};
-    sess->fd = socket_launch(session_bin, child_argv, NULL);
-    if (sess->fd < 0)
-        goto error;
+    sinfo->client_len = 0;
+    sinfo->best.id = 0;
+    sinfo->best_perf = HUGE_VAL;
+    sinfo->status = 0x0;
+    sinfo->log_len = 0;
+    sinfo->fetched_len = 0;
+    sinfo->reported = 0;
+    sinfo->id = -src_fd;
 
-    FD_SET(sess->fd, &listen_fds);
-    if (highest_socket < sess->fd)
-        highest_socket = sess->fd;
-
-    return idx;
-
-  error:
-    free(sess->name);
-    sess->name = NULL;
-    return -1;
+    return sinfo;
 }
 
-void session_close(session_state_t* sess)
+sinfo_t* open_search(void)
 {
-    int i;
+    sinfo_t* sinfo = NULL;
 
-    free(sess->name);
-    sess->name = NULL;
-
-    for (i = 0; i < sess->client_cap; ++i) {
-        if (sess->client[i] != -1)
-            client_close(sess->client[i]);
+    // Find the registered search.
+    for (int i = 0; i < slist_cap; ++i) {
+        if (slist[i].id == -mesg.dest) {
+            sinfo = &slist[i];
+            break;
+        }
     }
 
-    free(sess->strategy);
-    sess->best.id = 0;
+    if (!sinfo) {
+        fprintf(stderr, "Could not find matching HMESG_SESSION request.\n");
+        return NULL;
+    }
+
+    if (mesg.status != HMESG_STATUS_OK) {
+        // Reset the sinfo slot.
+        goto error;
+    }
+    else {
+        // Enable the sinfo slot.
+        sinfo->name = sinfo->space.name;
+        sinfo->id = mesg.src;
+
+        // Initialize HTTP server fields.
+        if (gettimeofday(&sinfo->start, NULL) != 0) {
+            perror("Could not save search start time");
+            goto error;
+        }
+
+        // Add the initiating client to the search info.
+        int idx = available_index(&sinfo->client, &sinfo->client_cap);
+        if (idx < 0) {
+            perror("Could not grow search client list");
+            goto error;
+        }
+        sinfo->client[idx] = mesg.dest;
+        ++sinfo->client_len;
+    }
+    return sinfo;
+
+  error:
+    sinfo->name = NULL;
+    sinfo->id   = -1;
+    return NULL;
+}
+
+void search_close(sinfo_t* sinfo)
+{
+    sinfo->name = NULL;
+    sinfo->id   = -1;
+
+    // For each client, see if it is participating in any other
+    // searches.  If not, close its socket.
+    //
+    for (int i = 0; i < sinfo->client_cap; ++i) {
+        if (sinfo->client[i] == -1)
+            continue;
+
+        if (count_client(sinfo->client[i]) == 1)
+            client_close(sinfo->client[i]);
+    }
+
+    free(sinfo->strategy);
+    sinfo->best.id = 0;
+}
+
+int count_client(int fd)
+{
+    int retval = 0;
+
+    for (int i = 0; i < slist_cap; ++i) {
+        if (!slist[i].name)
+            continue;
+
+        for (int j = 0; j < slist[i].client_cap; ++j) {
+            if (slist[i].client[j] == fd)
+                ++retval;
+        }
+    }
+    return retval;
 }
 
 void client_close(int fd)
 {
-    int i, j;
+    for (int i = 0; i < slist_cap; ++i) {
+        if (!slist[i].name)
+            continue;
 
-    for (i = 0; i < slist_cap; ++i) {
-        for (j = 0; j < slist[i].client_cap; ++j) {
+        for (int j = 0; j < slist[i].client_cap; ++j) {
             if (slist[i].client[j] == fd) {
                 slist[i].client[j] = -1;
                 --slist[i].client_len;
@@ -772,7 +846,7 @@ void client_close(int fd)
         }
     }
 
-    for (i = 0; i < client_cap; ++i) {
+    for (int i = 0; i < client_cap; ++i) {
         if (client_fds[i] == fd) {
             client_fds[i] = -1;
             break;
@@ -801,32 +875,30 @@ int available_index(int** list, int* cap)
     return orig_cap;
 }
 
-int update_flags(session_state_t* sess, const char* keyval)
+void update_flags(sinfo_t* sinfo, const char* keyval)
 {
     int val = 0;
 
     sscanf(keyval, CFGKEY_CONVERGED "=%n", &val);
     if (val) {
         if (keyval[val] == '1')
-            sess->status |= STATUS_CONVERGED;
+            sinfo->status |= STATUS_CONVERGED;
         else
-            sess->status &= ~STATUS_CONVERGED;
-        return 0;
+            sinfo->status &= ~STATUS_CONVERGED;
+        return;
     }
 
     sscanf(keyval, CFGKEY_PAUSED "=%n", &val);
     if (val) {
         if (keyval[val] == '1')
-            sess->status |= STATUS_PAUSED;
+            sinfo->status |= STATUS_PAUSED;
         else
-            sess->status &= ~STATUS_PAUSED;
-        return 0;
+            sinfo->status &= ~STATUS_PAUSED;
+        return;
     }
-
-    return 0;
 }
 
-int update_state(session_state_t* sess)
+int update_state(sinfo_t* sinfo)
 {
     if (mesg.type == HMESG_SESSION ||
         mesg.type == HMESG_JOIN)
@@ -835,30 +907,30 @@ int update_state(session_state_t* sess)
         return 0;
     }
 
-    if (mesg.state.space->id > sess->space.id) {
-        if (hspace_copy(&sess->space, mesg.state.space) != 0) {
-            perror("Could not copy session search space");
+    if (mesg.state.space->id > sinfo->space.id) {
+        if (hspace_copy(&sinfo->space, mesg.state.space) != 0) {
+            perror("Could not copy search space");
             return -1;
         }
     }
 
-    if (mesg.state.best->id > sess->best.id) {
+    if (mesg.state.best->id > sinfo->best.id) {
         int i;
-        for (i = sess->log_len - 1; i >= 0; --i) {
-            if (sess->log[i].pt.id == mesg.state.best->id) {
-                sess->best_perf = sess->log[i].perf;
+        for (i = sinfo->log_len - 1; i >= 0; --i) {
+            if (sinfo->log[i].pt.id == mesg.state.best->id) {
+                sinfo->best_perf = sinfo->log[i].perf;
                 break;
             }
         }
         if (i < 0)
-            sess->best_perf = NAN;
+            sinfo->best_perf = NAN;
 
-        if (hpoint_copy(&sess->best, mesg.state.best) != 0) {
+        if (hpoint_copy(&sinfo->best, mesg.state.best) != 0) {
             perror("Internal error copying hpoint to best");
             return -1;
         }
 
-        if (hpoint_align(&sess->best, &sess->space) != 0) {
+        if (hpoint_align(&sinfo->best, &sinfo->space) != 0) {
             perror("Could not align best point to search space");
             return -1;
         }
@@ -867,18 +939,20 @@ int update_state(session_state_t* sess)
 }
 
 
-int append_http_log(session_state_t* sess, const hpoint_t* pt, double perf)
+int append_http_log(sinfo_t* sinfo, const hpoint_t* pt, double perf)
 {
     http_log_t* entry;
 
     // Extend HTTP log if necessary.
-    if (sess->log_len == sess->log_cap) {
-        if (array_grow(&sess->log, &sess->log_cap, sizeof(http_log_t)) != 0) {
+    if (sinfo->log_len == sinfo->log_cap) {
+        if (array_grow(&sinfo->log, &sinfo->log_cap,
+                       sizeof(*sinfo->log)) != 0)
+        {
             perror("Could not grow HTTP log");
             return -1;
         }
     }
-    entry = &sess->log[sess->log_len];
+    entry = &sinfo->log[sinfo->log_len];
 
     if (hpoint_copy(&entry->pt, pt) != 0) {
         perror("Internal error copying point into HTTP log");
@@ -889,62 +963,83 @@ int append_http_log(session_state_t* sess, const hpoint_t* pt, double perf)
     if (gettimeofday(&entry->stamp, NULL) != 0)
         return -1;
 
-    ++sess->log_len;
+    ++sinfo->log_len;
     return 0;
 }
 
-int session_setcfg(session_state_t* sess, const char* key, const char* val)
+sinfo_t* sinfo_by_id(int id)
+{
+    for (int i = 0; i < slist_cap; ++i) {
+        if (slist[i].name && slist[i].id == id)
+            return &slist[i];
+    }
+    return NULL;
+}
+
+sinfo_t* sinfo_by_name(const char* name)
+{
+    for (int i = 0; i < slist_cap; ++i) {
+        if (slist[i].name && strcmp(slist[i].name, name) == 0)
+            return &slist[i];
+    }
+    return NULL;
+}
+
+int search_setcfg(sinfo_t* sinfo, const char* key, const char* val)
 {
     char* buf = sprintf_alloc("%s=%s", key, val ? val : "");
     int retval = 0;
 
+    mesg.dest = sinfo->id;
     mesg.src = -1;
     mesg.type = HMESG_SETCFG;
     mesg.status = HMESG_STATUS_REQ;
     mesg.data.string = buf;
-    mesg.state.space = &sess->space;
-    mesg.state.best = &sess->best;
+    mesg.state.space = &sinfo->space;
+    mesg.state.best = &sinfo->best;
     mesg.state.client = "<hserver>";
 
-    if (mesg_send(sess->fd, &mesg) < 1)
+    if (mesg_send(session_fd, &mesg) < 1)
         retval = -1;
 
     free(buf);
     return retval;
 }
 
-int session_refresh(session_state_t* sess)
+int search_refresh(sinfo_t* sinfo)
 {
+    mesg.dest = sinfo->id;
     mesg.src = -1;
     mesg.type = HMESG_GETCFG;
     mesg.status = HMESG_STATUS_REQ;
-    mesg.state.space = &sess->space;
-    mesg.state.best = &sess->best;
+    mesg.state.space = &sinfo->space;
+    mesg.state.best = &sinfo->best;
     mesg.state.client = "<hserver>";
 
     mesg.data.string = CFGKEY_CONVERGED;
-    if (mesg_send(sess->fd, &mesg) < 1)
+    if (mesg_send(session_fd, &mesg) < 1)
         return -1;
 
     mesg.data.string = CFGKEY_PAUSED;
-    if (mesg_send(sess->fd, &mesg) < 1)
+    if (mesg_send(session_fd, &mesg) < 1)
         return -1;
 
     return 0;
 }
 
-int session_restart(session_state_t* sess)
+int search_restart(sinfo_t* sinfo)
 {
     int retval = 0;
 
+    mesg.dest = sinfo->id;
     mesg.src = -1;
     mesg.type = HMESG_RESTART;
     mesg.status = HMESG_STATUS_REQ;
-    mesg.state.space = &sess->space;
-    mesg.state.best = &sess->best;
+    mesg.state.space = &sinfo->space;
+    mesg.state.best = &sinfo->best;
     mesg.state.client = "<hserver>";
 
-    if (mesg_send(sess->fd, &mesg) < 1)
+    if (mesg_send(session_fd, &mesg) < 1)
         retval = -1;
 
     return retval;

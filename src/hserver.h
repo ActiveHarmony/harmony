@@ -27,10 +27,10 @@
 extern "C" {
 #endif
 
-typedef enum sess_status {
+typedef enum search_status {
     STATUS_CONVERGED = 0x1,
     STATUS_PAUSED    = 0x2
-} sess_status_t;
+} search_status_t;
 
 typedef struct http_log {
     struct timeval stamp;
@@ -38,13 +38,17 @@ typedef struct http_log {
     double perf;
 } http_log_t;
 
-typedef struct session_state {
-    char* name;
-    int fd;
-    int* client;
-    int client_len, client_cap;
+typedef struct sinfo {
+    const char* name;
+    int id;
+
+    // Best known search point and performance.
     hpoint_t best;
     double best_perf;
+
+    // List of connected clients.
+    int* client;
+    int client_len, client_cap;
 
     // Fields used by the HTTP server.
     struct timeval start;
@@ -54,20 +58,21 @@ typedef struct session_state {
 
     http_log_t* log;
     int log_len, log_cap;
+
     hpoint_t* fetched;
     int fetched_len, fetched_cap;
     int reported;
-} session_state_t;
+} sinfo_t;
 
-extern session_state_t* slist;
+extern sinfo_t* slist;
 extern int slist_cap;
 
-int session_open(void);
-void session_close(session_state_t* sess);
-const char* session_getcfg(session_state_t* sess, const char* key);
-int session_setcfg(session_state_t* sess, const char* key, const char* val);
-int session_refresh(session_state_t* sess);
-int session_restart(session_state_t* sess);
+int search_open(void);
+void search_close(sinfo_t* sinfo);
+const char* search_getcfg(sinfo_t* sinfo, const char* key);
+int search_setcfg(sinfo_t* sinfo, const char* key, const char* val);
+int search_refresh(sinfo_t* sinfo);
+int search_restart(sinfo_t* sinfo);
 
 #ifdef __cplusplus
 }
