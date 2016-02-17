@@ -350,7 +350,7 @@ int strategy_analyze(data_t* data, htrial_t* trial)
     }
 
     // Update the best performing point, if necessary.
-    if (!data->best.id || hperf_cmp(&data->best_perf, &trial->perf) < 0) {
+    if (!data->best.id || hperf_cmp(&data->best_perf, &trial->perf) > 0) {
         if (hperf_copy(&data->best_perf, &trial->perf) != 0) {
             search_error("Could not store best performance during analyze");
             return -1;
@@ -373,6 +373,23 @@ int strategy_best(data_t* data, hpoint_t* point)
         search_error("Could not copy best point during strategy_best()");
         return -1;
     }
+    return 0;
+}
+
+/*
+ * Free memory associated with this search instance.
+ */
+int strategy_fini(data_t* data)
+{
+    vertex_fini(&data->centroid);
+    simplex_fini(&data->expand);
+    simplex_fini(&data->reflect);
+    simplex_fini(&data->simplex);
+    vertex_fini(&data->init_point);
+    hperf_fini(&data->best_perf);
+    hpoint_fini(&data->best);
+
+    free(data);
     return 0;
 }
 

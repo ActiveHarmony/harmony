@@ -129,11 +129,8 @@ int cache_init(data_t* data, hspace_t* space)
     }
     data->dim = space->dim;
 
-    data->cache = NULL;
-    data->cache_len = data->cache_cap = 0;
-
-    data->visited = NULL;
-    data->visited_len = data->visited_cap = 0;
+    data->cache_len = 0;
+    data->visited_len = 0;
 
     filename = hcfg_get(search_cfg, CFGKEY_CACHE_FILE);
     if (filename) {

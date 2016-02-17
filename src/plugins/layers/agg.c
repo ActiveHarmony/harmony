@@ -91,6 +91,7 @@ typedef struct data {
 static void perf_mean(data_t* data, hperf_t* dst, hperf_t* src, int count);
 static int  perf_sort(const void* _a, const void* _b);
 static int  add_storage(data_t* data);
+static void free_storage(data_t* data);
 
 /*
  * Allocate memory for a new search instance.
@@ -109,9 +110,7 @@ data_t* agg_alloc(void)
  */
 int agg_init(data_t* data, hspace_t* space)
 {
-    const char* val;
-
-    val = hcfg_get(search_cfg, CFGKEY_AGG_FUNC);
+    const char* val = hcfg_get(search_cfg, CFGKEY_AGG_FUNC);
     if (!val) {
         search_error(CFGKEY_AGG_FUNC " configuration key empty");
         return -1;
@@ -125,15 +124,23 @@ int agg_init(data_t* data, hspace_t* space)
         return -1;
     }
 
-    data->trial_per_point = hcfg_int(search_cfg, CFGKEY_AGG_TIMES);
-    if (data->trial_per_point < 2) {
+    int new_trial_count = hcfg_int(search_cfg, CFGKEY_AGG_TIMES);
+    if (new_trial_count < 2) {
         search_error("Invalid " CFGKEY_AGG_TIMES " configuration value");
         return -1;
     }
 
-    data->slist = NULL;
-    data->slist_len = 0;
-    return add_storage(data);
+    if (data->trial_per_point != new_trial_count) {
+        data->trial_per_point = new_trial_count;
+
+        free_storage(data);
+
+        data->slist = NULL;
+        data->slist_len = 0;
+        if (add_storage(data))
+            return -1;
+    }
+    return 0;
 }
 
 int agg_analyze(data_t* data, hflow_t* flow, htrial_t* trial)
@@ -204,13 +211,7 @@ int agg_analyze(data_t* data, hflow_t* flow, htrial_t* trial)
 
 int agg_fini(data_t* data)
 {
-    for (int i = 0; i < data->slist_len; ++i) {
-        for (int j = 0; j < data->trial_per_point; ++j)
-            hperf_fini(&data->slist[i].trial[j]);
-        free(data->slist[i].trial);
-    }
-    free(data->slist);
-
+    free_storage(data);
     free(data);
     return 0;
 }
@@ -265,4 +266,14 @@ int add_storage(data_t* data)
         ++prev_len;
     }
     return 0;
+}
+
+void free_storage(data_t* data)
+{
+    for (int i = 0; i < data->slist_len; ++i) {
+        for (int j = 0; j < data->trial_per_point; ++j)
+            hperf_fini(&data->slist[i].trial[j]);
+        free(data->slist[i].trial);
+    }
+    free(data->slist);
 }

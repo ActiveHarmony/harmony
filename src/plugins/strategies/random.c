@@ -56,6 +56,7 @@ const hcfg_info_t plugin_keyinfo[] = {
  * Structure to hold data for an individual exhaustive search instance.
  */
 struct data {
+    int       space_id;
     hspace_t* space;
     hpoint_t  best;
     double    best_perf;
@@ -89,7 +90,7 @@ data_t* strategy_alloc(void)
  */
 int strategy_init(data_t* data, hspace_t* space)
 {
-    if (data->space != space) {
+    if (data->space_id != space->id) {
         if (hpoint_init(&data->next, space->len) != 0) {
             search_error("Could not initialize point structure");
             return -1;
@@ -174,6 +175,18 @@ int strategy_best(data_t* data, hpoint_t* point)
         search_error("Could not copy best point out of strategy");
         return -1;
     }
+    return 0;
+}
+
+/*
+ * Free memory associated with this search instance.
+ */
+int strategy_fini(data_t* data)
+{
+    hpoint_fini(&data->next);
+    hpoint_fini(&data->best);
+
+    free(data);
     return 0;
 }
 

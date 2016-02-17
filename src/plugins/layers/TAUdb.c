@@ -186,6 +186,7 @@ int TAUdb_init(data_t* data, hspace_t* space)
     data->thread = create_tau_thread(data, data->client_max);
 
     // Client id map to thread id.
+    free(data->client);
     data->client = malloc(data->client_max * sizeof(cinfo_t));
     if (!data->client) {
         search_error("Could not allocate client list");

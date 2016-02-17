@@ -29,6 +29,7 @@
 #include "hpoint.h"
 #include "hperf.h"
 #include "hcfg.h"
+#include "hutil.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -63,6 +64,7 @@ hcfg_info_t plugin_keyinfo[] = {
  * instead be defined as a part of this structure.
  */
 typedef struct data {
+    char* filename;
     FILE* fd;
 } data_t;
 
@@ -85,22 +87,38 @@ int logger_init(data_t* data, hspace_t* space)
 {
     const char* filename = hcfg_get(search_cfg, CFGKEY_LOG_FILE);
     const char* mode     = hcfg_get(search_cfg, CFGKEY_LOG_MODE);
-    time_t tm;
+    time_t tm = time(NULL);
 
     if (!filename) {
         search_error(CFGKEY_LOG_FILE " config key empty");
         return -1;
     }
 
-    data->fd = fopen(filename, mode);
-    if (!data->fd) {
-        search_error( strerror(errno) );
-        return -1;
-    }
+    if (!data->filename || strcmp(data->filename, filename) != 0) {
+        // Save a copy of the filename..
+        free(data->filename);
+        data->filename = stralloc(filename);
+        if (!data->filename) {
+            search_error("Could not allocate filename in logger_init()");
+            return -1;
+        }
 
-    tm = time(NULL);
-    fprintf(data->fd, "* Begin tuning session log.\n");
-    fprintf(data->fd, "* Timestamp: %s", asctime( localtime(&tm) ));
+        if (!data->fd)
+            data->fd = fopen(filename, mode);
+        else
+            data->fd = freopen(filename, mode, data->fd);
+
+        if (!data->fd) {
+            search_error( strerror(errno) );
+            return -1;
+        }
+        fprintf(data->fd, "* Begin tuning session log.\n");
+        fprintf(data->fd, "* Timestamp: %s", asctime( localtime(&tm) ));
+    }
+    else {
+        fprintf(data->fd, "* Logger re-initialized.\n");
+        fprintf(data->fd, "* Timestamp: %s", asctime( localtime(&tm) ));
+    }
 
     return 0;
 }
@@ -148,8 +166,11 @@ int logger_analyze(data_t* data, hflow_t* flow, htrial_t* trial)
 
 int logger_fini(data_t* data)
 {
+    time_t tm = time(NULL);
+
     fprintf(data->fd, "*\n");
     fprintf(data->fd, "* End tuning session.\n");
+    fprintf(data->fd, "* Timestamp: %s", asctime( localtime(&tm) ));
     fprintf(data->fd, "*\n");
 
     if (fclose(data->fd) != 0) {
@@ -157,6 +178,7 @@ int logger_fini(data_t* data)
         return -1;
     }
 
+    free(data->filename);
     free(data);
     return 0;
 }

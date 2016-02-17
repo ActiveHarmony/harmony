@@ -197,8 +197,7 @@ data_t* strategy_alloc(void)
     if (!retval)
         return NULL;
 
-    retval->next_id =  1;
-    retval->phase   = -1;
+    retval->next_id = 1;
 
     return retval;
 }
@@ -223,7 +222,7 @@ int strategy_init(data_t* data, hspace_t* space)
         return -1;
     }
 
-    data->next_id = 1;
+    data->phase = -1;
     if (increment_phase(data) != 0)
         return -1;
 
@@ -314,10 +313,9 @@ int strategy_rejected(data_t* data, hflow_t* flow, hpoint_t* point)
  */
 int strategy_analyze(data_t* data, htrial_t* trial)
 {
-    if (trial->point.id != data->next->id) {
-        search_error("Rouge points not supported");
-        return -1;
-    }
+    if (trial->point.id != data->next->id)
+        return 0;
+
     hperf_copy(&data->next->perf, &trial->perf);
 
     // Update the observed value ranges.
@@ -394,6 +392,28 @@ int strategy_best(data_t* data, hpoint_t* point)
 }
 
 /*
+ * Free memory associated with this search instance.
+ */
+int strategy_fini(data_t* data)
+{
+    free(data->span);
+    free(data->thresh);
+    simplex_fini(&data->simplex);
+    simplex_fini(&data->init_simplex);
+    vertex_fini(&data->contract);
+    vertex_fini(&data->expand);
+    vertex_fini(&data->reflect);
+    vertex_fini(&data->centroid);
+    free(data->leeway);
+    vertex_fini(&data->init_point);
+    hperf_fini(&data->best_perf);
+    hpoint_fini(&data->best);
+
+    free(data);
+    return 0;
+}
+
+/*
  * Internal helper function implementation.
  */
 int allocate_structures(data_t* data)
@@ -424,6 +444,7 @@ int allocate_structures(data_t* data)
             search_error("Could not allocate initial simplex performance");
             return -1;
         }
+        data->simplex.vertex[i].perf.len = data->perf_n;
     }
 
     if (hpoint_init(&data->best, data->space->len) != 0 ||
@@ -439,6 +460,7 @@ int allocate_structures(data_t* data)
         search_error("Could not allocate reflection vertex");
         return -1;
     }
+    data->reflect.perf.len = data->perf_n;
 
     if (vertex_init(&data->expand, data->space->len) != 0 ||
         hperf_init(&data->expand.perf, data->perf_n) != 0)
@@ -446,6 +468,7 @@ int allocate_structures(data_t* data)
         search_error("Could not allocate expansion vertex");
         return -1;
     }
+    data->expand.perf.len = data->perf_n;
 
     if (vertex_init(&data->contract, data->space->len) != 0 ||
         hperf_init(&data->contract.perf, data->perf_n) != 0)
@@ -453,6 +476,7 @@ int allocate_structures(data_t* data)
         search_error("Could not allocate contraction vertex");
         return -1;
     }
+    data->contract.perf.len = data->perf_n;
 
     newbuf = realloc(data->leeway, (data->perf_n - 1) * sizeof(*data->leeway));
     if (!newbuf) {

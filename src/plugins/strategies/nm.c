@@ -324,6 +324,24 @@ int strategy_best(data_t* data, hpoint_t* point)
 }
 
 /*
+ * Free memory associated with this search instance.
+ */
+int strategy_fini(data_t* data)
+{
+    simplex_fini(&data->simplex);
+    vertex_fini(&data->contract);
+    vertex_fini(&data->expand);
+    vertex_fini(&data->reflect);
+    vertex_fini(&data->centroid);
+    vertex_fini(&data->init_point);
+    hperf_fini(&data->best_perf);
+    hpoint_fini(&data->best);
+
+    free(data);
+    return 0;
+}
+
+/*
  * Internal helper function implementations.
  */
 void check_convergence(data_t* data)

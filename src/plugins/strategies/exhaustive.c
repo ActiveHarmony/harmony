@@ -266,6 +266,20 @@ int strategy_best(data_t* data, hpoint_t* point)
 }
 
 /*
+ * Free memory associated with this search instance.
+ */
+int strategy_fini(data_t* data)
+{
+    free(data->wrap);
+    free(data->next);
+    free(data->head);
+    hpoint_fini(&data->best);
+
+    free(data);
+    return 0;
+}
+
+/*
  * Internal helper function implementation.
  */
 int config_strategy(data_t* data)

@@ -426,7 +426,7 @@ int open_search(hsearch_t* search, hmesg_t* mesg)
 
 void close_search(hsearch_t* search)
 {
-    for (int i = search->pstack_len - 1; i > 0; --i) {
+    for (int i = search->pstack_len - 1; i >= 0; --i) {
         if (search->pstack[i].fini)
             search->pstack[i].fini(search->pstack[i].data);
     }
@@ -437,6 +437,7 @@ void close_search(hsearch_t* search)
     search->pending_len = 0;
     search->best.id = 0;
     search->space.id = 0;
+    search->open = 0;
 }
 
 void free_search(hsearch_t* search)
@@ -457,6 +458,8 @@ void free_search(hsearch_t* search)
     hpoint_fini(&search->best);
     hcfg_fini(&search->cfg);
     hspace_fini(&search->space);
+
+    free(search);
 }
 
 /*
@@ -783,6 +786,14 @@ int handle_join(hsearch_t* search, hmesg_t* mesg)
             hplugin_t* plugin = &search->pstack[i];
             if (plugin->join(plugin->data, mesg->state.client) != 0)
                 return -1;
+        }
+    }
+
+    // Find the search index.
+    for (int i = 0; i < slist_cap; ++i) {
+        if (slist[i] == search) {
+            mesg->dest = i;
+            break;
         }
     }
 
@@ -1276,20 +1287,9 @@ void search_error(const char* msg)
  */
 int search_restart(void)
 {
-    hplugin_t* plugin;
-
-    // Finalize all plug-ins associated with this search.
-    for (int i = current_search->pstack_len - 1; i >= 0; --i) {
-        plugin = &current_search->pstack[i];
-        if (plugin->fini) {
-            if (plugin->fini(plugin->data) != 0)
-                return -1;
-        }
-    }
-
     // Re-initialize all plug-ins associated with this search.
     for (int i = 0; i < current_search->pstack_len; ++i) {
-        plugin = &current_search->pstack[i];
+        hplugin_t* plugin = &current_search->pstack[i];
 
         if (plugin->init) {
             if (plugin->init(plugin->data, &current_search->space) != 0)
