@@ -34,9 +34,12 @@ const hrange_t hrange_zero = HRANGE_INITIALIZER;
  * Internal helper function prototypes.
  */
 static int copy_enum(range_enum_t* dst, const range_enum_t* src);
-static int parse_int(range_int_t* bounds, const char* buf, const char** err);
-static int parse_real(range_real_t* bounds, const char* buf, const char** err);
-static int parse_enum(range_enum_t* bounds, const char* buf, const char** err);
+static int parse_int(range_int_t* bounds, const char* buf,
+                     const char** errptr);
+static int parse_real(range_real_t* bounds, const char* buf,
+                      const char** errptr);
+static int parse_enum(range_enum_t* bounds, const char* buf,
+                      const char** errptr);
 static unsigned long index_of_int(const range_int_t* bounds, long val);
 static unsigned long index_of_real(const range_real_t* bounds, double val);
 static unsigned long index_of_enum(const range_enum_t* bounds,
@@ -55,16 +58,22 @@ static hval_t value_of_enum(const range_enum_t* bounds, unsigned long idx);
 /*
  * Enumerated domain range structure utility interface implementation.
  */
-int range_enum_add_value(range_enum_t* bounds, char* str)
+int range_enum_add_value(range_enum_t* bounds, char* str, const char** errptr)
 {
     for (int i = 0; i < bounds->len; ++i) {
-        if (strcmp(bounds->set[i], str) == 0)
+        if (strcmp(bounds->set[i], str) == 0) {
+            *errptr = "Cannot add duplicate value to enumerated domain";
             return -1;
+        }
     }
 
     if (bounds->len == bounds->cap) {
-        if (array_grow(&bounds->set, &bounds->cap, sizeof(*bounds->set)) != 0)
+        if (array_grow(&bounds->set, &bounds->cap,
+                       sizeof(*bounds->set)) != 0)
+        {
+            *errptr = "Could not extend enumerated domain's value list";
             return -1;
+        }
     }
 
     bounds->set[ bounds->len++ ] = str;
@@ -296,7 +305,6 @@ int hrange_unpack(hrange_t* range, char* buf)
 int hrange_parse(hrange_t* range, const char* buf, const char** errptr)
 {
     int id, idlen, bounds = 0, tail = 0;
-    const char* errstr;
 
     while (isspace(*buf)) ++buf;
     if (*buf == '\0')
@@ -304,7 +312,7 @@ int hrange_parse(hrange_t* range, const char* buf, const char** errptr)
 
     sscanf(buf, " int %n%*[^=]%n=%n", &id, &idlen, &bounds);
     if (bounds) {
-        int len = parse_int(&range->bounds.i, buf + bounds, &errstr);
+        int len = parse_int(&range->bounds.i, buf + bounds, errptr);
         if (len == -1)
             goto error;
 
@@ -315,7 +323,7 @@ int hrange_parse(hrange_t* range, const char* buf, const char** errptr)
 
     sscanf(buf, " real %n%*[^=]%n=%n", &id, &idlen, &bounds);
     if (bounds) {
-        int len = parse_real(&range->bounds.r, buf + bounds, &errstr);
+        int len = parse_real(&range->bounds.r, buf + bounds, errptr);
         if (len == -1)
             goto error;
 
@@ -326,7 +334,7 @@ int hrange_parse(hrange_t* range, const char* buf, const char** errptr)
 
     sscanf(buf, " enum %n%*[^=]%n=%n", &id, &idlen, &bounds);
     if (bounds) {
-        int len = parse_enum(&range->bounds.e, buf + bounds, &errstr);
+        int len = parse_enum(&range->bounds.e, buf + bounds, errptr);
         if (len == -1)
             goto error;
 
@@ -334,33 +342,30 @@ int hrange_parse(hrange_t* range, const char* buf, const char** errptr)
         tail += len;
         goto found;
     }
-    errstr = "Unknown tuning variable type";
+    *errptr = "Unknown tuning variable type";
     goto error;
 
   found:
     while (isspace(buf[idlen - 1])) --idlen;
     if (!valid_id(&buf[id], idlen - id)) {
-        errstr = "Invalid variable name";
+        *errptr = "Invalid variable name";
         goto error;
     }
 
     if (buf[bounds + tail] != '\0') {
-        errstr = "Invalid trailing characters";
+        *errptr = "Invalid trailing characters";
         goto error;
     }
 
     range->name = sprintf_alloc("%.*s", idlen - id, &buf[id]);
     if (!range->name) {
-        errstr = "Cannot copy range name";
+        *errptr = "Cannot copy range name";
         goto error;
     }
-
-    if (errptr) *errptr = NULL;
     return 1;
 
   error:
     hrange_fini(range);
-    if (errptr) *errptr = errstr;
     return -1;
 }
 
@@ -385,7 +390,7 @@ int copy_enum(range_enum_t* dst, const range_enum_t* src)
 /*
  * Range definition parsing implementation.
  */
-int parse_int(range_int_t* bounds, const char* buf, const char** err)
+int parse_int(range_int_t* bounds, const char* buf, const char** errptr)
 {
     *bounds = (range_int_t){LONG_MIN, LONG_MIN, 1};
 
@@ -397,15 +402,15 @@ int parse_int(range_int_t* bounds, const char* buf, const char** err)
 
     if (!tail) {
         if (bounds->min == LONG_MIN)
-            *err = "Invalid integer-domain minimum range value";
+            *errptr = "Invalid integer-domain minimum range value";
         else
-            *err = "Invalid integer-domain maximum range value";
+            *errptr = "Invalid integer-domain maximum range value";
         return -1;
     }
     return tail;
 }
 
-int parse_real(range_real_t* bounds, const char* buf, const char** err)
+int parse_real(range_real_t* bounds, const char* buf, const char** errptr)
 {
     *bounds = (range_real_t){NAN, NAN, NAN};
 
@@ -417,35 +422,34 @@ int parse_real(range_real_t* bounds, const char* buf, const char** err)
 
     if (!tail) {
         if (isnan(bounds->min))
-            *err = "Invalid real-domain minimum range value";
+            *errptr = "Invalid real-domain minimum range value";
         else if (isnan(bounds->max))
-            *err = "Invalid real-domain minimum range value";
+            *errptr = "Invalid real-domain minimum range value";
         else
-            *err = "Invalid real-domain step value";
+            *errptr = "Invalid real-domain step value";
         return -1;
     }
     return tail;
 }
 
-int parse_enum(range_enum_t* bounds, const char* buf, const char** err)
+int parse_enum(range_enum_t* bounds, const char* buf, const char** errptr)
 {
     *bounds = (range_enum_t){NULL, 0, 0};
 
     int tail = 0;
     while (buf[tail]) {
         char* token;
-        int len = unquote_string(buf + tail, &token, err);
+        int len = unquote_string(buf + tail, &token, errptr);
         if (len == -1)
             return -1;
 
         tail += len;
-        if (token && range_enum_add_value(bounds, token) != 0) {
-            *err = "Invalid enumerated-domain string value";
+        if (token && range_enum_add_value(bounds, token, errptr) != 0) {
             free(token);
             return -1;
         }
         if (!token && buf[tail] != '\0') {
-            *err = "Empty enumerated-domain value";
+            *errptr = "Empty enumerated-domain value";
             return -1;
         }
 
@@ -453,7 +457,7 @@ int parse_enum(range_enum_t* bounds, const char* buf, const char** err)
         if (buf[tail] == ',') ++tail;
     }
     if (bounds->len == 0) {
-        *err = "No enumerated string tokens found";
+        *errptr = "No enumerated string tokens found";
         return -1;
     }
     return tail;

@@ -53,7 +53,7 @@ typedef struct range_enum {
     int    cap;
 } range_enum_t;
 
-int range_enum_add_value(range_enum_t* bounds, char* str);
+int range_enum_add_value(range_enum_t* bounds, char* str, const char** errptr);
 
 /*
  * Range type to represent a single dimension of the tuning search space.

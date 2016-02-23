@@ -55,10 +55,11 @@ void hspace_scrub(hspace_t* space);
  */
 int hspace_name(hspace_t* space, const char* name);
 int hspace_int(hspace_t* space, const char* name,
-               long min, long max, long step);
+               long min, long max, long step, const char** errptr);
 int hspace_real(hspace_t* space, const char* name,
-                double min, double max, double step);
-int hspace_enum(hspace_t* space, const char* name, const char* value);
+                double min, double max, double step, const char** errptr);
+int hspace_enum(hspace_t* space, const char* name,
+                const char* value, const char** errptr);
 
 /*
  * Search space comparison interface.

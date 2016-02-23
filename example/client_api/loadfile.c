@@ -27,7 +27,7 @@
 #include "hclient.h"
 #include "defaults.h"
 
-#define MAX_LOOP 5000
+#define MAX_LOOP 500
 
 /*
  * A simple performance function is defined here for illustration purposes.
@@ -43,7 +43,9 @@ double application(long ival, double rval, const char* string)
 
 int main(int argc, char* argv[])
 {
-    hdesc_t* hd;
+    hdesc_t* hdesc;
+    hdef_t*  hdef = NULL;
+    htask_t* htask;
     int i, retval;
     double perf;
     char* filename = "session.cfg";
@@ -58,34 +60,41 @@ int main(int argc, char* argv[])
     }
 
     // Initialize a Harmony client.
-    hd = ah_init();
-    if (hd == NULL) {
+    hdesc = ah_alloc();
+    if (hdesc == NULL) {
         fprintf(stderr, "Error initializing a Harmony session");
-        goto error;
+        goto cleanup;
     }
-    ah_args(hd, &argc, argv);
+    ah_args(hdesc, &argc, argv);
 
     if (argc > 1)
         filename = argv[1];
 
     // Load a session definition file.
-    if (ah_load(hd, filename) != 0) {
+    hdef = ah_def_load(filename);
+    if (!hdef) {
         fprintf(stderr, "Error loading session file");
         goto error;
     }
 
-    // Begin a new tuning session.
     printf("Starting Harmony...\n");
-    if (ah_launch(hd, NULL, 0, filename) != 0) {
-        fprintf(stderr, "Error launching tuning session");
+    if (ah_connect(hdesc, NULL, 0) != 0) {
+        fprintf(stderr, "Error connecting to Harmony session");
+        goto error;
+    }
+
+    // Begin a new tuning search.
+    htask = ah_start(hdesc, hdef);
+    if (!htask) {
+        fprintf(stderr, "Error starting Harmony search");
         goto error;
     }
 
     // Main tuning loop.
-    for (i = 0; !ah_converged(hd) && i < MAX_LOOP; ++i) {
-        int hresult = ah_fetch(hd);
+    for (i = 0; !ah_converged(htask) && i < MAX_LOOP; ++i) {
+        int hresult = ah_fetch(htask);
         if (hresult < 0) {
-            fprintf(stderr, "Error fetching values from tuning session");
+            fprintf(stderr, "Error fetching values from search task");
             goto error;
         }
 
@@ -101,54 +110,55 @@ int main(int argc, char* argv[])
         // mapping between the parameters and the code-variants is needed to
         // call the appropriate code variant.
         //
-        perf = application(ah_get_int(hd, "i_var"),
-                           ah_get_real(hd, "r_var"),
-                           ah_get_enum(hd, "fruits"));
+        perf = application(ah_get_int(htask, "i_var"),
+                           ah_get_real(htask, "r_var"),
+                           ah_get_enum(htask, "fruits"));
 
         printf("(%4ld, %.4lf, \"%s\") = %lf\n",
-               ah_get_int(hd, "i_var"),
-               ah_get_real(hd, "r_var"),
-               ah_get_enum(hd, "fruits"),
+               ah_get_int(htask, "i_var"),
+               ah_get_real(htask, "r_var"),
+               ah_get_enum(htask, "fruits"),
                perf);
 
         // Report the performance we've just measured.
-        if (ah_report(hd, &perf) != 0) {
-            fprintf(stderr, "Error reporting performance to server");
+        if (ah_report(htask, &perf) != 0) {
+            fprintf(stderr, "Error reporting performance to search task");
             goto error;
         }
     }
 
-    if (!ah_converged(hd)) {
+    if (!ah_converged(htask)) {
         printf("*\n");
-        printf("* Leaving tuning session after %d iterations.\n", MAX_LOOP);
+        printf("* Leaving tuning search after %d iterations.\n", MAX_LOOP);
         printf("*\n");
     }
 
-    if (ah_best(hd) < 0) {
+    if (ah_best(htask) < 0) {
         fprintf(stderr, "Error retrieving best tuning point");
         goto error;
     }
-    perf = application(ah_get_int(hd, "i_var"),
-                       ah_get_real(hd, "r_var"),
-                       ah_get_enum(hd, "fruits"));
+    perf = application(ah_get_int(htask, "i_var"),
+                       ah_get_real(htask, "r_var"),
+                       ah_get_enum(htask, "fruits"));
 
     printf("(%4ld, %.4lf, \"%s\") = %lf (* Best point found. *)\n",
-           ah_get_int(hd, "i_var"),
-           ah_get_real(hd, "r_var"),
-           ah_get_enum(hd, "fruits"),
+           ah_get_int(htask, "i_var"),
+           ah_get_real(htask, "r_var"),
+           ah_get_enum(htask, "fruits"),
            perf);
     goto cleanup;
 
   error:
-    fprintf(stderr, ": %s\n", ah_error_string(hd));
+    fprintf(stderr, ": %s\n", ah_error());
     retval = -1;
 
   cleanup:
-    // Leave the tuning session.
-    if (ah_leave(hd) != 0)
+    // Close the connection to the tuning session.
+    if (ah_close(hdesc) != 0) {
         fprintf(stderr, "Error disconnecting from Harmony session: %s.\n",
-                ah_error_string(hd));
-
-    ah_fini(hd);
+                ah_error());
+    }
+    ah_def_free(hdef);
+    ah_free(hdesc);
     return retval;
 }

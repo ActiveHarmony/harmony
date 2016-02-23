@@ -39,18 +39,18 @@
 /*
  * Internal helper function prototypes.
  */
-void   parse_opts(int argc, char* argv[]);
-void   parse_params(int idx, int argc, char* argv[]);
-void   parse_dim(char* dim);
-void   parse_funcs(char* list);
-int    parse_fopts(int idx, char** opts);
-int    start_harmony(hdesc_t* hdesc);
-void   eval_func(void);
-double quantize_value(double val);
-double random_value(double min, double max);
-void   fprint_darr(FILE* fp, const char* head,
+void     parse_opts(int argc, char* argv[]);
+void     parse_params(int idx, int argc, char* argv[]);
+void     parse_dim(char* dim);
+void     parse_funcs(char* list);
+int      parse_fopts(int idx, char** opts);
+htask_t* start_harmony(hdesc_t* hdesc);
+void     eval_func(void);
+double   quantize_value(double val);
+double   random_value(double min, double max);
+void     fprint_darr(FILE* fp, const char* head,
                    double* arr, int len, const char* tail);
-void   use_resources(void);
+void     use_resources(void);
 
 /*
  * Option Variables (and their associated defaults).
@@ -136,10 +136,10 @@ int main(int argc, char* argv[])
     double best_val = HUGE_VAL;
     hdesc_t* hdesc;
 
-    hdesc = ah_init();
+    hdesc = ah_alloc();
     if (!hdesc) {
-        perror("Error allocating/initializing a Harmony descriptor");
-        return -1;
+        fprintf(stderr, "Error allocating a Harmony descriptor");
+        goto error;
     }
     ah_args(hdesc, &argc, argv);
 
@@ -159,24 +159,28 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    if (start_harmony(hdesc) != 0) {
+    if (ah_connect(hdesc, NULL, 0) != 0) {
+        fprintf(stderr, "Error connecting to Harmony session");
+        goto error;
+    }
+
+    htask_t* htask = start_harmony(hdesc);
+    if (!htask) {
         retval = -1;
         goto cleanup;
     }
 
     report = 8;
-    for (i = 0; !ah_converged(hdesc); i++) {
+    for (i = 0; !ah_converged(htask); i++) {
         double cmp = 0.0;
 
         if (iterations && i >= iterations)
             break;
 
-        hresult = ah_fetch(hdesc);
+        hresult = ah_fetch(htask);
         if (hresult < 0) {
-            fprintf(stderr, "Error fetching values from session: %s\n",
-                    ah_error_string(hdesc));
-            retval = -1;
-            goto cleanup;
+            fprintf(stderr, "Error fetching values from search task");
+            goto error;
         }
         else if (hresult == 0) {
             continue;
@@ -190,11 +194,9 @@ int main(int argc, char* argv[])
             memcpy(best, perf, sizeof(best));
         }
 
-        if (ah_report(hdesc, perf) < 0) {
-            fprintf(stderr, "Error reporting performance to session: %s\n",
-                    ah_error_string(hdesc));
-            retval = -1;
-            goto cleanup;
+        if (ah_report(htask, perf) < 0) {
+            fprintf(stderr, "Error reporting performance to session");
+            goto error;
         }
 
         if (i == report) {
@@ -204,11 +206,10 @@ int main(int argc, char* argv[])
         }
     }
 
-    hresult = ah_best(hdesc);
+    hresult = ah_best(htask);
     if (hresult < 0) {
-        fprintf(stderr, "Error setting best input values: %s\n",
-                ah_error_string(hdesc));
-        goto cleanup;
+        fprintf(stderr, "Error setting best input values");
+        goto error;
     }
     else if (hresult == 1) {
         double cmp = 0.0;
@@ -244,8 +245,14 @@ int main(int argc, char* argv[])
     for (i = 0; i < i_cnt; ++i)
         fprintf(stdout, "x[%d] = %*lf\n", i, maxwidth, point[i]);
 
+    goto cleanup;
+
+  error:
+    fprintf(stderr, ": %s\n", ah_error());
+    retval = -1;
+
   cleanup:
-    ah_fini(hdesc);
+    ah_free(hdesc);
     return retval;
 }
 
@@ -523,15 +530,27 @@ int parse_fopts(int idx, char** opts)
     return 0;
 }
 
-int start_harmony(hdesc_t* hdesc)
+htask_t* start_harmony(hdesc_t* hdesc)
 {
+    hdef_t* hdef;
     char session_name[64], intbuf[16];
     double step;
     int i;
 
+    hdef = ah_def_alloc();
+    if (!hdef) {
+        fprintf(stderr, "Error retrieving new hdef_t: %s\n", ah_error());
+        return NULL;
+    }
+
     // Build the session name.
     snprintf(session_name, sizeof(session_name),
              "test_in%d_out%d.pid%d", i_cnt, o_cnt, getpid());
+    if (ah_def_name(hdef, session_name) != 0) {
+        fprintf(stderr, "Error setting search name: %s\n", ah_error());
+        ah_def_free(hdef);
+        return NULL;
+    }
 
     if (accuracy <= MAX_ACCURACY)
         step = pow(10.0, -accuracy);
@@ -540,32 +559,31 @@ int start_harmony(hdesc_t* hdesc)
 
     for (i = 0; i < i_cnt; ++i) {
         snprintf(intbuf, sizeof(intbuf), "x%d", i + 1);
-        if (ah_real(hdesc, intbuf, bound_min, bound_max, step) != 0) {
+        if (ah_def_real(hdef, intbuf,
+                        bound_min, bound_max, step, &point[i]) != 0)
+        {
             fprintf(stderr, "Error defining '%s' tuning variable: %s\n",
-                    intbuf, ah_error_string(hdesc));
-            return -1;
-        }
-
-        if (ah_bind_real(hdesc, intbuf, &point[i]) != 0) {
-            fprintf(stderr, "Failed to register variable %s: %s\n",
-                    intbuf, ah_error_string(hdesc));
-            return -1;
+                    intbuf, ah_error());
+            ah_def_free(hdef);
+            return NULL;
         }
     }
 
     snprintf(intbuf, sizeof(intbuf), "%d", o_cnt);
-    ah_set_cfg(hdesc, CFGKEY_PERF_COUNT, intbuf);
+    ah_def_cfg(hdef, CFGKEY_PERF_COUNT, intbuf);
 
     snprintf(intbuf, sizeof(intbuf), "%ld", seed);
-    ah_set_cfg(hdesc, CFGKEY_RANDOM_SEED, intbuf);
+    ah_def_cfg(hdef, CFGKEY_RANDOM_SEED, intbuf);
 
-    if (ah_launch(hdesc, NULL, 0, session_name) != 0) {
-        fprintf(stderr, "Error launching tuning session: %s\n",
-                ah_error_string(hdesc));
-        return -1;
+    htask_t* htask = ah_start(hdesc, hdef);
+    ah_def_free(hdef);
+
+    if (!htask) {
+        fprintf(stderr, "Error starting tuning search task: %s\n",
+                ah_error());
     }
 
-    return 0;
+    return htask;
 }
 
 void eval_func(void)

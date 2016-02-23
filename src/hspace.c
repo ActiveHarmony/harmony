@@ -43,7 +43,7 @@ int hspace_copy(hspace_t* dst, const hspace_t* src)
     free(dst->name);
 
     dst->name = stralloc(src->name);
-    if (!dst->name)
+    if (src->name && !dst->name)
         return -1;
 
     // Increase the capacity of the destination, if necessary.
@@ -98,10 +98,17 @@ int hspace_name(hspace_t* space, const char* name)
 }
 
 int hspace_int(hspace_t* space, const char* name,
-               long min, long max, long step)
+               long min, long max, long step, const char** errptr)
 {
-    if (max < min || step < 1)
+    if (max < min) {
+        *errptr = "Minimum value must be less than maximum value";
         return -1;
+    }
+
+    if (step < 1) {
+        *errptr = "Step value must be greater than zero";
+        return -1;
+    }
 
     long remain;
     remain  = max;
@@ -114,10 +121,12 @@ int hspace_int(hspace_t* space, const char* name,
     range.bounds.i.max = max - remain;
     range.bounds.i.step = step;
     range.name = stralloc(name);
-    if (!range.name)
+    if (!range.name) {
+        *errptr = "Could not allocate search variable (dimension) name";
         return -1;
+    }
 
-    if (add_dim(space, &range, NULL) != 0) {
+    if (add_dim(space, &range, errptr) != 0) {
         free(range.name);
         return -1;
     }
@@ -127,10 +136,17 @@ int hspace_int(hspace_t* space, const char* name,
 }
 
 int hspace_real(hspace_t* space, const char* name,
-                double min, double max, double step)
+                double min, double max, double step, const char** errptr)
 {
-    if (max < min || step < 0.0)
+    if (max < min) {
+        *errptr = "Minimum value must be less than maximum value";
         return -1;
+    }
+
+    if (step < 0.0) {
+        *errptr = "Step value must be greater than zero";
+        return -1;
+    }
 
     if (step > 0.0) {
         double bins;
@@ -150,10 +166,12 @@ int hspace_real(hspace_t* space, const char* name,
     range.bounds.r.max = max;
     range.bounds.r.step = step;
     range.name = stralloc(name);
-    if (!range.name)
+    if (!range.name) {
+        *errptr = "Could not allocate search variable (dimension) name";
         return -1;
+    }
 
-    if (add_dim(space, &range, NULL) != 0) {
+    if (add_dim(space, &range, errptr) != 0) {
         free(range.name);
         return -1;
     }
@@ -162,11 +180,13 @@ int hspace_real(hspace_t* space, const char* name,
     return 0;
 }
 
-int hspace_enum(hspace_t* space, const char* name, const char* value)
+int hspace_enum(hspace_t* space, const char* name,
+                const char* value, const char** errptr)
 {
     hrange_t* ptr = find_dim(space, name);
     if (ptr && ptr->type != HVAL_STR) {
-            return -1;
+        *errptr = "Search variable (dimension) type mismatch";
+        return -1;
     }
     else if (!ptr) {
         hrange_t range;
@@ -175,23 +195,29 @@ int hspace_enum(hspace_t* space, const char* name, const char* value)
         range.bounds.e.len = 0;
         range.bounds.e.cap = 0;
         range.name = stralloc(name);
-        if (!range.name)
+        if (!range.name) {
+            *errptr = "Could not allocate search variable (dimension) name";
             return -1;
+        }
 
-        if (add_dim(space, &range, NULL) != 0) {
+        if (add_dim(space, &range, errptr) != 0) {
             free(range.name);
             return -1;
         }
         ptr = space->dim + space->len - 1;
     }
 
-    char* vcopy = stralloc(value);
-    if (!vcopy)
-        return -1;
+    if (value) {
+        char* vcopy = stralloc(value);
+        if (!vcopy) {
+            *errptr = "Could not copy enumerated value";
+            return -1;
+        }
 
-    if (range_enum_add_value(&ptr->bounds.e, vcopy) != 0) {
-        free(vcopy);
-        return -1;
+        if (range_enum_add_value(&ptr->bounds.e, vcopy, errptr) != 0) {
+            free(vcopy);
+            return -1;
+        }
     }
 
     ++space->id;
@@ -342,27 +368,21 @@ int hspace_parse(hspace_t* space, const char* buf, const char** errptr)
  */
 int add_dim(hspace_t* space, hrange_t* dim, const char** errptr)
 {
-    const char* errstr;
-
     if (find_dim(space, dim->name) != NULL) {
-        errstr = "Search space dimension name conflict";
-        goto error;
+        *errptr = "Search space dimension name conflict";
+        return -1;
     }
 
     // Grow dimension array, if needed.
     if (space->len == space->cap) {
         if (array_grow(&space->dim, &space->cap, sizeof(*space->dim)) < 0) {
-            errstr = "Could not grow search space dimension list";
-            goto error;
+            *errptr = "Could not grow search space dimension list";
+            return -1;
         }
     }
 
     space->dim[ space->len++ ] = *dim;
     return 0;
-
-  error:
-    if (errptr) *errptr = errstr;
-    return -1;
 }
 
 hrange_t* find_dim(hspace_t* space, const char* name)

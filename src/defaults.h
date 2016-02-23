@@ -41,7 +41,7 @@
 #define CFGKEY_STRATEGY           "STRATEGY"
 #define CFGKEY_LAYERS             "LAYERS"
 
-// Session state configuration variables.
+// Search state configuration variables.
 #define CFGKEY_PAUSED             "PAUSED"
 #define CFGKEY_CONVERGED          "CONVERGED"
 #define CFGKEY_CURRENT_CLIENT     "CURRENT_CLIENT"
