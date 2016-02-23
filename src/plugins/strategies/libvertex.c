@@ -139,18 +139,25 @@ int vertex_minimum(vertex_t* vertex, const hspace_t* space)
 int vertex_parse(vertex_t* vertex, const hspace_t* space, const char* buf)
 {
     hpoint_t point = hpoint_zero;
+    int retval = 0;
 
     if (hpoint_parse(&point, buf, space) != 0)
-        return -1;
+        goto error;
 
     if (hpoint_align(&point, space) != 0)
-        return -1;
+        goto error;
 
     if (vertex_set(vertex, space, &point) != 0)
-        return -1;
+        goto error;
 
+    goto cleanup;
+
+  error:
+    retval = -1;
+
+  cleanup:
     hpoint_fini(&point);
-    return 0;
+    return retval;
 }
 
 int vertex_random(vertex_t* vertex, const hspace_t* space, double radius)
