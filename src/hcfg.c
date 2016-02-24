@@ -71,9 +71,6 @@ static char*  key_val(const hcfg_t* cfg, const char* key);
 static char*  key_val_index(const hcfg_t* cfg, const char* key, int idx);
 static int    key_add(hcfg_t* cfg, char* pair);
 static void   key_del(hcfg_t* cfg, const char* key);
-static int    val_to_bool(const char* val);
-static long   val_to_int(const char* val);
-static double val_to_real(const char* val);
 static int    copy_keyval(const char* buf, char** keyval, const char** errptr);
 
 /*
@@ -199,25 +196,25 @@ int hcfg_set(hcfg_t* cfg, const char* key, const char* val)
 }
 
 /*
- * Scalar value conversion implementation.
+ * Key lookup and scalar value conversion implementation.
  */
 int hcfg_bool(const hcfg_t* cfg, const char* key)
 {
-    return val_to_bool( key_val(cfg, key) );
+    return hcfg_parse_bool( key_val(cfg, key) );
 }
 
 long hcfg_int(const hcfg_t* cfg, const char* key)
 {
-    return val_to_int( key_val(cfg, key) );
+    return hcfg_parse_int( key_val(cfg, key) );
 }
 
 double hcfg_real(const hcfg_t* cfg, const char* key)
 {
-    return val_to_real( key_val(cfg, key) );
+    return hcfg_parse_real( key_val(cfg, key) );
 }
 
 /*
- * Array value conversion implementation.
+ * Key lookup and array value conversion implementation.
  */
 int hcfg_arr_len(const hcfg_t* cfg, const char* key)
 {
@@ -247,17 +244,40 @@ int hcfg_arr_get(const hcfg_t* cfg, const char* key, int idx,
 
 int hcfg_arr_bool(const hcfg_t* cfg, const char* key, int idx)
 {
-    return val_to_bool( key_val_index(cfg, key, idx) );
+    return hcfg_parse_bool( key_val_index(cfg, key, idx) );
 }
 
 long hcfg_arr_int(const hcfg_t* cfg, const char* key, int idx)
 {
-    return val_to_int( key_val_index(cfg, key, idx) );
+    return hcfg_parse_int( key_val_index(cfg, key, idx) );
 }
 
 double hcfg_arr_real(const hcfg_t* cfg, const char* key, int idx)
 {
-    return val_to_real( key_val_index(cfg, key, idx) );
+    return hcfg_parse_real( key_val_index(cfg, key, idx) );
+}
+
+/*
+ * Value conversion interface.
+ */
+int hcfg_parse_bool(const char* val)
+{
+    return (val && (val[0] == '1' ||
+                    val[0] == 't' || val[0] == 'T' ||
+                    val[0] == 'y' || val[0] == 'Y'));
+}
+
+long hcfg_parse_int(const char* val)
+{
+    return val ? strtol(val, NULL, 0) : -1;
+}
+
+double hcfg_parse_real(const char* val)
+{
+    double retval;
+    if (val && sscanf(val, "%lf", &retval) == 1)
+        return retval;
+    return NAN;
 }
 
 /*
@@ -459,26 +479,6 @@ void key_del(hcfg_t* cfg, const char* key)
         free(cfg->env[i]);
         cfg->env[i] = cfg->env[ --cfg->len ];
     }
-}
-
-int val_to_bool(const char* val)
-{
-    return (val && (val[0] == '1' ||
-                    val[0] == 't' || val[0] == 'T' ||
-                    val[0] == 'y' || val[0] == 'Y'));
-}
-
-long val_to_int(const char* val)
-{
-    return val ? strtol(val, NULL, 0) : -1;
-}
-
-double val_to_real(const char* val)
-{
-    double retval;
-    if (val && sscanf(val, "%lf", &retval) == 1)
-        return retval;
-    return NAN;
 }
 
 int copy_keyval(const char* buf, char** keyval, const char** errptr)

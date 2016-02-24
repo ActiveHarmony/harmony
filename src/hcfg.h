@@ -63,14 +63,14 @@ char* hcfg_get(const hcfg_t* cfg, const char* key);
 int   hcfg_set(hcfg_t* cfg, const char* key, const char* val);
 
 /*
- * Scalar value conversion interface.
+ * Key lookup and scalar value conversion interface.
  */
 int    hcfg_bool(const hcfg_t* cfg, const char* key);
 long   hcfg_int(const hcfg_t* cfg, const char* key);
 double hcfg_real(const hcfg_t* cfg, const char* key);
 
 /*
- * Array value conversion interface.
+ * Key lookup and array value conversion interface.
  */
 int    hcfg_arr_len(const hcfg_t* cfg, const char* key);
 int    hcfg_arr_get(const hcfg_t* cfg, const char* key, int idx,
@@ -78,6 +78,13 @@ int    hcfg_arr_get(const hcfg_t* cfg, const char* key, int idx,
 int    hcfg_arr_bool(const hcfg_t* cfg, const char* key, int idx);
 long   hcfg_arr_int(const hcfg_t* cfg, const char* key, int idx);
 double hcfg_arr_real(const hcfg_t* cfg, const char* key, int idx);
+
+/*
+ * Value conversion interface.
+ */
+int    hcfg_parse_bool(const char* val);
+long   hcfg_parse_int(const char* val);
+double hcfg_parse_real(const char* val);
 
 /*
  * Data transmission interface.
