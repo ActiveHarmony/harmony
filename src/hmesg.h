@@ -74,12 +74,12 @@ typedef enum {
     HMESG_UNKNOWN = 0x00,
     HMESG_SESSION, // Tuning session description.
     HMESG_JOIN,    // Client registration info.
-    HMESG_GETCFG,  // Get session cfg key/value pair.
-    HMESG_SETCFG,  // Set new session cfg key/value pair.
+    HMESG_GETCFG,  // Get search cfg key/value pair.
+    HMESG_SETCFG,  // Set new search cfg key/value pair.
     HMESG_BEST,    // Retrieve best known point.
     HMESG_FETCH,   // Retrieve search space point to test.
     HMESG_REPORT,  // Report search space point performance.
-    HMESG_RESTART, // Restart the search.
+    HMESG_COMMAND, // Request an action from the search task.
 
     HMESG_TYPE_MAX
 } hmesg_type;

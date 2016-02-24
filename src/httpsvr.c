@@ -242,10 +242,10 @@ int handle_http_socket(int fd)
 
 const char* status_string(sinfo_t* sinfo)
 {
-    if (sinfo->status & STATUS_PAUSED)
+    if (sinfo->flags & FLAG_PAUSED)
         return "Paused";
 
-    if (sinfo->status & STATUS_CONVERGED)
+    if (sinfo->flags & FLAG_CONVERGED)
         return "Converged";
 
     return "Searching";
@@ -278,10 +278,11 @@ char* uri_decode(char* buf)
 
 sinfo_t* find_search(const char* name)
 {
-    int i;
+    for (int i = 0; i < slist_cap; ++i) {
+        if (slist[i].id == -1)
+            continue;
 
-    for (i = 0; i < slist_cap; ++i) {
-        if (slist[i].name && strcmp(slist[i].name, name) == 0)
+        if (strcmp(slist[i].space.name, name) == 0)
             return &slist[i];
     }
     return NULL;
@@ -346,8 +347,7 @@ int http_request_handle(int fd, char* req)
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        if (sinfo) {
-            search_refresh(sinfo);
+        if (sinfo && request_refresh(sinfo) == 0) {
             http_send_refresh(fd, sinfo, arg);
             opt_http_write(fd, "");
             return 0;
@@ -362,8 +362,7 @@ int http_request_handle(int fd, char* req)
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        if (sinfo) {
-            search_close(sinfo);
+        if (sinfo && request_command(sinfo, "kill") == 0) {
             opt_http_write(fd, "OK");
             opt_http_write(fd, "");
             return 0;
@@ -379,7 +378,7 @@ int http_request_handle(int fd, char* req)
         opt_sock_write(fd, HTTP_ENDL);
 
         if (sinfo) {
-            search_setcfg(sinfo, CFGKEY_PAUSED, "1");
+            request_setcfg(sinfo, CFGKEY_PAUSED, "1");
             opt_http_write(fd, "OK");
             opt_http_write(fd, "");
             return 0;
@@ -395,7 +394,7 @@ int http_request_handle(int fd, char* req)
         opt_sock_write(fd, HTTP_ENDL);
 
         if (sinfo) {
-            search_setcfg(sinfo, CFGKEY_PAUSED, "0");
+            request_setcfg(sinfo, CFGKEY_PAUSED, "0");
             opt_http_write(fd, "OK");
             opt_http_write(fd, "");
             return 0;
@@ -412,9 +411,9 @@ int http_request_handle(int fd, char* req)
 
         if (sinfo) {
             if (arg && strstr(arg, "_=") != arg) {
-                search_setcfg(sinfo, CFGKEY_INIT_POINT, arg);
+                request_setcfg(sinfo, CFGKEY_INIT_POINT, arg);
             }
-            search_restart(sinfo);
+            request_command(sinfo, "restart");
             opt_http_write(fd, "OK");
             opt_http_write(fd, "");
             return 0;
@@ -544,15 +543,15 @@ int http_send_overview(int fd)
     total = 0;
 
     for (int i = 0; i < slist_cap; ++i) {
-        if (!slist[i].name)
+        if (slist[i].id < 0)
             continue;
 
         ptr = buf;
         count = snprintf_serial(&buf, &buflen, "%s:%ld%03ld:%d:%d:",
-                                slist[i].name,
+                                slist[i].space.name,
                                 slist[i].start.tv_sec,
                                 slist[i].start.tv_usec/1000,
-                                slist[i].client_len,
+                                slist[i].client.len,
                                 slist[i].reported);
         if (count < 0) return -1;
         total += count;
@@ -705,7 +704,7 @@ int http_send_refresh(int fd, sinfo_t* sinfo, const char* arg)
                             "time:%ld%03ld|status:%s|clients:%d|index:%d",
                             tv.tv_sec, tv.tv_usec/1000,
                             status_string(sinfo),
-                            sinfo->client_len,
+                            sinfo->client.len,
                             idx);
     if (count < 0)
         goto error;

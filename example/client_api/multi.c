@@ -29,14 +29,25 @@
 #include "hclient.h"
 #include "defaults.h"
 
-#define MAX_LOOP 500
-#define MAX_TASK 10
+#define MAX_EVALS 256
+#define MAX_RUNNING_TASKS 16
+#define MAX_STARTED_TASKS 64
+
+typedef enum task_state {
+    TASK_STATE_RUNNING = 0,
+    TASK_STATE_LEAVE,
+    TASK_STATE_CONVERGED,
+    TASK_STATE_ERROR
+} task_state_t;
 
 typedef struct sinfo {
-    htask_t*    htask;
-    long        ival;
-    double      rval;
-    const char* sval;
+    int          id;
+    htask_t*     htask;
+    int          count;
+    long         ival;
+    double       rval;
+    const char*  sval;
+    task_state_t state;
 } sinfo_t;
 
 const char* fruits[] = {"apples",
@@ -97,44 +108,108 @@ hdef_t* define_search(void)
     return NULL;
 }
 
-int start_search(hdesc_t* hdesc, hdef_t* hdef, sinfo_t* sinfo, int num)
+static const char* strategy[] = {
+    "exhaustive.so",
+    "random.so",
+    "nm.so",
+    "pro.so"
+};
+
+int start_search(hdesc_t* hdesc, hdef_t* hdef, sinfo_t* sinfo, int id)
 {
     char namebuf[32];
 
+    // Tabula rasa.
+    memset(sinfo, 0, sizeof(*sinfo));
+
     // Provide a unique name to the search.
-    snprintf(namebuf, sizeof(namebuf), "multi_%d", num);
+    snprintf(namebuf, sizeof(namebuf), "multi_%03d", id);
     if (ah_def_name(hdef, namebuf) != 0) {
-        fprintf(stderr, "Error naming new search");
+        fprintf(stderr, "Error setting search name to %s", namebuf);
+        return -1;
+    }
+
+    // Provide a different strategy for each search.
+    if (ah_def_strategy(hdef, strategy[id % 4]) != 0) {
+        fprintf(stderr, "Error setting search strategy to %s",
+                strategy[id % 4]);
         return -1;
     }
 
     // Start a new search in the session.
     sinfo->htask = ah_start(hdesc, hdef);
     if (!sinfo->htask) {
-        fprintf(stderr, "Error starting new search");
+        fprintf(stderr, "Error starting search %d", id);
         return -1;
     }
 
     if (ah_bind_int(sinfo->htask, "i_var", &sinfo->ival) != 0) {
-        fprintf(stderr, "Error binding 'i_var' to local memory");
+        fprintf(stderr, "Error binding 'i_var' for search %d", id);
         return -1;
     }
 
     if (ah_bind_real(sinfo->htask, "r_var", &sinfo->rval) != 0) {
-        fprintf(stderr, "Error binding 'r_var' to local memory");
+        fprintf(stderr, "Error binding 'r_var' for search %d", id);
         return -1;
     }
 
     if (ah_bind_enum(sinfo->htask, "s_var", &sinfo->sval) != 0) {
-        fprintf(stderr, "Error binding 's_var' to local memory");
+        fprintf(stderr, "Error binding 's_var' for search %d", id);
         return -1;
     }
+
+    sinfo->id = id;
     return 0;
+}
+
+int end_search(sinfo_t* sinfo)
+{
+    int retval = 0;
+
+    if (!sinfo->htask)
+        return 0;
+
+    if (sinfo->state == TASK_STATE_ERROR) {
+        printf("%4d: Error after %4d evals: %s.\n",
+               sinfo->id, sinfo->count, ah_error());
+
+        ah_kill(sinfo->htask);
+        ah_error_clear();
+    }
+    else {
+        if (sinfo->state == TASK_STATE_CONVERGED) {
+            printf("%4d: Converged after %4d evals.", sinfo->id, sinfo->count);
+        }
+        else if (sinfo->state == TASK_STATE_LEAVE) {
+            printf("%4d: Left after %4d evals.", sinfo->id, sinfo->count);
+        }
+
+        if (ah_best(sinfo->htask) != 0) {
+            fprintf(stderr, "\nError retrieving best search");
+            goto error;
+        }
+
+        printf(" Best: %4ld, %.4f, %s\n",
+               sinfo->ival, sinfo->rval, sinfo->sval);
+
+        if (ah_kill(sinfo->htask) != 0) {
+            fprintf(stderr, "Error killing search #%d", sinfo->id);
+            goto error;
+        }
+    }
+    goto cleanup;
+
+  error:
+    retval = -1;
+
+  cleanup:
+    sinfo->htask = NULL;
+    return retval;
 }
 
 void shuffle(int* order)
 {
-    for (int i = 0; i < MAX_TASK; ++i) {
+    for (int i = 0; i < MAX_RUNNING_TASKS; ++i) {
         int j = lrand48() % (i + 1);
         order[i] = order[j];
         order[j] = i;
@@ -145,9 +220,9 @@ int main(int argc, char* argv[])
 {
     hdef_t* hdef = NULL;
     int retval = 0;
-    double perf;
-    sinfo_t slist[MAX_TASK] = {{NULL}};
-    int order[MAX_TASK];
+    sinfo_t slist[MAX_RUNNING_TASKS] = {{0}};
+    int order[MAX_RUNNING_TASKS];
+    int started_tasks = 0;
 
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
@@ -177,90 +252,79 @@ int main(int argc, char* argv[])
         goto error;
 
     // Begin a new tuning search.
-    for (int i = 0; i < MAX_TASK; ++i) {
-        if (start_search(hdesc, hdef, &slist[i], i) != 0)
+    for (int i = 0; i < MAX_RUNNING_TASKS; ++i) {
+        if (start_search(hdesc, hdef, &slist[i], ++started_tasks) != 0)
             goto error;
     }
 
     // Main tuning loop.
-    for (int i = 0; i < MAX_LOOP; ++i) {
-
+    int done = 0;
+    while (!done) {
         // Fetch new values from the search task in a random order.
         shuffle(order);
-        for (int j = 0; j < MAX_TASK; ++j) {
-            int idx = order[j];
+        for (int i = 0; i < MAX_RUNNING_TASKS; ++i) {
+            int idx = order[i];
             if (!slist[idx].htask)
                 continue;
 
-            int hresult = ah_fetch(slist[idx].htask);
+            sinfo_t* sinfo = &slist[idx];
+            int hresult = ah_fetch(sinfo->htask);
             if (hresult < 0) {
-                fprintf(stderr, "Error fetching values from tuning session");
-                goto error;
+                sinfo->state = TASK_STATE_ERROR;
+                if (end_search(sinfo) != 0)
+                    goto error;
             }
             else if (hresult == 0) {
-                printf("No testing point available.  Waiting.\n");
+                fprintf(stderr, "Waiting for point on #%d.\n", sinfo->id);
                 sleep(1);
-                --j;
+                --i;
                 continue;
             }
         }
 
         // Report new values to the search task in a different random order.
         shuffle(order);
-        for (int j = 0; j < MAX_TASK; ++j) {
-            int idx = order[j];
+        for (int i = 0; i < MAX_RUNNING_TASKS; ++i) {
+            int idx = order[i];
             if (!slist[idx].htask)
                 continue;
 
             sinfo_t* sinfo = &slist[idx];
-            perf = application(sinfo->ival, sinfo->rval, sinfo->sval);
+            double perf = application(sinfo->ival, sinfo->rval, sinfo->sval);
 
-            if (ah_report(sinfo->htask, &perf) != 0) {
-                fprintf(stderr, "Error reporting performance to server");
-                goto error;
-            }
-
-            if (ah_converged(sinfo->htask)) {
-                if (ah_leave(sinfo->htask) != 0) {
-                    fprintf(stderr, "Error leaving search #%d", idx);
-                    goto error;
+            if (sinfo->state != TASK_STATE_ERROR) {
+                if (ah_report(sinfo->htask, &perf) != 0) {
+                    sinfo->state = TASK_STATE_ERROR;
                 }
-
-                if (ah_best(sinfo->htask) != 0) {
-                    fprintf(stderr, "Error retrieving best search");
-                    goto error;
+                else if (ah_converged(sinfo->htask)) {
+                    sinfo->state = TASK_STATE_CONVERGED;
                 }
-
-                printf("#%d converged. %4d evals. Best: %4ld, %.4f, %s\n",
-                       idx, i, sinfo->ival, sinfo->rval, sinfo->sval);
-
-                if (ah_kill(sinfo->htask) != 0) {
-                    fprintf(stderr, "Error killing search #%d", idx);
-                    goto error;
+                else if (++sinfo->count >= MAX_EVALS) {
+                    sinfo->state = TASK_STATE_LEAVE;
                 }
-                sinfo->htask = NULL;
             }
         }
-    }
 
-    for (int i = 0; i < MAX_TASK; ++i) {
-        if (!slist[i].htask)
-            continue;
+        for (int i = 0; i < MAX_RUNNING_TASKS; ++i) {
+            sinfo_t* sinfo = &slist[i];
 
-        if (ah_best(slist[i].htask) != 0) {
-            fprintf(stderr, "Error retrieving best search");
-            goto error;
+            if (sinfo->state != TASK_STATE_RUNNING) {
+                if (end_search(sinfo) != 0)
+                    goto error;
+
+                if (started_tasks < MAX_STARTED_TASKS) {
+                    if (start_search(hdesc, hdef, sinfo, ++started_tasks) != 0)
+                        goto error;
+                }
+            }
         }
 
-        printf("#%d: Leaving after %d evals. Best: %4ld, %.4f, %s\n",
-               i, MAX_LOOP, slist[i].ival, slist[i].rval, slist[i].sval);
-
-        if (ah_kill(slist[i].htask) != 0) {
-            fprintf(stderr, "Error killing search #%d", i);
-            goto error;
+        done = 1;
+        for (int i = 0; i < MAX_RUNNING_TASKS; ++i) {
+            if (slist[i].state == TASK_STATE_RUNNING)
+                done = 0;
         }
     }
-
     goto cleanup;
 
   error:

@@ -27,10 +27,16 @@
 extern "C" {
 #endif
 
-typedef enum search_status {
-    STATUS_CONVERGED = 0x1,
-    STATUS_PAUSED    = 0x2
-} search_status_t;
+typedef struct ilist {
+    int* slot;
+    int  len;
+    int  cap;
+} ilist_t;
+
+typedef enum search_flags {
+    FLAG_CONVERGED = 0x1,
+    FLAG_PAUSED    = 0x2
+} search_flag_t;
 
 typedef struct http_log {
     struct timeval stamp;
@@ -39,22 +45,21 @@ typedef struct http_log {
 } http_log_t;
 
 typedef struct sinfo {
-    const char* name;
     int id;
 
     // Best known search point and performance.
     hpoint_t best;
     double best_perf;
 
-    // List of connected clients.
-    int* client;
-    int client_len, client_cap;
+    // Client-related lists/
+    ilist_t client;
+    ilist_t request;
 
     // Fields used by the HTTP server.
     struct timeval start;
     hspace_t space;
     char* strategy;
-    unsigned int status;
+    unsigned int flags;
 
     http_log_t* log;
     int log_len, log_cap;
@@ -67,12 +72,9 @@ typedef struct sinfo {
 extern sinfo_t* slist;
 extern int slist_cap;
 
-int search_open(void);
-void search_close(sinfo_t* sinfo);
-const char* search_getcfg(sinfo_t* sinfo, const char* key);
-int search_setcfg(sinfo_t* sinfo, const char* key, const char* val);
-int search_refresh(sinfo_t* sinfo);
-int search_restart(sinfo_t* sinfo);
+int  request_command(sinfo_t* sinfo, const char* command);
+int  request_refresh(sinfo_t* sinfo);
+int  request_setcfg(sinfo_t* sinfo, const char* key, const char* val);
 
 #ifdef __cplusplus
 }

@@ -1021,7 +1021,8 @@ int ah_restart(htask_t* htask)
     }
 
     // Prepare a Harmony message.
-    return send_request(htask, HMESG_RESTART);
+    htask->mesg->data.string = "restart";
+    return send_request(htask, HMESG_COMMAND);
 }
 
 /**
@@ -1042,8 +1043,10 @@ int ah_leave(htask_t* htask)
         ah_errstr = "Already detached from search task";
         return -1;
     }
-    htask->state = HARMONY_STATE_DETACHED;
-    return 0;
+
+    // Prepare a Harmony message.
+    htask->mesg->data.string = "leave";
+    return send_request(htask, HMESG_COMMAND);
 }
 
 /**
@@ -1073,8 +1076,11 @@ int ah_leave(htask_t* htask)
 int ah_kill(htask_t* htask)
 {
     if (htask->state >= HARMONY_STATE_ATTACHED) {
-        // XXX - send_request(htask, HMESG_KILL);
+        // Prepare a Harmony message.
+        htask->mesg->data.string = "kill";
 
+        if (send_request(htask, HMESG_COMMAND) != 0)
+            return -1;
     }
 
     // Remove this task from the session descriptor task list.
@@ -2015,12 +2021,18 @@ int send_request(htask_t* htask, hmesg_type msg_type)
         return -1;
     }
 
-    if (htask->mesg->type != msg_type) {
+    // Special message indicating the search task was killed unexpectedly.
+    if (mesg->type == HMESG_UNKNOWN && mesg->status == HMESG_STATUS_FAIL) {
+        ah_errstr = "Search no longer exists";
+        return -1;
+    }
+
+    if (mesg->type != msg_type) {
         ah_errstr = "Server response message mismatch";
         return -1;
     }
 
-    if (htask->mesg->status == HMESG_STATUS_FAIL) {
+    if (mesg->status == HMESG_STATUS_FAIL) {
         ah_errstr = htask->mesg->data.string;
         return -1;
     }

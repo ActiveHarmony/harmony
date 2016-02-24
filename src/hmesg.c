@@ -90,7 +90,7 @@ int hmesg_pack(hmesg_t* mesg)
         case HMESG_BEST:    type_str = "BST"; break;
         case HMESG_FETCH:   type_str = "FET"; break;
         case HMESG_REPORT:  type_str = "REP"; break;
-        case HMESG_RESTART: type_str = "RES"; break;
+        case HMESG_COMMAND: type_str = "CMD"; break;
         default:
             fprintf(stderr, "Error during hmesg_pack():"
                     "Message type (%d) is invalid\n", (int) mesg->type);
@@ -172,7 +172,7 @@ int hmesg_unpack(hmesg_t* mesg)
     else if (strcmp(type_str, "BST") == 0) mesg->type = HMESG_BEST;
     else if (strcmp(type_str, "FET") == 0) mesg->type = HMESG_FETCH;
     else if (strcmp(type_str, "REP") == 0) mesg->type = HMESG_REPORT;
-    else if (strcmp(type_str, "RES") == 0) mesg->type = HMESG_RESTART;
+    else if (strcmp(type_str, "CMD") == 0) mesg->type = HMESG_COMMAND;
     else goto invalid;
 
     if      (strcmp(status_str, "REQ") == 0) mesg->status = HMESG_STATUS_REQ;
@@ -272,9 +272,10 @@ int pack_state(char** buf, int* buflen, const hmesg_t* mesg)
     int count, total = 0;
 
     if (mesg->type == HMESG_SESSION ||
-        mesg->type == HMESG_JOIN)
+        mesg->type == HMESG_JOIN ||
+        mesg->type == HMESG_UNKNOWN)
     {
-        // Session state doesn't exist just yet.
+        // Session state doesn't exist for these messages.
         return 0;
     }
 
@@ -398,6 +399,7 @@ int pack_data(char** buf, int* buflen, const hmesg_t* mesg)
 
     case HMESG_GETCFG:
     case HMESG_SETCFG:
+    case HMESG_COMMAND:
         count = printstr_serial(buf, buflen, mesg->data.string);
         if (count < 0) return -1;
         total += count;
@@ -423,8 +425,8 @@ int pack_data(char** buf, int* buflen, const hmesg_t* mesg)
         }
         break;
 
+    case HMESG_UNKNOWN:
     case HMESG_BEST:
-    case HMESG_RESTART:
         break;
 
     default:
@@ -468,6 +470,7 @@ int unpack_data(hmesg_t* mesg, char* buf)
 
     case HMESG_GETCFG:
     case HMESG_SETCFG:
+    case HMESG_COMMAND:
         count = scanstr_serial(&mesg->data.string, buf + total);
         if (count < 0) return -1;
         total += count;
@@ -498,7 +501,6 @@ int unpack_data(hmesg_t* mesg, char* buf)
         break;
 
     case HMESG_BEST:
-    case HMESG_RESTART:
         break;
 
     default:

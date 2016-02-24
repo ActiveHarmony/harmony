@@ -47,6 +47,7 @@ typedef struct hplugin {
     const char*        name;
     const hcfg_info_t* keyinfo;
     void*              data;
+    void*              dl_handle;
 
     struct hook_strategy {
         strategy_generate_t generate;
@@ -176,7 +177,7 @@ static int        handle_best(hmesg_t* mesg);
 static int        handle_fetch(hsearch_t* search, hmesg_t* mesg);
 static int        handle_report(hsearch_t* search, hmesg_t* mesg);
 static int        handle_reject(hsearch_t* search, int trial_idx);
-static int        handle_restart(hsearch_t* search, hmesg_t* mesg);
+static int        handle_command(hsearch_t* search, hmesg_t* mesg);
 static int        handle_wait(hsearch_t* search, int trial_idx);
 static int        load_strategy(hsearch_t* search, const char* file);
 static int        load_layers(hsearch_t* search, const char* list);
@@ -268,7 +269,7 @@ int main(int argc, char* argv[])
             case HMESG_BEST:    retval = handle_best(&mesg); break;
             case HMESG_FETCH:   retval = handle_fetch(search, &mesg); break;
             case HMESG_REPORT:  retval = handle_report(search, &mesg); break;
-            case HMESG_RESTART: retval = handle_restart(search, &mesg); break;
+            case HMESG_COMMAND: retval = handle_command(search, &mesg); break;
 
             default:
                 search->errmsg = "Invalid message type";
@@ -291,7 +292,7 @@ int main(int argc, char* argv[])
             if (search)
                 mesg.data.string = search->errmsg;
             else
-                mesg.data.string = "No search available in session-core";
+                mesg.data.string = "No matching search in session-core";
 
           reply:
             // Swap the source and destination fields to reply.
@@ -300,7 +301,7 @@ int main(int argc, char* argv[])
             mesg.src  ^= mesg.dest;
 
             if (mesg_send(STDIN_FILENO, &mesg) < 1)
-                fprintf(stderr, "%s: Error sending error message: %s\n",
+                fprintf(stderr, "%s: Error sending reply: %s\n",
                         argv[0], mesg.data.string);
 
             search_cfg = NULL;
@@ -397,6 +398,15 @@ int open_search(hsearch_t* search, hmesg_t* mesg)
     if (extend_lists(search, expected * search->per_client) != 0)
         return -1;
 
+    search->pending_len = 0;
+    for (int i = 0; i < search->pending_cap; ++i)
+        ((hpoint_t*) &search->pending[i].point)->id = 0;
+
+    search->ready_head = 0;
+    search->ready_tail = 0;
+    for (int i = 0; i < search->ready_cap; ++i)
+        search->ready[i] = -1;
+
     // Load and initialize the strategy code object.
     ptr = hcfg_get(&search->cfg, CFGKEY_STRATEGY);
     if (!ptr) {
@@ -418,6 +428,8 @@ int open_search(hsearch_t* search, hmesg_t* mesg)
     }
     search_cfg = NULL;
 
+    search->best.id = 0;
+    search->paused_id = 0;
     search->clients = 1;
     search->open = 1;
 
@@ -426,18 +438,13 @@ int open_search(hsearch_t* search, hmesg_t* mesg)
 
 void close_search(hsearch_t* search)
 {
+    search->open = 0;
     for (int i = search->pstack_len - 1; i >= 0; --i) {
         if (search->pstack[i].fini)
             search->pstack[i].fini(search->pstack[i].data);
-    }
 
-    search->pstack_len = 0;
-    search->ready_head = 0;
-    search->ready_tail = 0;
-    search->pending_len = 0;
-    search->best.id = 0;
-    search->space.id = 0;
-    search->open = 0;
+        dlclose(search->pstack[i].dl_handle);
+    }
 }
 
 void free_search(hsearch_t* search)
@@ -917,11 +924,29 @@ int handle_report(hsearch_t* search, hmesg_t* mesg)
     return 0;
 }
 
-int handle_restart(hsearch_t* search, hmesg_t* mesg)
+int handle_command(hsearch_t* search, hmesg_t* mesg)
 {
-    search_restart();
+    if (strcmp(mesg->data.string, "restart") == 0) {
+        if (search_restart() != 0)
+            goto error;
+    }
+    else if (strcmp(mesg->data.string, "leave") == 0) {
+        --search->clients;
+    }
+    else if (strcmp(mesg->data.string, "kill") == 0) {
+        close_search(search);
+    }
+    else {
+        search->errmsg = "Received unknown command";
+        goto error;
+    }
+
     mesg->status = HMESG_STATUS_OK;
     return 0;
+
+  error:
+    mesg->status = HMESG_STATUS_FAIL;
+    return -1;
 }
 
 int update_state(hmesg_t* mesg, hsearch_t* search)
@@ -936,9 +961,11 @@ int update_state(hmesg_t* mesg, hsearch_t* search)
     }
 
     // Refresh the best known point from the strategy.
-    hplugin_t* plugin = &search->pstack[0];
-    if (plugin->strategy.best(plugin->data, &search->best) != 0) {
-        return -1;
+    if (search->open) {
+        hplugin_t* plugin = &search->pstack[0];
+        if (plugin->strategy.best(plugin->data, &search->best) != 0) {
+            return -1;
+        }
     }
 
     // Send it to the client if necessary.
@@ -976,7 +1003,7 @@ int load_strategy(hsearch_t* search, const char* file)
         return -1;
     }
 
-    if (search->pstack_len == search->pstack_cap) {
+    if (search->pstack_cap < 1) {
         if (array_grow(&search->pstack, &search->pstack_cap,
                        sizeof(*search->pstack)) != 0) {
             search->errmsg = "Could not allocate memory for plug-in stack";
@@ -1011,7 +1038,7 @@ int load_strategy(hsearch_t* search, const char* file)
             return -1;
     }
 
-    ++search->pstack_len;
+    search->pstack_len = 1;
     return 0;
 }
 
@@ -1135,6 +1162,7 @@ int load_hooks(hplugin_t* plugin, void* lib, const char* prefix)
 
     plugin->keyinfo = dlsym(lib, "plugin_keyinfo");
     plugin->name = prefix;
+    plugin->dl_handle = lib;
     goto cleanup;
 
   error:

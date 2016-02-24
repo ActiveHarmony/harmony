@@ -216,7 +216,6 @@ int mesg_forward(int sock, hmesg_t* mesg)
 int mesg_recv(int sock, hmesg_t* mesg)
 {
     char peek[HMESG_PEEK_SIZE];
-
     int retval = recv(sock, peek, HMESG_PEEK_SIZE, MSG_PEEK);
     if (retval <  0) goto error;
     if (retval == 0) return 0;
