@@ -79,7 +79,8 @@ int    errprint(const char* fmt, ...);
  */
 int debug = 1;
 int rank = -1;
-hdesc_t* hdesc = NULL;
+hdesc_t* hdesc;
+htask_t* htask;
 int matrix_size = N;
 
 /*
@@ -127,9 +128,9 @@ int main(int argc, char* argv[])
     harmony_connected = 0;
 
     // Initialize Harmony API.
-    hdesc = ah_init();
+    hdesc = ah_alloc();
     if (hdesc == NULL) {
-        errprint("Failed to initialize a Harmony session.\n");
+        errprint("Failed to initialize a Harmony session descriptor.\n");
         goto cleanup;
     }
     ah_args(hdesc, &argc, argv);
@@ -143,58 +144,68 @@ int main(int argc, char* argv[])
     }
     new_code_path = argv[1];
 
+    if (ah_connect(hdesc, NULL, 0) != 0) {
+        errprint("Could not connect to Harmony tuning session: %s\n",
+                 ah_error());
+        MPI_Abort(MPI_COMM_WORLD, -1);
+    }
+    harmony_connected = 1;
+
     if (rank == 0) {
-        // We are the master rank.  Establish a new Harmony tuning session.
-        errno = 0;
-        ah_strategy(hdesc, "pro.so");
-        ah_layers(hdesc, "codegen.so");
+        // We are the master rank.  Establish a new Harmony tuning search.
+        hdef_t* hdef = ah_def_alloc();
         snprintf(numbuf, sizeof(numbuf), "%d", node_count);
-        ah_set_cfg(hdesc, CFGKEY_CLIENT_COUNT, numbuf);
-        if (errno) {
-            errprint("Error during session configuration.\n");
-            MPI_Abort(MPI_COMM_WORLD, -1);
-        }
 
-        if (ah_int(hdesc, "TI", 2, 500, 2) != 0 ||
-            ah_int(hdesc, "TJ", 2, 500, 2) != 0 ||
-            ah_int(hdesc, "TK", 2, 500, 2) != 0 ||
-            ah_int(hdesc, "UI", 1,   8, 1) != 0 ||
-            ah_int(hdesc, "UJ", 1,   8, 1) != 0)
+        if (ah_def_name(hdef, SESSION_NAME)               != 0 ||
+            ah_def_strategy(hdef, "pro.so")               != 0 ||
+            ah_def_layers(hdef, "codegen.so")             != 0 ||
+            ah_def_cfg(hdef, CFGKEY_CLIENT_COUNT, numbuf) != 0)
         {
-            errprint("Failed to define tuning session\n");
-            MPI_Abort(MPI_COMM_WORLD, -1);
+            errprint("Error during session configuration: %s.\n", ah_error());
+            goto cleanup;
         }
 
-        if (ah_launch(hdesc, NULL, 0, SESSION_NAME) != 0) {
-            errprint("Could not launch tuning session: %s\n",
-                     ah_error_string(hdesc));
-            MPI_Abort(MPI_COMM_WORLD, -1);
+        if (ah_def_int(hdef, "TI", 2, 500, 2, NULL) != 0 ||
+            ah_def_int(hdef, "TJ", 2, 500, 2, NULL) != 0 ||
+            ah_def_int(hdef, "TK", 2, 500, 2, NULL) != 0 ||
+            ah_def_int(hdef, "UI", 1,   8, 1, NULL) != 0 ||
+            ah_def_int(hdef, "UJ", 1,   8, 1, NULL) != 0)
+        {
+            errprint("Failed to define tuning session: %s\n", ah_error());
+            goto cleanup;
+        }
+
+        htask = ah_start(hdesc, hdef);
+        ah_def_free(hdef);
+        if (!htask) {
+            errprint("Could not start tuning task: %s\n", ah_error());
+            goto cleanup;
         }
     }
 
-    // Everybody should wait until a tuning session is created.
     MPI_Barrier(MPI_COMM_WORLD);
+    if (rank != 0) {
+        // Everybody else may now join the master's new Harmony search.
+        htask = ah_join(hdesc, SESSION_NAME);
+        if (!htask) {
+            errprint("Could not start tuning task: %s\n", ah_error());
+            goto cleanup;
+        }
+    }
 
     // Associate local memory to the session's runtime tunable
     // parameters.  For example, these represent loop tiling and
     // unrolling factors.
     //
-    if (ah_bind_int(hdesc, "TI", &TI) != 0 ||
-        ah_bind_int(hdesc, "TJ", &TJ) != 0 ||
-        ah_bind_int(hdesc, "TK", &TK) != 0 ||
-        ah_bind_int(hdesc, "UI", &UI) != 0 ||
-        ah_bind_int(hdesc, "UJ", &UJ) != 0)
+    if (ah_bind_int(htask, "TI", &TI) != 0 ||
+        ah_bind_int(htask, "TJ", &TJ) != 0 ||
+        ah_bind_int(htask, "TK", &TK) != 0 ||
+        ah_bind_int(htask, "UI", &UI) != 0 ||
+        ah_bind_int(htask, "UJ", &UJ) != 0)
     {
         errprint("Error binding local memory to Harmony variables.\n");
         goto cleanup;
     }
-
-    // Connect to Harmony server and register ourselves as a client.
-    if (ah_join(hdesc, NULL, 0, SESSION_NAME) != 0) {
-        errprint("Could not join Harmony tuning session.\n");
-        goto cleanup;
-    }
-    harmony_connected = 1;
 
     dprint("MPI node ready and searching for new shared objects in %s:%s\n",
            hostname, new_code_path);
@@ -227,7 +238,7 @@ int main(int argc, char* argv[])
                TI, TJ, TK, UI, UJ, perf);
 
         // Update the performance result.
-        if (ah_report(hdesc, &perf) != 0) {
+        if (ah_report(htask, &perf) != 0) {
             errprint("Error reporting performance to server.\n");
             goto cleanup;
         }
@@ -248,7 +259,7 @@ int main(int argc, char* argv[])
                 if (fetch_configuration() != 0)
                     goto cleanup;
 
-                if (ah_leave(hdesc) != 0) {
+                if (ah_leave(htask) != 0) {
                     errprint("Error leaving tuning session.");
                     goto cleanup;
                 }
@@ -272,8 +283,8 @@ int main(int argc, char* argv[])
 
     // Leave the Harmony session, if needed.
     if (harmony_connected) {
-        if (ah_leave(hdesc) != 0) {
-            errprint("Error leaving Harmony session.\n");
+        if (ah_close(hdesc) != 0) {
+            errprint("Error disconnecting from Harmony session.\n");
             harmony_connected = 0;
             goto cleanup;
         }
@@ -288,10 +299,10 @@ int main(int argc, char* argv[])
 
   cleanup:
     if (harmony_connected) {
-        if (ah_leave(hdesc) != 0)
-            errprint("Error disconnecting from Harmony server.\n");
+        if (ah_close(hdesc) != 0)
+            errprint("Error disconnecting from Harmony session.\n");
     }
-    ah_fini(hdesc);
+    ah_free(hdesc);
     return MPI_Abort(MPI_COMM_WORLD, -1);
 }
 
@@ -318,7 +329,7 @@ int fetch_configuration(void)
     int changed = 0;
 
     while (changed == 0) {
-        changed = ah_fetch(hdesc);
+        changed = ah_fetch(htask);
 
         if (changed == 1) {
             // Harmony updated variable values.  Load a new shared object.
@@ -350,7 +361,7 @@ int check_convergence(void)
 
     if (rank == 0) {
         dprint("Checking Harmony search status.\n");
-        status = ah_converged(hdesc);
+        status = ah_converged(htask);
     }
     else {
         dprint("Waiting to hear search status from rank 0.\n");

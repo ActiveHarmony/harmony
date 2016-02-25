@@ -71,9 +71,6 @@ static char*  key_val(const hcfg_t* cfg, const char* key);
 static char*  key_val_index(const hcfg_t* cfg, const char* key, int idx);
 static int    key_add(hcfg_t* cfg, char* pair);
 static void   key_del(hcfg_t* cfg, const char* key);
-static int    val_to_bool(const char* val);
-static long   val_to_int(const char* val);
-static double val_to_real(const char* val);
 static int    copy_keyval(const char* buf, char** keyval, const char** errptr);
 
 /*
@@ -81,25 +78,29 @@ static int    copy_keyval(const char* buf, char** keyval, const char** errptr);
  */
 int hcfg_init(hcfg_t* cfg)
 {
-    extern char** environ;
-
     cfg->len = 0;
     cfg->cap = 32;
     cfg->env = malloc(cfg->cap * sizeof(*cfg->env));
     if (!cfg->env)
         return -1;
 
+    return hcfg_reginfo(cfg, hcfg_global_keys);
+}
+
+int hcfg_loadenv(hcfg_t* cfg)
+{
+    extern char** environ;
+
     // Incorporate environment variables into current configuration.
     for (int i = 0; environ[i]; ++i) {
         if (valid_id(environ[i], strcspn(environ[i], "="))) {
-            if (cfg->len == cfg->cap)
-                array_grow(&cfg->env, &cfg->cap, sizeof(char*));
+            char* pair = stralloc( environ[i] );
 
-            cfg->env[ cfg->len ] = stralloc( environ[i] );
-            ++cfg->len;
+            if (!pair || key_add(cfg, pair) != 0)
+                return -1;
         }
     }
-    return hcfg_reginfo(cfg, hcfg_global_keys);
+    return 0;
 }
 
 int hcfg_reginfo(hcfg_t* cfg, const hcfg_info_t* info)
@@ -134,6 +135,27 @@ int hcfg_copy(hcfg_t* dst, const hcfg_t* src)
     for (dst->len = 0; dst->len < src->len; ++dst->len) {
         dst->env[ dst->len ] = stralloc( src->env[ dst->len ] );
         if (!dst->env[ dst->len ])
+            return -1;
+    }
+    return 0;
+}
+
+int hcfg_merge(hcfg_t* dst, const hcfg_t* src)
+{
+    int newlen = dst->len + src->len;
+
+    if (dst->cap < newlen) {
+        char** newbuf = realloc(dst->env, newlen * sizeof(*dst->env));
+        if (!newbuf)
+            return -1;
+
+        dst->env = newbuf;
+        dst->cap = newlen;
+    }
+
+    for (int i = 0; i < src->len; ++i) {
+        char* pair = stralloc(src->env[i]);
+        if (!pair || key_add(dst, pair) != 0)
             return -1;
     }
     return 0;
@@ -174,25 +196,25 @@ int hcfg_set(hcfg_t* cfg, const char* key, const char* val)
 }
 
 /*
- * Scalar value conversion implementation.
+ * Key lookup and scalar value conversion implementation.
  */
 int hcfg_bool(const hcfg_t* cfg, const char* key)
 {
-    return val_to_bool( key_val(cfg, key) );
+    return hcfg_parse_bool( key_val(cfg, key) );
 }
 
 long hcfg_int(const hcfg_t* cfg, const char* key)
 {
-    return val_to_int( key_val(cfg, key) );
+    return hcfg_parse_int( key_val(cfg, key) );
 }
 
 double hcfg_real(const hcfg_t* cfg, const char* key)
 {
-    return val_to_real( key_val(cfg, key) );
+    return hcfg_parse_real( key_val(cfg, key) );
 }
 
 /*
- * Array value conversion implementation.
+ * Key lookup and array value conversion implementation.
  */
 int hcfg_arr_len(const hcfg_t* cfg, const char* key)
 {
@@ -222,17 +244,40 @@ int hcfg_arr_get(const hcfg_t* cfg, const char* key, int idx,
 
 int hcfg_arr_bool(const hcfg_t* cfg, const char* key, int idx)
 {
-    return val_to_bool( key_val_index(cfg, key, idx) );
+    return hcfg_parse_bool( key_val_index(cfg, key, idx) );
 }
 
 long hcfg_arr_int(const hcfg_t* cfg, const char* key, int idx)
 {
-    return val_to_int( key_val_index(cfg, key, idx) );
+    return hcfg_parse_int( key_val_index(cfg, key, idx) );
 }
 
 double hcfg_arr_real(const hcfg_t* cfg, const char* key, int idx)
 {
-    return val_to_real( key_val_index(cfg, key, idx) );
+    return hcfg_parse_real( key_val_index(cfg, key, idx) );
+}
+
+/*
+ * Value conversion interface.
+ */
+int hcfg_parse_bool(const char* val)
+{
+    return (val && (val[0] == '1' ||
+                    val[0] == 't' || val[0] == 'T' ||
+                    val[0] == 'y' || val[0] == 'Y'));
+}
+
+long hcfg_parse_int(const char* val)
+{
+    return val ? strtol(val, NULL, 0) : -1;
+}
+
+double hcfg_parse_real(const char* val)
+{
+    double retval;
+    if (val && sscanf(val, "%lf", &retval) == 1)
+        return retval;
+    return NAN;
 }
 
 /*
@@ -434,26 +479,6 @@ void key_del(hcfg_t* cfg, const char* key)
         free(cfg->env[i]);
         cfg->env[i] = cfg->env[ --cfg->len ];
     }
-}
-
-int val_to_bool(const char* val)
-{
-    return (val && (val[0] == '1' ||
-                    val[0] == 't' || val[0] == 'T' ||
-                    val[0] == 'y' || val[0] == 'Y'));
-}
-
-long val_to_int(const char* val)
-{
-    return val ? strtol(val, NULL, 0) : -1;
-}
-
-double val_to_real(const char* val)
-{
-    double retval;
-    if (val && sscanf(val, "%lf", &retval) == 1)
-        return retval;
-    return NAN;
 }
 
 int copy_keyval(const char* buf, char** keyval, const char** errptr)

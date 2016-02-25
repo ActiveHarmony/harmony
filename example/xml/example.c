@@ -48,9 +48,47 @@ long application(long p1, long p2, long p3, long p4, long p5, long p6)
     return perf;
 }
 
+htask_t* start_search(hdesc_t* hdesc, const char* name)
+{
+    hdef_t* hdef = ah_def_alloc();
+    if (!hdef) {
+        fprintf(stderr, "Error allocating search definition: %s\n",
+                ah_error());
+        return NULL;
+    }
+
+    if (ah_def_name(hdef, name)                      != 0 ||
+        ah_def_layers(hdef, "xmlWriter.so")          != 0 ||
+        ah_def_int(hdef, "param_1", 1, 100, 1, NULL) != 0 ||
+        ah_def_int(hdef, "param_2", 1, 100, 1, NULL) != 0 ||
+        ah_def_int(hdef, "param_3", 1, 100, 1, NULL) != 0 ||
+        ah_def_int(hdef, "param_4", 1, 100, 1, NULL) != 0 ||
+        ah_def_int(hdef, "param_5", 1, 100, 1, NULL) != 0 ||
+        ah_def_int(hdef, "param_6", 1, 100, 1, NULL) != 0)
+    {
+        fprintf(stderr, "Error during session setup: %s\n", ah_error());
+        goto error;
+    }
+
+    // Begin a new tuning session.
+    htask_t* htask = ah_start(hdesc, hdef);
+    if (!htask) {
+        fprintf(stderr, "Could not start tuning search task: %s\n",
+                ah_error());
+        goto error;
+    }
+    goto cleanup;
+
+  error:
+    htask = NULL;
+
+  cleanup:
+    ah_def_free(hdef);
+    return htask;
+}
+
 int main(int argc, char* argv[])
 {
-    const char* name;
     hdesc_t* hdesc;
     int i, retval, loop = 200;
     double perf = -HUGE_VAL;
@@ -76,65 +114,49 @@ int main(int argc, char* argv[])
     }
 
     // Initialize a Harmony client.
-    hdesc = ah_init();
+    hdesc = ah_alloc();
     if (hdesc == NULL) {
-        fprintf(stderr, "Failed to initialize a harmony session.\n");
-        return -1;
+        fprintf(stderr, "Error allocating Harmony descriptor: %s\n",
+                ah_error());
+        goto error;
     }
     ah_args(hdesc, &argc, argv);
 
+    // Connect to Harmony session.
+    if (ah_connect(hdesc, NULL, 0) != 0) {
+        fprintf(stderr, "Error connecting to Harmony session: %s\n",
+                ah_error());
+        goto error;
+    }
+
     // Process the program arguments.
-    name = "XML_example";
+    const char* name = "XML_example";
     if (argc > 1)
         name = argv[1];
-
-    errno = 0;
-    ah_layers(hdesc, "xmlWriter.so");
-    if (errno) {
-        fprintf(stderr, "Error during session configuration.\n");
-        return -1;
-    }
-
-    if (ah_int(hdesc, "param_1", 1, 100, 1) != 0 ||
-        ah_int(hdesc, "param_2", 1, 100, 1) != 0 ||
-        ah_int(hdesc, "param_3", 1, 100, 1) != 0 ||
-        ah_int(hdesc, "param_4", 1, 100, 1) != 0 ||
-        ah_int(hdesc, "param_5", 1, 100, 1) != 0 ||
-        ah_int(hdesc, "param_6", 1, 100, 1) != 0)
-    {
-        fprintf(stderr, "Failed to define tuning session\n");
-        return -1;
-    }
+    htask_t* htask = start_search(hdesc, name);
+    if (!htask)
+        goto error;
 
     // Bind the session variables to local variables.
-    if (ah_bind_int(hdesc, "param_1", &param_1) != 0 ||
-        ah_bind_int(hdesc, "param_2", &param_2) != 0 ||
-        ah_bind_int(hdesc, "param_3", &param_3) != 0 ||
-        ah_bind_int(hdesc, "param_4", &param_4) != 0 ||
-        ah_bind_int(hdesc, "param_5", &param_5) != 0 ||
-        ah_bind_int(hdesc, "param_6", &param_6) != 0)
+    if (ah_bind_int(htask, "param_1", &param_1) != 0 ||
+        ah_bind_int(htask, "param_2", &param_2) != 0 ||
+        ah_bind_int(htask, "param_3", &param_3) != 0 ||
+        ah_bind_int(htask, "param_4", &param_4) != 0 ||
+        ah_bind_int(htask, "param_5", &param_5) != 0 ||
+        ah_bind_int(htask, "param_6", &param_6) != 0)
     {
-        fprintf(stderr, "Failed to register variable\n");
-        retval = -1;
-        goto cleanup;
-    }
-
-    // Begin a new tuning session.
-    printf("Starting Harmony...\n");
-    if (ah_launch(hdesc, NULL, 0, name) != 0) {
-        fprintf(stderr, "Could not launch tuning session: %s\n",
-                ah_error_string(hdesc));
-        return -1;
+        fprintf(stderr, "Error binding tuning variable to local memory: %s\n",
+                ah_error());
+        goto error;
     }
 
     // Main loop.
-    for (i = 0; !ah_converged(hdesc) && i < loop; i++) {
-        int hresult = ah_fetch(hdesc);
+    for (i = 0; !ah_converged(htask) && i < loop; i++) {
+        int hresult = ah_fetch(htask);
         if (hresult < 0) {
-            fprintf(stderr, "Failed to fetch values from server: %s\n",
-                    ah_error_string(hdesc));
-            retval = -1;
-            goto cleanup;
+            fprintf(stderr, "Error fetching values from search task: %s\n",
+                    ah_error());
+            goto error;
         }
         else if (hresult == 0) {
             // New values were not available at this time.
@@ -168,20 +190,26 @@ int main(int argc, char* argv[])
         }
 
         // Report the performance we've just measured.
-        if (ah_report(hdesc, &perf) != 0) {
-            fprintf(stderr, "Failed to report performance to server.\n");
-            retval = -1;
-            goto cleanup;
+        if (ah_report(htask, &perf) != 0) {
+            fprintf(stderr, "Error reporting performance to search task: %s\n",
+                    ah_error());
+            goto error;
         }
     }
 
+
     // Leave the session.
-    if (ah_leave(hdesc) != 0) {
-        fprintf(stderr, "Failed to disconnect from harmony server.\n");
-        retval = -1;
+    if (ah_close(hdesc) != 0) {
+        fprintf(stderr, "Error disconnecting from Harmony session: %s\n",
+                ah_error());
+        goto error;
     }
+    goto cleanup;
+
+  error:
+    retval = -1;
 
   cleanup:
-    ah_fini(hdesc);
+    ah_free(hdesc);
     return retval;
 }

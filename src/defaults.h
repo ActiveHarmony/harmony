@@ -20,7 +20,7 @@
 #define __DEFAULTS_H__
 
 #define SESSION_CORE_EXECFILE "session-core"
-#define SESSION_LAYER_SEP     ':'
+#define SESSION_LAYER_SEP     ":;, \t\n"
 #define DEFAULT_HOST "localhost"
 #define DEFAULT_PORT 1979
 
@@ -41,7 +41,7 @@
 #define CFGKEY_STRATEGY           "STRATEGY"
 #define CFGKEY_LAYERS             "LAYERS"
 
-// Session state configuration variables.
+// Search state configuration variables.
 #define CFGKEY_PAUSED             "PAUSED"
 #define CFGKEY_CONVERGED          "CONVERGED"
 #define CFGKEY_CURRENT_CLIENT     "CURRENT_CLIENT"

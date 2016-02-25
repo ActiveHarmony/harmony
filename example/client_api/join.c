@@ -27,7 +27,7 @@
 #include "hclient.h"
 #include "defaults.h"
 
-#define MAX_LOOP 5000
+#define MAX_LOOP 500
 
 /*
  * A simple performance function is defined here for illustration purposes.
@@ -43,17 +43,18 @@ double application(long ival, double rval, const char* string)
 
 int main(int argc, char* argv[])
 {
-    hdesc_t* hd;
+    hdesc_t* hdesc;
+    htask_t* htask;
     int i, retval = 0;
     double perf;
 
     // Initialize a Harmony client.
-    hd = ah_init();
-    if (hd == NULL) {
+    hdesc = ah_alloc();
+    if (hdesc == NULL) {
         fprintf(stderr, "Error initializing a Harmony session");
-        goto error;
+        goto cleanup;
     }
-    ah_args(hd, &argc, argv);
+    ah_args(hdesc, &argc, argv);
 
     int help = 0;
     for (i = 1; i < argc; ++i) {
@@ -68,16 +69,23 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    // Begin a new tuning session.
+    // Connect to a Harmony session.
     printf("Starting Harmony...\n");
-    if (ah_join(hd, NULL, 0, argv[1]) != 0) {
-        fprintf(stderr, "Error joining tuning session");
+    if (ah_connect(hdesc, NULL, 0) != 0) {
+        fprintf(stderr, "Error connecting to Harmony session");
+        goto error;
+    }
+
+    // Begin a new tuning session.
+    htask = ah_join(hdesc, argv[1]);
+    if (!htask) {
+        fprintf(stderr, "Error joining Harmony search");
         goto error;
     }
 
     // Main tuning loop.
-    for (i = 0; !ah_converged(hd) && i < MAX_LOOP; ++i) {
-        int hresult = ah_fetch(hd);
+    for (i = 0; !ah_converged(htask) && i < MAX_LOOP; ++i) {
+        int hresult = ah_fetch(htask);
         if (hresult < 0) {
             fprintf(stderr, "Error fetching values from tuning session");
             goto error;
@@ -101,54 +109,54 @@ int main(int argc, char* argv[])
         // code-variants is needed to call the appropriate code
         // variant.
         //
-        perf = application(ah_get_int(hd, "i_var"),
-                           ah_get_real(hd, "r_var"),
-                           ah_get_enum(hd, "s_var"));
+        perf = application(ah_get_int(htask, "i_var"),
+                           ah_get_real(htask, "r_var"),
+                           ah_get_enum(htask, "s_var"));
 
         printf("(%4ld, %.4lf, \"%s\") = %lf\n",
-               ah_get_int(hd, "i_var"),
-               ah_get_real(hd, "r_var"),
-               ah_get_enum(hd, "s_var"),
+               ah_get_int(htask, "i_var"),
+               ah_get_real(htask, "r_var"),
+               ah_get_enum(htask, "s_var"),
                perf);
 
         // Report the performance we've just measured.
-        if (ah_report(hd, &perf) != 0) {
+        if (ah_report(htask, &perf) != 0) {
             fprintf(stderr, "Error reporting performance to server");
             goto error;
         }
     }
 
-    if (!ah_converged(hd)) {
+    if (!ah_converged(htask)) {
         printf("*\n");
         printf("* Leaving tuning session after %d iterations.\n", MAX_LOOP);
         printf("*\n");
     }
 
-    if (ah_best(hd) < 0) {
+    if (ah_best(htask) < 0) {
         fprintf(stderr, "Error retrieving best tuning point");
         goto error;
     }
-    perf = application(ah_get_int(hd, "i_var"),
-                       ah_get_real(hd, "r_var"),
-                       ah_get_enum(hd, "s_var"));
+    perf = application(ah_get_int(htask, "i_var"),
+                       ah_get_real(htask, "r_var"),
+                       ah_get_enum(htask, "s_var"));
 
     printf("(%4ld, %.4lf, \"%s\") = %lf (* Best point found. *)\n",
-           ah_get_int(hd, "i_var"),
-           ah_get_real(hd, "r_var"),
-           ah_get_enum(hd, "s_var"),
+           ah_get_int(htask, "i_var"),
+           ah_get_real(htask, "r_var"),
+           ah_get_enum(htask, "s_var"),
            perf);
     goto cleanup;
 
   error:
-    fprintf(stderr, ": %s\n", ah_error_string(hd));
+    fprintf(stderr, ": %s\n", ah_error());
     retval = -1;
 
   cleanup:
-    // Leave the tuning session.
-    if (ah_leave(hd) != 0)
+    // Close the connection to the tuning session.
+    if (ah_close(hdesc) != 0)
         fprintf(stderr, "Error disconnecting from Harmony session: %s.\n",
-                ah_error_string(hd));
+                ah_error());
 
-    ah_fini(hd);
+    ah_free(hdesc);
     return retval;
 }

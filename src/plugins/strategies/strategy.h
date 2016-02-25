@@ -29,6 +29,23 @@ extern "C" {
 #endif
 
 /*
+ * Configuration variables used in this plugin.
+ *
+ * Any entries in this structure will automatically be loaded into the
+ * search environment.
+ */
+extern const hcfg_info_t plugin_keyinfo[];
+
+/*
+ * Structure to hold all data needed by an individual search instance.
+ *
+ * To support multiple parallel search instances, no global variables
+ * should be defined or used in this plug-in layer.  They should
+ * instead be defined as a part of this structure.
+ */
+typedef struct data data_t;
+
+/*
  * The following functions are required.
  *
  * Active Harmony will not recognize shared objects as search
@@ -42,12 +59,12 @@ extern "C" {
  *   flow  - Inform plug-in manager of search state.
  *   point - New candidate point to be sent to a client.
  *
- * Upon error, this function should call session_error() with a
+ * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, this routine should return 0, and the contents of the
  * "flow" variable should be set appropriately.
  */
-int strategy_generate(hflow_t* flow, hpoint_t* point);
+int strategy_generate(data_t* data, hflow_t* flow, hpoint_t* point);
 
 /*
  * Regenerate a rejected candidate configuration point.
@@ -57,12 +74,12 @@ int strategy_generate(hflow_t* flow, hpoint_t* point);
  *           hint from the rejecting layer.
  *   point - Rejected candidate point to regenerate.
  *
- * Upon error, this function should call session_error() with a
+ * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, this routine should return 0, and the contents of the
  * "flow" variable should be set appropriately.
  */
-int strategy_rejected(hflow_t* flow, hpoint_t* point);
+int strategy_rejected(data_t* data, hflow_t* flow, hpoint_t* point);
 
 /*
  * Analyze the observed performance associated with a configuration point.
@@ -70,23 +87,11 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point);
  * Params:
  *   trial - Observed point/performance pair.
  *
- * Upon error, this function should call session_error() with a
+ * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int strategy_analyze(htrial_t* trial);
-
-/*
- * Return the best performing configuration point thus far in the search.
- *
- * Params:
- *   point - Location to store best performing configuration point data.
- *
- * Upon error, this function should call session_error() with a
- * human-readable string explaining the problem and return -1.
- * Otherwise, returning 0 indicates success.
- */
-int strategy_best(hpoint_t* point);
+int strategy_analyze(data_t* data, htrial_t* trial);
 
 /*
  * The following functions are optional.
@@ -96,28 +101,39 @@ int strategy_best(hpoint_t* point);
  */
 
 /*
- * Invoked once on strategy load.
+ * Allocate plug-in state data for a new search instance.  This
+ * function is invoked prior to any other plug-in interface function.
+ *
+ * Upon error, this function should call search_error() with a
+ * human-readable string explaining the problem and return NULL.
+ * Otherwise, a non-NULL address the plug-in can use to track an
+ * individual search instance should be returned.
+ */
+data_t* strategy_alloc(void);
+
+/*
+ * Initialize (or re-initialize) data for this search instance.
  *
  * Param:
  *   space - Details of the parameter space (dimensions, bounds, etc.).
  *
- * Upon error, this function should call session_error() with a
+ * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int strategy_init(hspace_t* space);
+int strategy_init(data_t* data, hspace_t* space);
 
 /*
  * Invoked when a client joins the tuning session.
  *
  * Params:
- *   id - Uniquely identifying string for the new client.
+ *   client - Uniquely identifying string for the new client.
  *
- * Upon error, this function should call session_error() with a
+ * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int strategy_join(const char* id);
+int strategy_join(data_t* data, const char* client);
 
 /*
  * Invoked when a client writes to the configuration system.
@@ -126,20 +142,20 @@ int strategy_join(const char* id);
  *   key - Configuration key to be modified.
  *   val - New value for configuration key.
  *
- * Upon error, this function should call session_error() with a
+ * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int strategy_setcfg(const char* key, const char* val);
+int strategy_setcfg(data_t* data, const char* key, const char* val);
 
 /*
  * Invoked on session exit.
  *
- * Upon error, this function should call session_error() with a
+ * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int strategy_fini(void);
+int strategy_fini(data_t* data);
 
 #ifdef __cplusplus
 }

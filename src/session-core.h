@@ -51,54 +51,39 @@ typedef struct htrial {
 } htrial_t;
 
 // Generic plug-in event-hook signatures.
-typedef int (*hook_init_t)(hspace_t* space);
-typedef int (*hook_join_t)(const char* id);
-typedef int (*hook_setcfg_t)(const char* key, const char* val);
-typedef int (*hook_fini_t)(void);
+typedef void* (*hook_alloc_t)(void);
+typedef int   (*hook_init_t)(void* data, hspace_t* space);
+typedef int   (*hook_join_t)(void* data, const char* client);
+typedef int   (*hook_setcfg_t)(void* data, const char* key, const char* val);
+typedef int   (*hook_fini_t)(void* data);
 
 // Strategy plug-in function signatures.
-typedef int (*strategy_generate_t)(hflow_t* flow, hpoint_t* point);
-typedef int (*strategy_rejected_t)(hflow_t* flow, hpoint_t* point);
-typedef int (*strategy_analyze_t)(htrial_t* trial);
-typedef int (*strategy_best_t)(hpoint_t* point);
+typedef int (*strategy_generate_t)(void* data, hflow_t* flow, hpoint_t* point);
+typedef int (*strategy_rejected_t)(void* data, hflow_t* flow, hpoint_t* point);
+typedef int (*strategy_analyze_t)(void* data, htrial_t* trial);
+typedef int (*strategy_best_t)(void* data, hpoint_t* point);
 
 // Layer plug-in function signatures.
-typedef int (*layer_generate_t)(hflow_t* flow, htrial_t* trial);
-typedef int (*layer_analyze_t)(hflow_t* flow, htrial_t* trial);
+typedef int (*layer_generate_t)(void* data, hflow_t* flow, htrial_t* trial);
+typedef int (*layer_analyze_t)(void* data, hflow_t* flow, htrial_t* trial);
 
 // Callback function signatures.
-typedef int (*cb_func_t)(int fd, hflow_t* flow, int n, htrial_t** trial);
+typedef int (*cb_func_t)(int fd, void* data,
+                         hflow_t* flow, int n, htrial_t** trial);
 
 /*
- * Interface for pluggable modules to register callbacks.
- *
- * When data is available to read on the given file descriptor, the
- * associated routine will be launched.
+ * Interface for plug-in modules to access their associated search.
  */
-int callback_generate(int fd, cb_func_t func);
-int callback_analyze(int fd, cb_func_t func);
+int      search_best(hpoint_t* best);
+int      search_callback_generate(int fd, cb_func_t func);
+int      search_callback_analyze(int fd, cb_func_t func);
+void     search_error(const char* msg);
+int      search_restart(void);
+int      search_setcfg(const char* key, const char* val);
+double   search_drand48(void);
+long int search_lrand48(void);
 
-/*
- * Interface for plugins to retrieve the best known configuration.
- */
-int session_best(hpoint_t* best);
-
-/*
- * Interface for plugins to trigger a restart of the search session.
- */
-int session_restart(void);
-
-/*
- * Central interface for shared configuration between pluggable modules.
- *
- * Requests through this interface will propagate through all
- * strategies and layers that define setcfg hooks.
- */
-extern const hcfg_t* session_cfg; // Used for reading.
-int session_setcfg(const char* key, const char* val); // Used for writing.
-
-// Central interface for error messages from pluggable modules.
-void session_error(const char* msg);
+extern const hcfg_t* search_cfg;
 
 #ifdef __cplusplus
 }

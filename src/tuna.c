@@ -87,6 +87,8 @@ char prog_hsvr[FILENAME_MAX];
 
 method_t method = METHOD_WALL;
 hdesc_t* hdesc = NULL;
+hdef_t* hdef = NULL;
+htask_t* htask = NULL;
 unsigned int max_loop = 50;
 unsigned int quiet = 0;
 unsigned int verbose = 0;
@@ -133,7 +135,7 @@ int main(int argc, char* argv[])
     }
 
     // Initialize the Harmony descriptor.
-    hdesc = ah_init();
+    hdesc = ah_alloc();
     if (hdesc == NULL) {
         fprintf(stderr, "Failed to initialize a Harmony descriptor.\n");
         return -1;
@@ -142,30 +144,29 @@ int main(int argc, char* argv[])
     // Parse the command line arguments.
     parseArgs(argc, argv);
 
-    // Use the Nelder-Mead search strategy by default.
-    ah_strategy(hdesc, "nm.so");
-
     // Sanity check before we attempt to connect to the server.
     if (bcount < 1) {
         fprintf(stderr, "No tunable variables defined.\n");
         return -1;
     }
 
-    if (ah_launch(hdesc, NULL, 0, client_bin) != 0) {
-        fprintf(stderr, "Error launching new tuning session: %s\n",
-                ah_error_string(hdesc));
+    // Connect to a Harmony search session.
+    if (ah_connect(hdesc, NULL, 0) != 0) {
+        fprintf(stderr, "Error connecting to Harmony session: %s\n",
+                ah_error());
         return -1;
     }
 
-    // Connect to Harmony server and register ourselves as a client.
-    if (ah_join(hdesc, NULL, 0, client_bin) != 0) {
-        fprintf(stderr, "Error joining Harmony session: %s\n",
-                ah_error_string(hdesc));
+    // Start a new Harmony search task.
+    htask = ah_start(hdesc, hdef);
+    if (!htask) {
+        fprintf(stderr, "Error starting Harmony search: %s\n",
+                ah_error());
         goto cleanup;
     }
 
     for (i = 0; max_loop <= 0 || i < max_loop; ++i) {
-        hresult = ah_fetch(hdesc);
+        hresult = ah_fetch(htask);
         if (hresult < 0) {
             fprintf(stderr, "Failed to fetch values from server.\n");
             goto cleanup;
@@ -223,16 +224,16 @@ int main(int argc, char* argv[])
         }
 
         // Update the performance result.
-        if (ah_report(hdesc, &perf) < 0) {
+        if (ah_report(htask, &perf) < 0) {
             fprintf(stderr, "Failed to report performance to server.\n");
             goto cleanup;
         }
 
-        if (ah_converged(hdesc))
+        if (ah_converged(htask))
             break;
     }
 
-    if (ah_best(hdesc) >= 0) {
+    if (ah_best(htask) >= 0) {
         printf("Best configuration found:\n");
         for (i = 0; i < bcount; ++i) {
             printf("\t%s: ", binfo[i].name);
@@ -250,10 +251,10 @@ int main(int argc, char* argv[])
     }
 
   cleanup:
-    // Close the session.
-    if (ah_leave(hdesc) < 0)
-        fprintf(stderr, "Failed to disconnect from harmony server.\n");
-    ah_fini(hdesc);
+    // Close the connection to the session.
+    if (ah_close(hdesc) != 0)
+        fprintf(stderr, "Failed to detach from Harmony session.\n");
+    ah_free(hdesc);
 
     if (svr_pid && kill(svr_pid, SIGKILL) < 0)
         fprintf(stderr, "Could not kill server process (%d).\n", svr_pid);
@@ -301,8 +302,8 @@ void usage(const char* me)
 "  describe the format of the argument vector.  Each argument (starting with\n"
 "  and including the program binary) may include a percent sign (%%)\n"
 "  followed by the name of a previously defined tunable variable.  This\n"
-"  identifier may be optionally bracketed by curly-braces.  Values from the\n"
-"  tuning server will then be used to complete a command-line instance.\n"
+"  identifier may be optionally bracketed by curly-braces.  Values fromn"
+"  the Harmony search will then be used to complete a command-line instance.\n"
 "  A backslash (\\) may be used to produce a literal %%.  For example:\n"
 "\n"
 "    %s -i=tile,1,10,1 -i=unroll,1,10,1 \\\n"
@@ -314,6 +315,14 @@ void parseArgs(int argc, char* argv[])
     int i, stop = 0, chapel = 0;
     char* arg;
     bundle_info_t* bun;
+
+    // Define a new search.
+    hdef = ah_def_alloc();
+    if (!hdef) {
+        fprintf(stderr, "Could not allocate a new search definition: %s\n",
+                ah_error());
+        return;
+    }
 
     for (i = 1; i < argc && *argv[i] == '-' && !stop; ++i) {
         arg = argv[i] + 1;
@@ -369,7 +378,7 @@ void parseArgs(int argc, char* argv[])
         }
     }
 
-    client_bin = sprintf_alloc("%s.%d", argv[i], getpid());
+    client_bin = sprintf_alloc("%s_%d", argv[i], getpid());
     if (!client_bin) {
         perror("Could not allocate memory for client name");
         exit(-1);
@@ -452,13 +461,8 @@ int handle_int(char* arg)
     if (bun == NULL)
         return -1;
 
-    if (ah_int(hdesc, name, min, max, step) < 0) {
+    if (ah_def_int(hdef, name, min, max, step, bun->data) != 0) {
         fprintf(stderr, "Error registering variable '%s'.\n", name);
-        return -1;
-    }
-
-    if (ah_bind_int(hdesc, name, bun->data) < 0) {
-        fprintf(stderr, "Error binding data to variable '%s'.\n", name);
         return -1;
     }
 
@@ -496,13 +500,8 @@ int handle_real(char* arg)
     if (bun == NULL)
         return -1;
 
-    if (ah_real(hdesc, name, min, max, step) < 0) {
+    if (ah_def_real(hdef, name, min, max, step, bun->data) != 3) {
         fprintf(stderr, "Error registering variable '%s'.\n", name);
-        return -1;
-    }
-
-    if (ah_bind_real(hdesc, name, bun->data) < 0) {
-        fprintf(stderr, "Error binding data to variable '%s'.\n", name);
         return -1;
     }
 
@@ -535,21 +534,23 @@ int handle_enum(char* arg)
     if (bun == NULL)
         return -1;
 
+    if (ah_def_enum(hdef, name, bun->data) != 0) {
+        fprintf(stderr, "Error adding enumerated-domain variable '%s': %s\n",
+                name, ah_error());
+        return -1;
+    }
+
     while (*arg != '\0') {
         val = arg;
         while (*arg != ',' && *arg != '\0') ++arg;
         if (*arg != '\0')
             *(arg++) = '\0';
 
-        if (ah_enum(hdesc, name, val) < 0) {
-            fprintf(stderr, "Invalid value string for variable '%s'.\n", name);
+        if (ah_def_enum_value(hdef, name, val) != 0) {
+            fprintf(stderr, "Error adding value to enumerated-domain"
+                    " variable '%s': %s\n", name, ah_error());
             return -1;
         }
-    }
-
-    if (ah_bind_enum(hdesc, name, bun->data) < 0) {
-        fprintf(stderr, "Error binding data to variable '%s'.\n", name);
-        return -1;
     }
 
     return 0;
@@ -608,12 +609,8 @@ int handle_chapel(char* prog)
     bun = tuna_bundle_add(HVAL_INT, "dataParTsk");
     if (bun == NULL)
         return -1;
-    if (ah_int(hdesc, "dataParTsk", 1, 64, 1) < 0) {
+    if (ah_def_int(hdef, "dataParTsk", 1, 64, 1, bun->data) != 0) {
         fprintf(stderr, "Error registering variable 'dataParTsk'.\n");
-        return -1;
-    }
-    if (ah_bind_int(hdesc, "dataParTsk", bun->data) < 0) {
-        fprintf(stderr, "Error binding data to variable 'dataParTsk'.\n");
         return -1;
     }
     if (argv_add("--dataParTasksPerLocale=%dataParTsk"))
@@ -623,12 +620,8 @@ int handle_chapel(char* prog)
     bun = tuna_bundle_add(HVAL_INT, "numThr");
     if (bun == NULL)
         return -1;
-    if (ah_int(hdesc, "numThr", 1, 32, 1) < 0) {
+    if (ah_def_int(hdef, "numThr", 1, 32, 1, bun->data) != 0) {
         fprintf(stderr, "Error registering variable 'numThr'.\n");
-        return -1;
-    }
-    if (ah_bind_int(hdesc, "numThr", bun->data) < 0) {
-        fprintf(stderr, "Error binding data to variable 'numThr'.\n");
         return -1;
     }
     if (argv_add("--numThreadsPerLocale=%numThr"))
@@ -674,12 +667,8 @@ int handle_chapel(char* prog)
         if (bun == NULL)
             return -1;
 
-        if (ah_int(hdesc, name, min, max, step) < 0) {
+        if (ah_def_int(hdef, name, min, max, step, bun->data) != 0) {
             fprintf(stderr, "Error registering variable '%s'.\n", name);
-            return -1;
-        }
-        if (ah_bind_int(hdesc, name, bun->data) < 0) {
-            fprintf(stderr, "Error binding data to variable '%s'.\n", name);
             return -1;
         }
 

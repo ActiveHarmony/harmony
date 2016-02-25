@@ -3,6 +3,7 @@ client_api/fortran
 client_api/join
 client_api/loadfile
 client_api/minimal
+client_api/multi
 code_generation/gemm
 synth/synth
 unique_points.tuna.dat

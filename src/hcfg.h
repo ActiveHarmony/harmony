@@ -44,14 +44,15 @@ typedef struct hcfg_info {
     const char* val;
     const char* help;
 } hcfg_info_t;
-extern const hcfg_info_t hcfg_global_keys[];
 
 /*
  * Basic structure management interface.
  */
 int  hcfg_init(hcfg_t* cfg);
+int  hcfg_loadenv(hcfg_t* cfg);
 int  hcfg_reginfo(hcfg_t* cfg, const hcfg_info_t* info);
 int  hcfg_copy(hcfg_t* dst, const hcfg_t* src);
+int  hcfg_merge(hcfg_t* dst, const hcfg_t* src);
 void hcfg_fini(hcfg_t* cfg);
 void hcfg_scrub(hcfg_t* cfg);
 
@@ -62,14 +63,14 @@ char* hcfg_get(const hcfg_t* cfg, const char* key);
 int   hcfg_set(hcfg_t* cfg, const char* key, const char* val);
 
 /*
- * Scalar value conversion interface.
+ * Key lookup and scalar value conversion interface.
  */
 int    hcfg_bool(const hcfg_t* cfg, const char* key);
 long   hcfg_int(const hcfg_t* cfg, const char* key);
 double hcfg_real(const hcfg_t* cfg, const char* key);
 
 /*
- * Array value conversion interface.
+ * Key lookup and array value conversion interface.
  */
 int    hcfg_arr_len(const hcfg_t* cfg, const char* key);
 int    hcfg_arr_get(const hcfg_t* cfg, const char* key, int idx,
@@ -77,6 +78,13 @@ int    hcfg_arr_get(const hcfg_t* cfg, const char* key, int idx,
 int    hcfg_arr_bool(const hcfg_t* cfg, const char* key, int idx);
 long   hcfg_arr_int(const hcfg_t* cfg, const char* key, int idx);
 double hcfg_arr_real(const hcfg_t* cfg, const char* key, int idx);
+
+/*
+ * Value conversion interface.
+ */
+int    hcfg_parse_bool(const char* val);
+long   hcfg_parse_int(const char* val);
+double hcfg_parse_real(const char* val);
 
 /*
  * Data transmission interface.

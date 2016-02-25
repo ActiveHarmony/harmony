@@ -47,55 +47,63 @@
  * Configuration variables used in this plugin.
  * These will automatically be registered by session-core upon load.
  */
-hcfg_info_t plugin_keyinfo[] = {
+const hcfg_info_t plugin_keyinfo[] = {
     { CFGKEY_INIT_POINT, NULL, "Initial point begin testing from." },
     { NULL }
 };
 
-hpoint_t best = HPOINT_INITIALIZER;
-double   best_perf;
+/*
+ * Structure to hold data for an individual exhaustive search instance.
+ */
+struct data {
+    int       space_id;
+    hspace_t* space;
+    hpoint_t  best;
+    double    best_perf;
+
+    hpoint_t  next;
+};
 
 /*
  * Internal helper function prototypes.
  */
-int  config_strategy(void);
-void randomize(hpoint_t* point);
+static int  config_strategy(data_t* data);
+static void randomize(data_t* data, hpoint_t* point);
 
 /*
- * Variables to track current search state.
+ * Allocate memory for a new search instance.
  */
-hspace_t* space;
-hpoint_t  next;
-
-/*
- * Invoked once on strategy load.
- */
-int strategy_init(hspace_t* space_ptr)
+data_t* strategy_alloc(void)
 {
-    if (!space) {
-        // One time memory allocation and/or initialization.
-        //
-        // The best point and trial counter should only be initialized
-        // once, and thus be retained across a restart.
-        //
-        best_perf = HUGE_VAL;
-        next.id = 1;
-    }
+    data_t* retval = calloc(1, sizeof(*retval));
+    if (!retval)
+        return NULL;
 
-    // Initialization for subsequent calls to strategy_init().
-    if (space != space_ptr) {
-        if (hpoint_init(&next, space_ptr->len) != 0) {
-            session_error("Could not initialize point structure");
+    retval->best_perf = HUGE_VAL;
+    retval->next.id = 1;
+
+    return retval;
+}
+
+/*
+ * Initialize (or re-initialize) data for this search instance.
+ */
+int strategy_init(data_t* data, hspace_t* space)
+{
+    if (data->space_id != space->id) {
+        if (hpoint_init(&data->next, space->len) != 0) {
+            search_error("Could not initialize point structure");
             return -1;
         }
-        space = space_ptr;
+        data->next.len = space->len;
+        data->space = space;
     }
 
-    if (config_strategy() != 0)
+    if (config_strategy(data) != 0)
         return -1;
 
-    if (session_setcfg(CFGKEY_CONVERGED, "0") != 0) {
-        session_error("Could not set " CFGKEY_CONVERGED " config variable.");
+    if (search_setcfg(CFGKEY_CONVERGED, "0") != 0) {
+        search_error("Could not set " CFGKEY_CONVERGED " config variable");
         return -1;
     }
     return 0;
@@ -104,16 +112,16 @@ int strategy_init(hspace_t* space_ptr)
 /*
  * Generate a new candidate configuration.
  */
-int strategy_generate(hflow_t* flow, hpoint_t* point)
+int strategy_generate(data_t* data, hflow_t* flow, hpoint_t* point)
 {
-    if (hpoint_copy(point, &next) != 0) {
-        session_error("Could not copy point during generation.");
+    if (hpoint_copy(point, &data->next) != 0) {
+        search_error("Could not copy point during generation");
         return -1;
     }
 
     // Prepare a new random vertex for the next call to strategy_generate.
-    randomize(&next);
-    ++next.id;
+    randomize(data, &data->next);
+    ++data->next.id;
 
     flow->status = HFLOW_ACCEPT;
     return 0;
@@ -122,19 +130,19 @@ int strategy_generate(hflow_t* flow, hpoint_t* point)
 /*
  * Regenerate a point deemed invalid by a later plug-in.
  */
-int strategy_rejected(hflow_t* flow, hpoint_t* point)
+int strategy_rejected(data_t* data, hflow_t* flow, hpoint_t* point)
 {
     if (flow->point.id) {
         hpoint_t* hint = &flow->point;
 
         hint->id = point->id;
         if (hpoint_copy(point, hint) != 0) {
-            session_error("Internal error: Could not copy point.");
+            search_error("Could not copy hint point during reject");
             return -1;
         }
     }
     else {
-        randomize(point);
+        randomize(data, point);
     }
 
     flow->status = HFLOW_ACCEPT;
@@ -144,14 +152,14 @@ int strategy_rejected(hflow_t* flow, hpoint_t* point)
 /*
  * Analyze the observed performance for this configuration point.
  */
-int strategy_analyze(htrial_t* trial)
+int strategy_analyze(data_t* data, htrial_t* trial)
 {
     double perf = hperf_unify(&trial->perf);
 
-    if (best_perf > perf) {
-        best_perf = perf;
-        if (hpoint_copy(&best, &trial->point) != 0) {
-            session_error("Internal error: Could not copy point.");
+    if (data->best_perf > perf) {
+        data->best_perf = perf;
+        if (hpoint_copy(&data->best, &trial->point) != 0) {
+            search_error("Could not copy best point");
             return -1;
         }
     }
@@ -161,40 +169,52 @@ int strategy_analyze(htrial_t* trial)
 /*
  * Return the best performing point thus far in the search.
  */
-int strategy_best(hpoint_t* point)
+int strategy_best(data_t* data, hpoint_t* point)
 {
-    if (hpoint_copy(point, &best) != 0) {
-        session_error("Internal error: Could not copy point.");
+    if (hpoint_copy(point, &data->best) != 0) {
+        search_error("Could not copy best point out of strategy");
         return -1;
     }
     return 0;
 }
 
 /*
+ * Free memory associated with this search instance.
+ */
+int strategy_fini(data_t* data)
+{
+    hpoint_fini(&data->next);
+    hpoint_fini(&data->best);
+
+    free(data);
+    return 0;
+}
+
+/*
  * Internal helper function implementation.
  */
-int config_strategy(void)
+int config_strategy(data_t* data)
 {
-    const char* cfgval = hcfg_get(session_cfg, CFGKEY_INIT_POINT);
+    const char* cfgval = hcfg_get(search_cfg, CFGKEY_INIT_POINT);
     if (cfgval) {
-        if (hpoint_parse(&next, cfgval, space) != 0) {
-            session_error("Error parsing point from " CFGKEY_INIT_POINT ".");
+        if (hpoint_parse(&data->next, cfgval, data->space) != 0) {
+            search_error("Error parsing point from " CFGKEY_INIT_POINT);
             return -1;
         }
 
-        if (hpoint_align(&next, space) != 0) {
-            session_error("Could not align initial point to search space");
+        if (hpoint_align(&data->next, data->space) != 0) {
+            search_error("Could not align initial point to search space");
             return -1;
         }
     }
     else {
-        randomize(&next);
+        randomize(data, &data->next);
     }
     return 0;
 }
 
-void randomize(hpoint_t* point)
+void randomize(data_t* data, hpoint_t* point)
 {
-    for (int i = 0; i < space->len; ++i)
-        point->term[i] = hrange_random(&space->dim[i]);
+    for (int i = 0; i < data->space->len; ++i)
+        point->term[i] = hrange_random(&data->space->dim[i], search_drand48());
 }

@@ -29,8 +29,10 @@
 #include "hpoint.h"
 #include "hperf.h"
 #include "hcfg.h"
+#include "hutil.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <time.h>
 #include <string.h>
 #include <errno.h>
@@ -54,81 +56,129 @@ hcfg_info_t plugin_keyinfo[] = {
     { NULL }
 };
 
-FILE* fd;
+/*
+ * Structure to hold all data needed by an individual search instance.
+ *
+ * To support multiple parallel search instances, no global variables
+ * should be defined or used in this plug-in layer.  They should
+ * instead be defined as a part of this structure.
+ */
+typedef struct data {
+    char* filename;
+    FILE* fd;
+} data_t;
 
-int logger_init(hspace_t* space)
+/*
+ * Allocate memory for a new search instance.
+ */
+data_t* logger_alloc(void)
 {
-    const char* filename = hcfg_get(session_cfg, CFGKEY_LOG_FILE);
-    const char* mode     = hcfg_get(session_cfg, CFGKEY_LOG_MODE);
-    time_t tm;
+    data_t* retval = calloc(1, sizeof(*retval));
+    if (!retval)
+        return NULL;
+
+    return retval;
+}
+
+/*
+ * Initialize (or re-initialize) data for this search instance.
+ */
+int logger_init(data_t* data, hspace_t* space)
+{
+    const char* filename = hcfg_get(search_cfg, CFGKEY_LOG_FILE);
+    const char* mode     = hcfg_get(search_cfg, CFGKEY_LOG_MODE);
+    time_t tm = time(NULL);
 
     if (!filename) {
-        session_error(CFGKEY_LOG_FILE " config key empty.");
+        search_error(CFGKEY_LOG_FILE " config key empty");
         return -1;
     }
 
-    fd = fopen(filename, mode);
-    if (!fd) {
-        session_error( strerror(errno) );
-        return -1;
-    }
+    if (!data->filename || strcmp(data->filename, filename) != 0) {
+        // Save a copy of the filename..
+        free(data->filename);
+        data->filename = stralloc(filename);
+        if (!data->filename) {
+            search_error("Could not allocate filename in logger_init()");
+            return -1;
+        }
 
-    tm = time(NULL);
-    fprintf(fd, "* Begin tuning session log.\n");
-    fprintf(fd, "* Timestamp: %s", asctime( localtime(&tm) ));
+        if (!data->fd)
+            data->fd = fopen(filename, mode);
+        else
+            data->fd = freopen(filename, mode, data->fd);
+
+        if (!data->fd) {
+            search_error( strerror(errno) );
+            return -1;
+        }
+        fprintf(data->fd, "* Begin tuning session log.\n");
+        fprintf(data->fd, "* Timestamp: %s", asctime( localtime(&tm) ));
+    }
+    else {
+        fprintf(data->fd, "* Logger re-initialized.\n");
+        fprintf(data->fd, "* Timestamp: %s", asctime( localtime(&tm) ));
+    }
 
     return 0;
 }
 
-int logger_join(const char* id)
+int logger_join(data_t* data, const char* client)
 {
-    fprintf(fd, "Client \"%s\" joined the tuning session.\n", id);
+    fprintf(data->fd, "Client \"%s\" joined the tuning session.\n", client);
     return 0;
 }
 
-int logger_analyze(hflow_t* flow, htrial_t* trial)
+int logger_analyze(data_t* data, hflow_t* flow, htrial_t* trial)
 {
-    fprintf(fd, "Point #%d: (", trial->point.id);
+    fprintf(data->fd, "Point #%d: (", trial->point.id);
     for (int i = 0; i < trial->point.len; ++i) {
-        if (i > 0) fprintf(fd, ",");
+        if (i > 0) fprintf(data->fd, ",");
 
         const hval_t* v = &trial->point.term[i];
         switch (v->type) {
-        case HVAL_INT:  fprintf(fd, "%ld", v->value.i); break;
-        case HVAL_REAL: fprintf(fd, "%lf[%la]", v->value.r, v->value.r); break;
-        case HVAL_STR:  fprintf(fd, "\"%s\"", v->value.s); break;
+        case HVAL_INT:  fprintf(data->fd, "%ld", v->value.i); break;
+        case HVAL_REAL: fprintf(data->fd, "%lf[%la]",
+                                v->value.r, v->value.r); break;
+        case HVAL_STR:  fprintf(data->fd, "\"%s\"", v->value.s); break;
         default:
-            session_error("Invalid point value type");
+            search_error("Invalid point value type");
             return -1;
         }
     }
-    fprintf(fd, ") ");
+    fprintf(data->fd, ") ");
 
     if (trial->perf.len > 1) {
-        fprintf(fd, "=> (");
+        fprintf(data->fd, "=> (");
         for (int i = 0; i < trial->perf.len; ++i) {
-            if (i > 0) fprintf(fd, ",");
-            fprintf(fd, "%lf[%la]", trial->perf.obj[i], trial->perf.obj[i]);
+            if (i > 0) fprintf(data->fd, ",");
+            fprintf(data->fd, "%lf[%la]",
+                    trial->perf.obj[i], trial->perf.obj[i]);
         }
-        fprintf(fd, ") ");
+        fprintf(data->fd, ") ");
     }
-    fprintf(fd, "=> %lf\n", hperf_unify(&trial->perf));
-    fflush(fd);
+    fprintf(data->fd, "=> %lf\n", hperf_unify(&trial->perf));
+    fflush(data->fd);
 
     flow->status = HFLOW_ACCEPT;
     return 0;
 }
 
-int logger_fini(void)
+int logger_fini(data_t* data)
 {
-    fprintf(fd, "*\n");
-    fprintf(fd, "* End tuning session.\n");
-    fprintf(fd, "*\n");
+    time_t tm = time(NULL);
 
-    if (fclose(fd) != 0) {
-        session_error( strerror(errno) );
+    fprintf(data->fd, "*\n");
+    fprintf(data->fd, "* End tuning session.\n");
+    fprintf(data->fd, "* Timestamp: %s", asctime( localtime(&tm) ));
+    fprintf(data->fd, "*\n");
+
+    if (fclose(data->fd) != 0) {
+        search_error( strerror(errno) );
         return -1;
     }
 
+    free(data->filename);
+    free(data);
     return 0;
 }

@@ -164,12 +164,16 @@ int socket_launch(const char* path, char* const argv[], pid_t* return_pid)
  */
 int mesg_send(int sock, hmesg_t* mesg)
 {
-    int msglen = hmesg_pack(mesg);
-    if (msglen < 0)
+    int pkt_len = hmesg_pack(mesg);
+    if (pkt_len < 0)
         return -1;
 
-    // fprintf(stderr, "(%2d)<<< '%s'\n", sock, mesg->send_buf);
-    if (socket_write(sock, mesg->send_buf, msglen) < msglen)
+#ifdef AH_DEBUG_COMM_SEND
+    fprintf(stderr, "(Send %2d) [src:%d -> dest:%d] msg:'%s'\n", sock,
+            mesg->src, mesg->dest, mesg->send_buf + HMESG_HEADER_SIZE);
+#endif
+
+    if (socket_write(sock, mesg->send_buf, pkt_len) < pkt_len)
         return -1;
 
     return 1;
@@ -184,27 +188,23 @@ int mesg_send(int sock, hmesg_t* mesg)
  */
 int mesg_forward(int sock, hmesg_t* mesg)
 {
-    if (mesg->origin < -1 || mesg->origin >= 255) {
-        fprintf(stderr, "Error: mesg_forward():"
-                "Origin (%d) is out of range [-1, 254]\n", mesg->origin);
-        return -1;
-    }
+    unsigned short pkt_len;
+    memcpy(&pkt_len, mesg->recv_buf + HMESG_LEN_OFFSET, HMESG_LEN_SIZE);
+    pkt_len = ntohs(pkt_len);
 
-    int msglen;
-    if (sscanf(mesg->recv_buf + HMESG_LENGTH_OFFSET, "%4d", &msglen) < 1)
+    if (hmesg_forward(mesg) != 0)
         return -1;
 
-    for (int i = 0; i < msglen; ++i) {
+    for (int i = HMESG_HEADER_SIZE; i < pkt_len; ++i)
         if (mesg->recv_buf[i] == '\0')
-            mesg->recv_buf[i] = '"';
-    }
+            mesg->recv_buf[i] =  '\"';
 
-    char origin[HMESG_ORIGIN_SIZE + 1];
-    snprintf(origin, sizeof(origin), "%02x", mesg->origin);
-    memcpy(mesg->recv_buf + HMESG_ORIGIN_OFFSET, origin, HMESG_ORIGIN_SIZE);
+#ifdef AH_DEBUG_COMM_FWD
+    fprintf(stderr, "(Fwrd %2d) [src:%d -> dest:%d] msg:'%s'\n", sock,
+            mesg->src, mesg->dest, mesg->recv_buf + HMESG_HEADER_SIZE);
+#endif
 
-    // fprintf(stderr, "(%2d)<<< '%s'\n", sock, mesg->recv_buf);
-    if (socket_write(sock, mesg->recv_buf, msglen) < msglen)
+    if (socket_write(sock, mesg->recv_buf, pkt_len) < pkt_len)
         return -1;
 
     return 1;
@@ -215,39 +215,45 @@ int mesg_forward(int sock, hmesg_t* mesg)
  */
 int mesg_recv(int sock, hmesg_t* mesg)
 {
-    char hdr[HMESG_HDR_SIZE + 1];
-    char* newbuf;
-    int msglen, retval;
-    unsigned int magic, msgver;
-
-    retval = recv(sock, hdr, HMESG_HDR_SIZE, MSG_PEEK);
+    char peek[HMESG_PEEK_SIZE];
+    int retval = recv(sock, peek, HMESG_PEEK_SIZE, MSG_PEEK);
     if (retval <  0) goto error;
     if (retval == 0) return 0;
 
-    memcpy(&magic, hdr, HMESG_MAGIC_SIZE);
-    if (ntohl(magic) != HMESG_MAGIC)
+    unsigned int pkt_magic;
+    memcpy(&pkt_magic, peek + HMESG_MAGIC_OFFSET, HMESG_MAGIC_SIZE);
+    if (ntohl(pkt_magic) != HMESG_MAGIC)
         goto invalid;
 
-    hdr[HMESG_HDR_SIZE] = '\0';
-    if (sscanf(hdr + HMESG_LENGTH_OFFSET, "%4d%2x", &msglen, &msgver) < 2)
-        goto invalid;
+    unsigned short pkt_len;
+    memcpy(&pkt_len, peek + HMESG_LEN_OFFSET, HMESG_LEN_SIZE);
+    pkt_len = ntohs(pkt_len);
 
-    if (msgver != HMESG_VERSION)
-        goto invalid;
-
-    if (mesg->recv_len <= msglen) {
-        newbuf = realloc(mesg->recv_buf, msglen + 1);
+    if (mesg->recv_len <= pkt_len) {
+        char* newbuf = realloc(mesg->recv_buf, pkt_len + 1);
         if (!newbuf)
             goto error;
         mesg->recv_buf = newbuf;
-        mesg->recv_len = msglen + 1;
+        mesg->recv_len = pkt_len + 1;
     }
 
-    retval = socket_read(sock, mesg->recv_buf, msglen);
+    retval = socket_read(sock, mesg->recv_buf, pkt_len);
     if (retval == 0) return 0;
-    if (retval < msglen) goto error;
+    if (retval < pkt_len) goto error;
     mesg->recv_buf[retval] = '\0'; // A strlen() safety net.
-    // fprintf(stderr, "(%2d)>>> '%s'\n", sock, mesg->recv_buf);
+
+#ifdef AH_DEBUG_COMM_RECV
+    unsigned short pkt_src;
+    memcpy(&pkt_src, mesg->recv_buf + HMESG_SRC_OFFSET, HMESG_SRC_SIZE);
+    pkt_src = ntohs(pkt_src);
+
+    unsigned short pkt_dest;
+    memcpy(&pkt_dest, mesg->recv_buf + HMESG_DEST_OFFSET, HMESG_DEST_SIZE);
+    pkt_dest = ntohs(pkt_dest);
+
+    fprintf(stderr, "(Recv %2d) [src:%d -> dest:%d] msg:'%s'\n", sock,
+            pkt_src, pkt_dest, mesg->recv_buf + HMESG_HEADER_SIZE);
+#endif
 
     if (hmesg_unpack(mesg) < 0)
         goto error;

@@ -47,7 +47,7 @@ const char harmony_layer_name[] = "agg";
  * Configuration variables used in this plugin.
  * These will automatically be registered by session-core upon load.
  */
-hcfg_info_t plugin_keyinfo[] = {
+const hcfg_info_t plugin_keyinfo[] = {
     { CFGKEY_AGG_FUNC, NULL,
       "Aggregation function to use.  Valid values are min, max, mean, "
       "and median." },
@@ -56,10 +56,6 @@ hcfg_info_t plugin_keyinfo[] = {
       "aggregation function." },
     { NULL }
 };
-
-void perf_mean(hperf_t* dst, hperf_t* src, int count);
-int  perf_sort(const void* _a, const void* _b);
-int  add_storage(void);
 
 typedef struct store {
     int id;
@@ -75,53 +71,91 @@ typedef enum aggfunc {
     AGG_MEDIAN
 } aggfunc_t;
 
-aggfunc_t agg_type;
-int trial_per_point;
-store_t* slist;
-int slist_len;
+/*
+ * Structure to hold all data needed by an individual search instance.
+ *
+ * To support multiple parallel search instances, no global variables
+ * should be defined or used in this plug-in layer.  They should
+ * instead be defined as a part of this structure.
+ */
+typedef struct data {
+    aggfunc_t agg_type;
+    int       trial_per_point;
+    store_t*  slist;
+    int       slist_len;
+} data_t;
 
-int agg_init(hspace_t* space)
+/*
+ * Internal helper function prototypes.
+ */
+static void perf_mean(data_t* data, hperf_t* dst, hperf_t* src, int count);
+static int  perf_sort(const void* _a, const void* _b);
+static int  add_storage(data_t* data);
+static void free_storage(data_t* data);
+
+/*
+ * Allocate memory for a new search instance.
+ */
+data_t* agg_alloc(void)
 {
-    const char* val;
+    data_t* retval = calloc(1, sizeof(*retval));
+    if (!retval)
+        return NULL;
 
-    val = hcfg_get(session_cfg, CFGKEY_AGG_FUNC);
-    if (!val) {
-        session_error(CFGKEY_AGG_FUNC " configuration key empty.");
-        return -1;
-    }
-    if      (strcasecmp(val, "MIN") == 0)    agg_type = AGG_MIN;
-    else if (strcasecmp(val, "MAX") == 0)    agg_type = AGG_MAX;
-    else if (strcasecmp(val, "MEAN") == 0)   agg_type = AGG_MEAN;
-    else if (strcasecmp(val, "MEDIAN") == 0) agg_type = AGG_MEDIAN;
-    else {
-        session_error("Invalid " CFGKEY_AGG_FUNC " configuration value.");
-        return -1;
-    }
-
-    trial_per_point = hcfg_int(session_cfg, CFGKEY_AGG_TIMES);
-    if (trial_per_point < 2) {
-        session_error("Invalid " CFGKEY_AGG_TIMES " configuration value.");
-        return -1;
-    }
-
-    slist = NULL;
-    slist_len = 0;
-    return add_storage();
+    return retval;
 }
 
-int agg_analyze(hflow_t* flow, htrial_t* trial)
+/*
+ * Initialize (or re-initialize) data for this search instance.
+ */
+int agg_init(data_t* data, hspace_t* space)
+{
+    const char* val = hcfg_get(search_cfg, CFGKEY_AGG_FUNC);
+    if (!val) {
+        search_error(CFGKEY_AGG_FUNC " configuration key empty");
+        return -1;
+    }
+    if      (strcasecmp(val, "MIN") == 0)    data->agg_type = AGG_MIN;
+    else if (strcasecmp(val, "MAX") == 0)    data->agg_type = AGG_MAX;
+    else if (strcasecmp(val, "MEAN") == 0)   data->agg_type = AGG_MEAN;
+    else if (strcasecmp(val, "MEDIAN") == 0) data->agg_type = AGG_MEDIAN;
+    else {
+        search_error("Invalid " CFGKEY_AGG_FUNC " configuration value");
+        return -1;
+    }
+
+    int new_trial_count = hcfg_int(search_cfg, CFGKEY_AGG_TIMES);
+    if (new_trial_count < 2) {
+        search_error("Invalid " CFGKEY_AGG_TIMES " configuration value");
+        return -1;
+    }
+
+    if (data->trial_per_point != new_trial_count) {
+        data->trial_per_point = new_trial_count;
+
+        free_storage(data);
+
+        data->slist = NULL;
+        data->slist_len = 0;
+        if (add_storage(data))
+            return -1;
+    }
+    return 0;
+}
+
+int agg_analyze(data_t* data, hflow_t* flow, htrial_t* trial)
 {
     int i;
     store_t* store;
 
-    for (i = 0; i < slist_len; ++i) {
-        if (slist[i].id == trial->point.id || slist[i].id == -1)
+    for (i = 0; i < data->slist_len; ++i) {
+        if (data->slist[i].id == trial->point.id || data->slist[i].id == -1)
             break;
     }
-    if (i == slist_len && add_storage() != 0)
+    if (i == data->slist_len && add_storage(data) != 0)
         return -1;
 
-    store = &slist[i];
+    store = &data->slist[i];
     if (store->id == -1) {
         store->id = trial->point.id;
         store->count = 0;
@@ -132,40 +166,40 @@ int agg_analyze(hflow_t* flow, htrial_t* trial)
 
     ++store->count;
 
-    if (store->count < trial_per_point) {
+    if (store->count < data->trial_per_point) {
         flow->status = HFLOW_RETRY;
         return 0;
     }
 
-    switch (agg_type) {
+    switch (data->agg_type) {
     case AGG_MIN:
-        for (i = 0; i < trial_per_point; ++i)
+        for (i = 0; i < data->trial_per_point; ++i)
             if (hperf_cmp(&trial->perf, &store->trial[i]) > 0)
                 hperf_copy(&trial->perf, &store->trial[i]);
         break;
 
     case AGG_MAX:
-        for (i = 0; i < trial_per_point; ++i)
+        for (i = 0; i < data->trial_per_point; ++i)
             if (hperf_cmp(&trial->perf, &store->trial[i]) < 0)
                 hperf_copy(&trial->perf, &store->trial[i]);
         break;
 
     case AGG_MEAN:
-        perf_mean(&trial->perf, store->trial, trial_per_point);
+        perf_mean(data, &trial->perf, store->trial, data->trial_per_point);
         break;
 
     case AGG_MEDIAN:
-        qsort(store->trial, trial_per_point, sizeof(hperf_t), perf_sort);
+        qsort(store->trial, data->trial_per_point, sizeof(hperf_t), perf_sort);
 
-        i = (trial_per_point - 1) / 2;
+        i = (data->trial_per_point - 1) / 2;
         if (i % 2)
             hperf_copy(&trial->perf, &store->trial[i]);
         else
-            perf_mean(&trial->perf, &store->trial[i], 2);
+            perf_mean(data, &trial->perf, &store->trial[i], 2);
         break;
 
     default:
-        session_error("Internal error: Invalid AGG type");
+        search_error("Invalid AGG type");
         return -1;
     }
 
@@ -175,19 +209,17 @@ int agg_analyze(hflow_t* flow, htrial_t* trial)
     return 0;
 }
 
-int agg_fini(void)
+int agg_fini(data_t* data)
 {
-    for (int i = 0; i < slist_len; ++i) {
-        for (int j = 0; j < trial_per_point; ++j)
-            hperf_fini(&slist[i].trial[j]);
-        free(slist[i].trial);
-    }
-    free(slist);
-
+    free_storage(data);
+    free(data);
     return 0;
 }
 
-void perf_mean(hperf_t* dst, hperf_t* src, int count)
+/*
+ * Internal helper function prototypes.
+ */
+void perf_mean(data_t* data, hperf_t* dst, hperf_t* src, int count)
 {
     int i, j;
 
@@ -201,7 +233,7 @@ void perf_mean(hperf_t* dst, hperf_t* src, int count)
             dst->obj[i] += src[j].obj[i];
 
     for (i = 0; i < dst->len; ++i)
-        dst->obj[i] /= trial_per_point;
+        dst->obj[i] /= data->trial_per_point;
 }
 
 int perf_sort(const void* _a, const void* _b)
@@ -212,23 +244,36 @@ int perf_sort(const void* _a, const void* _b)
     return (a > b) - (a < b);
 }
 
-int add_storage(void)
+int add_storage(data_t* data)
 {
-    int prev_len = slist_len;
+    int prev_len = data->slist_len;
 
-    if (array_grow(&slist, &slist_len, sizeof(store_t)) != 0) {
-        session_error("Could not allocate memory for aggregator list");
+    if (array_grow(&data->slist, &data->slist_len,
+                   sizeof(*data->slist)) != 0)
+    {
+        search_error("Could not allocate memory for aggregator list");
         return -1;
     }
 
-    while (prev_len < slist_len) {
-        slist[prev_len].id = -1;
-        slist[prev_len].trial = calloc(trial_per_point, sizeof(hperf_t));
-        if (!slist[prev_len].trial) {
-            session_error("Could not allocate memory for trial list");
+    while (prev_len < data->slist_len) {
+        data->slist[prev_len].id = -1;
+        data->slist[prev_len].trial = calloc(data->trial_per_point,
+                                             sizeof(hperf_t));
+        if (!data->slist[prev_len].trial) {
+            search_error("Could not allocate memory for trial list");
             return -1;
         }
         ++prev_len;
     }
     return 0;
+}
+
+void free_storage(data_t* data)
+{
+    for (int i = 0; i < data->slist_len; ++i) {
+        for (int j = 0; j < data->trial_per_point; ++j)
+            hperf_fini(&data->slist[i].trial[j]);
+        free(data->slist[i].trial);
+    }
+    free(data->slist);
 }

@@ -32,7 +32,7 @@ int http_init(const char* basedir);
 void http_send_error(int fd, int status, const char* message);
 int http_session_data_send(int fd, const char* data);
 int handle_http_socket(int fd);
-int handle_http_info(session_state_t* sess, char* buf);
+int handle_http_info(sinfo_t* sinfo, char* buf);
 
 #ifdef __cplusplus
 }
