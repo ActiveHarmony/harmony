@@ -32,6 +32,7 @@
 #include <string.h>
 #include <strings.h>
 #include <errno.h>
+#include <signal.h>
 #include <dlfcn.h>
 #include <time.h>
 #include <math.h>
@@ -217,6 +218,14 @@ int main(int argc, char* argv[])
 
     if (!S_ISSOCK(sb.st_mode)) {
         fprintf(stderr, "%s should not be launched manually.\n", argv[0]);
+        return -1;
+    }
+
+    // Ignore SIGINT.  Graceful exit comes from the parent process
+    // closing their end of our STDIN file descriptor.
+    //
+    if (signal(SIGINT, SIG_IGN) == SIG_ERR) {
+        perror("Error in requesting to ignore SIGINT");
         return -1;
     }
 

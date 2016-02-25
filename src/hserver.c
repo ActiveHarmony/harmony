@@ -60,6 +60,7 @@ static void update_flags(sinfo_t* sinfo, const char* keyval);
 static int  update_state(sinfo_t* sinfo);
 static int  append_http_log(sinfo_t* sinfo, const hpoint_t* pt, double perf);
 static void close_client(int fd);
+static void sigint_handler(int signum);
 
 /*
  * Search-related helper function prototypes.
@@ -80,7 +81,7 @@ static int remove_index(ilist_t* list, int slot);
 static int remove_value(ilist_t* list, int slot);
 
 /*
- * Main variables
+ * File-local variables.
  */
 static int    listen_port = DEFAULT_PORT;
 static int    listen_socket;
@@ -96,13 +97,14 @@ static char* harmony_dir;
 static char* session_bin;
 static hmesg_t mesg;
 
-sinfo_t* slist;
-int slist_cap;
+static int verbose_flag;
+static int done;
 
 /*
- * Local variables
+ * Exported variables.
  */
-static int verbose_flag;
+sinfo_t* slist;
+int slist_cap;
 
 void usage(const char* prog)
 {
@@ -138,7 +140,7 @@ int main(int argc, char* argv[])
     if (launch_session() != 0)
         return -1;
 
-    while (1) {
+    while (!done) {
         ready_set = listen_set;
         fd_count = select(highest_socket + 1, &ready_set, NULL, NULL, NULL);
         if (fd_count == -1) {
@@ -270,7 +272,16 @@ int vars_init(int argc, char* argv[])
     char* binfile;
 
     // Ignore signal for writes to broken pipes/sockets.
-    signal(SIGPIPE, SIG_IGN);
+    if (signal(SIGPIPE, SIG_IGN) == SIG_ERR) {
+        perror("Error ignoring SIGPIPE");
+        return -1;
+    }
+
+    // Use SIGINT as a method for graceful server exit.
+    if (signal(SIGINT, sigint_handler) == SIG_ERR) {
+        perror("Error installing handler for SIGINT");
+        return -1;
+    }
 
     //Determine directory where this binary is located
     tmppath = stralloc(argv[0]);
@@ -1086,4 +1097,10 @@ int remove_value(ilist_t* list, int value)
 {
     int idx = find_value(list, value);
     return remove_index(list, idx);
+}
+
+void sigint_handler(int signum)
+{
+    fprintf(stderr, "\nCaught signal %d. Shutting down the server.\n", signum);
+    done = 1;
 }
