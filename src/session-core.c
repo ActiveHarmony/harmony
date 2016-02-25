@@ -22,6 +22,7 @@
 #include "hspace.h"
 #include "hcfg.h"
 #include "hmesg.h"
+#include "hplugin.h"
 #include "hutil.h"
 #include "hsockutil.h"
 
@@ -33,7 +34,6 @@
 #include <strings.h>
 #include <errno.h>
 #include <signal.h>
-#include <dlfcn.h>
 #include <time.h>
 #include <math.h>
 #include <sys/stat.h>
@@ -42,31 +42,10 @@
 #include <sys/select.h>
 
 /*
- * Structure to encapsulate the state of a Harmony plug-in.
+ * Structure to encapsulate a Harmony plug-in and its run-time state.
  */
-typedef struct hplugin {
-    const char*        name;
-    const hcfg_info_t* keyinfo;
-    void*              data;
-    void*              dl_handle;
-
-    struct hook_strategy {
-        strategy_generate_t generate;
-        strategy_rejected_t reject;
-        strategy_analyze_t  analyze;
-        strategy_best_t     best;
-    } strategy;
-
-    struct hook_layer {
-        layer_generate_t generate;
-        layer_analyze_t  analyze;
-    } layer;
-
-    hook_alloc_t  alloc;
-    hook_init_t   init;
-    hook_join_t   join;
-    hook_setcfg_t setcfg;
-    hook_fini_t   fini;
+typedef struct pstack {
+    hplugin_t plugin;
 
     // Index list of trials waiting in the generation side of this layer.
     int* wait_generate;
@@ -77,8 +56,7 @@ typedef struct hplugin {
     int* wait_analyze;
     int wait_analyze_len;
     int wait_analyze_cap;
-
-} hplugin_t;
+} pstack_t;
 
 /*
  * Structure to encapsulate the state of a single search instance.
@@ -86,11 +64,11 @@ typedef struct hplugin {
 typedef struct hsearch {
     int open;
 
-    hspace_t space;        // Search space definition.
-    hcfg_t   cfg;          // Configuration environment.
-    hpoint_t best;         // Best known point.
+    hspace_t space;       // Search space definition.
+    hcfg_t   cfg;         // Configuration environment.
+    hpoint_t best;        // Best known point.
 
-    hplugin_t* pstack;     // Plug-in stack.
+    pstack_t*  pstack;     // Plug-in stack.
     int        pstack_len;
     int        pstack_cap;
 
@@ -129,6 +107,7 @@ typedef struct callback {
     int        fd;        // Listen on this file descriptor for incoming data.
     int        layer_idx; // Return to this layer index when data is ready.
     cb_func_t  func;      // Call this function to process incoming data.
+    void*      data;      // Instance-specific data pointer.
     hsearch_t* search;    // Search this callback is associated with.
 } callback_t;
 
@@ -164,6 +143,10 @@ const  hcfg_t*    search_cfg;
 static int  open_search(hsearch_t* search, hmesg_t* mesg);
 static void close_search(hsearch_t* search);
 static void free_search(hsearch_t* search);
+static int  load_strategy(hsearch_t* search, const char* file);
+static int  load_layers(hsearch_t* search, const char* list);
+static int  load_plugin(hsearch_t* search, const char* filename,
+                        hplugin_type_t type);
 
 /*
  * Internal helper function prototypes.
@@ -183,9 +166,6 @@ static int        handle_report(hsearch_t* search, hmesg_t* mesg);
 static int        handle_reject(hsearch_t* search, int trial_idx);
 static int        handle_command(hsearch_t* search, hmesg_t* mesg);
 static int        handle_wait(hsearch_t* search, int trial_idx);
-static int        load_strategy(hsearch_t* search, const char* file);
-static int        load_layers(hsearch_t* search, const char* list);
-static int        load_hooks(hplugin_t* plugin, void* lib, const char* prefix);
 static int        extend_lists(hsearch_t* search, int target_cap);
 static void       reverse_array(void* ptr, int head, int tail);
 static int        update_state(hmesg_t* mesg, hsearch_t* search);
@@ -413,39 +393,46 @@ int open_search(hsearch_t* search, hmesg_t* mesg)
         return -1;
     }
 
-
-
     if (extend_lists(search, expected * search->per_client) != 0)
         return -1;
 
+    // Any existing points in the pending list must be re-initialized.
     search->pending_len = 0;
     for (int i = 0; i < search->pending_cap; ++i)
         ((hpoint_t*) &search->pending[i].point)->id = 0;
 
+    // Any index values in the ready list must be re-initialized.
     search->ready_head = 0;
     search->ready_tail = 0;
     for (int i = 0; i < search->ready_cap; ++i)
         search->ready[i] = -1;
 
-    // Load and initialize the strategy code object.
     ptr = hcfg_get(&search->cfg, CFGKEY_STRATEGY);
     if (!ptr) {
         if (expected > 1)
-            ptr = "pro.so";
+            ptr = "pro.so"; // Default strategy for multi-client searches.
         else
-            ptr = "nm.so";
+            ptr = "nm.so";  // Default strategy for single-client searches.
     }
 
+    // Begin region where plug-in hooks may be executed.  Make sure the
+    // correct data is available in the global pointers.
+    //
     search_cfg = &search->cfg;
+
+    // Load and initialize requested strategy plug-in.
     if (load_strategy(search, ptr) != 0)
         return -1;
 
-    // Load and initialize requested layers.
+    // Load and initialize requested layer plug-ins.
     ptr = hcfg_get(&search->cfg, CFGKEY_LAYERS);
     if (ptr) {
         if (load_layers(search, ptr) != 0)
             return -1;
     }
+
+    // End region where plug-in hooks may be executed.
+    //
     search_cfg = NULL;
 
     search->best.id = 0;
@@ -453,40 +440,136 @@ int open_search(hsearch_t* search, hmesg_t* mesg)
     search->clients = 1;
     search->open = 1;
 
+    set_current(search);
+    for (int i = 0; i < search->pstack_len; ++i) {
+        hplugin_t* plugin = &search->pstack[i].plugin;
+
+        if (hplugin_init(plugin, &search->space) != 0)
+            return -1;
+    }
+    set_current(NULL);
+
     return 0;
 }
 
 void close_search(hsearch_t* search)
 {
-    search->open = 0;
     for (int i = search->pstack_len - 1; i >= 0; --i) {
-        if (search->pstack[i].fini)
-            search->pstack[i].fini(search->pstack[i].data);
+        hplugin_t* plugin = &search->pstack[i].plugin;
 
-        dlclose(search->pstack[i].dl_handle);
+        if (hplugin_close(plugin, &search->errmsg) != 0)
+            fprintf(stderr, "Error finalizing plug-in: %s\n", search->errmsg);
     }
+    search->open = 0;
 }
 
 void free_search(hsearch_t* search)
 {
-    free(search->buf);
-    free(search->ready);
+    if (!search)
+        return;
 
     for (int i = 0; i < search->pending_cap; ++i) {
         hpoint_fini((hpoint_t*) &search->pending[i].point);
         hperf_fini(&search->pending[i].perf);
     }
-    free(search->pending);
 
     hpoint_fini(&search->flow.point);
-
-    free(search->pstack);
-
     hpoint_fini(&search->best);
     hcfg_fini(&search->cfg);
     hspace_fini(&search->space);
 
+    free(search->buf);
+    free(search->ready);
+    free(search->pending);
+    free(search->pstack);
     free(search);
+}
+
+/*
+ * Loads strategy given name of library file.
+ * Checks that strategy defines required functions,
+ * and then calls the strategy's init function (if defined)
+ */
+int load_strategy(hsearch_t* search, const char* file)
+{
+    char** pathbuf     = &search->buf;
+    int*   pathbuf_len = &search->buf_len;
+
+    search->pstack_len = 0;
+
+    if (snprintf_grow(pathbuf, pathbuf_len,
+                      "%s/libexec/%s", home_dir, file) < 0)
+    {
+        search->errmsg = "Could not allocate full pathname for plug-in";
+        return -1;
+    }
+
+    return load_plugin(search, *pathbuf, HPLUGIN_STRATEGY);
+}
+
+#define LAYER_DELIM_CHARS ":;, \t\n"
+int load_layers(hsearch_t* search, const char* list)
+{
+    char** pathbuf = &search->buf;
+    int*   pathlen = &search->buf_len;
+
+    while (*list) {
+        // Skip any delimiter characters.
+        list += strspn(list, LAYER_DELIM_CHARS);
+
+        // Find the end of the current filename.
+        int span = strcspn(list, LAYER_DELIM_CHARS);
+
+        if (snprintf_grow(pathbuf, pathlen,
+                          "%s/libexec/%.*s", home_dir, span, list) < 0)
+        {
+            search->errmsg = "Could not allocate full pathname for plug-in";
+            return -1;
+        }
+
+        if (load_plugin(search, *pathbuf, HPLUGIN_LAYER) != 0)
+            return -1;
+
+        list += span;
+    }
+    return 0;
+}
+
+int load_plugin(hsearch_t* search, const char* pathname, hplugin_type_t type)
+{
+    if (search->pstack_len == search->pstack_cap) {
+        if (array_grow(&search->pstack, &search->pstack_cap,
+                       sizeof(*search->pstack)) != 0)
+        {
+            search->errmsg = "Could not extend plug-in stack";
+            return -1;
+        }
+    }
+
+    hplugin_t* plugin = &search->pstack[ search->pstack_len ].plugin;
+    if (hplugin_open(plugin, search->buf, &search->errmsg) != 0)
+        return -1;
+
+    // At this point, resources have been allocated.  Increment
+    // the counter now so, even if this function encounters an
+    // error, these resources may be properly freed during
+    // close_search().
+    //
+    ++search->pstack_len;
+
+    if (plugin->type != type) {
+        search->errmsg = "Inappropriate Harmony plug-in type loaded";
+        return -1;
+    }
+
+    if (plugin->keyinfo) {
+        if (hcfg_reginfo(&search->cfg, plugin->keyinfo) != 0) {
+            search->errmsg = "Could not register default configuration";
+            return -1;
+        }
+    }
+
+    return 0;
 }
 
 /*
@@ -512,9 +595,8 @@ int generate_trial(hsearch_t* search)
     hperf_reset(&trial->perf);
 
     // Call strategy generation routine.
-    hplugin_t* plugin = &search->pstack[0];
-    if (plugin->strategy.generate(plugin->data, &search->flow,
-                                  (hpoint_t*)&trial->point) != 0)
+    hplugin_t* strategy = &search->pstack[0].plugin;
+    if (hplugin_generate(strategy, &search->flow, trial) != 0)
         return -1;
 
     if (search->flow.status == HFLOW_ACCEPT) {
@@ -530,52 +612,43 @@ int generate_trial(hsearch_t* search)
 int plugin_workflow(hsearch_t* search, int trial_idx)
 {
     htrial_t* trial = &search->pending[trial_idx];
-    hplugin_t* plugin;
 
-    while (search->curr_layer != 0 && search->curr_layer <= search->pstack_len)
+    while (search->curr_layer != 0 && search->curr_layer < search->pstack_len)
     {
-        int stack_idx = abs(search->curr_layer) - 1;
-        int retval;
+        int        stack_idx = abs(search->curr_layer);
+        hplugin_t* plugin    = &search->pstack[stack_idx].plugin;
 
-        plugin = &search->pstack[stack_idx];
         search->flow.status = HFLOW_ACCEPT;
-
         if (search->curr_layer < 0) {
             // Analyze workflow.
-            if (plugin->layer.analyze) {
-                if (plugin->layer.analyze(plugin->data,
-                                          &search->flow, trial) != 0)
-                    return -1;
-            }
+            if (hplugin_analyze(plugin, &search->flow, trial) != 0)
+                return -1;
         }
         else {
             // Generate workflow.
-            if (plugin->layer.generate) {
-                if (plugin->layer.generate(plugin->data,
-                                           &search->flow, trial) != 0)
-                    return -1;
-            }
+            if (hplugin_generate(plugin, &search->flow, trial) != 0)
+                return -1;
         }
 
-        retval = workflow_transition(search, trial_idx);
+        int retval = workflow_transition(search, trial_idx);
         if (retval < 0) return -1;
         if (retval > 0) return  0;
     }
 
     if (search->curr_layer == 0) {
         // Completed analysis layers.  Send trial to strategy.
-        plugin = &search->pstack[0];
-        if (plugin->strategy.analyze(plugin->data, trial) != 0)
+        hplugin_t* strategy = &search->pstack[0].plugin;
+        if (hplugin_analyze(strategy, NULL, trial) != 0)
             return -1;
 
         // Remove point data from pending list.
-        ((hpoint_t*)&trial->point)->id = 0;
+        ((hpoint_t*) &trial->point)->id = 0;
         --search->pending_len;
 
         // Point generation attempts may begin again.
         pollstate = &polltime;
     }
-    else if (search->curr_layer > search->pstack_len) {
+    else if (search->curr_layer == search->pstack_len) {
         // Completed generation layers.  Enqueue trial in ready queue.
         if (search->ready[search->ready_tail] != -1) {
             search->errmsg = "Ready queue overflow";
@@ -631,22 +704,20 @@ int workflow_transition(hsearch_t* search, int trial_idx)
 
 int handle_reject(hsearch_t* search, int trial_idx)
 {
-    htrial_t* trial = &search->pending[trial_idx];
-
     if (search->curr_layer < 0) {
         search->errmsg = "REJECT invalid for analysis workflow";
         return -1;
     }
 
     // Regenerate this rejected point.
-    hplugin_t* plugin = &search->pstack[0];
-    return plugin->strategy.reject(plugin->data, &search->flow,
-                                   (hpoint_t*) &trial->point);
+    htrial_t*  trial    = &search->pending[trial_idx];
+    hplugin_t* strategy = &search->pstack[0].plugin;
+    return hplugin_rejected(strategy, &search->flow, trial);
 }
 
 int handle_wait(hsearch_t* search, int trial_idx)
 {
-    int   idx = abs(search->curr_layer) - 1;
+    int   idx = abs(search->curr_layer);
     int** list;
     int*  len;
     int*  cap;
@@ -732,17 +803,17 @@ int handle_callback(callback_t* cb)
     int  trial_idx, retval;
 
     search->curr_layer = cb->layer_idx;
-    int        idx    = abs(search->curr_layer) - 1;
-    hplugin_t* plugin = &search->pstack[idx];
+    int        idx    = abs(search->curr_layer);
+    pstack_t*  pstack = &search->pstack[idx];
 
-    // The idx variable represents layer plugin index for now.
+    // The idx variable represents layer plug-in index for now.
     if (search->curr_layer < 0) {
-        list = plugin->wait_analyze;
-        len = &plugin->wait_analyze_len;
+        list = pstack->wait_analyze;
+        len = &pstack->wait_analyze_len;
     }
     else {
-        list = plugin->wait_generate;
-        len = &plugin->wait_generate_len;
+        list = pstack->wait_generate;
+        len = &pstack->wait_generate_len;
     }
 
     if (*len < 1) {
@@ -756,7 +827,7 @@ int handle_callback(callback_t* cb)
         trial_list[i] = &search->pending[ list[i] ];
 
     // Reusing idx to represent waitlist index.  (Shame on me.)
-    idx = cb->func(cb->fd, plugin->data, &search->flow, *len, trial_list);
+    idx = cb->func(cb->fd, cb->data, &search->flow, *len, trial_list);
     free(trial_list);
 
     trial_idx = list[idx];
@@ -778,10 +849,8 @@ int handle_session(hsearch_t* search, hmesg_t* mesg)
     }
 
     // Initialize a new session slot.
-    if (open_search(search, mesg) != 0) {
-        search->errmsg = "Could not open new search";
+    if (open_search(search, mesg) != 0)
         return -1;
-    }
 
     // Find the search index.
     for (int i = 0; i < slist_cap; ++i) {
@@ -809,11 +878,10 @@ int handle_join(hsearch_t* search, hmesg_t* mesg)
 
     // Launch all join hooks defined in the plug-in stack.
     for (int i = 0; i < search->pstack_len; ++i) {
-        if (search->pstack[i].join) {
-            hplugin_t* plugin = &search->pstack[i];
-            if (plugin->join(plugin->data, mesg->state.client) != 0)
-                return -1;
-        }
+        hplugin_t* plugin = &search->pstack[i].plugin;
+
+        if (hplugin_join(plugin, mesg->state.client) != 0)
+            return -1;
     }
 
     // Find the search index.
@@ -849,7 +917,7 @@ int handle_setcfg(hsearch_t* search, hmesg_t* mesg)
     const char* oldval;
 
     if (!sep) {
-        search->errmsg = strerror(EINVAL);
+        search->errmsg = "Malformed configuration request";
         return -1;
     }
     *sep = '\0';
@@ -898,8 +966,8 @@ int handle_fetch(hsearch_t* search, hmesg_t* mesg)
     else {
         // Ready queue is empty, or session is paused.
         // Send the best known point.
-        hplugin_t* plugin = &search->pstack[0];
-        if (plugin->strategy.best(plugin->data, &search->best) != 0)
+        hplugin_t* strategy = &search->pstack[0].plugin;
+        if (hplugin_best(strategy, &search->best) != 0)
             return -1;
 
         mesg->state.best = &search->best;
@@ -936,7 +1004,7 @@ int handle_report(hsearch_t* search, hmesg_t* mesg)
     hperf_copy(&trial->perf, mesg->data.perf);
 
     // Begin the workflow at the outermost analysis layer.
-    search->curr_layer = -search->pstack_len;
+    search->curr_layer = -search->pstack_len + 1;
     if (plugin_workflow(search, idx) != 0)
         return -1;
 
@@ -982,10 +1050,9 @@ int update_state(hmesg_t* mesg, hsearch_t* search)
 
     // Refresh the best known point from the strategy.
     if (search->open) {
-        hplugin_t* plugin = &search->pstack[0];
-        if (plugin->strategy.best(plugin->data, &search->best) != 0) {
+        hplugin_t* strategy = &search->pstack[0].plugin;
+        if (hplugin_best(strategy, &search->best) != 0)
             return -1;
-        }
     }
 
     // Send it to the client if necessary.
@@ -999,199 +1066,6 @@ int update_state(hmesg_t* mesg, hsearch_t* search)
     return 0;
 }
 
-/*
- * ISO C forbids conversion of object pointer to function pointer,
- * making it difficult to use dlsym() for functions.  We get around
- * this by first casting to a word-length integer.  (ILP32/LP64
- * compilers assumed).
- */
-#define dlfptr(x, y) ((void*) (void (*)(void))(long)(dlsym((x), (y))))
-
-/*
- * Loads strategy given name of library file.
- * Checks that strategy defines required functions,
- * and then calls the strategy's init function (if defined)
- */
-int load_strategy(hsearch_t* search, const char* file)
-{
-    char* buf = sprintf_alloc("%s/libexec/%s", home_dir, file);
-    void* lib = dlopen(buf, RTLD_LAZY | RTLD_LOCAL);
-    free(buf);
-
-    if (!lib) {
-        search->errmsg = dlerror();
-        return -1;
-    }
-
-    if (search->pstack_cap < 1) {
-        if (array_grow(&search->pstack, &search->pstack_cap,
-                       sizeof(*search->pstack)) != 0) {
-            search->errmsg = "Could not allocate memory for plug-in stack";
-            return -1;
-        }
-    }
-
-    hplugin_t* plugin = &search->pstack[0];
-    if (load_hooks(plugin, lib, NULL) != 0) {
-        search->errmsg = "Could not load hooks from plug-in";
-        return -1;
-    }
-
-    if (plugin->keyinfo) {
-        if (hcfg_reginfo(&search->cfg, plugin->keyinfo) != 0) {
-            search->errmsg = "Could not register default configuration";
-            return -1;
-        }
-    }
-
-    if (plugin->alloc) {
-        plugin->data = plugin->alloc();
-        if (!plugin->data)
-            return -1;
-    }
-    else {
-        plugin->data = NULL;
-    }
-
-    if (plugin->init) {
-        if (plugin->init(plugin->data, &search->space) != 0)
-            return -1;
-    }
-
-    search->pstack_len = 1;
-    return 0;
-}
-
-int load_layers(hsearch_t* search, const char* list)
-{
-    char* buf = NULL;
-    int   len = 0;
-    int   retval = 0;
-
-    while (*list) {
-        if (search->pstack_len == search->pstack_cap) {
-            if (array_grow(&search->pstack, &search->pstack_cap,
-                           sizeof(*search->pstack)) != 0) {
-                search->errmsg = "Could not allocate memory for plug-in stack";
-                goto error;
-            }
-        }
-
-        int span = strcspn(list, SESSION_LAYER_SEP);
-        if (snprintf_grow(&buf, &len, "%s/libexec/%.*s",
-                          home_dir, span, list) < 0)
-            goto error;
-
-        void* lib = dlopen(buf, RTLD_LAZY | RTLD_LOCAL);
-        if (!lib) {
-            search->errmsg = dlerror();
-            goto error;
-        }
-
-        const char* prefix = dlsym(lib, "harmony_layer_name");
-        if (!prefix) {
-            search->errmsg = dlerror();
-            goto error;
-        }
-
-        hplugin_t* plugin = &search->pstack[ search->pstack_len ];
-        plugin->name = prefix;
-
-        if (load_hooks(plugin, lib, prefix) != 0) {
-            search->errmsg = "Could not load hooks from plug-in";
-            goto error;
-        }
-
-        if (plugin->keyinfo) {
-            if (hcfg_reginfo(&search->cfg, plugin->keyinfo) != 0) {
-                search->errmsg = "Could not register default configuration";
-                goto error;
-            }
-        }
-
-        if (plugin->alloc) {
-            plugin->data = plugin->alloc();
-            if (!plugin->data)
-                goto error;
-        }
-        else {
-            plugin->data = NULL;
-        }
-
-        if (plugin->init) {
-            if (plugin->init(plugin->data, &search->space) != 0)
-                goto error;
-        }
-        ++search->pstack_len;
-
-        list += span;
-        list += strspn(list, SESSION_LAYER_SEP);
-    }
-    goto cleanup;
-
-  error:
-    retval = -1;
-
-  cleanup:
-    free(buf);
-    return retval;
-}
-
-int load_hooks(hplugin_t* plugin, void* lib, const char* prefix)
-{
-    char* buf = NULL;
-    int   len = 0;
-    int   retval = 0;
-
-    if (prefix == NULL) {
-        // Load strategy plug-in hooks.
-        plugin->strategy.generate =
-            (strategy_generate_t) dlfptr(lib, "strategy_generate");
-        plugin->strategy.reject =
-            (strategy_rejected_t) dlfptr(lib, "strategy_rejected");
-        plugin->strategy.analyze =
-            (strategy_analyze_t) dlfptr(lib, "strategy_analyze");
-        plugin->strategy.best =
-            (strategy_best_t) dlfptr(lib, "strategy_best");
-        prefix = "strategy";
-    }
-    else {
-        // Load layer plug-in hooks.
-        if (snprintf_grow(&buf, &len, "%s_generate", prefix) < 0) goto error;
-        plugin->layer.generate = (layer_generate_t) dlfptr(lib, buf);
-
-        if (snprintf_grow(&buf, &len, "%s_analyze", prefix) < 0) goto error;
-        plugin->layer.analyze = (layer_analyze_t) dlfptr(lib, buf);
-    }
-
-    // Load optional plug-in hooks.
-    if (snprintf_grow(&buf, &len, "%s_alloc", prefix) < 0) goto error;
-    plugin->alloc = (hook_alloc_t) dlfptr(lib, buf);
-
-    if (snprintf_grow(&buf, &len, "%s_init", prefix) < 0) goto error;
-    plugin->init = (hook_init_t) dlfptr(lib, buf);
-
-    if (snprintf_grow(&buf, &len, "%s_join", prefix) < 0) goto error;
-    plugin->join = (hook_join_t) dlfptr(lib, buf);
-
-    if (snprintf_grow(&buf, &len, "%s_setcfg", prefix) < 0) goto error;
-    plugin->setcfg = (hook_setcfg_t) dlfptr(lib, buf);
-
-    if (snprintf_grow(&buf, &len, "%s_fini", prefix) < 0) goto error;
-    plugin->fini = (hook_fini_t) dlfptr(lib, buf);
-
-    plugin->keyinfo = dlsym(lib, "plugin_keyinfo");
-    plugin->name = prefix;
-    plugin->dl_handle = lib;
-    goto cleanup;
-
-  error:
-    retval = -1;
-
-  cleanup:
-    free(buf);
-    return retval;
-}
 
 int extend_lists(hsearch_t* search, int target_cap)
 {
@@ -1272,14 +1146,14 @@ void set_current(hsearch_t* search)
  */
 int search_best(hpoint_t* pt)
 {
-    hplugin_t* plugin = &current_search->pstack[0];
-    return plugin->strategy.best(plugin->data, pt);
+    hplugin_t* strategy = &current_search->pstack[0].plugin;
+    return hplugin_best(strategy, pt);
 }
 
 /*
  * Register an "analyze" callback to handle file descriptor data.
  */
-int search_callback_analyze(int fd, cb_func_t func)
+int search_callback_analyze(int fd, void* data, cb_func_t func)
 {
     if (cbs_len >= cbs_cap) {
         if (array_grow(&cbs, &cbs_cap, sizeof(*cbs)) != 0)
@@ -1289,6 +1163,7 @@ int search_callback_analyze(int fd, cb_func_t func)
     cbs[ cbs_len ].fd        = fd;
     cbs[ cbs_len ].search    = current_search;
     cbs[ cbs_len ].layer_idx = -current_search->curr_layer;
+    cbs[ cbs_len ].data      = data;
     cbs[ cbs_len ].func      = func;
     ++cbs_len;
 
@@ -1302,7 +1177,7 @@ int search_callback_analyze(int fd, cb_func_t func)
 /*
  * Register a "generate" callback to handle file descriptor data.
  */
-int search_callback_generate(int fd, cb_func_t func)
+int search_callback_generate(int fd, void* data, cb_func_t func)
 {
     if (cbs_len >= cbs_cap) {
         if (array_grow(&cbs, &cbs_cap, sizeof(*cbs)) != 0)
@@ -1312,6 +1187,7 @@ int search_callback_generate(int fd, cb_func_t func)
     cbs[ cbs_len ].fd        = fd;
     cbs[ cbs_len ].search    = current_search;
     cbs[ cbs_len ].layer_idx = current_search->curr_layer;
+    cbs[ cbs_len ].data      = data;
     cbs[ cbs_len ].func      = func;
     ++cbs_len;
 
@@ -1337,12 +1213,10 @@ int search_restart(void)
 {
     // Re-initialize all plug-ins associated with this search.
     for (int i = 0; i < current_search->pstack_len; ++i) {
-        hplugin_t* plugin = &current_search->pstack[i];
+        hplugin_t* plugin = &current_search->pstack[i].plugin;
 
-        if (plugin->init) {
-            if (plugin->init(plugin->data, &current_search->space) != 0)
-                return -1;
-        }
+        if (hplugin_init(plugin, &current_search->space) != 0)
+            return -1;
     }
 
     return 0;
@@ -1362,12 +1236,12 @@ int search_setcfg(const char* key, const char* val)
     // to this frame.
     //
     for (int i = 0; i < current_search->pstack_len; ++i) {
-        hplugin_t* plugin = &current_search->pstack[i];
-        if (plugin->setcfg) {
-            if (plugin->setcfg(plugin->data, key, val) != 0)
-                return -1;
-        }
+        hplugin_t* plugin = &current_search->pstack[i].plugin;
+
+        if (hplugin_setcfg(plugin, key, val) != 0)
+            return -1;
     }
+
     return 0;
 }
 

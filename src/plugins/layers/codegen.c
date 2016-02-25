@@ -183,7 +183,7 @@ int codegen_init(data_t* data, hspace_t* space)
         return -1;
 
     // TODO: Need a way to unregister a callback for re-initialization.
-    if (search_callback_generate(data->sockfd, codegen_callback) != 0) {
+    if (search_callback_generate(data->sockfd, data, codegen_callback) != 0) {
         search_error("Could not register callback for codegen plugin");
         return -1;
     }

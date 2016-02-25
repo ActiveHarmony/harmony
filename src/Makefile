@@ -11,16 +11,18 @@ LIB_SRCS=hcfg.c \
          hspace.c \
          hutil.c \
          hval.c
+SESSION_SRCS=hplugin.c
 CLI_SRCS=hclient.c
 BIN_SRCS=hserver.c \
          httpsvr.c \
          session-core.c \
          tuna.c \
          hinfo.c
-SRCS=$(BIN_SRCS) $(LIB_SRCS) $(CLI_SRCS)
+SRCS=$(BIN_SRCS) $(LIB_SRCS) $(SESSION_SRCS) $(CLI_SRCS)
 
 LIB_OBJS=$(LIB_SRCS:.c=.o)
 CLI_OBJS=$(CLI_SRCS:.c=.o)
+SESSION_OBJS=$(SESSION_SRCS:.c=.o)
 
 BIN_TGTS=hinfo \
          hserver \
@@ -49,7 +51,7 @@ hserver: httpsvr.o $(LIB_OBJS)
 
 session-core: REQ_LDFLAGS+=$(EXPORT_FLAG)
 session-core: REQ_LDLIBS+=-ldl
-session-core: $(LIB_OBJS)
+session-core: $(LIB_OBJS) $(SESSION_OBJS)
 
 tuna: libharmony.a
 
