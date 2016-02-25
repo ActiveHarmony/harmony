@@ -16,7 +16,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-#define _XOPEN_SOURCE 500 // Needed for lrand48().
+#define _XOPEN_SOURCE 600 // Needed for lrand48() and snprintf().
 
 #include <stdio.h>
 #include <stdlib.h>
