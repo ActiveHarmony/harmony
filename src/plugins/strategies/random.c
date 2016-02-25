@@ -216,5 +216,5 @@ int config_strategy(data_t* data)
 void randomize(data_t* data, hpoint_t* point)
 {
     for (int i = 0; i < data->space->len; ++i)
-        point->term[i] = hrange_random(&data->space->dim[i]);
+        point->term[i] = hrange_random(&data->space->dim[i], search_drand48());
 }

@@ -16,7 +16,6 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-#define _XOPEN_SOURCE 500 // Needed for drand48().
 
 #include "hrange.h"
 #include "hval.h"
@@ -47,10 +46,9 @@ static unsigned long index_of_enum(const range_enum_t* bounds,
 static unsigned long limit_of_int(const range_int_t* bounds);
 static unsigned long limit_of_real(const range_real_t* bounds);
 static unsigned long limit_of_enum(const range_enum_t* bounds);
-static unsigned long random_index(unsigned long limit);
-static hval_t random_int(const range_int_t* bounds);
-static hval_t random_real(const range_real_t* bounds);
-static hval_t random_enum(const range_enum_t* bounds);
+static hval_t random_int(const range_int_t* bounds, double entropy);
+static hval_t random_real(const range_real_t* bounds, double entropy);
+static hval_t random_enum(const range_enum_t* bounds, double entropy);
 static hval_t value_of_int(const range_int_t* bounds, unsigned long idx);
 static hval_t value_of_real(const range_real_t* bounds, unsigned long idx);
 static hval_t value_of_enum(const range_enum_t* bounds, unsigned long idx);
@@ -146,12 +144,12 @@ unsigned long hrange_limit(const hrange_t* range)
     }
 }
 
-hval_t hrange_random(const hrange_t* range)
+hval_t hrange_random(const hrange_t* range, double entropy)
 {
     switch (range->type) {
-    case HVAL_INT:  return random_int(&range->bounds.i);
-    case HVAL_REAL: return random_real(&range->bounds.r);
-    case HVAL_STR:  return random_enum(&range->bounds.e);
+    case HVAL_INT:  return random_int(&range->bounds.i, entropy);
+    case HVAL_REAL: return random_real(&range->bounds.r, entropy);
+    case HVAL_STR:  return random_enum(&range->bounds.e, entropy);
     default:        return hval_zero;
     }
 }
@@ -535,31 +533,20 @@ unsigned long limit_of_enum(const range_enum_t* bounds)
     return (unsigned long) bounds->len;
 }
 
-unsigned long random_index(unsigned long limit)
-{
-    int index;
-    unsigned long bins = RAND_MAX / limit;
-
-    limit *= bins;
-    do {
-        index = random();
-    } while (index >= limit);
-
-    return index / bins;
-}
-
 /*
  * Random range value implementation.
  */
-hval_t random_int(const range_int_t* bounds)
+hval_t random_int(const range_int_t* bounds, double entropy)
 {
-    return value_of_int(bounds, random_index( limit_of_int(bounds) ));
+    unsigned long idx = (unsigned long) (entropy * limit_of_int(bounds));
+    return value_of_int(bounds, idx);
 }
 
-hval_t random_real(const range_real_t* bounds)
+hval_t random_real(const range_real_t* bounds, double entropy)
 {
     if (bounds->step > 0.0) {
-        return value_of_real(bounds, random_index( limit_of_real(bounds) ));
+        unsigned long idx = (unsigned long) (entropy * limit_of_real(bounds));
+        return value_of_real(bounds, idx);
     }
     else {
         hval_t val;
@@ -567,7 +554,7 @@ hval_t random_real(const range_real_t* bounds)
         val.type     = HVAL_REAL;
         val.value.r  = bounds->max;
         val.value.r -= bounds->min;
-        val.value.r *= drand48();
+        val.value.r *= entropy;
         val.value.r += bounds->min;
         val.buf      = NULL;
 
@@ -575,9 +562,10 @@ hval_t random_real(const range_real_t* bounds)
     }
 }
 
-hval_t random_enum(const range_enum_t* bounds)
+hval_t random_enum(const range_enum_t* bounds, double entropy)
 {
-    return value_of_enum(bounds, random_index( limit_of_enum(bounds) ));
+    unsigned long idx = (unsigned long) (entropy * limit_of_enum(bounds));
+    return value_of_enum(bounds, idx);
 }
 
 /*

@@ -94,6 +94,9 @@ typedef struct hsearch {
     int        pstack_len;
     int        pstack_cap;
 
+    // Search specific pseudo-random number generator state.
+    unsigned short xsubi[3];
+
     // Workflow state.
     hflow_t flow;
     int     curr_layer;
@@ -360,16 +363,6 @@ int open_search(hsearch_t* search, hmesg_t* mesg)
 {
     const char* ptr;
 
-    // Before anything else, control the random seeds.
-    static long seed;
-    if (!seed) {
-        seed = hcfg_int(&search->cfg, CFGKEY_RANDOM_SEED);
-        if (seed < 0)
-            seed = time(NULL);
-        srand((int) seed);
-        srand48(seed);
-    }
-
     // Initialize the session.
     if (hspace_copy(&search->space, mesg->state.space) != 0) {
         search->errmsg = "Could not copy session data";
@@ -379,6 +372,22 @@ int open_search(hsearch_t* search, hmesg_t* mesg)
     if (hcfg_copy(&search->cfg, mesg->data.cfg) != 0) {
         search->errmsg = "Could not copy configuration environment";
         return -1;
+    }
+
+    // Control the random number generator state.
+    long seed = hcfg_int(&search->cfg, CFGKEY_RANDOM_SEED);
+    if (seed == -1) {
+        // Default seed is based on time and hsearch_t object address.
+        seed = time(NULL);
+
+        search->xsubi[0] = (((unsigned long) seed) >> 16) & 0xFFFF;
+        search->xsubi[1] = (((unsigned long) seed)      ) & 0xFFFF;
+        search->xsubi[2] = (((unsigned long) search)    ) & 0xFFFF;
+    }
+    else {
+        search->xsubi[0] = (((unsigned long) seed) >> 32) & 0xFFFF;
+        search->xsubi[1] = (((unsigned long) seed) >> 16) & 0xFFFF;
+        search->xsubi[2] = (((unsigned long) seed)      ) & 0xFFFF;
     }
 
     // Overwrite CFGKEY_HARMONY_HOME.
@@ -403,6 +412,8 @@ int open_search(hsearch_t* search, hmesg_t* mesg)
         search->errmsg = "Invalid " CFGKEY_CLIENT_COUNT " configuration value";
         return -1;
     }
+
+
 
     if (extend_lists(search, expected * search->per_client) != 0)
         return -1;
@@ -1358,4 +1369,20 @@ int search_setcfg(const char* key, const char* val)
         }
     }
     return 0;
+}
+
+/*
+ * Return a session-specific pseudo-random double value.
+ */
+double search_drand48(void)
+{
+    return erand48(current_search->xsubi);
+}
+
+/*
+ * Return a session-specific pseudo-random long integer value.
+ */
+long int search_lrand48(void)
+{
+    return nrand48(current_search->xsubi);
 }

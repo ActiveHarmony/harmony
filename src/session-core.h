@@ -74,12 +74,14 @@ typedef int (*cb_func_t)(int fd, void* data,
 /*
  * Interface for plug-in modules to access their associated search.
  */
-int  search_best(hpoint_t* best);
-int  search_callback_generate(int fd, cb_func_t func);
-int  search_callback_analyze(int fd, cb_func_t func);
-void search_error(const char* msg);
-int  search_restart(void);
-int  search_setcfg(const char* key, const char* val);
+int      search_best(hpoint_t* best);
+int      search_callback_generate(int fd, cb_func_t func);
+int      search_callback_analyze(int fd, cb_func_t func);
+void     search_error(const char* msg);
+int      search_restart(void);
+int      search_setcfg(const char* key, const char* val);
+double   search_drand48(void);
+long int search_lrand48(void);
 
 extern const hcfg_t* search_cfg;
 

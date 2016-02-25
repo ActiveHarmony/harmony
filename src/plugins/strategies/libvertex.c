@@ -16,14 +16,15 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-#define _XOPEN_SOURCE 500 // Needed for drand48().
+#define _XOPEN_SOURCE 500 // Needed for M_PI.
 
 #include "libvertex.h"
+#include "session-core.h"
 #include "hspace.h"
 #include "hpoint.h"
 #include "hperf.h"
 
-#include <stdlib.h> // For drand48(), free(), lrand48(), realloc(), and NULL.
+#include <stdlib.h> // For free(), realloc(), and NULL.
 #include <string.h> // For memcpy() and memset().
 #include <math.h>   // For fabs(), nextafter(), HUGE_VAL, and NAN.
 
@@ -179,8 +180,9 @@ int vertex_random(vertex_t* vertex, const hspace_t* space, double radius)
             range = nextafter(bounds->max - bounds->min, HUGE_VAL);
         }
 
-        vertex->term[i]  = range * (      radius) * drand48(); // Target window
-        vertex->term[i] += range * (1.0 - radius) / 2.0;      // Excluded frame
+        double fraction = search_drand48();
+        vertex->term[i]  = range * (      radius) * fraction; // Target window.
+        vertex->term[i] += range * (1.0 - radius) / 2.0;     // Excluded frame.
         vertex->term[i] += base;
     }
 
@@ -531,7 +533,7 @@ int rotate_simplex(simplex_t* simplex, int dimensions)
 
     for (unsigned i = 0; i < combos; ++i) {
         // Produce a random angle for each pair of dimensions.
-        double theta = drand48() * (2 * M_PI);
+        double theta = search_drand48() * (2 * M_PI);
 
         for (unsigned j = 0; j <= dimensions; ++j) {
             unsigned pair[2];
@@ -561,7 +563,7 @@ unsigned* shuffle(unsigned size)
         return NULL;
 
     for (unsigned i = 0; i < size; ++i) {
-        unsigned j = lrand48() % (i + 1);
+        unsigned j = search_lrand48() % (i + 1);
         retval[i] = retval[j];
         retval[j] = i;
     }

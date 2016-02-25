@@ -83,7 +83,7 @@ void hrange_scrub(hrange_t* range);
 int           hrange_finite(const hrange_t* range);
 unsigned long hrange_index(const hrange_t* range, const hval_t* val);
 unsigned long hrange_limit(const hrange_t* range);
-hval_t        hrange_random(const hrange_t* range);
+hval_t        hrange_random(const hrange_t* range, double entropy);
 hval_t        hrange_value(const hrange_t* range, unsigned long idx);
 
 /*
