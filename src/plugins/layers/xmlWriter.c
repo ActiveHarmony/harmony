@@ -36,6 +36,13 @@
  * `/usr` may be sufficient.
  */
 
+#include "hlayer.h"
+#include "session-core.h"
+#include "hspace.h"
+#include "hpoint.h"
+#include "hutil.h"
+#include "hcfg.h"
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
@@ -50,23 +57,17 @@
 #include <libxml/xpathInternals.h>
 #include <libxml/xmlwriter.h>
 
-#include "session-core.h"
-#include "hspace.h"
-#include "hpoint.h"
-#include "hutil.h"
-#include "hcfg.h"
-
 /*
  * Name used to identify this plugin layer.
  * All Harmony plugins must define this variable.
  */
-const char harmony_layer_name[] = "xmlWriter";
+const char hplugin_name[] = "xmlWriter";
 
 /*
  * Configuration variables used in this plugin.
  * These will automatically be registered by session-core upon load.
  */
-hcfg_info_t plugin_keyinfo[] = {
+const hcfg_info_t hplugin_keyinfo[] = {
     { CFGKEY_XML_FILE, NULL, "XML output file." },
     { NULL }
 };
@@ -80,21 +81,21 @@ hcfg_info_t plugin_keyinfo[] = {
  * should be defined or used in this plug-in layer.  They should
  * instead be defined as a part of this structure.
  */
-typedef struct data {
+struct hplugin_data {
     hspace_t* space;
     //clock_t file_create_time;
     char filename[128];
     char create_time[128];
     int paramNum;
-} data_t;
+};
 
 /*
  * Internal helper function prototypes.
  */
-static int harmony_xmlWriteAppName(data_t* data, const char* appName);
-static int harmony_xmlWriteParamInfo(data_t* data);
+static int harmony_xmlWriteAppName(hplugin_data_t* data, const char* appName);
+static int harmony_xmlWriteParamInfo(hplugin_data_t* data);
 /*
-static int harmony_xmlWriteNodeInfo(data_t* data, int clientID,
+static int harmony_xmlWriteNodeInfo(hplugin_data_t* data, int clientID,
                                     char* nodeinfo, char* sysName,
                                     char* release, char* machine,
                                     int core_num, char* cpu_vendor,
@@ -103,11 +104,11 @@ static int harmony_xmlWriteNodeInfo(data_t* data, int clientID,
 */
 
 /*
- * Allocate memory for a new search instance.
+ * Allocate memory for a new search task.
  */
 void* xmlWriter_alloc(void)
 {
-    data_t* retval = calloc(1, sizeof(*retval));
+    hplugin_data_t* retval = calloc(1, sizeof(*retval));
     if (!retval)
         return NULL;
 
@@ -115,9 +116,9 @@ void* xmlWriter_alloc(void)
 }
 
 /*
- * Initialize (or re-initialize) data for this search instance.
+ * Initialize (or re-initialize) data for this search task.
  */
-int xmlWriter_init(data_t* data, hspace_t* space)
+int xmlWriter_init(hplugin_data_t* data, hspace_t* space)
 {
     int rc;
     const char* tmpstr;
@@ -228,7 +229,7 @@ int xmlWriter_init(data_t* data, hspace_t* space)
     return 0;
 }
 
-int xmlWriter_generate(data_t* data, hflow_t* flow, htrial_t* trial)
+int xmlWriter_generate(hplugin_data_t* data, hflow_t* flow, htrial_t* trial)
 {
     int i;
 
@@ -314,7 +315,10 @@ int xmlWriter_generate(data_t* data, hflow_t* flow, htrial_t* trial)
     return 0;
 }
 
-int xmlWriter_fini(data_t* data)
+/*
+ * Free memory associated with this search task.
+ */
+int xmlWriter_fini(hplugin_data_t* data)
 {
     free(data);
     return 0;
@@ -325,10 +329,10 @@ int xmlWriter_fini(data_t* data)
  */
 
 /*
-int harmony_xmlWriteNodeInfo(data_t* data, int clientID, char* nodeinfo,
-                             char* sysName, char* release, char* machine,
-                             int core_num, char* cpu_vendor, char* cpu_model,
-                             char* cpu_freq, char* cache_size)
+int harmony_xmlWriteNodeInfo(hplugin_data_t* data, int clientID,
+                             char* nodeinfo, char* sysName, char* release,
+                             char* machine, int core_num, char* cpu_vendor,
+                             char* cpu_model, char* cpu_freq, char* cache_size)
 {
     xmlDoc* doc;
     xmlNode* curNode;
@@ -385,7 +389,7 @@ int harmony_xmlWriteNodeInfo(data_t* data, int clientID, char* nodeinfo,
 }
 */
 
-int harmony_xmlWriteAppName(data_t* data, const char* appName)
+int harmony_xmlWriteAppName(hplugin_data_t* data, const char* appName)
 {
     xmlDoc* doc;
     xmlNode* curNode;
@@ -417,7 +421,7 @@ int harmony_xmlWriteAppName(data_t* data, const char* appName)
  * {Name Min Max Step Name Min Max Step ......}  And then parse this
  * formation and put it into the Metadata section of the xml file
  */
-int harmony_xmlWriteParamInfo(data_t* data)
+int harmony_xmlWriteParamInfo(hplugin_data_t* data)
 {
     int i;
 

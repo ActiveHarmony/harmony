@@ -52,6 +52,14 @@
  * a tuning session.
  */
 
+#include "hlayer.h"
+#include "session-core.h"
+#include "hspace.h"
+#include "hpoint.h"
+#include "hutil.h"
+#include "hsockutil.h"
+#include "hcfg.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -61,24 +69,17 @@
 #include <sys/wait.h>
 #include <signal.h>
 
-#include "session-core.h"
-#include "hspace.h"
-#include "hpoint.h"
-#include "hutil.h"
-#include "hsockutil.h"
-#include "hcfg.h"
-
 /*
  * Name used to identify this plugin layer.
  * All Harmony plugin layers must define this variable.
  */
-const char harmony_layer_name[] = "constraint";
+const char hplugin_name[] = "constraint";
 
 /*
  * Configuration variables used in this plugin.
  * These will automatically be registered by session-core upon load.
  */
-hcfg_info_t plugin_keyinfo[] = {
+const hcfg_info_t hplugin_keyinfo[] = {
     { CFGKEY_OC_BIN, "oc",
       "Location of the Omega Calculator binary. The PATH environment "
       "variable will be searched if not found initially." },
@@ -104,7 +105,7 @@ hcfg_info_t plugin_keyinfo[] = {
  * should be defined or used in this plug-in layer.  They should
  * instead be defined as a part of this structure.
  */
-typedef struct data {
+struct hplugin_data {
     hspace_t local_space;
 
     const char* omega_bin;
@@ -116,26 +117,26 @@ typedef struct data {
     char point_text[MAX_TEXT_LEN];
 
     int quiet;
-} data_t;
+};
 
 /*
  * Internal helper function prototypes.
  */
-static int   strategy_cfg(data_t* data, hspace_t* space);
-static int   build_vars_text(data_t* data, hspace_t* space);
-static int   build_bounds_text(data_t* data, hspace_t* space);
-static int   build_user_text(data_t* data);
-static int   build_point_text(data_t* data, hpoint_t* point);
-static int   update_bounds(data_t* data, hspace_t* space);
-static int   check_validity(data_t* data, hpoint_t* point);
-static char* call_omega_calc(data_t* data, const char* cmd);
+static int   strategy_cfg(hplugin_data_t* data, hspace_t* space);
+static int   build_vars_text(hplugin_data_t* data, hspace_t* space);
+static int   build_bounds_text(hplugin_data_t* data, hspace_t* space);
+static int   build_user_text(hplugin_data_t* data);
+static int   build_point_text(hplugin_data_t* data, hpoint_t* point);
+static int   update_bounds(hplugin_data_t* data, hspace_t* space);
+static int   check_validity(hplugin_data_t* data, hpoint_t* point);
+static char* call_omega_calc(hplugin_data_t* data, const char* cmd);
 
 /*
- * Allocate memory for a new search instance.
+ * Allocate memory for a new search task.
  */
-data_t* constraint_alloc(void)
+hplugin_data_t* constraint_alloc(void)
 {
-    data_t* retval = calloc(1, sizeof(*retval));
+    hplugin_data_t* retval = calloc(1, sizeof(*retval));
     if (!retval)
         return NULL;
 
@@ -143,9 +144,9 @@ data_t* constraint_alloc(void)
 }
 
 /*
- * Initialize (or re-initialize) data for this search instance.
+ * Initialize (or re-initialize) data for this search task.
  */
-int constraint_init(data_t* data, hspace_t* space)
+int constraint_init(hplugin_data_t* data, hspace_t* space)
 {
     // Make a copy of the search space.
     hspace_copy(&data->local_space, space);
@@ -170,7 +171,7 @@ int constraint_init(data_t* data, hspace_t* space)
     return 0;
 }
 
-int constraint_generate(data_t* data, hflow_t* flow, hpoint_t* point)
+int constraint_generate(hplugin_data_t* data, hflow_t* flow, hpoint_t* point)
 {
     flow->status = HFLOW_ACCEPT;
     if (!check_validity(data, point)) {
@@ -197,7 +198,10 @@ int constraint_generate(data_t* data, hflow_t* flow, hpoint_t* point)
     return 0;
 }
 
-int constraint_fini(data_t* data)
+/*
+ * Free memory associated with this search task.
+ */
+int constraint_fini(hplugin_data_t* data)
 {
     hspace_fini(&data->local_space);
     free(data);
@@ -207,7 +211,8 @@ int constraint_fini(data_t* data)
 /*
  * Internal helper function implementation.
  */
-int strategy_cfg(data_t* data, hspace_t* space)
+
+int strategy_cfg(hplugin_data_t* data, hspace_t* space)
 {
     const char* cfgval;
 
@@ -266,7 +271,7 @@ int strategy_cfg(data_t* data, hspace_t* space)
     return 0;
 }
 
-int build_vars_text(data_t* data, hspace_t* space)
+int build_vars_text(hplugin_data_t* data, hspace_t* space)
 {
     data->vars_text[0] = '\0';
     for (int i = 0; i < space->len; ++i) {
@@ -277,7 +282,7 @@ int build_vars_text(data_t* data, hspace_t* space)
     return 0;
 }
 
-int build_bounds_text(data_t* data, hspace_t* space)
+int build_bounds_text(hplugin_data_t* data, hspace_t* space)
 {
     char* ptr = data->bounds_text;
     char* end = data->bounds_text + sizeof(data->bounds_text);
@@ -311,7 +316,7 @@ int build_bounds_text(data_t* data, hspace_t* space)
     return 0;
 }
 
-int build_user_text(data_t* data)
+int build_user_text(hplugin_data_t* data)
 {
     const char* ptr = data->constraints;
     const char* end;
@@ -341,7 +346,7 @@ int build_user_text(data_t* data)
     return 0;
 }
 
-int build_point_text(data_t* data, hpoint_t* point)
+int build_point_text(hplugin_data_t* data, hpoint_t* point)
 {
     char* ptr = data->point_text;
     char* end = data->point_text + sizeof(data->point_text);
@@ -377,7 +382,7 @@ int build_point_text(data_t* data, hpoint_t* point)
  * XXX - We don't actually update the session search space just yet,
  * resulting in correct, but less optimal point generation.
  */
-int update_bounds(data_t* data, hspace_t* space)
+int update_bounds(hplugin_data_t* data, hspace_t* space)
 {
     char cmd[MAX_CMD_LEN];
     char* retstr;
@@ -470,7 +475,7 @@ int update_bounds(data_t* data, hspace_t* space)
     return 0;
 }
 
-int check_validity(data_t* data, hpoint_t* point)
+int check_validity(hplugin_data_t* data, hpoint_t* point)
 {
     char cmd[MAX_CMD_LEN];
     char* retstr;
@@ -511,7 +516,7 @@ int check_validity(data_t* data, hpoint_t* point)
     return (retval != 1);
 }
 
-char* call_omega_calc(data_t* data, const char* cmd)
+char* call_omega_calc(hplugin_data_t* data, const char* cmd)
 {
     static char* buf = NULL;
     static int buf_cap = 4096;

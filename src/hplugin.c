@@ -31,10 +31,12 @@ const hplugin_t hplugin_zero = HPOINT_INITIALIZER;
  */
 static int load_hooks(hplugin_t* plugin);
 static int verify_hooks(hplugin_t* plugin, const char** errptr);
+static int verify_type(hplugin_t* plugin, const char** errptr);
 
 /*
  * Base structure management implementation.
  */
+
 int hplugin_open(hplugin_t* plugin, const char* filename, const char** errptr)
 {
     const char* errstr;
@@ -49,8 +51,12 @@ int hplugin_open(hplugin_t* plugin, const char* filename, const char** errptr)
     }
 
     // Find plug-in variables.
-    plugin->name    = dlsym(plugin->handle, "harmony_layer_name");
-    plugin->keyinfo = dlsym(plugin->handle, "plugin_keyinfo");
+    plugin->type_str = dlsym(plugin->handle, "hplugin_type");
+    plugin->name     = dlsym(plugin->handle, "hplugin_name");
+    plugin->keyinfo  = dlsym(plugin->handle, "hplugin_keyinfo");
+
+    if (verify_type(plugin, &errstr) != 0)
+        return -1;
 
     if (load_hooks(plugin) != 0) {
         errstr = "Could not allocate memory for plug-in symbol";
@@ -83,13 +89,6 @@ int hplugin_close(hplugin_t* plugin, const char** errptr)
 {
     const char* errstr;
 
-    if (plugin->fini) {
-        if (plugin->fini(plugin->data) != 0) {
-            errstr = "Could not free private data for plug-in";
-            goto error;
-        }
-    }
-
     if (dlclose(plugin->handle) != 0) {
         if (errptr) {
             errstr = dlerror();
@@ -112,8 +111,7 @@ int hplugin_close(hplugin_t* plugin, const char** errptr)
 int hplugin_analyze(hplugin_t* plugin, hflow_t* flow, htrial_t* trial)
 {
     if (plugin->type == HPLUGIN_STRATEGY) {
-        if (plugin->strategy.analyze)
-            return plugin->strategy.analyze(plugin->data, trial);
+        return plugin->strategy.analyze(plugin->data, trial);
     }
     else if (plugin->type == HPLUGIN_LAYER) {
         if (plugin->layer.analyze)
@@ -137,8 +135,7 @@ int hplugin_generate(hplugin_t* plugin, hflow_t* flow, htrial_t* trial)
 {
     if (plugin->type == HPLUGIN_STRATEGY) {
         hpoint_t* point = (hpoint_t*) &trial->point;
-        if (plugin->strategy.generate)
-            return plugin->strategy.generate(plugin->data, flow, point);
+        return plugin->strategy.generate(plugin->data, flow, point);
     }
     else if (plugin->type == HPLUGIN_LAYER) {
         if (plugin->layer.generate)
@@ -153,10 +150,7 @@ int hplugin_rejected(hplugin_t* plugin, hflow_t* flow, htrial_t* trial)
         return -1;
 
     hpoint_t* point = (hpoint_t*) &trial->point;
-    if (plugin->strategy.rejected)
-        return plugin->strategy.rejected(plugin->data, flow, point);
-    else
-        return 0;
+    return plugin->strategy.rejected(plugin->data, flow, point);
 }
 
 int hplugin_init(hplugin_t* plugin, hspace_t* space)
@@ -183,6 +177,14 @@ int hplugin_setcfg(hplugin_t* plugin, const char* key, const char* val)
         return 0;
 }
 
+int hplugin_fini(hplugin_t* plugin)
+{
+    if (plugin->fini)
+        return plugin->fini(plugin->data);
+    else
+        return 0;
+}
+
 /*
  * Internal helper function implementation.
  */
@@ -204,10 +206,8 @@ int load_hooks(hplugin_t* plugin)
     int   len = 0;
     int   retval = 0;
 
-    if (prefix == NULL) {
+    if (plugin->type == HPLUGIN_STRATEGY) {
         // Find strategy specific event functions.
-        plugin->type = HPLUGIN_STRATEGY;
-
         plugin->strategy.generate =
             (strategy_generate_t) dlfptr(handle, "strategy_generate");
         plugin->strategy.rejected =
@@ -218,10 +218,8 @@ int load_hooks(hplugin_t* plugin)
             (strategy_best_t) dlfptr(handle, "strategy_best");
         prefix = "strategy";
     }
-    else {
+    else if (plugin->type == HPLUGIN_LAYER) {
         // Find layer specific event functions.
-        plugin->type = HPLUGIN_LAYER;
-
         if (snprintf_grow(&buf, &len, "%s_generate", prefix) < 0) goto error;
         plugin->layer.generate = (layer_generate_t) dlfptr(handle, buf);
 
@@ -290,7 +288,31 @@ int verify_hooks(hplugin_t* plugin, const char** errptr)
         }
     }
     else {
+        *errptr = "Improper Active Harmony plug-in type";
+        return -1;
+    }
+
+    return 0;
+}
+
+int verify_type(hplugin_t* plugin, const char** errptr)
+{
+    if (!plugin->type_str) {
         *errptr = "Library is not an Active Harmony plug-in";
+        return -1;
+    }
+    else if (strcmp(plugin->type_str, "strategy") == 0) {
+        plugin->type = HPLUGIN_STRATEGY;
+    }
+    else if (strcmp(plugin->type_str, "layer") == 0) {
+        if (!plugin->name) {
+            *errptr = "Layer plug-in does not define its name";
+            return -1;
+        }
+        plugin->type = HPLUGIN_LAYER;
+    }
+    else {
+        *errptr = "Unknown Active Harmony plug-in type";
         return -1;
     }
 

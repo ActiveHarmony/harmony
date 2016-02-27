@@ -24,6 +24,7 @@
  * they flow through the auto-tuning [feedback loop](\ref intro_feedback).
  */
 
+#include "hlayer.h"
 #include "session-core.h"
 #include "hspace.h"
 #include "hpoint.h"
@@ -41,13 +42,13 @@
  * Name used to identify this plugin layer.
  * All Harmony plugin layers must define this variable.
  */
-const char harmony_layer_name[] = "logger";
+const char hplugin_name[] = "logger";
 
 /*
  * Configuration variables used in this plugin.
  * These will automatically be registered by session-core upon load.
  */
-hcfg_info_t plugin_keyinfo[] = {
+const hcfg_info_t hplugin_keyinfo[] = {
     { CFGKEY_LOG_FILE, NULL,
       "Name of point/performance log file." },
     { CFGKEY_LOG_MODE, "a",
@@ -63,17 +64,17 @@ hcfg_info_t plugin_keyinfo[] = {
  * should be defined or used in this plug-in layer.  They should
  * instead be defined as a part of this structure.
  */
-typedef struct data {
+struct hplugin_data {
     char* filename;
     FILE* fd;
-} data_t;
+};
 
 /*
- * Allocate memory for a new search instance.
+ * Allocate memory for a new search task.
  */
-data_t* logger_alloc(void)
+hplugin_data_t* logger_alloc(void)
 {
-    data_t* retval = calloc(1, sizeof(*retval));
+    hplugin_data_t* retval = calloc(1, sizeof(*retval));
     if (!retval)
         return NULL;
 
@@ -81,9 +82,9 @@ data_t* logger_alloc(void)
 }
 
 /*
- * Initialize (or re-initialize) data for this search instance.
+ * Initialize (or re-initialize) data for this search task.
  */
-int logger_init(data_t* data, hspace_t* space)
+int logger_init(hplugin_data_t* data, hspace_t* space)
 {
     const char* filename = hcfg_get(search_cfg, CFGKEY_LOG_FILE);
     const char* mode     = hcfg_get(search_cfg, CFGKEY_LOG_MODE);
@@ -123,13 +124,13 @@ int logger_init(data_t* data, hspace_t* space)
     return 0;
 }
 
-int logger_join(data_t* data, const char* client)
+int logger_join(hplugin_data_t* data, const char* client)
 {
     fprintf(data->fd, "Client \"%s\" joined the tuning session.\n", client);
     return 0;
 }
 
-int logger_analyze(data_t* data, hflow_t* flow, htrial_t* trial)
+int logger_analyze(hplugin_data_t* data, hflow_t* flow, htrial_t* trial)
 {
     fprintf(data->fd, "Point #%d: (", trial->point.id);
     for (int i = 0; i < trial->point.len; ++i) {
@@ -164,7 +165,10 @@ int logger_analyze(data_t* data, hflow_t* flow, htrial_t* trial)
     return 0;
 }
 
-int logger_fini(data_t* data)
+/*
+ * Free memory associated with this search task.
+ */
+int logger_fini(hplugin_data_t* data)
 {
     time_t tm = time(NULL);
 

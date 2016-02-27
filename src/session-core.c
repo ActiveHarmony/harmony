@@ -337,8 +337,9 @@ int main(int argc, char* argv[])
 }
 
 /*
- * Base search structure management prototypes.
+ * Base search structure management implementation.
  */
+
 int open_search(hsearch_t* search, hmesg_t* mesg)
 {
     const char* ptr;
@@ -457,8 +458,11 @@ void close_search(hsearch_t* search)
     for (int i = search->pstack_len - 1; i >= 0; --i) {
         hplugin_t* plugin = &search->pstack[i].plugin;
 
-        if (hplugin_close(plugin, &search->errmsg) != 0)
+        if (hplugin_fini(plugin) != 0)
             fprintf(stderr, "Error finalizing plug-in: %s\n", search->errmsg);
+
+        if (hplugin_close(plugin, &search->errmsg) != 0)
+            fprintf(stderr, "Error closing plug-in: %s\n", search->errmsg);
     }
     search->open = 0;
 }
@@ -575,6 +579,7 @@ int load_plugin(hsearch_t* search, const char* pathname, hplugin_type_t type)
 /*
  * Internal helper function implementation.
  */
+
 int generate_trial(hsearch_t* search)
 {
     int idx;

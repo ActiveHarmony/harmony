@@ -30,7 +30,7 @@
  * search strategies.
  */
 
-#include "strategy.h"
+#include "hstrategy.h"
 #include "session-core.h"
 #include "hutil.h"
 
@@ -43,7 +43,7 @@
  * Configuration variables used in this plugin.
  * These will automatically be registered by session-core upon load.
  */
-const hcfg_info_t plugin_keyinfo[] = {
+const hcfg_info_t hplugin_keyinfo[] = {
     { CFGKEY_PASSES, "1",
       "Number of passes through the search space before the search "
       "is considered converged." },
@@ -64,7 +64,7 @@ typedef union unit {
 /*
  * Structure to hold data for an individual exhaustive search instance.
  */
-struct data {
+struct hplugin_data {
     int       space_id;
     hspace_t* space;
     hpoint_t  best;
@@ -84,16 +84,16 @@ struct data {
 /*
  * Internal helper function prototypes.
  */
-static int  config_strategy(data_t* data);
-static void increment(data_t* data);
-static int  make_next_point(data_t* data, hpoint_t* point);
+static int  config_strategy(hplugin_data_t* data);
+static void increment(hplugin_data_t* data);
+static int  make_next_point(hplugin_data_t* data, hpoint_t* point);
 
 /*
- * Allocate memory for a new search instance.
+ * Allocate memory for a new search task.
  */
-data_t* strategy_alloc(void)
+hplugin_data_t* strategy_alloc(void)
 {
-    data_t* retval = calloc(1, sizeof(*retval));
+    hplugin_data_t* retval = calloc(1, sizeof(*retval));
     if (!retval)
         return NULL;
 
@@ -104,9 +104,9 @@ data_t* strategy_alloc(void)
 }
 
 /*
- * Initialize (or re-initialize) data for this search instance.
+ * Initialize (or re-initialize) data for this search task.
  */
-int strategy_init(data_t* data, hspace_t* space)
+int strategy_init(hplugin_data_t* data, hspace_t* space)
 {
     if (data->space_id != space->id) {
         free(data->head);
@@ -156,7 +156,7 @@ int strategy_init(data_t* data, hspace_t* space)
 /*
  * Generate a new candidate configuration.
  */
-int strategy_generate(data_t* data, hflow_t* flow, hpoint_t* point)
+int strategy_generate(hplugin_data_t* data, hflow_t* flow, hpoint_t* point)
 {
     if (data->remaining_passes > 0) {
         if (make_next_point(data, point) != 0) {
@@ -187,7 +187,7 @@ int strategy_generate(data_t* data, hflow_t* flow, hpoint_t* point)
 /*
  * Regenerate a point deemed invalid by a later plug-in.
  */
-int strategy_rejected(data_t* data, hflow_t* flow, hpoint_t* point)
+int strategy_rejected(hplugin_data_t* data, hflow_t* flow, hpoint_t* point)
 {
     if (flow->point.id) {
         hpoint_t* hint = &flow->point;
@@ -213,7 +213,7 @@ int strategy_rejected(data_t* data, hflow_t* flow, hpoint_t* point)
 /*
  * Analyze the observed performance for this configuration point.
  */
-int strategy_analyze(data_t* data, htrial_t* trial)
+int strategy_analyze(hplugin_data_t* data, htrial_t* trial)
 {
     // Function local variables.
     double perf = hperf_unify(&trial->perf);
@@ -256,7 +256,7 @@ int strategy_analyze(data_t* data, htrial_t* trial)
 /*
  * Return the best performing point thus far in the search.
  */
-int strategy_best(data_t* data, hpoint_t* point)
+int strategy_best(hplugin_data_t* data, hpoint_t* point)
 {
     if (hpoint_copy(point, &data->best) != 0) {
         search_error("Could not copy best point during request for best");
@@ -266,9 +266,9 @@ int strategy_best(data_t* data, hpoint_t* point)
 }
 
 /*
- * Free memory associated with this search instance.
+ * Free memory associated with this search task.
  */
-int strategy_fini(data_t* data)
+int strategy_fini(hplugin_data_t* data)
 {
     free(data->wrap);
     free(data->next);
@@ -282,7 +282,8 @@ int strategy_fini(data_t* data)
 /*
  * Internal helper function implementation.
  */
-int config_strategy(data_t* data)
+
+int config_strategy(hplugin_data_t* data)
 {
     const char* cfgstr;
 
@@ -321,7 +322,7 @@ int config_strategy(data_t* data)
     return 0;
 }
 
-void increment(data_t* data)
+void increment(hplugin_data_t* data)
 {
     if (data->remaining_passes <= 0)
         return;
@@ -350,7 +351,7 @@ void increment(data_t* data)
         data->final_id = data->next_id;
 }
 
-int make_next_point(data_t* data, hpoint_t* point)
+int make_next_point(hplugin_data_t* data, hpoint_t* point)
 {
     if (point->cap < data->space->len) {
         if (hpoint_init(point, data->space->len) != 0)

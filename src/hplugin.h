@@ -21,7 +21,6 @@
 #define __HPLUGIN_H__
 
 #include "session-core.h"
-#include "hcfg.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -45,29 +44,34 @@ typedef struct hplugin_data hplugin_data_t;
 /*
  * Plug-in instance data management function signatures.
  */
-typedef void* (*hook_alloc_t)(void);
-typedef int   (*hook_fini_t)(void* data);
+typedef hplugin_data_t* (*hook_alloc_t)(void);
 
 /*
  * Strategy plug-in event function signatures.
  */
-typedef int (*strategy_generate_t)(void* data, hflow_t* flow, hpoint_t* point);
-typedef int (*strategy_rejected_t)(void* data, hflow_t* flow, hpoint_t* point);
-typedef int (*strategy_analyze_t)(void* data, htrial_t* trial);
-typedef int (*strategy_best_t)(void* data, hpoint_t* point);
+typedef int (*strategy_generate_t)(hplugin_data_t* data,
+                                   hflow_t* flow, hpoint_t* point);
+typedef int (*strategy_rejected_t)(hplugin_data_t* data,
+                                   hflow_t* flow, hpoint_t* point);
+typedef int (*strategy_analyze_t)(hplugin_data_t* data, htrial_t* trial);
+typedef int (*strategy_best_t)(hplugin_data_t* data, hpoint_t* point);
 
 /*
  * Layer plug-in event function signatures.
  */
-typedef int (*layer_generate_t)(void* data, hflow_t* flow, htrial_t* trial);
-typedef int (*layer_analyze_t)(void* data, hflow_t* flow, htrial_t* trial);
+typedef int (*layer_generate_t)(hplugin_data_t* data,
+                                hflow_t* flow, htrial_t* trial);
+typedef int (*layer_analyze_t)(hplugin_data_t* data,
+                               hflow_t* flow, htrial_t* trial);
 
 /*
  * Generic plug-in event function signatures.
  */
-typedef int (*hook_init_t)(void* data, hspace_t* space);
-typedef int (*hook_join_t)(void* data, const char* client);
-typedef int (*hook_setcfg_t)(void* data, const char* key, const char* val);
+typedef int (*hook_init_t)(hplugin_data_t* data, hspace_t* space);
+typedef int (*hook_join_t)(hplugin_data_t* data, const char* client);
+typedef int (*hook_setcfg_t)(hplugin_data_t* data,
+                             const char* key, const char* val);
+typedef int (*hook_fini_t)(hplugin_data_t* data);
 
 /*
  * Harmony structure to encapsulate the state of a Harmony plug-in.
@@ -76,13 +80,13 @@ typedef struct hplugin {
     hplugin_type_t type;
 
     // Variable addresses, loaded from plugin by name.
+    const char*        type_str;
     const char*        name;
     const hcfg_info_t* keyinfo;
 
-    // Plug-in data initialization and finalization functions.
-    hook_alloc_t alloc;
-    hook_fini_t  fini;
-    void*        data;
+    // Plug-in instance data initialization and storage.
+    hook_alloc_t    alloc;
+    hplugin_data_t* data;
 
     // Strategy event function addresses.
     struct hook_strategy {
@@ -102,6 +106,7 @@ typedef struct hplugin {
     hook_init_t   init;
     hook_join_t   join;
     hook_setcfg_t setcfg;
+    hook_fini_t   fini;
 
     // Dynamic library handle.
     void* handle;
@@ -127,6 +132,7 @@ int hplugin_rejected(hplugin_t* plugin, hflow_t* flow, htrial_t* trial);
 int hplugin_init(hplugin_t* plugin, hspace_t* space);
 int hplugin_join(hplugin_t* plugin, const char* client);
 int hplugin_setcfg(hplugin_t* plugin, const char* key, const char* val);
+int hplugin_fini(hplugin_t* plugin);
 
 #ifdef __cplusplus
 }
