@@ -168,10 +168,9 @@ int mesg_send(int sock, hmesg_t* mesg)
     if (pkt_len < 0)
         return -1;
 
-#ifdef AH_DEBUG_COMM_SEND
+    /* DEBUG - Comment out this line to enable.
     fprintf(stderr, "(Send %2d) [src:%d -> dest:%d] msg:'%s'\n", sock,
-            mesg->src, mesg->dest, mesg->send_buf + HMESG_HEADER_SIZE);
-#endif
+            mesg->src, mesg->dest, mesg->send_buf + HMESG_HEADER_SIZE); //*/
 
     if (socket_write(sock, mesg->send_buf, pkt_len) < pkt_len)
         return -1;
@@ -199,10 +198,9 @@ int mesg_forward(int sock, hmesg_t* mesg)
         if (mesg->recv_buf[i] == '\0')
             mesg->recv_buf[i] =  '\"';
 
-#ifdef AH_DEBUG_COMM_FWD
+    /* DEBUG - Comment out this line to enable.
     fprintf(stderr, "(Fwrd %2d) [src:%d -> dest:%d] msg:'%s'\n", sock,
-            mesg->src, mesg->dest, mesg->recv_buf + HMESG_HEADER_SIZE);
-#endif
+            mesg->src, mesg->dest, mesg->recv_buf + HMESG_HEADER_SIZE); //*/
 
     if (socket_write(sock, mesg->recv_buf, pkt_len) < pkt_len)
         return -1;
@@ -242,7 +240,7 @@ int mesg_recv(int sock, hmesg_t* mesg)
     if (retval < pkt_len) goto error;
     mesg->recv_buf[retval] = '\0'; // A strlen() safety net.
 
-#ifdef AH_DEBUG_COMM_RECV
+    /* DEBUG - Comment out this line to enable.
     unsigned short pkt_src;
     memcpy(&pkt_src, mesg->recv_buf + HMESG_SRC_OFFSET, HMESG_SRC_SIZE);
     pkt_src = ntohs(pkt_src);
@@ -252,8 +250,7 @@ int mesg_recv(int sock, hmesg_t* mesg)
     pkt_dest = ntohs(pkt_dest);
 
     fprintf(stderr, "(Recv %2d) [src:%d -> dest:%d] msg:'%s'\n", sock,
-            pkt_src, pkt_dest, mesg->recv_buf + HMESG_HEADER_SIZE);
-#endif
+            pkt_src, pkt_dest, mesg->recv_buf + HMESG_HEADER_SIZE); //*/
 
     if (hmesg_unpack(mesg) < 0)
         goto error;
