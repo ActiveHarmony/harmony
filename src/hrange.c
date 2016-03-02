@@ -573,7 +573,7 @@ hval_t random_enum(const range_enum_t* bounds, double entropy)
  */
 hval_t value_of_int(const range_int_t* bounds, unsigned long idx)
 {
-    hval_t val;
+    hval_t val = hval_zero;
 
     val.type     = HVAL_INT;
     val.value.i  = bounds->step;
@@ -587,7 +587,7 @@ hval_t value_of_int(const range_int_t* bounds, unsigned long idx)
 hval_t value_of_real(const range_real_t* bounds, unsigned long idx)
 {
     if (bounds->step > 0.0) {
-        hval_t val;
+        hval_t val = hval_zero;
 
         val.type     = HVAL_REAL;
         val.value.r  = bounds->step;
@@ -603,7 +603,7 @@ hval_t value_of_real(const range_real_t* bounds, unsigned long idx)
 hval_t value_of_enum(const range_enum_t* bounds, unsigned long idx)
 {
     if (idx < bounds->len) {
-        hval_t val;
+        hval_t val = hval_zero;
 
         val.type    = HVAL_STR;
         val.value.s = bounds->set[ idx ];

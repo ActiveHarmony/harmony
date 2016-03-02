@@ -149,15 +149,14 @@ int logger_analyze(hplugin_data_t* data, hflow_t* flow, htrial_t* trial)
     }
     fprintf(data->fd, ") ");
 
-    if (trial->perf.len > 1) {
-        fprintf(data->fd, "=> (");
-        for (int i = 0; i < trial->perf.len; ++i) {
-            if (i > 0) fprintf(data->fd, ",");
-            fprintf(data->fd, "%lf[%la]",
-                    trial->perf.obj[i], trial->perf.obj[i]);
-        }
-        fprintf(data->fd, ") ");
+    fprintf(data->fd, "=> (");
+    for (int i = 0; i < trial->perf.len; ++i) {
+        if (i > 0) fprintf(data->fd, ",");
+        fprintf(data->fd, "%lf[%la]",
+                trial->perf.obj[i], trial->perf.obj[i]);
     }
+    fprintf(data->fd, ") ");
+
     fprintf(data->fd, "=> %lf\n", hperf_unify(&trial->perf));
     fflush(data->fd);
 

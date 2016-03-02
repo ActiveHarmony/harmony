@@ -113,12 +113,16 @@ int hpoint_eq(const hpoint_t* a, const hpoint_t* b)
 {
     if (a->len != b->len)
         return 0;
+    else
+        return memcmp(a->term, b->term, a->len * sizeof(*a->term)) == 0;
+}
 
-    for (int i = 0; i < a->len; ++i) {
-        if (!hval_eq(&a->term[i], &b->term[i]))
-            return 0;
-    }
-    return 1;
+int hpoint_cmp(const hpoint_t* a, const hpoint_t* b)
+{
+    if (a->len != b->len)
+        return a->len - b->len;
+    else
+        return memcmp(a->term, b->term, a->len * sizeof(*a->term));
 }
 
 /*
