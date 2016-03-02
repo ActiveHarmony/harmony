@@ -26,7 +26,7 @@ else
     C_COMPILER_MAKE=gcc
 endif
 
-ifeq (__gnu_linux__, $(findstring __gnu_linux__, $(CC_DEFS)))
+ifeq (__linux__, $(findstring __linux__, $(CC_DEFS)))
     OS_MAKE=linux
 else ifeq (__APPLE__, $(findstring __APPLE__, $(CC_DEFS)))
     OS_MAKE=darwin
