@@ -37,7 +37,7 @@
  * >  minimization". Computer Journal 7: 308–313. doi:10.1093/comjnl/7.4.308
  */
 
-#include "strategy.h"
+#include "hstrategy.h"
 #include "session-core.h"
 #include "hcfg.h"
 #include "hspace.h"
@@ -53,7 +53,7 @@
  * Configuration variables used in this plugin.
  * These will automatically be registered by session-core upon load.
  */
-const hcfg_info_t plugin_keyinfo[] = {
+const hcfg_info_t hplugin_keyinfo[] = {
     { CFGKEY_INIT_POINT, NULL,
       "Centroid point used to initialize the search simplex.  If this key "
       "is left undefined, the simplex will be initialized in the center of "
@@ -113,7 +113,7 @@ typedef enum simplex_state {
 /*
  * Structure to hold data for an individual Nelder-Mead search instance.
  */
-struct data {
+struct hplugin_data {
     hspace_t* space;
     hpoint_t  best;
     hperf_t   best_perf;
@@ -148,19 +148,19 @@ struct data {
 /*
  * Internal helper function prototypes.
  */
-static void check_convergence(data_t* data);
-static int  config_strategy(data_t* data);
-static int  nm_algorithm(data_t* data);
-static int  nm_state_transition(data_t* data);
-static int  nm_next_vertex(data_t* data);
-static int  update_centroid(data_t* data);
+static void check_convergence(hplugin_data_t* data);
+static int  config_strategy(hplugin_data_t* data);
+static int  nm_algorithm(hplugin_data_t* data);
+static int  nm_state_transition(hplugin_data_t* data);
+static int  nm_next_vertex(hplugin_data_t* data);
+static int  update_centroid(hplugin_data_t* data);
 
 /*
- * Allocate memory for a new search instance.
+ * Allocate memory for a new search task.
  */
-data_t* strategy_alloc(void)
+hplugin_data_t* strategy_alloc(void)
 {
-    data_t* retval = calloc(1, sizeof(*retval));
+    hplugin_data_t* retval = calloc(1, sizeof(*retval));
     if (!retval)
         return NULL;
 
@@ -170,9 +170,9 @@ data_t* strategy_alloc(void)
 }
 
 /*
- * Initialize (or re-initialize) data for this search instance.
+ * Initialize (or re-initialize) data for this search task.
  */
-int strategy_init(data_t* data, hspace_t* space)
+int strategy_init(hplugin_data_t* data, hspace_t* space)
 {
     data->space = space;
     if (config_strategy(data) != 0)
@@ -203,7 +203,7 @@ int strategy_init(data_t* data, hspace_t* space)
 /*
  * Generate a new candidate configuration point.
  */
-int strategy_generate(data_t* data, hflow_t* flow, hpoint_t* point)
+int strategy_generate(hplugin_data_t* data, hflow_t* flow, hpoint_t* point)
 {
     if (data->next->id == data->next_id) {
         flow->status = HFLOW_WAIT;
@@ -223,7 +223,7 @@ int strategy_generate(data_t* data, hflow_t* flow, hpoint_t* point)
 /*
  * Regenerate a point deemed invalid by a later plug-in.
  */
-int strategy_rejected(data_t* data, hflow_t* flow, hpoint_t* point)
+int strategy_rejected(hplugin_data_t* data, hflow_t* flow, hpoint_t* point)
 {
     hpoint_t* hint = &flow->point;
 
@@ -277,7 +277,7 @@ int strategy_rejected(data_t* data, hflow_t* flow, hpoint_t* point)
 /*
  * Analyze the observed performance for this configuration point.
  */
-int strategy_analyze(data_t* data, htrial_t* trial)
+int strategy_analyze(hplugin_data_t* data, htrial_t* trial)
 {
     if (trial->point.id != data->next->id)
         return 0;
@@ -314,7 +314,7 @@ int strategy_analyze(data_t* data, htrial_t* trial)
 /*
  * Return the best performing point thus far in the search.
  */
-int strategy_best(data_t* data, hpoint_t* point)
+int strategy_best(hplugin_data_t* data, hpoint_t* point)
 {
     if (hpoint_copy(point, &data->best) != 0) {
         search_error("Could not copy best point during strategy_best()");
@@ -324,9 +324,9 @@ int strategy_best(data_t* data, hpoint_t* point)
 }
 
 /*
- * Free memory associated with this search instance.
+ * Free memory associated with this search task.
  */
-int strategy_fini(data_t* data)
+int strategy_fini(hplugin_data_t* data)
 {
     simplex_fini(&data->simplex);
     vertex_fini(&data->contract);
@@ -344,7 +344,8 @@ int strategy_fini(data_t* data)
 /*
  * Internal helper function implementations.
  */
-void check_convergence(data_t* data)
+
+void check_convergence(hplugin_data_t* data)
 {
     double fval_err, size_max;
     double avg_perf = hperf_unify(&data->centroid.perf);
@@ -377,7 +378,7 @@ void check_convergence(data_t* data)
     search_setcfg(CFGKEY_CONVERGED, "1");
 }
 
-int config_strategy(data_t* data)
+int config_strategy(hplugin_data_t* data)
 {
     const char* cfgstr;
     double cfgval;
@@ -477,7 +478,7 @@ int config_strategy(data_t* data)
     return 0;
 }
 
-int nm_algorithm(data_t* data)
+int nm_algorithm(hplugin_data_t* data)
 {
     do {
         if (data->state == SIMPLEX_STATE_CONVERGED)
@@ -501,7 +502,7 @@ int nm_algorithm(data_t* data)
     return 0;
 }
 
-int nm_state_transition(data_t* data)
+int nm_state_transition(hplugin_data_t* data)
 {
     switch (data->state) {
     case SIMPLEX_STATE_INIT:
@@ -592,7 +593,7 @@ int nm_state_transition(data_t* data)
     return 0;
 }
 
-int nm_next_vertex(data_t* data)
+int nm_next_vertex(hplugin_data_t* data)
 {
     switch (data->state) {
     case SIMPLEX_STATE_INIT:
@@ -668,7 +669,7 @@ int nm_next_vertex(data_t* data)
     return 0;
 }
 
-int update_centroid(data_t* data)
+int update_centroid(hplugin_data_t* data)
 {
     data->index_best = 0;
     data->index_worst = 0;

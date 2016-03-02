@@ -41,6 +41,7 @@
  *     ssh://code.server.net:2222//tmp/codegen
  */
 
+#include "hlayer.h"
 #include "session-core.h"
 #include "hspace.h"
 #include "hcfg.h"
@@ -57,13 +58,13 @@
  * Name used to identify this plugin layer.
  * All Harmony plugin layers must define this variable.
  */
-const char harmony_layer_name[] = "codegen";
+const char hplugin_name[] = "codegen";
 
 /*
  * Configuration variables used in this plugin.
  * These will automatically be registered by session-core upon load.
  */
-hcfg_info_t plugin_keyinfo[] = {
+const hcfg_info_t hplugin_keyinfo[] = {
     { CFGKEY_SERVER_URL, NULL,
       "Destination of messages from session to code server." },
     { CFGKEY_TARGET_URL, NULL,
@@ -105,7 +106,7 @@ typedef struct codegen_log {
  * should be defined or used in this plug-in layer.  They should
  * instead be defined as a part of this structure.
  */
-typedef struct data {
+struct hplugin_data {
     codegen_log_t* cglog;
     int cglog_len, cglog_cap;
 
@@ -114,7 +115,7 @@ typedef struct data {
 
     char* buf;
     int buflen;
-} data_t;
+};
 
 /*
  * Long-running code generation callback prototype.
@@ -125,16 +126,16 @@ static int codegen_callback(int fd, void* data,
 /*
  * Internal helper function prototypes.
  */
-static int cglog_find(data_t* data, const hpoint_t* pt);
-static int cglog_insert(data_t* data, const hpoint_t* pt);
-static int url_connect(data_t* data, const char* url);
+static int cglog_find(hplugin_data_t* data, const hpoint_t* pt);
+static int cglog_insert(hplugin_data_t* data, const hpoint_t* pt);
+static int url_connect(hplugin_data_t* data, const char* url);
 
 /*
- * Allocate memory for a new search instance.
+ * Allocate memory for a new search task.
  */
-data_t* codegen_alloc(void)
+hplugin_data_t* codegen_alloc(void)
 {
-    data_t* retval = calloc(1, sizeof(*retval));
+    hplugin_data_t* retval = calloc(1, sizeof(*retval));
     if (!retval)
         return NULL;
 
@@ -144,7 +145,7 @@ data_t* codegen_alloc(void)
 /*
  * Initialize (or re-initialize) data for this search instance.
  */
-int codegen_init(data_t* data, hspace_t* space)
+int codegen_init(hplugin_data_t* data, hspace_t* space)
 {
     const char* url;
 
@@ -183,7 +184,7 @@ int codegen_init(data_t* data, hspace_t* space)
         return -1;
 
     // TODO: Need a way to unregister a callback for re-initialization.
-    if (search_callback_generate(data->sockfd, codegen_callback) != 0) {
+    if (search_callback_generate(data->sockfd, data, codegen_callback) != 0) {
         search_error("Could not register callback for codegen plugin");
         return -1;
     }
@@ -199,7 +200,7 @@ int codegen_init(data_t* data, hspace_t* space)
  * 0 upon success.  Otherwise, it should call search_error() with a
  * human-readable error message and return -1.
  */
-int codegen_generate(data_t* data, hflow_t* flow, htrial_t* trial)
+int codegen_generate(hplugin_data_t* data, hflow_t* flow, htrial_t* trial)
 {
     int i;
 
@@ -233,25 +234,12 @@ int codegen_generate(data_t* data, hflow_t* flow, htrial_t* trial)
 }
 
 /*
- * Invoked after the tuning session completes.
- */
-int codegen_fini(data_t* data)
-{
-    close(data->sockfd);
-    free(data->buf);
-    free(data);
-    data = NULL;
-
-    return 0;
-}
-
-/*
  * Long-running code generation callback implementation.
  */
 int codegen_callback(int fd, void* data_ptr,
                      hflow_t* flow, int n, htrial_t** trial)
 {
-    data_t* data = (data_t*) data_ptr;
+    hplugin_data_t* data = (hplugin_data_t*) data_ptr;
     int i;
 
     if (mesg_recv(fd, &data->mesg) < 1)
@@ -277,9 +265,23 @@ int codegen_callback(int fd, void* data_ptr,
 }
 
 /*
+ * Free memory associated with this search task.
+ */
+int codegen_fini(hplugin_data_t* data)
+{
+    close(data->sockfd);
+    free(data->buf);
+    free(data);
+    data = NULL;
+
+    return 0;
+}
+
+/*
  * Internal helper function implementation.
  */
-int cglog_find(data_t* data, const hpoint_t* point)
+
+int cglog_find(hplugin_data_t* data, const hpoint_t* point)
 {
     for (int i = 0; i < data->cglog_len; ++i) {
         if (hpoint_eq(point, &data->cglog[i].point))
@@ -288,7 +290,7 @@ int cglog_find(data_t* data, const hpoint_t* point)
     return -1;
 }
 
-int cglog_insert(data_t* data, const hpoint_t* point)
+int cglog_insert(hplugin_data_t* data, const hpoint_t* point)
 {
     if (data->cglog_len == data->cglog_cap) {
         if (array_grow(&data->cglog, &data->cglog_cap,
@@ -303,7 +305,7 @@ int cglog_insert(data_t* data, const hpoint_t* point)
     return 0;
 }
 
-int url_connect(data_t* data, const char* url)
+int url_connect(hplugin_data_t* data, const char* url)
 {
     const char* ptr;
     char* helper_argv[2];

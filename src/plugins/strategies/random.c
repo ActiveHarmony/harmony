@@ -29,7 +29,7 @@
  * search strategies.
  */
 
-#include "strategy.h"
+#include "hstrategy.h"
 #include "session-core.h"
 #include "hcfg.h"
 #include "hspace.h"
@@ -47,7 +47,7 @@
  * Configuration variables used in this plugin.
  * These will automatically be registered by session-core upon load.
  */
-const hcfg_info_t plugin_keyinfo[] = {
+const hcfg_info_t hplugin_keyinfo[] = {
     { CFGKEY_INIT_POINT, NULL, "Initial point begin testing from." },
     { NULL }
 };
@@ -55,7 +55,7 @@ const hcfg_info_t plugin_keyinfo[] = {
 /*
  * Structure to hold data for an individual exhaustive search instance.
  */
-struct data {
+struct hplugin_data {
     int       space_id;
     hspace_t* space;
     hpoint_t  best;
@@ -67,15 +67,15 @@ struct data {
 /*
  * Internal helper function prototypes.
  */
-static int  config_strategy(data_t* data);
-static void randomize(data_t* data, hpoint_t* point);
+static int  config_strategy(hplugin_data_t* data);
+static void randomize(hplugin_data_t* data, hpoint_t* point);
 
 /*
- * Allocate memory for a new search instance.
+ * Allocate memory for a new search task.
  */
-data_t* strategy_alloc(void)
+hplugin_data_t* strategy_alloc(void)
 {
-    data_t* retval = calloc(1, sizeof(*retval));
+    hplugin_data_t* retval = calloc(1, sizeof(*retval));
     if (!retval)
         return NULL;
 
@@ -86,9 +86,9 @@ data_t* strategy_alloc(void)
 }
 
 /*
- * Initialize (or re-initialize) data for this search instance.
+ * Initialize (or re-initialize) data for this search task.
  */
-int strategy_init(data_t* data, hspace_t* space)
+int strategy_init(hplugin_data_t* data, hspace_t* space)
 {
     if (data->space_id != space->id) {
         if (hpoint_init(&data->next, space->len) != 0) {
@@ -112,7 +112,7 @@ int strategy_init(data_t* data, hspace_t* space)
 /*
  * Generate a new candidate configuration.
  */
-int strategy_generate(data_t* data, hflow_t* flow, hpoint_t* point)
+int strategy_generate(hplugin_data_t* data, hflow_t* flow, hpoint_t* point)
 {
     if (hpoint_copy(point, &data->next) != 0) {
         search_error("Could not copy point during generation");
@@ -130,7 +130,7 @@ int strategy_generate(data_t* data, hflow_t* flow, hpoint_t* point)
 /*
  * Regenerate a point deemed invalid by a later plug-in.
  */
-int strategy_rejected(data_t* data, hflow_t* flow, hpoint_t* point)
+int strategy_rejected(hplugin_data_t* data, hflow_t* flow, hpoint_t* point)
 {
     if (flow->point.id) {
         hpoint_t* hint = &flow->point;
@@ -152,7 +152,7 @@ int strategy_rejected(data_t* data, hflow_t* flow, hpoint_t* point)
 /*
  * Analyze the observed performance for this configuration point.
  */
-int strategy_analyze(data_t* data, htrial_t* trial)
+int strategy_analyze(hplugin_data_t* data, htrial_t* trial)
 {
     double perf = hperf_unify(&trial->perf);
 
@@ -169,7 +169,7 @@ int strategy_analyze(data_t* data, htrial_t* trial)
 /*
  * Return the best performing point thus far in the search.
  */
-int strategy_best(data_t* data, hpoint_t* point)
+int strategy_best(hplugin_data_t* data, hpoint_t* point)
 {
     if (hpoint_copy(point, &data->best) != 0) {
         search_error("Could not copy best point out of strategy");
@@ -179,9 +179,9 @@ int strategy_best(data_t* data, hpoint_t* point)
 }
 
 /*
- * Free memory associated with this search instance.
+ * Free memory associated with this search task.
  */
-int strategy_fini(data_t* data)
+int strategy_fini(hplugin_data_t* data)
 {
     hpoint_fini(&data->next);
     hpoint_fini(&data->best);
@@ -193,7 +193,8 @@ int strategy_fini(data_t* data)
 /*
  * Internal helper function implementation.
  */
-int config_strategy(data_t* data)
+
+int config_strategy(hplugin_data_t* data)
 {
     const char* cfgval = hcfg_get(search_cfg, CFGKEY_INIT_POINT);
     if (cfgval) {
@@ -213,7 +214,7 @@ int config_strategy(data_t* data)
     return 0;
 }
 
-void randomize(data_t* data, hpoint_t* point)
+void randomize(hplugin_data_t* data, hpoint_t* point)
 {
     for (int i = 0; i < data->space->len; ++i)
         point->term[i] = hrange_random(&data->space->dim[i], search_drand48());

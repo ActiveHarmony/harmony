@@ -27,6 +27,7 @@
  * consolidate the set performance values.
  */
 
+#include "hlayer.h"
 #include "session-core.h"
 #include "hspace.h"
 #include "hpoint.h"
@@ -41,13 +42,13 @@
  * Name used to identify this plugin layer.
  * All Harmony plugin layers must define this variable.
  */
-const char harmony_layer_name[] = "agg";
+const char hplugin_name[] = "agg";
 
 /*
  * Configuration variables used in this plugin.
  * These will automatically be registered by session-core upon load.
  */
-const hcfg_info_t plugin_keyinfo[] = {
+const hcfg_info_t hplugin_keyinfo[] = {
     { CFGKEY_AGG_FUNC, NULL,
       "Aggregation function to use.  Valid values are min, max, mean, "
       "and median." },
@@ -78,27 +79,28 @@ typedef enum aggfunc {
  * should be defined or used in this plug-in layer.  They should
  * instead be defined as a part of this structure.
  */
-typedef struct data {
+struct hplugin_data {
     aggfunc_t agg_type;
     int       trial_per_point;
     store_t*  slist;
     int       slist_len;
-} data_t;
+};
 
 /*
  * Internal helper function prototypes.
  */
-static void perf_mean(data_t* data, hperf_t* dst, hperf_t* src, int count);
+static void perf_mean(hplugin_data_t* data, hperf_t* dst, hperf_t* src,
+                      int count);
 static int  perf_sort(const void* _a, const void* _b);
-static int  add_storage(data_t* data);
-static void free_storage(data_t* data);
+static int  add_storage(hplugin_data_t* data);
+static void free_storage(hplugin_data_t* data);
 
 /*
- * Allocate memory for a new search instance.
+ * Allocate memory for a new search task.
  */
-data_t* agg_alloc(void)
+hplugin_data_t* agg_alloc(void)
 {
-    data_t* retval = calloc(1, sizeof(*retval));
+    hplugin_data_t* retval = calloc(1, sizeof(*retval));
     if (!retval)
         return NULL;
 
@@ -106,9 +108,9 @@ data_t* agg_alloc(void)
 }
 
 /*
- * Initialize (or re-initialize) data for this search instance.
+ * Initialize (or re-initialize) data for this search task.
  */
-int agg_init(data_t* data, hspace_t* space)
+int agg_init(hplugin_data_t* data, hspace_t* space)
 {
     const char* val = hcfg_get(search_cfg, CFGKEY_AGG_FUNC);
     if (!val) {
@@ -143,7 +145,7 @@ int agg_init(data_t* data, hspace_t* space)
     return 0;
 }
 
-int agg_analyze(data_t* data, hflow_t* flow, htrial_t* trial)
+int agg_analyze(hplugin_data_t* data, hflow_t* flow, htrial_t* trial)
 {
     int i;
     store_t* store;
@@ -209,7 +211,10 @@ int agg_analyze(data_t* data, hflow_t* flow, htrial_t* trial)
     return 0;
 }
 
-int agg_fini(data_t* data)
+/*
+ * Free memory associated with this search task.
+ */
+int agg_fini(hplugin_data_t* data)
 {
     free_storage(data);
     free(data);
@@ -217,9 +222,10 @@ int agg_fini(data_t* data)
 }
 
 /*
- * Internal helper function prototypes.
+ * Internal helper function implementation.
  */
-void perf_mean(data_t* data, hperf_t* dst, hperf_t* src, int count)
+
+void perf_mean(hplugin_data_t* data, hperf_t* dst, hperf_t* src, int count)
 {
     int i, j;
 
@@ -244,7 +250,7 @@ int perf_sort(const void* _a, const void* _b)
     return (a > b) - (a < b);
 }
 
-int add_storage(data_t* data)
+int add_storage(hplugin_data_t* data)
 {
     int prev_len = data->slist_len;
 
@@ -268,7 +274,7 @@ int add_storage(data_t* data)
     return 0;
 }
 
-void free_storage(data_t* data)
+void free_storage(hplugin_data_t* data)
 {
     for (int i = 0; i < data->slist_len; ++i) {
         for (int j = 0; j < data->trial_per_point; ++j)

@@ -49,6 +49,7 @@
  * performance.
  */
 
+#include "hlayer.h"
 #include "session-core.h"
 #include "hspace.h"
 #include "hpoint.h"
@@ -66,13 +67,13 @@
  * Name used to identify this plugin layer.
  * All Harmony plugin layers must define this variable.
  */
-const char harmony_layer_name[] = "group";
+const char hplugin_name[] = "group";
 
 /*
  * Configuration variables used in this plugin.
  * These will automatically be registered by session-core upon load.
  */
-hcfg_info_t plugin_keyinfo[] = {
+const hcfg_info_t hplugin_keyinfo[] = {
     { CFGKEY_GROUP_LIST, NULL, "List of input parameter indexes." },
     { NULL }
 };
@@ -89,7 +90,7 @@ typedef struct group_def {
  * should be defined or used in this plug-in layer.  They should
  * instead be defined as a part of this structure.
  */
-typedef struct data {
+struct hplugin_data {
     char internal_restart_req;
     int cap_max;
     hval_t* locked_val;
@@ -100,19 +101,19 @@ typedef struct data {
     int glist_curr;
 
     hpoint_t best;
-} data_t;
+};
 
 /*
  * Internal helper function prototypes.
  */
-static int parse_group(data_t* data, const char* buf);
+static int parse_group(hplugin_data_t* data, const char* buf);
 
 /*
- * Allocate memory for a new search instance.
+ * Allocate memory for a new search task.
  */
-data_t* group_alloc(void)
+hplugin_data_t* group_alloc(void)
 {
-    data_t* retval = calloc(1, sizeof(*retval));
+    hplugin_data_t* retval = calloc(1, sizeof(*retval));
     if (!retval)
         return NULL;
 
@@ -120,9 +121,9 @@ data_t* group_alloc(void)
 }
 
 /*
- * Initialize (or re-initialize) data for this search instance.
+ * Initialize (or re-initialize) data for this search task.
  */
-int group_init(data_t* data, hspace_t* space)
+int group_init(hplugin_data_t* data, hspace_t* space)
 {
     const char* ptr;
 
@@ -163,7 +164,7 @@ int group_init(data_t* data, hspace_t* space)
     return parse_group(data, ptr);
 }
 
-int group_setcfg(data_t* data, const char* key, const char* val)
+int group_setcfg(hplugin_data_t* data, const char* key, const char* val)
 {
     int retval = 0;
 
@@ -185,7 +186,7 @@ int group_setcfg(data_t* data, const char* key, const char* val)
     return retval;
 }
 
-int group_generate(data_t* data, hflow_t* flow, htrial_t* trial)
+int group_generate(hplugin_data_t* data, hflow_t* flow, htrial_t* trial)
 {
     int ptlen = data->cap_max * sizeof(*data->hint_val);
 
@@ -222,7 +223,10 @@ int group_generate(data_t* data, hflow_t* flow, htrial_t* trial)
     return 0;
 }
 
-int group_fini(data_t* data)
+/*
+ * Free memory associated with this search task.
+ */
+int group_fini(hplugin_data_t* data)
 {
     if (!data->internal_restart_req) {
         for (int i = 0; i < data->glist_len; ++i)
@@ -240,7 +244,8 @@ int group_fini(data_t* data)
 /*
  * Internal helper function implementation.
  */
-int parse_group(data_t* data, const char* buf)
+
+int parse_group(hplugin_data_t* data, const char* buf)
 {
     int i, j, count, success;
 

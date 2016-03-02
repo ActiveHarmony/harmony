@@ -17,16 +17,11 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef __SEARCH_STRATEGY_H__
-#define __SEARCH_STRATEGY_H__
-
-#include "session-core.h"
-#include "hspace.h"
-#include "hpoint.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
+/*
+ * All Active Harmony strategy plug-in implementations must begin by
+ * including this header.
+ */
+#include "hstrategy.h"
 
 /*
  * Configuration variables used in this plugin.
@@ -34,7 +29,8 @@ extern "C" {
  * Any entries in this structure will automatically be loaded into the
  * search environment.
  */
-extern const hcfg_info_t plugin_keyinfo[];
+const hcfg_info_t hplugin_keyinfo[] = {
+};
 
 /*
  * Structure to hold all data needed by an individual search instance.
@@ -43,7 +39,28 @@ extern const hcfg_info_t plugin_keyinfo[];
  * should be defined or used in this plug-in layer.  They should
  * instead be defined as a part of this structure.
  */
-typedef struct data data_t;
+struct hplugin_data {
+};
+
+/*
+ * The following functions are used for plug-in setup.
+ *
+ * They are called once along with each search task that uses this
+ * plug-in.
+ */
+
+/*
+ * Allocate plug-in state data for a new search instance.  This
+ * function is invoked prior to any other plug-in interface function.
+ *
+ * Upon success, this function should return an address the plug-in
+ * can use to track an individual search instance.  Otherwise, this
+ * function should return NULL.
+ */
+hplugin_data_t* strategy_alloc(void)
+{
+    return NULL;
+}
 
 /*
  * The following functions are required.
@@ -56,6 +73,7 @@ typedef struct data data_t;
  * Generate a new candidate configuration point.
  *
  * Params:
+ *   data  - Search instance private data.
  *   flow  - Inform plug-in manager of search state.
  *   point - New candidate point to be sent to a client.
  *
@@ -64,14 +82,19 @@ typedef struct data data_t;
  * Otherwise, this routine should return 0, and the contents of the
  * "flow" variable should be set appropriately.
  */
-int strategy_generate(data_t* data, hflow_t* flow, hpoint_t* point);
+int strategy_generate(hplugin_data_t* data, hflow_t* flow, hpoint_t* point)
+{
+    flow->status = HFLOW_ACCEPT;
+    return 0;
+}
 
 /*
  * Regenerate a rejected candidate configuration point.
  *
  * Params:
- *   flow  - Inform plug-in manager of search state. Also may contain a search
- *           hint from the rejecting layer.
+ *   data  - Search instance private data.
+ *   flow  - Inform plug-in manager of search state. Also may contain a
+ *           search hint from the rejecting layer.
  *   point - Rejected candidate point to regenerate.
  *
  * Upon error, this function should call search_error() with a
@@ -79,19 +102,27 @@ int strategy_generate(data_t* data, hflow_t* flow, hpoint_t* point);
  * Otherwise, this routine should return 0, and the contents of the
  * "flow" variable should be set appropriately.
  */
-int strategy_rejected(data_t* data, hflow_t* flow, hpoint_t* point);
+int strategy_rejected(hplugin_data_t* data, hflow_t* flow, hpoint_t* point)
+{
+    flow->status = HFLOW_ACCEPT;
+    return 0;
+}
 
 /*
  * Analyze the observed performance associated with a configuration point.
  *
  * Params:
+ *   data  - Search instance private data.
  *   trial - Observed point/performance pair.
  *
  * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int strategy_analyze(data_t* data, htrial_t* trial);
+int strategy_analyze(hplugin_data_t* data, htrial_t* trial)
+{
+    return 0;
+}
 
 /*
  * The following functions are optional.
@@ -101,52 +132,53 @@ int strategy_analyze(data_t* data, htrial_t* trial);
  */
 
 /*
- * Allocate plug-in state data for a new search instance.  This
- * function is invoked prior to any other plug-in interface function.
- *
- * Upon error, this function should call search_error() with a
- * human-readable string explaining the problem and return NULL.
- * Otherwise, a non-NULL address the plug-in can use to track an
- * individual search instance should be returned.
- */
-data_t* strategy_alloc(void);
-
-/*
  * Initialize (or re-initialize) data for this search instance.
  *
  * Param:
+ *   data  - Search instance private data.
  *   space - Details of the parameter space (dimensions, bounds, etc.).
  *
  * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int strategy_init(data_t* data, hspace_t* space);
+int strategy_init(hplugin_data_t* data, hspace_t* space)
+{
+    return 0;
+}
 
 /*
  * Invoked when a client joins the tuning session.
  *
  * Params:
+ *   data   - Search instance private data.
  *   client - Uniquely identifying string for the new client.
  *
  * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int strategy_join(data_t* data, const char* client);
+int strategy_join(hplugin_data_t* data, const char* client)
+{
+    return 0;
+}
 
 /*
  * Invoked when a client writes to the configuration system.
  *
  * Params:
- *   key - Configuration key to be modified.
- *   val - New value for configuration key.
+ *   data - Search instance private data.
+ *   key  - Configuration key to be modified.
+ *   val  - New value for configuration key.
  *
  * Upon error, this function should call search_error() with a
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int strategy_setcfg(data_t* data, const char* key, const char* val);
+int strategy_setcfg(hplugin_data_t* data, const char* key, const char* val)
+{
+    return 0;
+}
 
 /*
  * Invoked on session exit.
@@ -155,10 +187,7 @@ int strategy_setcfg(data_t* data, const char* key, const char* val);
  * human-readable string explaining the problem and return -1.
  * Otherwise, returning 0 indicates success.
  */
-int strategy_fini(data_t* data);
-
-#ifdef __cplusplus
+int strategy_fini(hplugin_data_t* data)
+{
+    return 0;
 }
-#endif
-
-#endif

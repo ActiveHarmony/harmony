@@ -17,7 +17,7 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "strategy.h"
+#include "hstrategy.h"
 #include "session-core.h"
 #include "hcfg.h"
 #include "hspace.h"
@@ -33,7 +33,7 @@
  * Configuration variables used in this plugin.
  * These will automatically be registered by session-core upon load.
  */
-const hcfg_info_t plugin_keyinfo[] = {
+const hcfg_info_t hplugin_keyinfo[] = {
     { CFGKEY_INIT_POINT, NULL,
       "Centroid point used to initialize the search simplex.  If this key "
       "is left undefined, the simplex will be initialized in the center of "
@@ -126,7 +126,7 @@ typedef enum simplex_state {
 /*
  * Structure to hold data for an individual PRO search instance.
  */
-struct data {
+struct hplugin_data {
     int       space_id;
     hspace_t* space;
     hpoint_t  best;
@@ -178,22 +178,22 @@ struct data {
 /*
  * Internal helper function prototypes.
  */
-static int  allocate_structures(data_t* data);
-static int  config_strategy(data_t* data);
-static void check_convergence(data_t* data);
-static int  increment_phase(data_t* data);
-static int  nm_algorithm(data_t* data);
-static int  nm_next_vertex(data_t* data);
-static int  nm_state_transition(data_t* data);
-static int  make_initial_simplex(data_t* data);
-static int  update_centroid(data_t* data);
+static int  allocate_structures(hplugin_data_t* data);
+static int  config_strategy(hplugin_data_t* data);
+static void check_convergence(hplugin_data_t* data);
+static int  increment_phase(hplugin_data_t* data);
+static int  nm_algorithm(hplugin_data_t* data);
+static int  nm_next_vertex(hplugin_data_t* data);
+static int  nm_state_transition(hplugin_data_t* data);
+static int  make_initial_simplex(hplugin_data_t* data);
+static int  update_centroid(hplugin_data_t* data);
 
 /*
- * Allocate memory for a new search instance.
+ * Allocate memory for a new search task.
  */
-data_t* strategy_alloc(void)
+hplugin_data_t* strategy_alloc(void)
 {
-    data_t* retval = calloc(1, sizeof(*retval));
+    hplugin_data_t* retval = calloc(1, sizeof(*retval));
     if (!retval)
         return NULL;
 
@@ -203,9 +203,9 @@ data_t* strategy_alloc(void)
 }
 
 /*
- * Initialize (or re-initialize) data for this search instance.
+ * Initialize (or re-initialize) data for this search task.
  */
-int strategy_init(data_t* data, hspace_t* space)
+int strategy_init(hplugin_data_t* data, hspace_t* space)
 {
     data->space = space;
 
@@ -237,7 +237,7 @@ int strategy_init(data_t* data, hspace_t* space)
 /*
  * Generate a new candidate configuration point.
  */
-int strategy_generate(data_t* data, hflow_t* flow, hpoint_t* point)
+int strategy_generate(hplugin_data_t* data, hflow_t* flow, hpoint_t* point)
 {
     if (data->next->id == data->next_id) {
         flow->status = HFLOW_WAIT;
@@ -257,7 +257,7 @@ int strategy_generate(data_t* data, hflow_t* flow, hpoint_t* point)
 /*
  * Regenerate a point deemed invalid by a later plug-in.
  */
-int strategy_rejected(data_t* data, hflow_t* flow, hpoint_t* point)
+int strategy_rejected(hplugin_data_t* data, hflow_t* flow, hpoint_t* point)
 {
     hpoint_t* hint = &flow->point;
 
@@ -311,7 +311,7 @@ int strategy_rejected(data_t* data, hflow_t* flow, hpoint_t* point)
 /*
  * Analyze the observed performance for this configuration point.
  */
-int strategy_analyze(data_t* data, htrial_t* trial)
+int strategy_analyze(hplugin_data_t* data, htrial_t* trial)
 {
     if (trial->point.id != data->next->id)
         return 0;
@@ -382,7 +382,7 @@ int strategy_analyze(data_t* data, htrial_t* trial)
 /*
  * Return the best performing point thus far in the search.
  */
-int strategy_best(data_t* data, hpoint_t* point)
+int strategy_best(hplugin_data_t* data, hpoint_t* point)
 {
     if (hpoint_copy(point, &data->best) != 0) {
         search_error("Could not copy best point during strategy_best()");
@@ -392,9 +392,9 @@ int strategy_best(data_t* data, hpoint_t* point)
 }
 
 /*
- * Free memory associated with this search instance.
+ * Free memory associated with this search task.
  */
-int strategy_fini(data_t* data)
+int strategy_fini(hplugin_data_t* data)
 {
     free(data->span);
     free(data->thresh);
@@ -416,7 +416,8 @@ int strategy_fini(data_t* data)
 /*
  * Internal helper function implementation.
  */
-int allocate_structures(data_t* data)
+
+int allocate_structures(hplugin_data_t* data)
 {
     void* newbuf;
 
@@ -502,7 +503,7 @@ int allocate_structures(data_t* data)
     return 0;
 }
 
-int config_strategy(data_t* data)
+int config_strategy(hplugin_data_t* data)
 {
     const char* cfgstr;
     double cfgval;
@@ -657,7 +658,7 @@ int config_strategy(data_t* data)
     return 0;
 }
 
-void check_convergence(data_t* data)
+void check_convergence(hplugin_data_t* data)
 {
     static int flat_cnt;
 
@@ -729,7 +730,7 @@ void check_convergence(data_t* data)
     }
 }
 
-int increment_phase(data_t* data)
+int increment_phase(hplugin_data_t* data)
 {
     if (data->phase >= 0) {
         // Calculate the threshold for the previous phase.
@@ -792,7 +793,7 @@ int increment_phase(data_t* data)
     return 0;
 }
 
-int nm_algorithm(data_t* data)
+int nm_algorithm(hplugin_data_t* data)
 {
     do {
         if (data->state == SIMPLEX_STATE_CONVERGED)
@@ -816,7 +817,7 @@ int nm_algorithm(data_t* data)
     return 0;
 }
 
-int nm_state_transition(data_t* data)
+int nm_state_transition(hplugin_data_t* data)
 {
     switch (data->state) {
     case SIMPLEX_STATE_INIT:
@@ -914,7 +915,7 @@ int nm_state_transition(data_t* data)
     return 0;
 }
 
-int nm_next_vertex(data_t* data)
+int nm_next_vertex(hplugin_data_t* data)
 {
     switch (data->state) {
     case SIMPLEX_STATE_INIT:
@@ -994,7 +995,7 @@ int nm_next_vertex(data_t* data)
     return 0;
 }
 
-int make_initial_simplex(data_t* data)
+int make_initial_simplex(hplugin_data_t* data)
 {
     const char* cfgval = hcfg_get(search_cfg, CFGKEY_INIT_POINT);
     if (cfgval) {
@@ -1020,7 +1021,7 @@ int make_initial_simplex(data_t* data)
     return 0;
 }
 
-int update_centroid(data_t* data)
+int update_centroid(hplugin_data_t* data)
 {
     data->index_best = 0;
     data->index_worst = 0;
