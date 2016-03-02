@@ -150,7 +150,10 @@ char* get_metadata(void)
 
 htask_t* start_search(hdesc_t* hdesc, const char* name)
 {
-    hdef_t* hdef = ah_def_alloc();
+    hdef_t* hdef;
+    htask_t* htask;
+
+    hdef = ah_def_alloc();
     if (!hdef) {
         fprintf(stderr, "Error allocating search definition: %s\n",
                 ah_error());
@@ -184,7 +187,7 @@ htask_t* start_search(hdesc_t* hdesc, const char* name)
     }
 
     // Begin a new tuning session.
-    htask_t* htask = ah_start(hdesc, hdef);
+    htask = ah_start(hdesc, hdef);
     if (!htask) {
         fprintf(stderr, "Could not start tuning search task: %s\n",
                 ah_error());
@@ -203,6 +206,8 @@ htask_t* start_search(hdesc_t* hdesc, const char* name)
 int main(int argc, char* argv[])
 {
     hdesc_t* hdesc;
+    htask_t* htask;
+    const char* name;
     int i, retval, loop = 200;
     double perf = -HUGE_VAL;
     char* metadata;
@@ -253,10 +258,11 @@ int main(int argc, char* argv[])
     }
 
     // Process the program arguments.
-    const char* name = "TAUdb_example";
+    name = "TAUdb_example";
     if (argc > 1)
         name = argv[1];
-    htask_t* htask = start_search(hdesc, name);
+
+    htask = start_search(hdesc, name);
     if (!htask)
         goto error;
 

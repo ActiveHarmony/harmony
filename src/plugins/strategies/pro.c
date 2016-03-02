@@ -665,21 +665,25 @@ int pro_next_simplex(hplugin_data_t* data)
 
 int check_convergence(hplugin_data_t* data)
 {
+    double avg_perf;
+    double fval_err;
+    double size_max;
+
     if (simplex_centroid(&data->simplex, &data->centroid) != 0)
         return -1;
 
     if (simplex_collapsed(&data->simplex, data->space))
         goto converged;
 
-    double avg_perf = hperf_unify(&data->centroid.perf);
-    double fval_err = 0.0;
+    avg_perf = hperf_unify(&data->centroid.perf);
+    fval_err = 0.0;
     for (int i = 0; i < data->simplex.len; ++i) {
         double vert_perf = hperf_unify(&data->simplex.vertex[i].perf);
         fval_err += ((vert_perf - avg_perf) * (vert_perf - avg_perf));
     }
     fval_err /= data->simplex.len;
 
-    double size_max = 0.0;
+    size_max = 0.0;
     for (int i = 0; i < data->simplex.len; ++i) {
         double dist = vertex_norm(&data->simplex.vertex[i], &data->centroid,
                                   VERTEX_NORM_L2);

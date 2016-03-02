@@ -47,6 +47,7 @@ int main(int argc, char* argv[])
     htask_t* htask;
     int i, retval = 0;
     double perf;
+    int help;
 
     // Initialize a Harmony client.
     hdesc = ah_alloc();
@@ -56,7 +57,7 @@ int main(int argc, char* argv[])
     }
     ah_args(hdesc, &argc, argv);
 
-    int help = 0;
+    help = 0;
     for (i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             help = 1;

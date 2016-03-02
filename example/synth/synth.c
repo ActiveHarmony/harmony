@@ -135,6 +135,7 @@ int main(int argc, char* argv[])
     int width, maxwidth;
     double best_val = HUGE_VAL;
     hdesc_t* hdesc;
+    htask_t* htask;
 
     hdesc = ah_alloc();
     if (!hdesc) {
@@ -164,7 +165,7 @@ int main(int argc, char* argv[])
         goto error;
     }
 
-    htask_t* htask = start_harmony(hdesc);
+    htask = start_harmony(hdesc);
     if (!htask) {
         retval = -1;
         goto cleanup;

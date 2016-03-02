@@ -24,7 +24,7 @@
 #include <string.h> // For memset().
 #include <dlfcn.h>  // For dlopen(), dlsym(), dlerror(), and dlclose().
 
-const hplugin_t hplugin_zero = HPOINT_INITIALIZER;
+const hplugin_t hplugin_zero = HPLUGIN_INITIALIZER;
 
 /*
  * Internal helper function prototypes.

@@ -17,6 +17,7 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 #ifdef __gnu_linux__
+#define _POSIX_SOURCE   // Needed for kill(), and fdopen() on older libc's.
 #define _BSD_SOURCE     // Needed for wait3(), kill(), timersub() and fdopen().
 #define _DEFAULT_SOURCE // Needed for _BSD_SOURCE on glibc 2.20 and later.
 #endif

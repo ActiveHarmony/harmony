@@ -223,6 +223,7 @@ int main(int argc, char* argv[])
     sinfo_t slist[MAX_RUNNING_TASKS] = {{0}};
     int order[MAX_RUNNING_TASKS];
     int started_tasks = 0;
+    int done;
 
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
@@ -258,7 +259,7 @@ int main(int argc, char* argv[])
     }
 
     // Main tuning loop.
-    int done = 0;
+    done = 0;
     while (!done) {
         // Fetch new values from the search task in a random order.
         shuffle(order);

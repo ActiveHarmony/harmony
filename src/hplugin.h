@@ -112,7 +112,7 @@ typedef struct hplugin {
     void* handle;
 } hplugin_t;
 
-#define HPLUGIN_INITIALIZER {NULL}
+#define HPLUGIN_INITIALIZER {HPLUGIN_UNKNOWN}
 extern const hplugin_t hplugin_zero;
 
 /*
