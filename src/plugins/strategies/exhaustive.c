@@ -362,8 +362,10 @@ int make_next_point(hplugin_data_t* data, hpoint_t* point)
         if (hrange_finite(&data->space->dim[i]))
             point->term[i] = hrange_value(&data->space->dim[i],
                                           data->next[i].index);
-        else
+        else {
+            point->term[i].type = HVAL_REAL;
             point->term[i].value.r = data->next[i].value;
+        }
     }
 
     point->len = data->space->len;
