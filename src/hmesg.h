@@ -58,7 +58,7 @@
 
 // Magic number for messages between the harmony server and its clients.
 #define HMESG_OLDER_MAGIC  0x5261793a // Magic number for packets (pre v4.5).
-#define HMESG_OLD_MAGIC    0x5261797c // Magic number for packets (pre v4.6).
+#define HMESG_OLD_MAGIC    0x5261797c // Magic number for packets (pre v4.6.0).
 #define HMESG_MAGIC_BASE   0x52617900 // Base for current magic number.
 #define HMESG_MAGIC_VER          0x05 // Protocol version.
 #define HMESG_MAGIC (HMESG_MAGIC_BASE | HMESG_MAGIC_VER)
