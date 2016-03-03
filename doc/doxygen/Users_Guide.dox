@@ -178,7 +178,7 @@ The backslash (\\) character may be used within the value string as a quoting me
 
 Configuration directives may also be read from a file containing one key/value pair per line.  The first equals sign (`=`) separates the key from the value string, and the value string extends until a newline (`\n`) or hash (`#`) which indicates comments.
 
-Each tuning session has a unique configuration environment.  All entities involved with a tuning session (clients, search strategies, processing layers, etc.) may query this system.  The configuration environment is initialized at session creation time through harmony_setcfg() function calls.  After a session has been launched, clients may query the configuration environment through harmony_getcfg() and harmony_setcfg() function calls.
+Each tuning session has a unique configuration environment.  All entities involved with a tuning session (clients, search strategies, processing layers, etc.) may query this system.  The configuration environment is initialized at session creation time through ah_def_cfg() function calls.  After a session has been launched, clients may query the configuration environment through ah_get_cfg() and ah_set_cfg() function calls.
 
 \note The Harmony Server is a special case.  It contains its own private configuration environment that is merged with any sessions that it manages.  If there is a key conflict between the server and session configuration environment, the session's key takes precedence.
 
@@ -209,11 +209,11 @@ Here are a list of environment variables commonly used:
 Environment Variable | Description
 -------------------- | -----------
 HARMONY_HOME         | File path of the directory containing an Active Harmony installation.  This is effectively the value of PREFIX when Harmony was built from source.
-HARMONY_HOST         | If defined, tuning clients (using harmony_join()) will attempt to connect to a [Harmony Server](\ref app_hserver) on this host.
+HARMONY_HOST         | If defined, tuning clients (using ah_connect()) will attempt to connect to a [Harmony Server](\ref app_hserver) on this host.
 HARMONY_PORT         | If defined (along with HARMONY_HOST), tuning clients will used this variable as the port when connecting to a running Harmony Server.
 
 \page plugin Plug-ins
-As described in the [Tuning Session](\ref intro_session) section, Active Harmony provides a modular interface for flexible functionality.  The session API functions harmony_strategy() and harmony_layer_list() specify which plug-in's will be loaded by the tuning session.  See their individual documentation page for details on their use.
+As described in the [Tuning Session](\ref intro_session) section, Active Harmony provides a modular interface for flexible functionality.  The session API functions ah_def_strategy() and ah_def_layers() specify which plug-in's will be loaded by the tuning session.  See their individual documentation page for details on their use.
 
 The Active Harmony framework currently allows for two types of plug-ins, [search strategies](\ref strategies) and [processing layers](\ref layers).
 
@@ -261,168 +261,40 @@ See the [Tuning Session](\ref intro_session) section for an overview of the proc
 \page example Coding Examples
 Active Harmony Client API enables the user to complete two distinct tasks: establishing tuning sessions and interacting with existing tuning sessions.  In the following sections, we provide examples for both of these tasks.
 
-\section example_session_launch Launching a New Session
-This example demonstrates how to use the session API to establish a session with four variables.  It defines a function called `launch_tuner()` which, similar to the MPI's `mpi_init()` routine, is designed to accept the *argc* and *argv* parameters from `main()`.
+\section example_session_connect Establishing Communication with a Tuning Session
+This example demonstrates how to use the session API to establish a connection with a Harmony search session.  It defines a function called `init_tuner()` which, similar to the MPI's `mpi_init()` routine, is designed to accept the *argc* and *argv* parameters from `main()`.
 
-Code similar to `launch_tuner()` should be added to any target application that must establish a new tuning session for itself (as opposed to connecting to an existing tuning session, through the [Harmony Server](\ref app_hserver).
+Code similar to `init_tuner()` should exist in any Harmony client application.  The same set of API calls may be used to establish a connection with a local tuning process, or an existing tuning session through the [Harmony Server](\ref app_hserver).
 
 \note To increase clarity, return values of API calls are not checked in this example.  This is not recommended for production code.
 
-    \code{.c}
-    &#35;include <stdio.h>
-    &#35;include "hclient.h"
+\snippet users_guide.c snippet_session_connect
 
-    hdesc_t *launch_tuner(int argc, char **argv)
-    {
-        hdesc_t *hdesc;
+\section example_task_def Defining and Starting a New Search Task
+This example demonstrates how to use the session API to establish a session with four variables.  It defines a function called `new_search()` which takes a Harmony session descriptor, and returns a Harmony search task handle.  The task handle will be used in the [task interaction](\ref example_task_interact) example.
 
-        /* Initialize a Harmony tuning session handle. */
-        hdesc = harmony_init(&argc, &argv);
+\note To increase clarity, return values of API calls are not checked in this example.  This is not recommended for production code.
 
-        /* Give the tuning session a unique name. */
-        harmony_session_name(hdesc, "Example");
+\snippet users_guide.c snippet_task_def
 
-        /* Add an integer variable called "intVar1" to the session.
-         * Its value may range between 1 and 100 (inclusive).
-         */
-        harmony_int(hdesc, "intVar1", 1, 100, 1);
-
-        /* Add another integer variable called "intVar2" to the session.
-         * Its value may range between 2 and 200 (inclusive) by
-         * strides of 2.
-         */
-        harmony_int(hdesc, "intVar2", 2, 200, 2);
-
-        /* Add a real-valued variable called "realVar" to the session.
-         * Its value may range between 0.0 and 0.5 (inclusive), using the
-         * full precision available by an IEEE double.
-         */
-        harmony_real(hdesc, "realVar", 0.0, 0.5, 0.0);
-
-        /* Add a string-valued variable called "strVar" to the session.
-         * Its value may be "apples", "oranges", "peaches", or "pears".
-         */
-        harmony_enum(hdesc, "strVar", "apples");
-        harmony_enum(hdesc, "strVar", "oranges");
-        harmony_enum(hdesc, "strVar", "peaches");
-        harmony_enum(hdesc, "strVar", "pears");
-
-        /* Connect to a Harmony Server at the default host ("localhost"),
-         * on the default port (1979), and initiate the tuning session
-         * we've described using the above API calls.
-         */
-        if (harmony_launch(hdesc, NULL, 0) != 0) {
-            fprintf(stderr, "Could not launch tuning session: %s\n",
-                    harmony_error_string(hdesc));
-            return NULL;
-        }
-
-        return hdesc;
-    }
-    \endcode
-
-\section example_session_advanced Advanced Session Configuration
+\section example_task_def_advanced Advanced Search Task Configuration
 This example demonstrates the ability to specify [session plug-ins](\ref intro_session), and how to [configure](\ref cfg) them.  Detailed descriptions of the valid configuration keys for each of the three plug-ins used in this example can be found in their respective manual pages:
 
-- [Nelder-Mead Search Strategy](\ref nm)
+- [Parallel Rank Order Search Strategy](\ref pro)
 - [Point Logger Processing Layer](\ref logger)
 - [Aggregator Processing Layer](\ref agg)
 
-The following code snippet extends the code example in the [session launch](\ref example_session_launch) example.  It may be inserted at any point before the call to harmony_launch().
+The following code snippet extends the search definition handle created in the prior example.  See the [search definition](\ref example_task_def) example to see how definition handles are created.
 
 \note To increase clarity, return values of API calls are not checked in this example.  This is not recommended for production code.
 
-    \code{.c}
-        /* Use the Nelder-Mead simplex-based as the strategy for this
-         * session, instead of the default Parallel Rank Order.
-         */
-        harmony_strategy(hdesc, "nm.so");
+\snippet users_guide.c snippet_task_def_advanced
 
-        /* Instruct the strategy to use an initial simplex roughly half
-         * the size of the search space.
-         */
-        harmony_setcfg(hdesc, "INIT_PERCENT", "0.50");
-
-        /* This tuning session should surround the search strategy with
-         * a logger layer first, and an aggregator layer second.
-         */
-        harmony_layer_list(hdesc, "log.so:agg.so");
-
-        /* Instruct the logger to use /tmp/tuning.run as the logfile. */
-        harmony_setcfg(hdesc, "LOGFILE", "/tmp/tuning.run");
-
-        /* Instruct the aggregator to collect 10 performance values for
-         * each point, and allow the median performance to continue through
-         * the feedback loop.
-         */
-        harmony_setcfg(hdesc, "AGG_TIMES", "10");
-        harmony_setcfg(hdesc, "AGG_FUNC", "median");
-    \endcode
-
-\section example_client Using the Client API
-The example demonstrates how to use the client API to join, fetch, and report to the tuning session established in the [session launch](\ref example_session_launch) example.
-
-If this client was required to establish its own tuning session, a call to [launch_tuner()](\ref example_session_launch) from the example above should be used in place of the call to harmony_init() on line 18.
+\section example_task_interact Interacting with a Search Task
+The example demonstrates how to use the client API to fetch from and report to the search task started in the [task definition and start](\ref example_task_def) example.
 
 \note To increase clarity, return values of API calls are not checked in this example.  This is not recommended for production code.
 
-    \code{.cpp}
-    &#35;include <stdio.h>
-    &#35;include "hclient.h"
+\snippet users_guide.c snippet_task_interact
 
-    int main(int argc, char **argv)
-    {
-        hdesc_t *hdesc;
-
-        /* Variables to hold the application's runtime tunable parameters.
-         * Once bound to a Harmony tuning session, these variables will be
-         * modified upon harmony_fetch() to a new testing configuration.
-         */
-        long        var1;
-        long        var2;
-        double      var3;
-        const char *var4;
-
-        /* Initialize the Harmony client descriptor. */
-        hdesc = harmony_init(NULL, NULL);
-
-        /* Bind the session variables to local variables. */
-        harmony_bind_int(hdesc,  "intVar1", &var1);
-        harmony_bind_int(hdesc,  "intVar2", &var2);
-        harmony_bind_real(hdesc, "realVar", &var3);
-        harmony_bind_enum(hdesc, "strVar",  &var4);
-
-        /* Join the tuning session we established above. */
-        harmony_join(hdesc, NULL, 0, "Example");
-
-        /* Loop until the session has reached a converged state. */
-        while (!harmony_converged(hdesc))
-        {
-            /* Define a variable to hold the resulting performance value. */
-            double perf;
-
-            /* Retrieve new values from the Harmony Session. */
-            harmony_fetch(hdesc);
-
-            /* The local variables var1, var2, var3, and var4 have now
-             * been updated and are ready for use.
-             *
-             * This is where a normal application would do some work
-             * using these variables and measure the performance.
-             * Since this is a simple example, we'll pretend the
-             * function "work()" will take the variables, and produce a
-             * performance value.
-             */
-            perf = work(var1, var2, var3, var4);          
-
-            /* Report the performance back to the session. */
-            harmony_report(hdesc, perf);
-        }
-
-        /* Leave the session. */
-        harmony_leave(hdesc);
-
-        return 0;
-    }
-    \endcode
 */

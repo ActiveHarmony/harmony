@@ -3,11 +3,13 @@ TO_BASE=../..
 SRCS=join.c \
      loadfile.c \
      minimal.c \
-     multi.c
+     multi.c \
+     users_guide.c
 NO_INST_TGTS=join \
              loadfile \
              minimal \
-             multi
+             multi \
+             users_guide
 
 join: REQ_CPPFLAGS+=-I$(TO_BASE)/src
 join: $(TO_BASE)/src/libharmony.a
@@ -20,6 +22,9 @@ minimal: $(TO_BASE)/src/libharmony.a
 
 multi: REQ_CPPFLAGS+=-I$(TO_BASE)/src
 multi: $(TO_BASE)/src/libharmony.a
+
+users_guide: REQ_CPPFLAGS+=-I$(TO_BASE)/src
+users_guide: $(TO_BASE)/src/libharmony.a
 
 # ifeq (0, $(shell which $(FC) > /dev/null 2>&1; echo $$?))
 #     SRCS+=fortran.f

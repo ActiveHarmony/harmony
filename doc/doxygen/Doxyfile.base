@@ -1,6 +1,7 @@
 PROJECT_NUMBER   = 4.5
 QUIET            = YES
 IMAGE_PATH       = images
+EXAMPLE_PATH     = ../example/client_api
 
 EXTENSION_MAPPING     = no_extension=c
 OPTIMIZE_OUTPUT_FOR_C = YES
