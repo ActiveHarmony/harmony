@@ -1734,18 +1734,48 @@ int harmony_id(hdesc_t* hdesc, const char* id)
 int harmony_bind_int(hdesc_t* hdesc, const char* name, long* ptr)
 {
     hdesc_compat_t* compat = harmony_compat_find(hdesc);
+
+    if (!compat->htask) {
+        for (int i = 0; i < compat->hdef->space.len; ++i) {
+            if (strcmp(compat->hdef->space.dim[i].name, name) == 0) {
+                compat->hdef->varloc[i] = ptr;
+                return 0;
+            }
+        }
+        return -1;
+    }
     return ah_bind_int(compat->htask, name, ptr);
 }
 
 int harmony_bind_real(hdesc_t* hdesc, const char* name, double* ptr)
 {
     hdesc_compat_t* compat = harmony_compat_find(hdesc);
+
+    if (!compat->htask) {
+        for (int i = 0; i < compat->hdef->space.len; ++i) {
+            if (strcmp(compat->hdef->space.dim[i].name, name) == 0) {
+                compat->hdef->varloc[i] = ptr;
+                return 0;
+            }
+        }
+        return -1;
+    }
     return ah_bind_real(compat->htask, name, ptr);
 }
 
 int harmony_bind_enum(hdesc_t* hdesc, const char* name, const char** ptr)
 {
     hdesc_compat_t* compat = harmony_compat_find(hdesc);
+
+    if (!compat->htask) {
+        for (int i = 0; i < compat->hdef->space.len; ++i) {
+            if (strcmp(compat->hdef->space.dim[i].name, name) == 0) {
+                compat->hdef->varloc[i] = ptr;
+                return 0;
+            }
+        }
+        return -1;
+    }
     return ah_bind_enum(compat->htask, name, ptr);
 }
 
@@ -1791,13 +1821,29 @@ const char* harmony_get_enum(hdesc_t* hdesc, const char* name)
 char* harmony_getcfg(hdesc_t* hdesc, const char* key)
 {
     hdesc_compat_t* compat = harmony_compat_find(hdesc);
-    return (char*)ah_get_cfg(compat->htask, key);
+    const char* retval;
+
+    if (!compat->htask)
+        retval = hcfg_get(&compat->hdef->cfg, key);
+    else
+        retval = ah_get_cfg(compat->htask, key);
+
+    return stralloc( retval );
 }
 
 char* harmony_setcfg(hdesc_t* hdesc, const char* key, const char* val)
 {
     hdesc_compat_t* compat = harmony_compat_find(hdesc);
-    return (char*)ah_set_cfg(compat->htask, key, val);
+    const char* retval;
+
+    if (!compat->htask) {
+        retval = hcfg_get(&compat->hdef->cfg, key);
+        hcfg_set(&compat->hdef->cfg, key, val);
+    }
+    else {
+        retval = ah_set_cfg(compat->htask, key, val);
+    }
+    return stralloc( retval );
 }
 
 int harmony_fetch(hdesc_t* hdesc)
