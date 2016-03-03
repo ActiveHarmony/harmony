@@ -1630,7 +1630,7 @@ static hdesc_compat_t* harmony_compat_list;
 static int harmony_compat_list_len;
 static int harmony_compat_list_cap;
 
-hdesc_t* harmony_init(void)
+hdesc_t* harmony_init(int* argc, char*** argv)
 {
     if (harmony_compat_list_len == harmony_compat_list_cap) {
         if (array_grow(&harmony_compat_list, &harmony_compat_list_cap,
@@ -1645,6 +1645,9 @@ hdesc_t* harmony_init(void)
     compat->hdef  = ah_def_alloc();
     compat->htask = NULL;
     ++harmony_compat_list_len;
+
+    if (argc && argv)
+        ah_args(compat->hdesc, argc, *argv);
 
     return compat->hdesc;
 }
@@ -1749,12 +1752,15 @@ int harmony_bind_enum(hdesc_t* hdesc, const char* name, const char** ptr)
 int harmony_join(hdesc_t* hdesc, const char* host, int port, const char* name)
 {
     hdesc_compat_t* compat = harmony_compat_find(hdesc);
-    if (ah_connect(hdesc, host, port) != 0)
-        return -1;
 
-    compat->htask = ah_join(hdesc, name);
-    if (!compat->htask)
-        return -1;
+    if (!compat->htask) {
+        if (ah_connect(hdesc, host, port) != 0)
+            return -1;
+
+        compat->htask = ah_join(hdesc, name);
+        if (!compat->htask)
+            return -1;
+    }
 
     return 0;
 }
@@ -1800,10 +1806,10 @@ int harmony_fetch(hdesc_t* hdesc)
     return ah_fetch(compat->htask);
 }
 
-int harmony_report(hdesc_t* hdesc, double* perf)
+int harmony_report(hdesc_t* hdesc, double perf)
 {
     hdesc_compat_t* compat = harmony_compat_find(hdesc);
-    return ah_report(compat->htask, perf);
+    return ah_report(compat->htask, &perf);
 }
 
 int harmony_report_one(hdesc_t* hdesc, int index, double value)

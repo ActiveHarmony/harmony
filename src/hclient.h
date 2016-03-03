@@ -117,7 +117,7 @@ void        ah_error_clear(void);
 #endif
 
 DEPRECATED("Use ah_alloc() instead")
-hdesc_t* harmony_init(void);
+hdesc_t* harmony_init(int* argc, char*** argv);
 
 DEPRECATED("Use ah_args() instead")
 int harmony_parse_args(hdesc_t* hdesc, int argc, char** argv);
@@ -185,7 +185,7 @@ DEPRECATED("Use ah_fetch() instead")
 int harmony_fetch(hdesc_t* hdesc);
 
 DEPRECATED("Use ah_report() instead")
-int harmony_report(hdesc_t* hdesc, double* perf);
+int harmony_report(hdesc_t* hdesc, double perf);
 
 DEPRECATED("Use ah_report_one() instead")
 int harmony_report_one(hdesc_t* hdesc, int index, double value);
