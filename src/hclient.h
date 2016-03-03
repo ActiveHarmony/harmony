@@ -108,9 +108,11 @@ void        ah_error_clear(void);
  */
 #ifndef DOXYGEN_SKIP
 
-#if (__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 5)
+#if defined(__INTEL_COMPILER)
+#define DEPRECATED(message) __attribute__((__deprecated__))
+#elif (__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 5)
 #define DEPRECATED(message) __attribute__((__deprecated__(message)))
-#elif defined(__INTEL_COMPILER)
+#elif defined(__GNUC__)
 #define DEPRECATED(message) __attribute__((__deprecated__))
 #else
 #define DEPRECATED(message)
