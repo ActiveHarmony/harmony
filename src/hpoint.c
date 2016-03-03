@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -18,139 +18,175 @@
  */
 
 #include "hpoint.h"
+#include "hspace.h"
+#include "hrange.h"
 #include "hutil.h"
 
-#include <stdio.h>
-#include <errno.h>
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
+#include <stdlib.h> // For realloc().
+#include <string.h> // For memcpy() and memcmp().
+#include <assert.h> // For assert().
+#include <ctype.h>  // For isspace().
 
-const hpoint_t HPOINT_INITIALIZER = {-1, 0, NULL, 0};
+const hpoint_t hpoint_zero = HPOINT_INITIALIZER;
 
-void hpoint_scrub(hpoint_t *pt);
+/*
+ * Internal helper function prototypes.
+ */
+static int align_int(hval_t* val, const hrange_t* range);
+static int align_real(hval_t* val, const hrange_t* range);
+static int align_str(hval_t* val, const hrange_t* range);
 
-int hpoint_init(hpoint_t *pt, int n)
+/*
+ * Base structure management implementation.
+ */
+int hpoint_init(hpoint_t* point, int newcap)
 {
-    pt->id = 0;
-    pt->n = n;
-    pt->val = (hval_t *) calloc(n, sizeof(hval_t));
-    if (!pt->val)
-        return -1;
-    pt->memlevel = 0;
-
-    return 0;
-}
-
-void hpoint_fini(hpoint_t *pt)
-{
-    if (pt->n > 0) {
-        hpoint_scrub(pt);
-        free(pt->val);
-    }
-    *pt = HPOINT_INITIALIZER;
-}
-
-int hpoint_copy(hpoint_t *copy, const hpoint_t *orig)
-{
-    int i;
-    hval_t *newbuf;
-    char *newstr;
-
-    if (orig->id == -1) {
-        hpoint_fini(copy);
-        return 0;
-    }
-
-    copy->id = orig->id;
-    hpoint_scrub(copy);
-    if (copy->n != orig->n) {
-        newbuf = (hval_t *) realloc(copy->val, sizeof(hval_t) * orig->n);
+    if (point->cap < newcap) {
+        hval_t* newbuf = realloc(point->term, newcap * sizeof(*point->term));
         if (!newbuf)
             return -1;
-        copy->val = newbuf;
-        copy->n = orig->n;
+
+        // Initialize any newly created hval_t structures.
+        memset(newbuf + point->cap, 0,
+               (newcap - point->cap) * sizeof(*point->term));
+
+        point->term = newbuf;
+        point->cap  = newcap;
+    }
+    return 0;
+}
+
+int hpoint_copy(hpoint_t* dst, const hpoint_t* src)
+{
+    if (dst->cap < src->len) {
+        if (hpoint_init(dst, src->len) != 0)
+            return -1;
     }
 
-    copy->memlevel = 0;
-    memcpy(copy->val, orig->val, sizeof(hval_t) * orig->n);
-    for (i = 0; i < copy->n; ++i) {
-        if (copy->val[i].type == HVAL_STR) {
-            newstr = stralloc(copy->val[i].value.s);
-            if (!newstr)
-                return -1;
-            copy->val[i].value.s = newstr;
-            copy->memlevel = 1;
-        }
+    for (int i = 0; i < src->len; ++i) {
+        if (hval_copy(&dst->term[i], &src->term[i]) != 0)
+            return -1;
     }
+    dst->len = src->len;
+    dst->id  = src->id;
 
     return 0;
 }
 
-int hpoint_align(hpoint_t *pt, hsignature_t *sig)
+void hpoint_fini(hpoint_t* point)
 {
-    int i;
+    for (int i = 0; i < point->cap; ++i)
+        hval_fini(&point->term[i]);
+    free(point->term);
+}
 
-    if (pt->n != sig->range_len)
+void hpoint_scrub(hpoint_t* point)
+{
+    free(point->term);
+}
+
+/*
+ * Point manipulation implementation.
+ */
+int hpoint_align(hpoint_t* point, const hspace_t* space)
+{
+    if (!point->id)
+        return 0;
+
+    for (int i = 0; i < space->len; ++i) {
+        int retval;
+        hval_t* val = &point->term[i];
+
+        switch (space->dim[i].type) {
+        case HVAL_INT:  retval = align_int(val, &space->dim[i]); break;
+        case HVAL_REAL: retval = align_real(val, &space->dim[i]); break;
+        case HVAL_STR:  retval = align_str(val, &space->dim[i]); break;
+        default:        retval = -1;
+        }
+        if (retval != 0)
+            return -1;
+    }
+    return 0;
+}
+
+int hpoint_eq(const hpoint_t* a, const hpoint_t* b)
+{
+    if (a->len != b->len)
+        return 0;
+    else
+        return memcmp(a->term, b->term, a->len * sizeof(*a->term)) == 0;
+}
+
+int hpoint_cmp(const hpoint_t* a, const hpoint_t* b)
+{
+    if (a->len != b->len)
+        return a->len - b->len;
+    else
+        return memcmp(a->term, b->term, a->len * sizeof(*a->term));
+}
+
+/*
+ * Data transmission implementation.
+ */
+int hpoint_pack(char** buf, int* buflen, const hpoint_t* point)
+{
+    int total = snprintf_serial(buf, buflen, " pt:%u", point->id);
+    if (total < 0) return -1;
+
+    if (point->id) {
+        int count = snprintf_serial(buf, buflen, " %d", point->len);
+        if (count < 0) return -1;
+        total += count;
+
+        for (int i = 0; i < point->len; ++i) {
+            count = hval_pack(buf, buflen, &point->term[i]);
+            if (count < 0) return -1;
+            total += count;
+        }
+    }
+    return total;
+}
+
+int hpoint_unpack(hpoint_t* point, char* buf)
+{
+    int total;
+    if (sscanf(buf, " pt:%u%n", &point->id, &total) < 1)
         return -1;
 
-    for (i = 0; i < pt->n; ++i) {
-        hval_t *val = &pt->val[i];
+    if (point->id) {
+        int newlen, count;
 
-        if (val->type != sig->range[i].type)
+        if (sscanf(buf + total, " %d%n", &newlen, &count) < 1)
             return -1;
+        total += count;
 
-        switch (sig->range[i].type) {
-        case HVAL_INT:
-            val->value.i = hrange_int_nearest(&sig->range[i].bounds.i,
-                                              val->value.i);
-            break;
-
-        case HVAL_REAL:
-            val->value.r = hrange_real_nearest(&sig->range[i].bounds.r,
-                                               val->value.r);
-            break;
-
-        case HVAL_STR: {
-            unsigned long idx = hrange_str_index(&sig->range[i].bounds.s,
-                                                 val->value.s);
-            if (pt->memlevel == 1)
-                free((char *)val->value.s);
-
-            val->value.s = sig->range[i].bounds.s.set[idx];
-            break;
+        if (point->cap < newlen) {
+            if (hpoint_init(point, newlen) != 0)
+                return -1;
         }
 
-        default:
-            return -1;
+        for (int i = 0; i < newlen; ++i) {
+            count = hval_unpack(&point->term[i], buf + total);
+            if (count < 0) return -1;
+            total += count;
         }
+        point->len = newlen;
     }
-
-    pt->memlevel = 0;
-    return 0;
+    return total;
 }
 
-int hpoint_parse(hpoint_t *pt, hsignature_t *sig, const char *buf)
+int hpoint_parse(hpoint_t* point, const char* buf, const hspace_t* space)
 {
-    int i, span;
+    if (point->cap < space->len)
+        hpoint_init(point, space->len);
 
-    if (pt->n != sig->range_len) {
-        hpoint_fini(pt);
-        hpoint_init(pt, sig->range_len);
-    }
+    for (int i = 0; i < space->len; ++i) {
+        hval_t* val = &point->term[i];
+        int count = hval_parse(val, space->dim[i].type, buf);
+        if (count < 0) return -1;
+        buf += count;
 
-    for (i = 0; i < pt->n; ++i) {
-        pt->val[i].type = sig->range[i].type;
-
-        span = hval_parse(&pt->val[i], buf);
-        if (span < 0)
-            return -1;
-        buf += span;
-
-        if (pt->val[i].type == HVAL_STR)
-            pt->memlevel = 1;
-
-        /* Skip whitespace and a single separator character. */
+        // Skip whitespace and a single separator character.
         while (isspace(*buf)) ++buf;
         if (*buf == ',' || *buf == ';')
             ++buf;
@@ -158,83 +194,69 @@ int hpoint_parse(hpoint_t *pt, hsignature_t *sig, const char *buf)
     if (*buf != '\0')
         return -1;
 
+    point->len = space->len;
     return 0;
 }
 
-int hpoint_serialize(char **buf, int *buflen, const hpoint_t *pt)
+/*
+ * Internal helper function implementation.
+ */
+int align_int(hval_t* val, const hrange_t* range)
 {
-    int i, count, total;
+    if (val->value.i < range->bounds.i.min)
+        val->value.i = range->bounds.i.min;
+    if (val->value.i > range->bounds.i.max)
+        val->value.i = range->bounds.i.max;
 
-    count = snprintf_serial(buf, buflen, "hpoint:%d ", pt->id);
-    if (count < 0) goto invalid;
-    total = count;
+    long rank;
+    rank  = val->value.i;
+    rank += range->bounds.i.step / 2; // To support proper integer rounding.
+    rank -= range->bounds.i.min;
+    rank /= range->bounds.i.step;
 
-    if (pt->id >= 0) {
-        count = snprintf_serial(buf, buflen, "%d ", pt->n);
-        if (count < 0) goto invalid;
-        total += count;
+    val->value.i  = range->bounds.i.step;
+    val->value.i *= rank;
+    val->value.i += range->bounds.i.min;
 
-        for (i = 0; i < pt->n; ++i) {
-            count = hval_serialize(buf, buflen, &pt->val[i]);
-            if (count < 0) goto error;
-            total += count;
-        }
-    }
-    return total;
-
-  invalid:
-    errno = EINVAL;
-  error:
-    return -1;
+    return 0;
 }
 
-int hpoint_deserialize(hpoint_t *pt, char *buf)
+int align_real(hval_t* val, const hrange_t* range)
 {
-    int i, count, total, new_n;
-    hval_t *newbuf;
+    if (val->value.r < range->bounds.r.min)
+        val->value.r = range->bounds.r.min;
+    if (val->value.r > range->bounds.r.max)
+        val->value.r = range->bounds.r.max;
 
-    if (sscanf(buf, " hpoint:%d%n", &pt->id, &count) < 1)
-        goto invalid;
-    total = count;
+    if (range->bounds.r.step > 0.0) {
+        double rank;
+        rank  = val->value.r;
+        rank -= range->bounds.r.min;
+        rank /= range->bounds.r.step;
+        rank += 0.5; // To support proper integer rounding.
 
-    if (pt->id >= 0) {
-        if (sscanf(buf + total, " %d%n", &new_n, &count) < 1)
-            goto invalid;
-        total += count;
-
-        if (pt->n != new_n) {
-            newbuf = (hval_t *) realloc(pt->val, sizeof(hval_t) * new_n);
-            if (!newbuf)
-                goto error;
-            pt->val = newbuf;
-            pt->n = new_n;
-        }
-
-        for (i = 0; i < pt->n; ++i) {
-            count = hval_deserialize(&pt->val[i], buf + total);
-            if (count < 0) goto error;
-            total += count;
-        }
+        val->value.r  = range->bounds.r.step;
+        val->value.r *= (long) rank;
+        val->value.r += range->bounds.r.min;
     }
-
-    pt->memlevel = 0;
-    return total;
-
-  invalid:
-    errno = EINVAL;
-  error:
-    return -1;
+    return 0;
 }
 
-void hpoint_scrub(hpoint_t *pt)
+int align_str(hval_t* val, const hrange_t* range)
 {
-    int i;
+    // First pass compare by address.
+    for (int i = 0; i < range->bounds.e.len; ++i)
+        if (val->value.s == range->bounds.e.set[i])
+            return 0;
 
-    if (pt->memlevel == 1) {
-        for (i = 0; i < pt->n; ++i) {
-            if (pt->val[i].type == HVAL_STR)
-                free((char *)pt->val[i].value.s);
+    // Second pass compare by value.
+    for (int i = 0; i < range->bounds.e.len; ++i) {
+        if (strcmp(val->value.s, range->bounds.e.set[i]) == 0) {
+            val->value.s = range->bounds.e.set[i];
+            free(val->buf);
+            val->buf = NULL;
+            return 0;
         }
-        pt->memlevel = 0;
     }
+    return -1;
 }

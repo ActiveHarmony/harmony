@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -33,50 +33,38 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
-int tcp_connect(const char *host, int port)
+#if defined(SO_NOSIGPIPE)
+void init_socket(int sockfd)
+{
+    static const int set = 1;
+    setsockopt(sockfd, SOL_SOCKET, SO_NOSIGPIPE, &set, sizeof(int));
+}
+#endif
+
+int tcp_connect(const char* host, int port)
 {
     struct sockaddr_in addr;
-    struct hostent *h_name;
-    char *portenv;
+    struct hostent* h_name;
     int sockfd;
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0)
         return -1;
 
-    /* Look up the address associated with the supplied hostname
-     * string.  If no hostname is provided, use the HARMONY_S_HOST
-     * environment variable, if defined.  Otherwise, resort to
-     * default.
-     */
-    if (host == NULL) {
-        host = getenv("HARMONY_S_HOST");
-        if (host == NULL)
-            host = DEFAULT_HOST;
-    }
-
     h_name = gethostbyname(host);
     if (!h_name)
         return -1;
     memcpy(&addr.sin_addr, h_name->h_addr_list[0], sizeof(struct in_addr));
+    addr.sin_port = htons((unsigned short)port);
 
-    /* Prepare the port of connection.  If the supplied port is 0, use
-     * the HARMONY_S_PORT environment variable, if defined.
-     * Otherwise, resort to default.
-     */
-    if (port == 0) {
-        portenv = getenv("HARMONY_S_PORT");
-        if (portenv)
-            port = atoi(portenv);
-        else
-            port = DEFAULT_PORT;
-    }
-    addr.sin_port = htons(port);
-
-    /* try to connect to the server */
+    // Try to connect to the server.
     addr.sin_family = AF_INET;
-    if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
+    if (connect(sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0)
         return -1;
+
+#if defined(SO_NOSIGPIPE)
+    init_socket(sockfd);
+#endif
 
     return sockfd;
 }
@@ -86,15 +74,18 @@ int tcp_connect(const char *host, int port)
  * Here we define some useful functions to handle data communication
  *
  ***/
-int socket_write(int fd, const void *data, unsigned datalen)
+#ifndef MSG_NOSIGNAL
+#define MSG_NOSIGNAL 0x0
+#endif
+
+int socket_write(int fd, const void* data, unsigned len)
 {
     int retval;
     unsigned count;
 
     count = 0;
     do {
-        retval = send(fd, ((char *)data) + count,
-                      datalen - count, MSG_NOSIGNAL);
+        retval = send(fd, ((char*)data) + count, len - count, MSG_NOSIGNAL);
         if (retval < 0) {
             if (errno == EINTR) continue;
             else return -1;
@@ -103,18 +94,18 @@ int socket_write(int fd, const void *data, unsigned datalen)
             break;
 
         count += retval;
-    } while (count < datalen);
+    } while (count < len);
 
     return count;
 }
 
-int socket_read(int fd, const void *data, unsigned datalen)
+int socket_read(int fd, const void* data, unsigned datalen)
 {
     int retval;
     unsigned count = 0;
 
     do {
-        retval = recv(fd, ((char *)data) + count,
+        retval = recv(fd, ((char*)data) + count,
                       datalen - count, MSG_NOSIGNAL);
         if (retval < 0) {
             if (errno == EINTR) continue;
@@ -129,7 +120,7 @@ int socket_read(int fd, const void *data, unsigned datalen)
     return count;
 }
 
-int socket_launch(const char *path, char *const argv[], pid_t *return_pid)
+int socket_launch(const char* path, char* const argv[], pid_t* return_pid)
 {
     int sockfd[2];
     pid_t pid;
@@ -142,7 +133,7 @@ int socket_launch(const char *path, char *const argv[], pid_t *return_pid)
         return -1;
 
     if (pid == 0) {
-        /* Child Case */
+        // Child Case.
         close(sockfd[0]);
         if (dup2(sockfd[1], STDIN_FILENO) != STDIN_FILENO)
             perror("Could not duplicate socket onto child STDIN");
@@ -153,12 +144,16 @@ int socket_launch(const char *path, char *const argv[], pid_t *return_pid)
         if (execv(path, argv) < 0)
             perror("Could not launch child executable");
 
-        exit(-1);  /* Be sure to exit here. */
+        exit(-1); // Be sure to exit here.
     }
 
-    /* Parent continues here. */
+    // Parent continues here.
     if (return_pid)
         *return_pid = pid;
+
+#if defined(SO_NOSIGPIPE)
+    init_socket(sockfd[0]);
+#endif
 
     close(sockfd[1]);
     return sockfd[0];
@@ -167,63 +162,97 @@ int socket_launch(const char *path, char *const argv[], pid_t *return_pid)
 /*
  * send a message to the given socket
  */
-int mesg_send(int sock, hmesg_t *mesg)
+int mesg_send(int sock, hmesg_t* mesg)
 {
-    int msglen;
-
-    msglen = hmesg_serialize(mesg);
-    if (msglen < 0)
+    int pkt_len = hmesg_pack(mesg);
+    if (pkt_len < 0)
         return -1;
 
-    /* fprintf(stderr, "(%2d)<<< '%s'\n", sock, mesg->buf); */
-    if (socket_write(sock, mesg->buf, msglen) < msglen)
+    /* DEBUG - Comment out this line to enable.
+    fprintf(stderr, "(Send %2d) [src:%d -> dest:%d] msg:'%s'\n", sock,
+            mesg->src, mesg->dest, mesg->send_buf + HMESG_HEADER_SIZE); //*/
+
+    if (socket_write(sock, mesg->send_buf, pkt_len) < pkt_len)
         return -1;
 
-    hmesg_scrub(mesg);
-    mesg->type = HMESG_UNKNOWN;
+    return 1;
+}
+
+/*
+ * Forward a message to the given socket.
+ *
+ * If no changes were made to an hmesg_t after it was unpacked, the
+ * original payload may be forwarded to a different destination by
+ * replacing null bytes with the string delimiting character (").
+ */
+int mesg_forward(int sock, hmesg_t* mesg)
+{
+    unsigned short pkt_len;
+    memcpy(&pkt_len, mesg->recv_buf + HMESG_LEN_OFFSET, HMESG_LEN_SIZE);
+    pkt_len = ntohs(pkt_len);
+
+    if (hmesg_forward(mesg) != 0)
+        return -1;
+
+    for (int i = HMESG_HEADER_SIZE; i < pkt_len; ++i)
+        if (mesg->recv_buf[i] == '\0')
+            mesg->recv_buf[i] =  '\"';
+
+    /* DEBUG - Comment out this line to enable.
+    fprintf(stderr, "(Fwrd %2d) [src:%d -> dest:%d] msg:'%s'\n", sock,
+            mesg->src, mesg->dest, mesg->recv_buf + HMESG_HEADER_SIZE); //*/
+
+    if (socket_write(sock, mesg->recv_buf, pkt_len) < pkt_len)
+        return -1;
+
     return 1;
 }
 
 /*
  * receive a message from a given socket
  */
-int mesg_recv(int sock, hmesg_t *mesg)
+int mesg_recv(int sock, hmesg_t* mesg)
 {
-    char hdr[HMESG_HDRLEN + 1];
-    char *newbuf;
-    int msglen, retval;
-    unsigned int msgver;
-
-    retval = recv(sock, hdr, sizeof(hdr), MSG_PEEK);
+    char peek[HMESG_PEEK_SIZE];
+    int retval = recv(sock, peek, HMESG_PEEK_SIZE, MSG_PEEK);
     if (retval <  0) goto error;
     if (retval == 0) return 0;
 
-    if (ntohl(*(unsigned int *)hdr) != HMESG_MAGIC)
+    unsigned int pkt_magic;
+    memcpy(&pkt_magic, peek + HMESG_MAGIC_OFFSET, HMESG_MAGIC_SIZE);
+    if (ntohl(pkt_magic) != HMESG_MAGIC)
         goto invalid;
 
-    hdr[HMESG_HDRLEN] = '\0';
-    if (sscanf(hdr + sizeof(int), "%4d%2x", &msglen, &msgver) < 2)
-        goto invalid;
+    unsigned short pkt_len;
+    memcpy(&pkt_len, peek + HMESG_LEN_OFFSET, HMESG_LEN_SIZE);
+    pkt_len = ntohs(pkt_len);
 
-    if (msgver != HMESG_VERSION)
-        goto invalid;
-
-    if (mesg->buflen <= msglen) {
-        newbuf = (char *) realloc(mesg->buf, msglen + 1);
+    if (mesg->recv_len <= pkt_len) {
+        char* newbuf = realloc(mesg->recv_buf, pkt_len + 1);
         if (!newbuf)
             goto error;
-        mesg->buf = newbuf;
-        mesg->buflen = msglen;
+        mesg->recv_buf = newbuf;
+        mesg->recv_len = pkt_len + 1;
     }
 
-    retval = socket_read(sock, mesg->buf, msglen);
+    retval = socket_read(sock, mesg->recv_buf, pkt_len);
     if (retval == 0) return 0;
-    if (retval < msglen) goto error;
-    mesg->buf[retval] = '\0';  /* A strlen() safety net. */
-    /* fprintf(stderr, "(%2d)>>> '%s'\n", sock, mesg->buf); */
+    if (retval < pkt_len) goto error;
+    mesg->recv_buf[retval] = '\0'; // A strlen() safety net.
 
-    hmesg_scrub(mesg);
-    if (hmesg_deserialize(mesg) < 0)
+    /* DEBUG - Comment out this line to enable.
+    unsigned short pkt_src;
+    memcpy(&pkt_src, mesg->recv_buf + HMESG_SRC_OFFSET, HMESG_SRC_SIZE);
+    pkt_src = ntohs(pkt_src);
+
+    unsigned short pkt_dest;
+    memcpy(&pkt_dest, mesg->recv_buf + HMESG_DEST_OFFSET, HMESG_DEST_SIZE);
+    pkt_dest = ntohs(pkt_dest);
+
+    fprintf(stderr, "(Recv %2d) [src:%d -> dest:%d] msg:'%s'\n", sock,
+            pkt_src, pkt_dest, mesg->recv_buf + HMESG_HEADER_SIZE); //*/
+
+    if (hmesg_unpack(mesg) < 0)
         goto error;
 
     return 1;

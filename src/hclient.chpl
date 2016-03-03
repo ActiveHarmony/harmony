@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -17,8 +17,9 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/* Harmony client module definition file for Cray's Chapel language. */
-
+/*
+ * Harmony client module definition file for Cray's Chapel language.
+ */
 module hclient
 {
     extern var HARMONY_IO_POLL : int(32);

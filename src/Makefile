@@ -1,129 +1,61 @@
 TO_BASE=..
-PREFIX=$(TO_BASE)
+SUBDIRS=plugins/layers \
+        plugins/strategies \
 
-CC=gcc
-CFLAGS=-std=c99 -pedantic -Wall -Werror -g
-CPPFLAGS=-D_ISOC99_SOURCE -D_XOPEN_SOURCE=500
-
-SHR_SRCS=hcfg.c \
+LIB_SRCS=hcfg.c \
          hmesg.c \
          hpoint.c \
          hperf.c \
-         hsession.c \
-         hsignature.c \
+         hrange.c \
          hsockutil.c \
+         hspace.c \
          hutil.c \
          hval.c
-LIB_SRCS=hclient.c
+SESSION_SRCS=hplugin.c
+CLI_SRCS=hclient.c
 BIN_SRCS=hserver.c \
          httpsvr.c \
          session-core.c \
          tuna.c \
          hinfo.c
-SRCS=$(SHR_SRCS) $(LIB_SRCS) $(BIN_SRCS)
+SRCS=$(BIN_SRCS) $(LIB_SRCS) $(SESSION_SRCS) $(CLI_SRCS)
 
-SHR_OBJS=$(SHR_SRCS:.c=.o)
 LIB_OBJS=$(LIB_SRCS:.c=.o)
+CLI_OBJS=$(CLI_SRCS:.c=.o)
+SESSION_OBJS=$(SESSION_SRCS:.c=.o)
 
-BIN_FILES=harmony.cfg
-INCLUDE_FILES=hclient.h
-HTTP_FILES=http/overview.cgi \
-           http/overview.js \
-           http/session-view.cgi \
-           http/session-view.js \
-           http/common.js \
-           http/activeharmony.css \
-           http/jquery.min.js \
-           http/jquery.flot.min.js \
-           http/jquery.flot.time.min.js \
-           http/jquery.flot.resize.min.js \
-           http/jquery.flot.selection.min.js \
-           http/excanvas.min.js
+BIN_TGTS=hinfo \
+         hserver \
+         tuna
+LIB_TGTS=libharmony.a
+LIBEXEC_TGTS=session-core
+LIBEXEC_COPY=http/overview.cgi \
+             http/overview.js \
+             http/session-view.cgi \
+             http/session-view.js \
+             http/common.js \
+             http/activeharmony.css \
+             http/jquery.min.js \
+             http/jquery.flot.min.js \
+             http/jquery.flot.time.min.js \
+             http/jquery.flot.resize.min.js \
+             http/jquery.flot.selection.min.js \
+             http/excanvas.min.js
+INCLUDE_COPY=hclient.h
 
-BIN_TARGETS=hserver \
-            tuna \
-            hinfo
-LIB_TARGETS=libharmony.a
-LIBEXEC_TARGETS=session-core
-TARGETS=$(BIN_TARGETS) $(LIB_TARGETS) $(LIBEXEC_TARGETS)
+hinfo: REQ_LDFLAGS+=$(EXPORT_FLAG)
+hinfo: REQ_LDLIBS+=-ldl
+hinfo: $(LIB_OBJS)
 
-SUBDIRS=plugins/strategies \
-        plugins/layers
+hserver: httpsvr.o $(LIB_OBJS)
 
-.PHONY: all install clean distclean $(SUBDIRS)
+session-core: REQ_LDFLAGS+=$(EXPORT_FLAG)
+session-core: REQ_LDLIBS+=-ldl
+session-core: $(LIB_OBJS) $(SESSION_OBJS)
 
-all: $(TARGETS) $(SUBDIRS)
-
-install: $(TARGETS) $(SUBDIRS)
-	@if [ ! -d $(PREFIX)/bin ]; then                     \
-		echo mkdir -p $(PREFIX)/bin;                 \
-		mkdir -p $(PREFIX)/bin;                      \
-	fi &&                                                \
-	echo cp $(BIN_TARGETS) $(BIN_FILES) $(PREFIX)/bin && \
-	cp $(BIN_TARGETS) $(BIN_FILES) $(PREFIX)/bin &&      \
-                                                             \
-	if [ ! -d $(PREFIX)/lib ]; then                      \
-		echo mkdir -p $(PREFIX)/lib;                 \
-		mkdir -p $(PREFIX)/lib;                      \
-	fi &&                                                \
-	echo cp $(LIB_TARGETS) $(PREFIX)/lib &&              \
-	cp $(LIB_TARGETS) $(PREFIX)/lib &&                   \
-                                                             \
-	if [ ! -d $(PREFIX)/include ]; then                  \
-		echo mkdir -p $(PREFIX)/include;             \
-		mkdir -p $(PREFIX)/include;                  \
-	fi &&                                                \
-	echo cp $(INCLUDE_FILES) $(PREFIX)/include &&        \
-	cp $(INCLUDE_FILES) $(PREFIX)/include &&             \
-                                                             \
-	if [ ! -d $(PREFIX)/libexec ]; then                  \
-		echo mkdir -p $(PREFIX)/libexec;             \
-		mkdir -p $(PREFIX)/libexec;                  \
-	fi &&                                                \
-	echo cp $(LIBEXEC_TARGETS) $(PREFIX)/libexec &&      \
-	cp $(LIBEXEC_TARGETS) $(PREFIX)/libexec &&           \
-                                                             \
-	if [ ! -d $(PREFIX)/libexec/html ]; then             \
-		echo mkdir -p $(PREFIX)/libexec/html;        \
-		mkdir -p $(PREFIX)/libexec/html;             \
-	fi &&                                                \
-	echo cp $(HTTP_FILES) $(PREFIX)/libexec/html &&      \
-	cp $(HTTP_FILES) $(PREFIX)/libexec/html
-
-hserver: httpsvr.o $(SHR_OBJS)
-
-session-core: override LDFLAGS+=-Wl,--export-dynamic
-session-core: override LDLIBS+=-ldl
-session-core: $(SHR_OBJS)
-
-hinfo: override LDFLAGS+=-Wl,--export-dynamic
-hinfo: override LDLIBS+=-ldl
-hinfo: $(SHR_OBJS)
-
-tuna.o: override CFLAGS+=-D_BSD_SOURCE
 tuna: libharmony.a
 
-libharmony.a: $(LIB_OBJS) $(SHR_OBJS)
-	$(AR) $(ARFLAGS) $@ $^
+libharmony.a: $(LIB_OBJS) $(CLI_OBJS)
 
-$(LIB_OBJS) $(SHR_OBJS): override CFLAGS+=-fPIC
-
-$(SUBDIRS):
-	$(MAKE) -C $@ $(MAKECMDGOALS)
-
-clean: $(SUBDIRS)
-	rm -f core a.out *.o $(TARGETS)
-
-distclean: clean
-	rm -f *~ *.d
-
-#
-# Auto dependency creation
-#
-%.d: %.c
-	@rm -f $@; \
-		$(CC) -MM $(CPPFLAGS) $< > $@.$$$$ 2>/dev/null; \
-		sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
-		rm -f $@.$$$$
-
--include $(SRCS:.c=.d)
+# Active Harmony makefiles should always include this file last.
+include $(TO_BASE)/make/common.mk

@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -28,172 +28,157 @@
  *
  * It is mainly used as a basis of comparison for more intelligent
  * search strategies.
- *
- *
- * **Configuration Variables**
- * Key    | Type       | Default | Description
- * ------ | ---------- | ------- | -----------
- * PASSES | Integer    | 1       | Number of passes through the search space before the search is considered converged.
  */
 
-#include "strategy.h"
+#include "hstrategy.h"
 #include "session-core.h"
-#include "hperf.h"
 #include "hutil.h"
-#include "hcfg.h"
-#include "defaults.h"
 
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <math.h>
 
-hpoint_t best;
-double   best_perf;
-
-/* Forward function definitions. */
-int strategy_cfg(hsignature_t *sig);
-int increment(void);
-
-/* Variables to track current search state. */
-int N;
-hrange_t *range;
-hpoint_t curr;
-unsigned long *idx;
-int remaining_passes = 1;
-int final_id = 0;
-int outstanding_points = 0, final_point_received = 0;
+/*
+ * Configuration variables used in this plugin.
+ * These will automatically be registered by session-core upon load.
+ */
+const hcfg_info_t hplugin_keyinfo[] = {
+    { CFGKEY_PASSES, "1",
+      "Number of passes through the search space before the search "
+      "is considered converged." },
+    { CFGKEY_INIT_POINT, NULL,
+      "Initial point begin testing from." },
+    { NULL }
+};
 
 /*
- * Invoked once on strategy load.
+ * Index of an individual hpoint_t term.  The index may be represented
+ * as a double, in the case of non-finite value ranges.
  */
-int strategy_init(hsignature_t *sig)
+typedef union unit {
+    unsigned long index;
+    double        value;
+} unit_u;
+
+/*
+ * Structure to hold data for an individual exhaustive search instance.
+ */
+struct hplugin_data {
+    int       space_id;
+    hspace_t* space;
+    hpoint_t  best;
+    double    best_perf;
+
+    unit_u*  head;
+    unit_u*  next;
+    unsigned next_id;
+    unit_u*  wrap;
+
+    int remaining_passes;
+    int final_id;
+    int outstanding_points;
+    int final_point_received;
+};
+
+/*
+ * Internal helper function prototypes.
+ */
+static int  config_strategy(hplugin_data_t* data);
+static void increment(hplugin_data_t* data);
+static int  make_next_point(hplugin_data_t* data, hpoint_t* point);
+
+/*
+ * Allocate memory for a new search task.
+ */
+hplugin_data_t* strategy_alloc(void)
 {
-    N = sig->range_len;
-    range = sig->range;
+    hplugin_data_t* retval = calloc(1, sizeof(*retval));
+    if (!retval)
+        return NULL;
 
-    if (!idx) {
-        /* One time memory allocation and/or initialization. */
-        if (hpoint_init(&curr, N) != 0) {
-            session_error("Could not allocate memory candidate point.");
-            return -1;
-        }
+    retval->best_perf = HUGE_VAL;
+    retval->next_id = 1;
 
-        idx = malloc(N * sizeof(unsigned long));
-        if (!idx) {
-            session_error("Could not allocate memory for index array.");
-            return -1;
-        }
-
-        /* The best point and trial counter should only be initialized once,
-         * and thus be retained across a restart.
-         */
-        best = HPOINT_INITIALIZER;
-        best_perf = INFINITY;
-        curr.id = 1;
-    }
-
-    /* Initialization for subsequent calls to strategy_init(). */
-    if (strategy_cfg(sig) != 0)
-        return -1;
-
-    if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
-        session_error("Could not set "
-                      CFGKEY_STRATEGY_CONVERGED " config variable.");
-        return -1;
-    }
-    return 0;
+    return retval;
 }
 
-int strategy_cfg(hsignature_t *sig)
+/*
+ * Initialize (or re-initialize) data for this search task.
+ */
+int strategy_init(hplugin_data_t* data, hspace_t* space)
 {
-    const char *cfgstr;
-    int i;
-
-    cfgstr = session_getcfg(CFGKEY_PASSES);
-    if (cfgstr)
-        remaining_passes = atoi(cfgstr);
-
-    cfgstr = session_getcfg(CFGKEY_INIT_POINT);
-    if (cfgstr) {
-        if (hpoint_parse(&curr, sig, cfgstr) != 0) {
-            session_error("Error parsing point from " CFGKEY_INIT_POINT ".");
+    if (data->space_id != space->id) {
+        free(data->head);
+        data->head = malloc(space->len * sizeof(*data->head));
+        if (!data->head) {
+            search_error("Could not allocate head index array");
             return -1;
         }
 
-        if (hpoint_align(&curr, sig) != 0) {
-            session_error("Error aligning point to parameter space.");
+        free(data->next);
+        data->next = malloc(space->len * sizeof(*data->next));
+        if (!data->next) {
+            search_error("Could not allocate next index array");
             return -1;
         }
 
-        for (i = 0; i < sig->range_len; ++i) {
-            switch (sig->range[i].type) {
-            case HVAL_INT:
-                idx[i] = hrange_int_index(&sig->range[i].bounds.i,
-                                          curr.val[i].value.i);
-                break;
-            case HVAL_REAL:
-                idx[i] = hrange_real_index(&sig->range[i].bounds.r,
-                                           curr.val[i].value.r);
-                break;
-            case HVAL_STR:
-                idx[i] = hrange_str_index(&sig->range[i].bounds.s,
-                                          curr.val[i].value.s);
-                break;
-
-            default:
-                session_error("Invalid type detected in signature.");
-                return -1;
-            }
+        free(data->wrap);
+        data->wrap = malloc(space->len * sizeof(*data->wrap));
+        if (!data->wrap) {
+            search_error("Could not allocate wrap index array");
+            return -1;
         }
-    }
-    else {
-        for (i = 0; i < N; ++i) {
-            hval_t *v = &curr.val[i];
-
-            v->type = range[i].type;
-            switch (range[i].type) {
-            case HVAL_INT:  v->value.i = range[i].bounds.i.min; break;
-            case HVAL_REAL: v->value.r = range[i].bounds.r.min; break;
-            case HVAL_STR:  v->value.s = range[i].bounds.s.set[0]; break;
-            default:
-                session_error("Invalid range detected during strategy init.");
-                return -1;
-            }
-        }
-        memset(idx, 0, N * sizeof(unsigned long));
+        data->space = space;
     }
 
+    if (config_strategy(data) != 0)
+        return -1;
+
+    // Determine each search dimension's upper limit.
+    for (int i = 0; i < space->len; ++i) {
+        if (hrange_finite(&space->dim[i]))
+            data->wrap[i].index = hrange_limit(&space->dim[i]);
+        else
+            data->wrap[i].value = space->dim[i].bounds.r.max;
+    }
+
+    // Initialize the next point.
+    memcpy(data->next, data->head, space->len * sizeof(*data->next));
+
+    if (search_setcfg(CFGKEY_CONVERGED, "0") != 0) {
+        search_error("Could not set " CFGKEY_CONVERGED " config variable");
+        return -1;
+    }
     return 0;
 }
 
 /*
  * Generate a new candidate configuration.
  */
-int strategy_generate(hflow_t *flow, hpoint_t *point)
+int strategy_generate(hplugin_data_t* data, hflow_t* flow, hpoint_t* point)
 {
-    if (remaining_passes > 0) {
-        if (hpoint_copy(point, &curr) != 0) {
-            session_error("Could not copy current point during generation.");
+    if (data->remaining_passes > 0) {
+        if (make_next_point(data, point) != 0) {
+            search_error("Could not make point from index during generate");
             return -1;
         }
+        point->id = data->next_id;
 
-        if (increment() != 0)
-            return -1;
-        ++curr.id;
+        increment(data);
+        ++data->next_id;
     }
     else {
-        if (hpoint_copy(point, &best) != 0) {
-            session_error("Could not copy best point during generation.");
+        if (hpoint_copy(point, &data->best) != 0) {
+            search_error("Could not copy best point during generation");
             return -1;
         }
     }
-    
-    /* every time we send out a point that's before 
-       the final point, increment the numebr of points
-       we're waiting for results from */
-    if(! final_id || curr.id <= final_id)
-      outstanding_points++; 
+
+    // Every time we send out a point that's before the final point,
+    // increment the numebr of points we're waiting for results from.
+    if (!data->final_id || data->next_id <= data->final_id)
+        ++data->outstanding_points;
 
     flow->status = HFLOW_ACCEPT;
     return 0;
@@ -202,27 +187,24 @@ int strategy_generate(hflow_t *flow, hpoint_t *point)
 /*
  * Regenerate a point deemed invalid by a later plug-in.
  */
-int strategy_rejected(hflow_t *flow, hpoint_t *point)
+int strategy_rejected(hplugin_data_t* data, hflow_t* flow, hpoint_t* point)
 {
-    hpoint_t *hint = &flow->point;
-    int orig_id = point->id;
+    if (flow->point.id) {
+        hpoint_t* hint = &flow->point;
 
-    if (hint && hint->id != -1) {
+        hint->id = point->id;
         if (hpoint_copy(point, hint) != 0) {
-            session_error("Could not copy hint during reject.");
+            search_error("Could not copy hint during reject");
             return -1;
         }
     }
     else {
-        if (hpoint_copy(point, &curr) != 0) {
-            session_error("Could not copy current point during reject.");
+        if (make_next_point(data, point) != 0) {
+            search_error("Could not make point from index during reject");
             return -1;
         }
-
-        if (increment() != 0)
-            return -1;
+        increment(data);
     }
-    point->id = orig_id;
 
     flow->status = HFLOW_ACCEPT;
     return 0;
@@ -231,39 +213,39 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
 /*
  * Analyze the observed performance for this configuration point.
  */
-int strategy_analyze(htrial_t *trial)
+int strategy_analyze(hplugin_data_t* data, htrial_t* trial)
 {
-    double perf = hperf_unify(trial->perf);
+    // Function local variables.
+    double perf = hperf_unify(&trial->perf);
 
-    if (best_perf > perf) {
-        best_perf = perf;
-        if (hpoint_copy(&best, &trial->point) != 0) {
-            session_error("Internal error: Could not copy point.");
+    if (data->best_perf > perf) {
+        data->best_perf = perf;
+        if (hpoint_copy(&data->best, &trial->point) != 0) {
+            search_error("Could not copy best point during analyze");
             return -1;
         }
     }
 
-    if (trial->point.id == final_id) {
-        if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "1") != 0) {
-            session_error("Internal error: Could not set convergence status.");
+    if (trial->point.id == data->final_id) {
+        if (search_setcfg(CFGKEY_CONVERGED, "1") != 0) {
+            search_error("Could not set convergence status");
             return -1;
         }
     }
-    
-    /* decrement the number of points we're waiting for
-       when we get a point back that was generated before
-       the final point */
-    if(! final_id || trial->point.id <= final_id)
-        outstanding_points--;  
 
-    if (trial->point.id == final_id) 
-        final_point_received = 1;
+    // Decrement the number of points we're waiting for when we get a
+    // point back that was generated before the final point.
+    if (!data->final_id || trial->point.id <= data->final_id)
+        --data->outstanding_points;
 
-    /* converged when the final point has been received, 
-       and there are no outstanding points */
-    if(outstanding_points <= 0 && final_point_received) {
-        if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "1") != 0) {
-            session_error("Internal error: Could not set convergence status.");
+    if (trial->point.id == data->final_id)
+        data->final_point_received = 1;
+
+    // Converged when the final point has been received, and there are
+    // no outstanding points.
+    if (data->outstanding_points <= 0 && data->final_point_received) {
+        if (search_setcfg(CFGKEY_CONVERGED, "1") != 0) {
+            search_error("Could not set convergence status");
             return -1;
         }
     }
@@ -274,95 +256,118 @@ int strategy_analyze(htrial_t *trial)
 /*
  * Return the best performing point thus far in the search.
  */
-int strategy_best(hpoint_t *point)
+int strategy_best(hplugin_data_t* data, hpoint_t* point)
 {
-    if (hpoint_copy(point, &best) != 0) {
-        session_error("Could not copy best point during request for best.");
+    if (hpoint_copy(point, &data->best) != 0) {
+        search_error("Could not copy best point during request for best");
         return -1;
     }
     return 0;
 }
 
-int increment(void)
+/*
+ * Free memory associated with this search task.
+ */
+int strategy_fini(hplugin_data_t* data)
 {
-    int i, n_overflows, next_i;
-    double next_r; 
+    free(data->wrap);
+    free(data->next);
+    free(data->head);
+    hpoint_fini(&data->best);
 
-    if (remaining_passes <= 0)
-        return 0;
+    free(data);
+    return 0;
+}
 
-    for (i = 0; i < N; ++i) {
-        ++idx[i];
-        switch (range[i].type) {
-        case HVAL_INT:
-            curr.val[i].value.i += range[i].bounds.i.step;
-            if (curr.val[i].value.i > range[i].bounds.i.max) {
-                curr.val[i].value.i = range[i].bounds.i.min;
-                idx[i] = 0;
-                continue;  // Overflow detected.
-            }
-            break;
+/*
+ * Internal helper function implementation.
+ */
 
-        case HVAL_REAL:
-            curr.val[i].value.r =
-                (range[i].bounds.r.step > 0.0)
-                ? range[i].bounds.r.min + (idx[i] * range[i].bounds.r.step)
-                : nextafter(curr.val[i].value.r, INFINITY);
+int config_strategy(hplugin_data_t* data)
+{
+    const char* cfgstr;
 
-            if (curr.val[i].value.r > range[i].bounds.r.max) {
-                curr.val[i].value.r = range[i].bounds.r.min;
-                idx[i] = 0;
-                continue;  // Overflow detected.
-            }
-            break;
+    data->remaining_passes = hcfg_int(search_cfg, CFGKEY_PASSES);
+    if (data->remaining_passes < 0) {
+        search_error("Invalid value for " CFGKEY_PASSES);
+        return -1;
+    }
 
-        case HVAL_STR:
-            if (idx[i] >= range[i].bounds.s.set_len) {
-                curr.val[i].value.s = range[i].bounds.s.set[0];
-                idx[i] = 0;
-                continue;  // Overflow detected.
-            }
-            curr.val[i].value.s = range[i].bounds.s.set[ idx[i] ];
-            break;
+    cfgstr = hcfg_get(search_cfg, CFGKEY_INIT_POINT);
+    if (cfgstr) {
+        hpoint_t init;
 
-        default:
-            session_error("Invalid range detected.");
+        if (hpoint_parse(&init, cfgstr, data->space) != 0) {
+            search_error("Error parsing point from " CFGKEY_INIT_POINT);
             return -1;
         }
 
-        // No overflow detected. Look ahead one point,
-        // to figure out the final point id before it's generated
-        for(i = 0, n_overflows = 0;i < N;i++) {
-          switch (range[i].type) {
-            case HVAL_INT:
-              next_i = curr.val[i].value.i + range[i].bounds.i.step;
-              if(next_i > range[i].bounds.i.max) 
-                n_overflows++; 
-              break;
-            case HVAL_REAL:
-              next_r = (range[i].bounds.r.step > 0.0)
-                ? range[i].bounds.r.min + (idx[i] * range[i].bounds.r.step)
-                : nextafter(curr.val[i].value.r, INFINITY); 
-              if(next_r > range[i].bounds.r.max) 
-                n_overflows++; 
-              break;
-            case HVAL_STR:
-              if(idx[i] + 1 >= range[i].bounds.s.set_len)
-                n_overflows++; 
-              break;
-            default:
-              return -1;
-          }
+        if (!hpoint_align(&init, data->space) != 0) {
+            search_error("Could not align initial point to search space");
+            return -1;
         }
-        if(remaining_passes - 1 <= 0 && n_overflows >= N) {
-          final_id = curr.id;
+
+        for (int i = 0; i < data->space->len; ++i) {
+            if (hrange_finite(&data->space->dim[i]))
+                data->head[i].index = hrange_index(&data->space->dim[i],
+                                                   &init.term[i]);
+            else
+                data->head[i].value = init.term[i].value.r;
         }
-        return 0;
+        hpoint_fini(&init);
+    }
+    else {
+        memset(data->head, 0, data->space->len * sizeof(*data->head));
+    }
+    return 0;
+}
+
+void increment(hplugin_data_t* data)
+{
+    if (data->remaining_passes <= 0)
+        return;
+
+    for (int i = 0; i < data->space->len; ++i) {
+        if (hrange_finite(&data->space->dim[i])) {
+            ++data->next[i].index;
+            if (data->next[i].index == data->wrap[i].index) {
+                data->next[i].index = 0;
+                continue; // Overflow detected.
+            }
+        }
+        else {
+            double nextval = nextafter(data->next[i].value, HUGE_VAL);
+            if (!(data->next[i].value < nextval)) {
+                data->next[i].value = data->space->dim[i].bounds.r.min;
+                continue; // Overflow detected.
+            }
+            data->next[i].value = nextval;
+        }
+        return; // No overflow detected.  Exit function.
     }
 
-    // We only reach this point if all values overflowed.
-    if (--remaining_passes <= 0)
-        final_id = curr.id - 1;
+    // All values overflowed.
+    if (--data->remaining_passes <= 0)
+        data->final_id = data->next_id;
+}
 
+int make_next_point(hplugin_data_t* data, hpoint_t* point)
+{
+    if (point->cap < data->space->len) {
+        if (hpoint_init(point, data->space->len) != 0)
+            return -1;
+    }
+
+    for (int i = 0; i < data->space->len; ++i) {
+        if (hrange_finite(&data->space->dim[i]))
+            point->term[i] = hrange_value(&data->space->dim[i],
+                                          data->next[i].index);
+        else {
+            point->term[i].type = HVAL_REAL;
+            point->term[i].value.r = data->next[i].value;
+        }
+    }
+
+    point->len = data->space->len;
     return 0;
 }

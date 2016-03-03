@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -15,7 +15,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ */
 
 #include "hserver.h"
 #include "httpsvr.h"
@@ -24,16 +24,17 @@
 #include "hperf.h"
 #include "hsockutil.h"
 #include "hutil.h"
-#include "defaults.h"
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <strings.h>
 #include <errno.h>
 #include <libgen.h>
 #include <signal.h>
 #include <math.h>
+#include <getopt.h> // For getopt_long(). Requires _GNU_SOURCE.
 
 #include <sys/types.h>
 #include <sys/select.h>
@@ -44,63 +45,104 @@
 #include <netinet/tcp.h>
 
 /*
- * Function prototypes
+ * Internal helper function prototypes.
  */
-int vars_init(int argc, char *argv[]);
-int network_init(void);
-int handle_new_connection(int fd);
-int handle_unknown_connection(int fd);
-int handle_client_socket(int fd);
-int handle_session_socket(int idx);
-int available_index(int **list, int *cap);
-void client_close(int fd);
-int append_http_log(session_state_t *sess, const hpoint_t *pt, double perf);
+static int  launch_session(void);
+static int  verbose(const char* fmt, ...);
+static int  parse_opts(int argc, char* argv[]);
+static int  vars_init(int argc, char* argv[]);
+static int  network_init(void);
+static int  handle_new_connection(int fd);
+static int  handle_unknown_connection(int fd);
+static int  handle_client_socket(int fd);
+static int  handle_session_socket(void);
+static void update_flags(sinfo_t* sinfo, const char* keyval);
+static int  update_state(sinfo_t* sinfo);
+static int  append_http_log(sinfo_t* sinfo, const hpoint_t* pt, double perf);
+static void close_client(int fd);
+static void sigint_handler(int signum);
 
 /*
- * Main variables
+ * Search-related helper function prototypes.
  */
-int listen_socket;
-fd_set listen_fds;
-int highest_socket;
+static int      find_search_by_id(int id);
+static int      find_search_by_name(const char* name);
+static sinfo_t* open_search(int fd);
+static sinfo_t* join_search(const char* name, int fd);
+static void     close_search(sinfo_t* sinfo);
+static void     fini_search(sinfo_t* sinfo);
 
-int *unk_fds, unk_cap;
-int *client_fds, client_cap;
-int *http_fds, http_len, http_cap;
+/*
+ * Integer list internal helper function prototypes.
+ */
+static int add_value(ilist_t* list, int value);
+static int find_value(ilist_t* list, int value);
+static int remove_index(ilist_t* list, int slot);
+static int remove_value(ilist_t* list, int slot);
 
-hcfg_t *cfg;
-char *harmony_dir;
-char *session_bin;
-hmesg_t mesg_in, mesg_out; /* Maintain two message structures
-                            * to avoid overwriting buffers.
-                            */
-session_state_t *slist;
+/*
+ * File-local variables.
+ */
+static int    listen_port = DEFAULT_PORT;
+static int    listen_socket;
+static int    session_fd;
+static fd_set listen_set;
+static int    highest_socket;
+
+static ilist_t unknown_fds;
+static ilist_t client_fds;
+static ilist_t http_fds;
+
+static char* harmony_dir;
+static char* session_bin;
+static hmesg_t mesg;
+
+static int verbose_flag;
+static int done;
+
+/*
+ * Exported variables.
+ */
+sinfo_t* slist;
 int slist_cap;
 
-/*
- * Local variables
- */
-static int debug_mode = 1;
+void usage(const char* prog)
+{
+    fprintf(stderr, "Usage: %s [options]\n", prog);
+    fprintf(stderr, "OPTIONS:\n"
+"  -p, --port=PORT   Port to listen to on the local host. (Default: %d)\n"
+"  -v, --verbose     Print additional information during operation.\n\n",
+            listen_port);
+}
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
     int i, fd_count, retval;
-    fd_set ready_fds;
+    fd_set ready_set;
 
-    /* Initialize global variable state. */
+    // Parse user options.
+    if (parse_opts(argc, argv) != 0)
+        return -1;
+
+    // Initialize global variable state.
     if (vars_init(argc, argv) < 0)
         return -1;
 
-    /* Initialize the HTTP user interface. */
+    // Initialize the HTTP user interface.
     if (http_init(harmony_dir) < 0)
         return -1;
 
-    /* Initialize socket networking service. */
+    // Initialize socket networking service.
     if (network_init() < 0)
         return -1;
 
-    while (1) {
-        ready_fds = listen_fds;
-        fd_count = select(highest_socket + 1, &ready_fds, NULL, NULL, NULL);
+    // Launch the underlying search session.
+    if (launch_session() != 0)
+        return -1;
+
+    while (!done) {
+        ready_set = listen_set;
+        fd_count = select(highest_socket + 1, &ready_set, NULL, NULL, NULL);
         if (fd_count == -1) {
             if (errno == EINTR)
                 continue;
@@ -110,93 +152,145 @@ int main(int argc, char *argv[])
         }
 
         if (fd_count > 0) {
-            /* Before all else, handle input from session instances. */
-            for (i = 0; i < slist_cap; ++i) {
-                if (slist[i].name && FD_ISSET(slist[i].fd, &ready_fds)) {
-                    if (handle_session_socket(i) < 0) {
-                        FD_CLR(slist[i].fd, &listen_fds);
-                    }
-                }
+            // Before all else, handle input from session process.
+            if (FD_ISSET(session_fd, &ready_set)) {
+                if (handle_session_socket() != 0)
+                    goto shutdown;
             }
 
-            /* Handle new connections */
-            if (FD_ISSET(listen_socket, &ready_fds)) {
+            // Handle new connections.
+            if (FD_ISSET(listen_socket, &ready_set)) {
                 retval = handle_new_connection(listen_socket);
                 if (retval > 0) {
-                    FD_SET(retval, &listen_fds);
+                    FD_SET(retval, &listen_set);
                     if (highest_socket < retval)
                         highest_socket = retval;
                 }
             }
 
-            /* Handle unknown connections (Unneeded if we switch to UDP) */
-            for (i = 0; i < unk_cap; ++i) {
-                if (unk_fds[i] == -1)
-                    continue;
-
-                if (FD_ISSET(unk_fds[i], &ready_fds)) {
-                    if (handle_unknown_connection(unk_fds[i]) < 0)
-                        FD_CLR(unk_fds[i], &listen_fds);
-                    unk_fds[i] = -1;
+            // Handle unknown connections (Unneeded if we switch to UDP).
+            for (i = 0; i < unknown_fds.len; ++i) {
+                if (FD_ISSET(unknown_fds.slot[i], &ready_set)) {
+                    if (handle_unknown_connection(unknown_fds.slot[i]) != 0)
+                        FD_CLR(unknown_fds.slot[i], &listen_set);
+                    remove_index(&unknown_fds, i--);
                 }
             }
 
-            /* Handle harmony messages */
-            for (i = 0; i < client_cap; ++i) {
-                if (client_fds[i] == -1)
-                    continue;
-
-                if (FD_ISSET(client_fds[i], &ready_fds)) {
-                    if (handle_client_socket(client_fds[i]) < 0) {
-                        client_close(client_fds[i]);
-                        client_fds[i] = -1;
+            // Handle Harmony messages.
+            for (i = 0; i < client_fds.len; ++i) {
+                if (FD_ISSET(client_fds.slot[i], &ready_set)) {
+                    retval = handle_client_socket(client_fds.slot[i]);
+                    if (retval > 0) goto shutdown;
+                    if (retval < 0) {
+                        close_client(client_fds.slot[i]);
+                        remove_index(&client_fds, i--);
                     }
                 }
             }
 
-            /* Handle http requests */
-            for (i = 0; i < http_cap; ++i) {
-                if (http_fds[i] == -1)
-                    continue;
-
-                if (FD_ISSET(http_fds[i], &ready_fds)) {
-                    if (handle_http_socket(http_fds[i]) < 0) {
-                        FD_CLR(http_fds[i], &listen_fds);
-                        http_fds[i] = -1;
-                        --http_len;
+            // Handle http requests.
+            for (i = 0; i < http_fds.len; ++i) {
+                if (FD_ISSET(http_fds.slot[i], &ready_set)) {
+                    if (handle_http_socket(http_fds.slot[i]) != 0) {
+                        FD_CLR(http_fds.slot[i], &listen_set);
+                        remove_index(&http_fds, i--);
                     }
                 }
             }
         }
     }
+
+  shutdown:
+    for (i = 0; i < slist_cap; ++i)
+        fini_search(&slist[i]);
+    free(slist);
+
+    free(unknown_fds.slot);
+    free(client_fds.slot);
+    free(http_fds.slot);
+
+    free(harmony_dir);
+    free(session_bin);
+    hmesg_fini(&mesg);
+
     return 0;
 }
 
-int vars_init(int argc, char *argv[])
+int verbose(const char* fmt, ...)
 {
-    char *tmppath, *binfile, *cfgpath;
+    int retval;
+    va_list ap;
 
-    /*
-     * Install proper signal handling.
-     */
-    signal(SIGPOLL, SIG_IGN);
+    if (!verbose_flag)
+        return 0;
 
-    /*
-     * Determine directory where this binary is located.
-     */
+    va_start(ap, fmt);
+    retval = vfprintf(stderr, fmt, ap);
+    va_end(ap);
+
+    return retval;
+}
+
+int parse_opts(int argc, char* argv[])
+{
+    int c;
+    static struct option long_options[] = {
+        {"port",    required_argument, NULL, 'p'},
+        {"verbose", no_argument,       NULL, 'v'},
+        {NULL, 0, NULL, 0}
+    };
+
+    while (1) {
+        c = getopt_long(argc, argv, "p:v", long_options, NULL);
+        if (c == -1)
+            break;
+
+        switch(c) {
+        case 'p': listen_port = atoi(optarg); break;
+        case 'v': verbose_flag = 1; break;
+
+        case ':':
+            usage(argv[0]);
+            fprintf(stderr, "\nOption ('%c') requires an argument.\n", optopt);
+            break;
+
+        case '?':
+        default:
+            usage(argv[0]);
+            fprintf(stderr, "\nInvalid argument ('%c').\n", optopt);
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+int vars_init(int argc, char* argv[])
+{
+    char* tmppath;
+    char* binfile;
+
+    // Ignore signal for writes to broken pipes/sockets.
+    if (signal(SIGPIPE, SIG_IGN) == SIG_ERR) {
+        perror("Error ignoring SIGPIPE");
+        return -1;
+    }
+
+    // Use SIGINT as a method for graceful server exit.
+    if (signal(SIGINT, sigint_handler) == SIG_ERR) {
+        perror("Error installing handler for SIGINT");
+        return -1;
+    }
+
+    //Determine directory where this binary is located
     tmppath = stralloc(argv[0]);
     binfile = stralloc(basename(tmppath));
     free(tmppath);
 
-    cfg = hcfg_alloc();
-    if (!cfg) {
-        perror("Could not initialize the global configuration structure");
-        return -1;
-    }
-
     if ( (tmppath = getenv(CFGKEY_HARMONY_HOME))) {
         harmony_dir = stralloc(tmppath);
-        printf(CFGKEY_HARMONY_HOME " is %s\n", harmony_dir);
+        verbose(CFGKEY_HARMONY_HOME " is %s\n", harmony_dir);
     }
     else {
         if (strchr(argv[0], '/'))
@@ -211,134 +305,48 @@ int vars_init(int argc, char *argv[])
             harmony_dir = stralloc(dirname(harmony_dir));
         free(tmppath);
 
-        printf("Detected %s/ as " CFGKEY_HARMONY_HOME "\n", harmony_dir);
+        verbose("Detected %s/ as HARMONY_HOME\n", harmony_dir);
     }
     free(binfile);
 
-    if (hcfg_set(cfg, CFGKEY_HARMONY_HOME, harmony_dir) < 0) {
-        perror("Could not set " CFGKEY_HARMONY_HOME " in global config");
-        return -1;
-    }
-
-    /*
-     * Find supporting binaries and shared objects.
-     */
+    // Find supporting binaries and shared objects.
     session_bin = sprintf_alloc("%s/libexec/" SESSION_CORE_EXECFILE,
                                 harmony_dir);
     if (!file_exists(session_bin)) {
-        fprintf(stderr, "Could not find support files in HARMONY_HOME\n");
+        fprintf(stderr, "Could not find support files in "
+                CFGKEY_HARMONY_HOME "\n");
         return -1;
     }
 
-    /*
-     * Config file search
-     */
-    if (argc > 1) {
-        /* Option #1: Command-line parameter. */
-        cfgpath = stralloc(argv[1]);
-    }
-    else {
-        /* Option #2: Environment variable. */
-        if ( (tmppath = getenv("HARMONY_CONFIG"))) {
-            cfgpath = stralloc(tmppath);
-        }
-        else {
-            /* Option #3: Check if default filename exists. */
-            cfgpath = sprintf_alloc("%s/bin/" DEFAULT_CONFIG_FILENAME,
-                                    harmony_dir);
-            if (!file_exists(cfgpath)) {
-                free(cfgpath);
-                cfgpath = NULL;
-            }
-        }
-    }
-
-    /*
-     * Load config file, if found.
-     */
-    if (cfgpath) {
-        if (strcmp(cfgpath, "-") == 0)
-            printf("Reading config values from <stdin>\n");
-        else
-            printf("Reading config values from %s\n", cfgpath);
-
-        if (hcfg_load(cfg, cfgpath) != 0)
-            return -1;
-
-        free(cfgpath);
-    }
-    else {
-        printf("No config file found.  Proceeding with default values.\n");
-    }
-
-    mesg_in = HMESG_INITIALIZER;
-    mesg_out = HMESG_INITIALIZER;
-
-    /*
-     * Prepare the file descriptor lists.
-     */
-    unk_fds = NULL;
-    unk_cap = 0;
-    if (array_grow(&unk_fds, &unk_cap, sizeof(int)) < 0) {
-        perror("Could not allocate memory for initial file descriptor list");
-        return -1;
-    }
-    memset(unk_fds, -1, unk_cap * sizeof(int));
-
-    client_fds = NULL;
-    client_cap = 0;
-    if (array_grow(&client_fds, &client_cap, sizeof(int)) < 0) {
-        perror("Could not allocate memory for harmony file descriptor list");
-        return -1;
-    }
-    memset(client_fds, -1, client_cap * sizeof(int));
-
-    http_fds = NULL;
-    http_len = http_cap = 0;
-    if (array_grow(&http_fds, &http_cap, sizeof(int)) < 0) {
-        perror("Could not allocate memory for http file descriptor list");
-        return -1;
-    }
-    memset(http_fds, -1, http_cap * sizeof(int));
-
-    slist = NULL;
-    slist_cap = 0;
-    if (array_grow(&slist, &slist_cap, sizeof(session_state_t)) < 0) {
+    // Prepare the search information lists.
+    if (array_grow(&slist, &slist_cap, sizeof(*slist)) != 0) {
         perror("Could not allocate memory for session file descriptor list");
         return -1;
     }
+    for (int i = 0; i < slist_cap; ++i)
+        slist[i].id = -1; // Initialize slist with non-zero defaults.
 
     return 0;
 }
 
 int network_init(void)
 {
-    const char *cfgval;
-    int listen_port, optval;
+    int optval;
     struct sockaddr_in addr;
 
-    /* try to get the port info from the environment */
-    if (getenv("HARMONY_S_PORT") != NULL) {
-        listen_port = atoi(getenv("HARMONY_S_PORT"));
-    }
-    else if ( (cfgval = hcfg_get(cfg, CFGKEY_SERVER_PORT))) {
-        listen_port = atoi(cfgval);
-    }
-    else {
-        printf("Using default TCP port: %d\n", DEFAULT_PORT);
-        listen_port = DEFAULT_PORT;
-    }
-
-    /* create a listening socket */
+    // Create a listening socket.
+    verbose("Listening on TCP port: %d\n", listen_port);
     listen_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (listen_socket < 0) {
         perror("Could not create listening socket");
         return -1;
     }
 
-    /* set socket options. We try to make the port reusable and have it
-       close as fast as possible without waiting in unnecessary wait states
-       on close. */
+    // Set socket options.
+    //
+    // Try to make the port reusable and have it close as fast as
+    // possible without waiting in unnecessary wait states on close.
+    //
     optval = 1;
     if (setsockopt(listen_socket, SOL_SOCKET, SO_REUSEADDR,
                    &optval, sizeof(optval)) < 0)
@@ -347,22 +355,20 @@ int network_init(void)
         return -1;
     }
 
-    /* Initialize the socket address. */
+    // Initialize the socket address.
     addr.sin_family      = AF_INET;
     addr.sin_addr.s_addr = INADDR_ANY;
-    addr.sin_port        = htons(listen_port);
+    addr.sin_port        = htons((unsigned short)listen_port);
 
-    /* Bind the socket to the desired port. */
-    if (bind(listen_socket, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+    // Bind the socket to the desired port.
+    if (bind(listen_socket, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         perror("Could not bind socket to listening address");
         return -1;
     }
 
-    /*
-     * Set the file descriptor set
-     */
-    FD_ZERO(&listen_fds);
-    FD_SET(listen_socket, &listen_fds);
+    // Set the file descriptor set.
+    FD_ZERO(&listen_set);
+    FD_SET(listen_socket, &listen_set);
     highest_socket = listen_socket;
 
     if (listen(listen_socket, SOMAXCONN) < 0) {
@@ -377,473 +383,417 @@ int handle_new_connection(int fd)
 {
     struct sockaddr_in addr;
     socklen_t addrlen = sizeof(addr);
-    int idx, newfd;
+    int newfd;
 
-    newfd = accept(fd, (struct sockaddr *)&addr, &addrlen);
+    newfd = accept(fd, (struct sockaddr*)&addr, &addrlen);
     if (newfd < 0) {
         perror("Error accepting new connection");
         return -1;
     }
 
-    /* The peer may not have sent data yet.  To prevent blocking, lets
-     * stash the new socket in the unknown_list until we know it has data.
-     */
-    idx = available_index(&unk_fds, &unk_cap);
-    if (idx < 0) {
-        perror("Could not grow unknown connection array");
+    // The peer may not have sent data yet.  To prevent blocking, lets
+    // stash the new socket in the unknown_list until we know it has data.
+    //
+    if (add_value(&unknown_fds, newfd) < 0)
         return -1;
-    }
 
-    unk_fds[idx] = newfd;
-    if (debug_mode) printf("Accepted connection from %s as socket %d\n",
-                           inet_ntoa(addr.sin_addr), newfd);
+    verbose("Accepted connection from %s as socket %d\n",
+            inet_ntoa(addr.sin_addr), newfd);
     return newfd;
 }
 
 int handle_unknown_connection(int fd)
 {
     unsigned int header;
-    int idx, readlen;
 
-    readlen = recv(fd, &header, sizeof(header), MSG_PEEK | MSG_DONTWAIT);
+    int readlen = recv(fd, &header, sizeof(header), MSG_PEEK | MSG_DONTWAIT);
     if (readlen < 0 || (unsigned int)readlen < sizeof(header)) {
-        /* Error on recv, or insufficient data.  Close the connection. */
+        // Error on recv, or insufficient data.  Close the connection.
         printf("Can't determine type for socket %d.  Closing.\n", fd);
         if (close(fd) < 0)
             perror("Error closing connection");
         return -1;
     }
     else if (ntohl(header) == HMESG_MAGIC) {
-        /* This is a communication socket from a Harmony client. */
-        idx = available_index(&client_fds, &client_cap);
-        if (idx < 0) {
-            perror("Could not grow Harmony connection array");
-            if (close(fd) < 0)
+        // This is a communication socket from a Harmony client.
+        if (add_value(&client_fds, fd) < 0) {
+            if (close(fd) != 0)
                 perror("Error closing Harmony connection");
-            return -1;
         }
-        client_fds[idx] = fd;
     }
-    else
-    {
-        /* Consider this an HTTP communication socket. */
-        if (http_len >= http_connection_limit) {
+    else {
+        // Consider this an HTTP communication socket.
+        if (http_fds.len >= http_connection_limit) {
             printf("Hit HTTP connection limit on socket %d.  Closing.\n", fd);
             http_send_error(fd, 503, NULL);
-            if (close(fd) < 0)
+            if (close(fd) != 0)
                 perror("Error closing HTTP connection");
             return -1;
         }
 
-        idx = available_index(&http_fds, &http_cap);
-        if (idx < 0) {
-            perror("Could not grow HTTP connection array");
-            if (close(fd) < 0)
+        if (add_value(&http_fds, fd) < 0) {
+            if (close(fd) != 0)
                 perror("Error closing HTTP connection");
-            return -1;
         }
-
-        http_fds[idx] = fd;
-        ++http_len;
     }
     return 0;
 }
 
 int handle_client_socket(int fd)
 {
-    int idx, i, retval;
+    int idx;
     double perf;
-    session_state_t *sess;
+    sinfo_t* sinfo = NULL;
 
-    sess = NULL;
-    retval = mesg_recv(fd, &mesg_in);
-    if (retval == 0)
-        goto shutdown;
-    if (retval < 0)
-        goto error;
+    int retval = mesg_recv(fd, &mesg);
+    if (retval <  0) goto error;
+    if (retval == 0) return -1;
 
-    if (mesg_in.dest == -1) {
-        /* Message was intended to be ignored. */
-        return 0;
-    }
-
-    /* Sanity check input */
-    if (mesg_in.type != HMESG_SESSION && mesg_in.type != HMESG_JOIN) {
-        idx = mesg_in.dest;
-        if (idx < 0 || idx >= slist_cap || slist[idx].name == NULL) {
-            errno = EINVAL;
+    // Sanity check input.
+    if (mesg.type != HMESG_SESSION && mesg.type != HMESG_JOIN) {
+        if (mesg.dest < 0 || mesg.dest >= slist_cap ||
+            slist[ mesg.dest ].id == -1)
+        {
+            mesg.data.string = "Invalid message destination";
             goto error;
         }
-        sess = &slist[idx];
+        sinfo = &slist[ mesg.dest ];
     }
 
-    switch (mesg_in.type) {
-    case HMESG_GETCFG:
-    case HMESG_SETCFG:
-    case HMESG_BEST:
-    case HMESG_FETCH:
-    case HMESG_RESTART:
-        break;
-
+    switch (mesg.type) {
     case HMESG_SESSION:
-        sess = session_open(&mesg_in);
-        if (!sess) {
-            errno = EINVAL;
+        sinfo = open_search(fd);
+        if (!sinfo)
             goto error;
-        }
         break;
 
     case HMESG_JOIN:
-        for (idx = 0; idx < slist_cap; ++idx) {
-            if (!slist[idx].name)
-                continue;
-            if (strcmp(slist[idx].name, mesg_in.data.join.name) == 0)
-                break;
-        }
-        if (idx == slist_cap) {
-            errno = EINVAL;
+        sinfo = join_search(mesg.data.string, fd);
+        if (!sinfo)
             goto error;
-        }
-        sess = &slist[idx];
+        break;
 
-        idx = available_index(&sess->client, &sess->client_cap);
-        if (idx < 0) {
-            perror("Could not grow session client list");
-            goto error;
-        }
-
-        sess->client[idx] = fd;
-        ++sess->client_len;
+    case HMESG_SETCFG:
+        update_flags(sinfo, mesg.data.string);
         break;
 
     case HMESG_REPORT:
-        perf = hperf_unify(mesg_in.data.report.perf);
+        perf = hperf_unify(mesg.data.perf);
 
-        for (i = 0; i < sess->fetched_len; ++i) {
-            if (sess->fetched[i].id == mesg_in.data.report.cand_id)
+        for (idx = 0; idx < sinfo->fetched_len; ++idx) {
+            if (sinfo->fetched[idx].id == mesg.data.point->id)
                 break;
         }
-        if (i < sess->fetched_len) {
-            const hpoint_t *pt = &sess->fetched[i];
+        if (idx < sinfo->fetched_len) {
+            const hpoint_t* pt = &sinfo->fetched[idx];
 
-            /* Copy point from fetched list to HTTP log. */
-            if (append_http_log(sess, pt, perf) != 0) {
-                perror("Internal error copying fetched point to HTTP log");
+            // Copy point from fetched list to HTTP log.
+            if (append_http_log(sinfo, pt, perf) != 0) {
+                mesg.data.string = "Could not append to HTTP log";
                 goto error;
             }
 
-            /* Also update our best point data, if necessary. */
-            if (sess->best_perf > perf && sess->best.id != pt->id) {
-                sess->best_perf = perf;
-                if (hpoint_copy(&sess->best, pt) != 0) {
-                    perror("Internal error copying hpoint to best");
-                    goto error;
-                }
-            }
-
-            /* Remove point from fetched list. */
-            --sess->fetched_len;
-            if (i < sess->fetched_len) {
-                if (hpoint_copy(&sess->fetched[i],
-                                &sess->fetched[sess->fetched_len]) != 0)
+            // Remove point from fetched list.
+            --sinfo->fetched_len;
+            if (idx < sinfo->fetched_len) {
+                if (hpoint_copy(&sinfo->fetched[idx],
+                                &sinfo->fetched[sinfo->fetched_len]) != 0)
                 {
-                    perror("Internal error copying hpoint within fetch log");
+                    mesg.data.string = "Could not remove fetch list point";
                     goto error;
                 }
             }
         }
         else {
-            /* Copy point from fetched list to HTTP log. */
-            if (append_http_log(sess, &sess->best, perf) != 0) {
-                perror("Internal error copying best point to HTTP log");
+            // Copy point from fetched list to HTTP log.
+            if (append_http_log(sinfo, &sinfo->best, perf) != 0) {
+                mesg.data.string = "Could not copy best point to HTTP log";
                 goto error;
             }
         }
+        break;
+
+    case HMESG_GETCFG:
+    case HMESG_BEST:
+    case HMESG_FETCH:
+    case HMESG_COMMAND:
         break;
 
     default:
         goto error;
     }
 
-    mesg_out.dest = fd;
-    mesg_out.type = mesg_in.type;
-    mesg_out.status = mesg_in.status;
-    mesg_out.src_id = mesg_in.src_id;
-    mesg_out.data = mesg_in.data;
-    if (mesg_send(sess->fd, &mesg_out) < 1) {
-        perror("Error forwarding message to session");
-        FD_CLR(sess->fd, &listen_fds);
-        session_close(sess);
-        goto shutdown;
+    // Overwrite the message source and destination.
+    mesg.src = fd;
+    if (mesg.type == HMESG_SESSION || mesg.type == HMESG_JOIN)
+        mesg.dest = -1;
+    else
+        mesg.dest = sinfo->id;
+
+    retval = mesg_forward(session_fd, &mesg);
+    if (retval == 0) goto shutdown;
+    if (retval <  0) {
+        mesg.data.string = "Could not forward message to session";
+        goto error;
     }
-    /* mesg_in data was free()'ed along with mesg_out. */
-    mesg_in.type = HMESG_UNKNOWN;
+
+    // Record that the client has sent a request.
+    if (add_value(&sinfo->request, fd) < 0) {
+        mesg.data.string = "Server error: Could not add to request list";
+        goto error;
+    }
 
     return 0;
 
   error:
-    mesg_out.type = mesg_in.type;
-    if (mesg_out.status != HMESG_STATUS_FAIL) {
-        mesg_out.status = HMESG_STATUS_FAIL;
-        mesg_out.data.string = strerror(errno);
-    }
-    mesg_send(fd, &mesg_out);
+    mesg.dest   = mesg.src;
+    mesg.src    = -1;
+    mesg.status = HMESG_STATUS_FAIL;
+    mesg_send(fd, &mesg);
+    return 0; // Do not close client socket on failure.
 
   shutdown:
-    return -1;
+    fprintf(stderr, "Session socket closed. Shutting server down.\n");
+    return 1;
 }
 
-int handle_session_socket(int idx)
+int handle_session_socket(void)
 {
-    session_state_t *sess;
+    int close_flag = 0;
 
-    sess = &slist[idx];
-    if (mesg_recv(sess->fd, &mesg_in) < 1)
-        goto error;
+    int retval = mesg_recv(session_fd, &mesg);
+    if (retval < 1) {
+        if (retval == 0) fprintf(stderr, "Session socket closed.");
+        if (retval <  0) fprintf(stderr, "Malformed message from session.");
+        fprintf(stderr, " Shutting server down.\n");
 
-    if (mesg_in.dest == -1) {
-        if (mesg_in.status == HMESG_STATUS_REQ) {
-            if (handle_http_info(sess, (char *)mesg_in.data.string) != 0) {
-                perror("Error handling http info message");
+        return -1;
+    }
+
+    int slist_idx;
+    if (mesg.type != HMESG_SESSION)
+        slist_idx = find_search_by_id(mesg.src); // Real search ID.
+    else
+        slist_idx = find_search_by_id(-mesg.dest); // Temporary bootstrap ID.
+
+    if (slist_idx == -1) {
+        fprintf(stderr, "No info found for session message.  Ignoring.\n");
+        return 0;
+    }
+    sinfo_t* sinfo = &slist[slist_idx];
+
+    switch (mesg.type) {
+    case HMESG_SESSION:
+        if (mesg.status == HMESG_STATUS_OK) {
+            // Update search information with real ID
+            sinfo->id = mesg.src;
+
+            // Add the client originating client as a search participant.
+            if (add_value(&sinfo->client, mesg.dest) < 0) {
+                mesg.data.string = "Server error: Could not grow client list";
                 goto error;
             }
         }
-        return 0;
-    }
+        else {
+            // Search was not established.  Close it.
+            close_flag = 1;
+        }
+        break;
 
-    switch (mesg_in.type) {
-    case HMESG_SESSION:
     case HMESG_JOIN:
-    case HMESG_SETCFG:
+        if (mesg.status == HMESG_STATUS_OK) {
+            if (add_value(&sinfo->client, mesg.dest) < 0) {
+                mesg.data.string = "Server error: Could not grow client list";
+                goto error;
+            }
+        }
+        break;
+
+    case HMESG_COMMAND:
+        if (mesg.status == HMESG_STATUS_OK) {
+            if (strcmp(mesg.data.string, "leave") == 0)
+                remove_value(&sinfo->client, mesg.dest);
+
+            if (strcmp(mesg.data.string, "kill") == 0)
+                close_flag = 1;
+        }
+        break;
+
     case HMESG_GETCFG:
-    case HMESG_BEST:
-    case HMESG_RESTART:
+        update_flags(sinfo, mesg.data.string);
         break;
 
     case HMESG_FETCH:
-        if (mesg_in.status == HMESG_STATUS_OK) {
-            /* Log this point before we forward it to the client. */
-            if (sess->fetched_len == sess->fetched_cap) {
-                if (array_grow(&sess->fetched, &sess->fetched_cap,
-                               sizeof(hpoint_t *)) != 0)
+        if (mesg.status == HMESG_STATUS_OK) {
+            // Log this point before we forward it to the client.
+            if (sinfo->fetched_len == sinfo->fetched_cap) {
+                if (array_grow(&sinfo->fetched, &sinfo->fetched_cap,
+                               sizeof(*sinfo->fetched)) != 0)
                 {
-                    perror("Could not grow fetch log");
+                    mesg.data.string = "Server error: Couldn't grow fetch log";
                     goto error;
                 }
             }
 
-            if (hpoint_copy(&sess->fetched[sess->fetched_len],
-                            &mesg_in.data.point) != 0)
+            if (hpoint_copy(&sinfo->fetched[sinfo->fetched_len],
+                            mesg.data.point) != 0)
             {
-                perror("Internal error copying hpoint to HTTP log");
+                mesg.data.string = "Server error: Couldn't add to HTTP log";
                 goto error;
             }
-            ++sess->fetched_len;
+
+            if (hpoint_align(&sinfo->fetched[sinfo->fetched_len],
+                             &sinfo->space) != 0)
+            {
+                mesg.data.string = "Server error: Couldn't align point";
+                goto error;
+            }
+            ++sinfo->fetched_len;
         }
         break;
 
     case HMESG_REPORT:
-        if (mesg_in.status == HMESG_STATUS_OK)
-            ++sess->reported;
+        if (mesg.status == HMESG_STATUS_OK)
+            ++sinfo->reported;
+        break;
+
+    case HMESG_SETCFG:
+    case HMESG_BEST:
         break;
 
     default:
-        errno = EINVAL;
+        mesg.data.string = "Server error: Invalid message type from session";
         goto error;
     }
 
-    mesg_out.dest = idx;
-    mesg_out.type = mesg_in.type;
-    mesg_out.status = mesg_in.status;
-    mesg_out.src_id = mesg_in.src_id;
-    mesg_out.data = mesg_in.data;
-    if (mesg_send(mesg_in.dest, &mesg_out) < 1) {
-        perror("Error forwarding message to client");
-        client_close(mesg_in.dest);
+    if (sinfo && update_state(sinfo) != 0) {
+        mesg.data.string = "Server error: Could not update search state";
+        goto error;
     }
-    /* mesg_in data was free()'ed along with mesg_out. */
-    mesg_in.type = HMESG_UNKNOWN;
+
+    // Messages with a negative destination field came within hserver itself.
+    // No need to forward those messages.
+    //
+    if (mesg.dest >= 0) {
+        // Overwrite the message source.
+        mesg.src = slist_idx;
+
+        if (mesg_forward(mesg.dest, &mesg) < 1) {
+            perror("Error forwarding message to client");
+            close_client(mesg.dest);
+        }
+
+        // Record that this client has seen a response to its request.
+        remove_value(&sinfo->request, mesg.dest);
+    }
+
+    if (close_flag)
+        close_search(sinfo);
 
     return 0;
 
   error:
-    session_close(sess);
+    fprintf(stderr, "%s. Shutting server down.\n", mesg.data.string);
     return -1;
 }
 
-session_state_t *session_open(hmesg_t *mesg)
+int launch_session(void)
 {
-    int i, idx, clients_expected;
-    session_state_t *sess;
-    char *child_argv[2];
-    const char *cfgstr;
-
-    idx = -1;
-    /* check if session already exists, and return if it does */
-    for (i = 0; i < slist_cap; ++i) {
-        if (!slist[i].name) {
-            if (idx < 0)
-                idx = i;
-        }
-        else if (strcmp(slist[i].name, mesg->data.session.sig.name) == 0) {
-            mesg_out.status = HMESG_STATUS_FAIL;
-            mesg_out.data.string = "Session name already exists.";
-            return NULL;
-        }
-    }
-    /* expand session list arr if necessary, and add
-       the new session to the session list arr */
-    if (idx == -1) {
-        idx = slist_cap;
-        if (array_grow(&slist, &slist_cap, sizeof(session_state_t)) < 0)
-            return NULL;
-    }
-    sess = &slist[idx];
-
-    sess->name = stralloc(mesg->data.session.sig.name);
-    if (!sess->name)
-        return NULL;
-
-    sess->client_len = 0;
-    hpoint_fini(&sess->best);
-    sess->best_perf = INFINITY;
-
-    if (hcfg_merge(mesg->data.session.cfg, cfg) < 0) {
-        mesg_out.data.string = "Internal error merging config structures";
-        goto error;
+    // Fork and exec a session handler.
+    char* const child_argv[] = {session_bin,
+                                harmony_dir,
+                                NULL};
+    session_fd = socket_launch(session_bin, child_argv, NULL);
+    if (session_fd < 0) {
+        perror("Could not launch session process");
+        return -1;
     }
 
-    /* Force sessions to load the httpinfo plugin layer. */
-    #define HTTPINFO "httpinfo.so"
-    cfgstr = hcfg_get(mesg->data.session.cfg, CFGKEY_SESSION_LAYERS);
-    if (!cfgstr || *cfgstr == '\0') {
-        hcfg_set(mesg->data.session.cfg, CFGKEY_SESSION_LAYERS, HTTPINFO);
-    }
-    else if (strstr(cfgstr, HTTPINFO) == NULL) {
-        char *buf = sprintf_alloc(HTTPINFO ":%s", cfgstr);
-        hcfg_set(mesg->data.session.cfg, CFGKEY_SESSION_LAYERS, buf);
-        free(buf);
-    }
+    FD_SET(session_fd, &listen_set);
+    if (highest_socket < session_fd)
+        highest_socket = session_fd;
 
-    /* Make sure we have at least 1 expected client. */
-    cfgstr = hcfg_get(mesg->data.session.cfg, CFGKEY_CLIENT_COUNT);
-    if (!cfgstr) {
-        clients_expected = DEFAULT_CLIENT_COUNT;
-    }
-    else {
-        clients_expected = atoi(cfgstr);
-    }
-    if (clients_expected < 1) {
-        mesg_out.data.string = "Invalid config value for " CFGKEY_CLIENT_COUNT;
-        goto error;
-    }
-
-    /* Fork and exec a session handler. */
-    child_argv[0] = sess->name;
-    child_argv[1] = NULL;
-    sess->fd = socket_launch(session_bin, child_argv, NULL);
-    if (sess->fd < 0)
-        goto error;
-
-    /* Initialize HTTP server fields. */
-    if (hsignature_copy(&sess->sig, &mesg->data.session.sig) != 0)
-        goto error;
-
-    if (gettimeofday(&sess->start, NULL) < 0)
-        goto error;
-
-    cfgstr = hcfg_get(mesg->data.session.cfg, CFGKEY_SESSION_STRATEGY);
-    if (!cfgstr)
-        cfgstr = DEFAULT_STRATEGY;
-
-    sess->strategy = stralloc(cfgstr);
-    sess->status = 0x0;
-    sess->log_len = 0;
-    sess->reported = 0;
-
-    FD_SET(sess->fd, &listen_fds);
-    if (highest_socket < sess->fd)
-        highest_socket = sess->fd;
-
-    return sess;
-
-  error:
-    free(sess->name);
-    sess->name = NULL;
-    return NULL;
+    return 0;
 }
 
-void session_close(session_state_t *sess)
+void update_flags(sinfo_t* sinfo, const char* keyval)
 {
-    int i;
+    int val = 0;
 
-    free(sess->strategy);
-    free(sess->name);
-    sess->name = NULL;
-
-    for (i = 0; i < sess->client_cap; ++i) {
-        if (sess->client[i] != -1)
-            client_close(sess->client[i]);
+    sscanf(keyval, CFGKEY_CONVERGED "=%n", &val);
+    if (val) {
+        if (hcfg_parse_bool(&keyval[val]))
+            sinfo->flags |= FLAG_CONVERGED;
+        else
+            sinfo->flags &= ~FLAG_CONVERGED;
+        return;
     }
 
-    hsignature_fini(&sess->sig);
+    sscanf(keyval, CFGKEY_PAUSED "=%n", &val);
+    if (val) {
+        if (hcfg_parse_bool(&keyval[val]))
+            sinfo->flags |= FLAG_PAUSED;
+        else
+            sinfo->flags &= ~FLAG_PAUSED;
+        return;
+    }
 }
 
-void client_close(int fd)
+int update_state(sinfo_t* sinfo)
 {
-    int i, j;
+    if (mesg.type == HMESG_SESSION ||
+        mesg.type == HMESG_JOIN)
+    {
+        // Session state doesn't need to be updated yet.
+        return 0;
+    }
 
-    for (i = 0; i < slist_cap; ++i) {
-        for (j = 0; j < slist[i].client_cap; ++j) {
-            if (slist[i].client[j] == fd) {
-                slist[i].client[j] = -1;
-                --slist[i].client_len;
+    if (mesg.state.space->id > sinfo->space.id) {
+        if (hspace_copy(&sinfo->space, mesg.state.space) != 0) {
+            perror("Could not copy search space");
+            return -1;
+        }
+    }
+
+    if (mesg.state.best->id > sinfo->best.id) {
+        int i;
+        for (i = sinfo->log_len - 1; i >= 0; --i) {
+            if (sinfo->log[i].pt.id == mesg.state.best->id) {
+                sinfo->best_perf = sinfo->log[i].perf;
                 break;
             }
         }
-    }
+        if (i < 0)
+            sinfo->best_perf = NAN;
 
-    for (i = 0; i < client_cap; ++i) {
-        if (client_fds[i] == fd) {
-            client_fds[i] = -1;
-            break;
+        if (hpoint_copy(&sinfo->best, mesg.state.best) != 0) {
+            perror("Internal error copying hpoint to best");
+            return -1;
+        }
+
+        if (hpoint_align(&sinfo->best, &sinfo->space) != 0) {
+            perror("Could not align best point to search space");
+            return -1;
         }
     }
-
-    if (shutdown(fd, SHUT_RDWR) != 0 || close(fd) != 0)
-        perror("Error closing client connection post error");
-
-    FD_CLR(fd, &listen_fds);
+    return 0;
 }
 
-int available_index(int **list, int *cap)
+
+int append_http_log(sinfo_t* sinfo, const hpoint_t* pt, double perf)
 {
-    int i, orig_cap;
+    http_log_t* entry;
 
-    for (i = 0; i < *cap; ++i)
-        if ((*list)[i] == -1)
-            return i;
-
-    orig_cap = *cap;
-    if (array_grow(list, cap, sizeof(int)) < 0)
-        return -1;
-    memset((*list) + orig_cap, -1, (*cap - orig_cap) * sizeof(int));
-
-    return orig_cap;
-}
-
-int append_http_log(session_state_t *sess, const hpoint_t *pt, double perf)
-{
-    http_log_t *entry;
-
-    /* Extend HTTP log if necessary. */
-    if (sess->log_len == sess->log_cap) {
-        if (array_grow(&sess->log, &sess->log_cap, sizeof(http_log_t)) != 0) {
+    // Extend HTTP log if necessary.
+    if (sinfo->log_len == sinfo->log_cap) {
+        if (array_grow(&sinfo->log, &sinfo->log_cap,
+                       sizeof(*sinfo->log)) != 0)
+        {
             perror("Could not grow HTTP log");
             return -1;
         }
     }
-    entry = &sess->log[sess->log_len];
+    entry = &sinfo->log[sinfo->log_len];
 
     if (hpoint_copy(&entry->pt, pt) != 0) {
         perror("Internal error copying point into HTTP log");
@@ -854,41 +804,303 @@ int append_http_log(session_state_t *sess, const hpoint_t *pt, double perf)
     if (gettimeofday(&entry->stamp, NULL) != 0)
         return -1;
 
-    ++sess->log_len;
+    ++sinfo->log_len;
     return 0;
 }
 
-int session_setcfg(session_state_t *sess, const char *key, const char *val)
+int request_command(sinfo_t* sinfo, const char* command)
 {
-    hmesg_t mesg = HMESG_INITIALIZER;
-    char *buf = sprintf_alloc("%s=%s", key, val ? val : "");
     int retval = 0;
 
-    mesg.dest = -1;
-    mesg.type = HMESG_SETCFG;
+    mesg.dest = sinfo->id;
+    mesg.src = -1;
+    mesg.type = HMESG_COMMAND;
     mesg.status = HMESG_STATUS_REQ;
-    mesg.data.string = buf;
+    mesg.state.space = &sinfo->space;
+    mesg.state.best = &sinfo->best;
+    mesg.state.client = "<hserver>";
+    mesg.data.string = command;
 
-    if (mesg_send(sess->fd, &mesg) < 1)
+    if (mesg_send(session_fd, &mesg) < 1)
         retval = -1;
 
-    free(buf);
-    hmesg_fini(&mesg);
     return retval;
 }
 
-int session_restart(session_state_t *sess)
+int request_refresh(sinfo_t* sinfo)
 {
-    hmesg_t mesg = HMESG_INITIALIZER;
+    mesg.dest = sinfo->id;
+    mesg.src = -1;
+    mesg.type = HMESG_GETCFG;
+    mesg.status = HMESG_STATUS_REQ;
+    mesg.state.space = &sinfo->space;
+    mesg.state.best = &sinfo->best;
+    mesg.state.client = "<hserver>";
+
+    mesg.data.string = CFGKEY_CONVERGED;
+    if (mesg_send(session_fd, &mesg) < 1)
+        return -1;
+
+    mesg.data.string = CFGKEY_PAUSED;
+    if (mesg_send(session_fd, &mesg) < 1)
+        return -1;
+
+    return 0;
+}
+
+int request_setcfg(sinfo_t* sinfo, const char* key, const char* val)
+{
+    char* buf = sprintf_alloc("%s=%s", key, val ? val : "");
     int retval = 0;
 
-    mesg.dest = -1;
-    mesg.type = HMESG_RESTART;
+    mesg.dest = sinfo->id;
+    mesg.src = -1;
+    mesg.type = HMESG_SETCFG;
     mesg.status = HMESG_STATUS_REQ;
+    mesg.data.string = buf;
+    mesg.state.space = &sinfo->space;
+    mesg.state.best = &sinfo->best;
+    mesg.state.client = "<hserver>";
 
-    if (mesg_send(sess->fd, &mesg) < 1)
+    if (mesg_send(session_fd, &mesg) < 1)
         retval = -1;
 
-    hmesg_fini(&mesg);
+    free(buf);
     return retval;
+}
+
+/*
+ * Handles an unexpected client departure.  The session must be
+ * informed if the client was actively participating in any searches.
+ */
+void close_client(int fd)
+{
+    for (int i = 0; i < slist_cap; ++i) {
+        if (slist[i].id == -1)
+            continue;
+
+        if (remove_value(&slist[i].client, fd) == 0)
+            request_command(&slist[i], "leave");
+    }
+
+    if (shutdown(fd, SHUT_RDWR) != 0 || close(fd) != 0)
+        perror("Error closing client connection post error");
+
+    FD_CLR(fd, &listen_set);
+}
+
+/*
+ * Search-related helper function implementation.
+ */
+
+int find_search_by_id(int id)
+{
+    for (int i = 0; i < slist_cap; ++i) {
+        if (slist[i].id == id)
+            return i;
+    }
+    return -1;
+}
+
+int find_search_by_name(const char* name)
+{
+    int idx = -1;
+
+    for (int i = 0; i < slist_cap; ++i) {
+        if (slist[i].id == -1) {
+            if (idx < 0)
+                idx = i; // Mark the first available index as we pass it.
+        }
+        else if (strcmp(slist[i].space.name, name) == 0) {
+            return i;
+        }
+    }
+
+    // Extend slist, if necessary.
+    if (idx < 0) {
+        idx = slist_cap;
+        if (array_grow(&slist, &slist_cap, sizeof(*slist)) != 0) {
+            mesg.data.string = "Server error: Could not extend search list";
+            return -1;
+        }
+
+        // Initialize any sinfo_t objects that were created.
+        for (int i = idx; i < slist_cap; ++i)
+            slist[i].id = -1;
+    }
+    return idx;
+}
+
+sinfo_t* open_search(int fd)
+{
+    int idx = find_search_by_name(mesg.state.space->name);
+    if (idx < 0)
+        return NULL;
+
+    sinfo_t* sinfo = &slist[idx];
+    if (sinfo->id != -1) {
+        mesg.data.string = "Search name already exists";
+        return NULL;
+    }
+
+    // Initialize the available sinfo slot.
+    if (hspace_copy(&sinfo->space, mesg.state.space) != 0) {
+        mesg.data.string = "Server error: Could not copy initial space info";
+        return NULL;
+    }
+
+
+    // Initialize HTTP server fields.
+    if (gettimeofday(&sinfo->start, NULL) != 0) {
+        mesg.data.string = "Server error: Could not set search start time";
+        return NULL;
+    }
+
+    const char* cfgstr = hcfg_get(mesg.data.cfg, CFGKEY_STRATEGY);
+    if (!cfgstr) {
+        int clients = hcfg_int(mesg.data.cfg, CFGKEY_CLIENT_COUNT);
+        if (clients < 1)
+            cfgstr = "???";
+        else if (clients == 1)
+            cfgstr = "nm.so";
+        else
+            cfgstr = "pro.so";
+    }
+    free(sinfo->strategy);
+    sinfo->strategy = stralloc(cfgstr);
+
+    sinfo->client.len = 0;
+    sinfo->request.len = 0;
+    sinfo->best.id = 0;
+    sinfo->best_perf = HUGE_VAL;
+    sinfo->flags = 0x0;
+    sinfo->log_len = 0;
+    sinfo->fetched_len = 0;
+    sinfo->reported = 0;
+
+    // The true ID of the search won't be known until the session
+    // responds positively to the HMESG_SESSION request.  Until that
+    // time, base the temporary ID on the requesting client's socket
+    // number.  To avoid conflicting with real IDs, the socket number
+    // is negated.
+    //
+    sinfo->id = -fd;
+
+    return sinfo;
+}
+
+/*
+ * Sanity checks when a client requests to join a search task.
+ */
+sinfo_t* join_search(const char* name, int fd)
+{
+    int s_idx = find_search_by_name(name);
+    if (s_idx < 0)
+        return NULL;
+
+    sinfo_t* sinfo = &slist[s_idx];
+    if (sinfo->id == -1) {
+        mesg.data.string = "No search currently exists with this name";
+        return NULL;
+    }
+
+    // A single client may not join a search more than once concurrently.
+    if (find_value(&sinfo->client, fd) < sinfo->client.len) {
+        mesg.data.string = "Client already participating in this search";
+        return NULL;
+    }
+    return sinfo;
+}
+
+/*
+ * Update server bookkeeping after the search session reports it has
+ * successfully killed the search task.
+ */
+void close_search(sinfo_t* sinfo)
+{
+    sinfo->id = -1;
+
+    // Prepare a "dead search task" message.
+    mesg.dest = -1;
+    mesg.src = -1;
+    mesg.type = HMESG_UNKNOWN;
+    mesg.status = HMESG_STATUS_FAIL;
+
+    // Inform clients awaiting a response from the dead search.
+    for (int i = 0; i < sinfo->request.len; ++i)
+        mesg_send(sinfo->request.slot[i], &mesg);
+}
+
+/*
+ * Update server bookkeeping after the search session reports it has
+ * successfully killed the search task.
+ */
+void fini_search(sinfo_t* sinfo)
+{
+    for (int i = 0; i < sinfo->fetched_cap; ++i)
+        hpoint_fini(&sinfo->fetched[i]);
+    free(sinfo->fetched);
+
+    for (int i = 0; i < sinfo->log_cap; ++i)
+        hpoint_fini(&sinfo->log[i].pt);
+    free(sinfo->log);
+
+    free(sinfo->strategy);
+    hspace_fini(&sinfo->space);
+
+    free(sinfo->client.slot);
+    free(sinfo->request.slot);
+    hpoint_fini(&sinfo->best);
+}
+
+/*
+ * Integer list internal helper function implementation.
+ */
+
+int add_value(ilist_t* list, int value)
+{
+    int idx = find_value(list, value);
+    if (idx < list->len)
+        return 0;
+
+    if (idx == list->cap) {
+        if (array_grow(&list->slot, &list->cap, sizeof(*list->slot)) != 0)
+            return -1;
+    }
+
+    list->slot[idx] = value;
+    ++list->len;
+    return 1;
+}
+
+int find_value(ilist_t* list, int value)
+{
+    int idx;
+    for (idx = 0; idx < list->len; ++idx) {
+        if (list->slot[idx] == value)
+            break;
+    }
+    return idx;
+}
+
+int remove_index(ilist_t* list, int idx)
+{
+    if (idx < 0 || idx >= list->len)
+        return -1;
+
+    if (idx < --list->len)
+        list->slot[idx] = list->slot[ list->len ];
+    return 0;
+}
+
+int remove_value(ilist_t* list, int value)
+{
+    int idx = find_value(list, value);
+    return remove_index(list, idx);
+}
+
+void sigint_handler(int signum)
+{
+    fprintf(stderr, "\nCaught signal %d. Shutting down the server.\n", signum);
+    done = 1;
 }

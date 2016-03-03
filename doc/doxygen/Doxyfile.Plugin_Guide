@@ -6,5 +6,5 @@ HTML_OUTPUT  = Plugin_Guide.html
 
 INPUT = doxygen/Plugin_Guide.dox \
         ../src/session-core.h \
-        ../src/plugins/strategies/strategy.h \
+        ../src/plugins/strategies/strategy_skel.c \
         ../src/plugins/layers/layer_skel.c

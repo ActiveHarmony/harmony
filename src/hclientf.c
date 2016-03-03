@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -25,22 +25,22 @@ extern "C" {
 #endif
 
 #if 0
-int harmony_connect_(char *host, int *port, int *use_sigs,
-                     int *relocated, int *hdesc)
+int harmony_connect_(char* host, int* port, int* use_sigs,
+                     int* relocated, int* hdesc)
 {
     *hdesc = harmony_connect(host, *port, *use_sigs, *relocated);
     return (*hdesc >= 0 ? 0 : -1);
 }
 
-int harmony_disconnect_(int *hdesc)
+int harmony_disconnect_(int* hdesc)
 {
     return harmony_disconnect(*hdesc);
 }
 
-int harmony_getcfg_(int *hdesc, const char *key, char *value, long len)
+int harmony_getcfg_(int* hdesc, const char* key, char* value, long len)
 {
     int retval;
-    char *newstr;
+    char* newstr;
     retval = harmony_getcfg(*hdesc, key, &newstr);
     strncpy(value, newstr, len);
     free(newstr);
@@ -48,61 +48,61 @@ int harmony_getcfg_(int *hdesc, const char *key, char *value, long len)
     return retval;
 }
 
-int harmony_application_setup_(int *hdesc, char *description)
+int harmony_application_setup_(int* hdesc, char* description)
 {
     return harmony_application_setup(*hdesc, description);
 }
 
-int harmony_application_setup_file_(int *hdesc, char *fname)
+int harmony_application_setup_file_(int* hdesc, char* fname)
 {
     return harmony_application_setup_file(*hdesc, fname);
 }
 
-long harmony_add_variable_(int *hdesc, char *appName, char *bundleName,
-                           int *type, int *local)
+long harmony_add_variable_(int* hdesc, char* appName, char* bundleName,
+                           int* type, int* local)
 {
     return (long)harmony_add_variable(*hdesc, appName, bundleName,
                                       *type, *local);
 }
 
-int harmony_set_variable_int_(int *hdesc, long *var)
+int harmony_set_variable_int_(int* hdesc, long* var)
 {
-    return harmony_set_variable(*hdesc, (void *)(*var));
+    return harmony_set_variable(*hdesc, (void*)(*var));
 }
 
-int harmony_set_all_(int *hdesc)
+int harmony_set_all_(int* hdesc)
 {
     return harmony_set_all(*hdesc);
 }
 
-void harmony_request_variable_int_(int *hdesc, char *name, int *var)
+void harmony_request_variable_int_(int* hdesc, char* name, int* var)
 {
-    *var = *(int *)harmony_request_variable(*hdesc, name);
+    *var = *(int*)harmony_request_variable(*hdesc, name);
 }
 
-void harmony_request_variable_double_(int *hdesc, char *name, double *var)
+void harmony_request_variable_double_(int* hdesc, char* name, double* var)
 {
-    *var = *(double *)harmony_request_variable(*hdesc, name);
+    *var = *(double*)harmony_request_variable(*hdesc, name);
 }
 
-int harmony_request_all_(int *hdesc, int *pull)
+int harmony_request_all_(int* hdesc, int* pull)
 {
     return harmony_request_all(*hdesc, *pull);
 }
 
-int harmony_performance_update_int_(int *hdesc, int *value)
+int harmony_performance_update_int_(int* hdesc, int* value)
 {
     return harmony_performance_update_int(*hdesc, *value);
 }
 
-int harmony_performance_update_double_(int *hdesc, double *value)
+int harmony_performance_update_double_(int* hdesc, double* value)
 {
     return harmony_performance_update_double(*hdesc, *value);
 }
 
-int harmony_get_best_configuration_(int *hdesc, char *ret, long len)
+int harmony_get_best_configuration_(int* hdesc, char* ret, long len)
 {
-    char *newstr = harmony_get_best_configuration(*hdesc);
+    char* newstr = harmony_get_best_configuration(*hdesc);
     if (newstr) {
         strncpy(ret, newstr, len);
         free(newstr);
@@ -111,22 +111,22 @@ int harmony_get_best_configuration_(int *hdesc, char *ret, long len)
     return -1;
 }
 
-void harmony_check_convergence_(int *hdesc, int *retval)
+void harmony_check_convergence_(int* hdesc, int* retval)
 {
     *retval = harmony_check_convergence(*hdesc);
 }
 
-int harmony_code_generation_complete_(int *hdesc)
+int harmony_code_generation_complete_(int* hdesc)
 {
     return harmony_code_generation_complete(*hdesc);
 }
 
-long harmony_database_lookup_(int *hdesc)
+long harmony_database_lookup_(int* hdesc)
 {
     return (long)harmony_database_lookup(*hdesc);
 }
 
-int harmony_pseudo_barrier_(int *hdesc)
+int harmony_pseudo_barrier_(int* hdesc)
 {
     return harmony_pseudo_barrier(*hdesc);
 }

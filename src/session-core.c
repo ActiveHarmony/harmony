@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -16,14 +16,15 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
+#define _XOPEN_SOURCE 600 // Needed for srand48() and S_ISSOCK.
 
 #include "session-core.h"
-#include "hsession.h"
+#include "hspace.h"
 #include "hcfg.h"
 #include "hmesg.h"
+#include "hplugin.h"
 #include "hutil.h"
 #include "hsockutil.h"
-#include "defaults.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,7 +33,7 @@
 #include <string.h>
 #include <strings.h>
 #include <errno.h>
-#include <dlfcn.h>
+#include <signal.h>
 #include <time.h>
 #include <math.h>
 #include <sys/stat.h>
@@ -40,133 +41,159 @@
 #include <sys/socket.h>
 #include <sys/select.h>
 
-/* --------------------------------
- * Session configuration variables.
+/*
+ * Structure to encapsulate a Harmony plug-in and its run-time state.
  */
-hsession_t *sess;
-int perf_count = DEFAULT_PERF_COUNT;
-int per_client = DEFAULT_PER_CLIENT;
-int num_clients = 0;
+typedef struct pstack {
+    hplugin_t plugin;
 
-/* --------------------------------
- * Callback registration variables.
- */
-typedef struct callback {
-    int fd;
-    int index;
-    cb_func_t func;
-} callback_t;
-
-callback_t *cb = NULL;
-int cb_len = 0;
-int cb_cap = 0;
-
-/* -------------------------
- * Plug-in system variables.
- */
-strategy_generate_t strategy_generate;
-strategy_rejected_t strategy_rejected;
-strategy_analyze_t  strategy_analyze;
-strategy_best_t     strategy_best;
-
-hook_init_t         strategy_init;
-hook_join_t         strategy_join;
-hook_getcfg_t       strategy_getcfg;
-hook_setcfg_t       strategy_setcfg;
-hook_fini_t         strategy_fini;
-
-typedef struct layer {
-    const char *name;
-
-    layer_generate_t generate;
-    layer_analyze_t  analyze;
-
-    hook_init_t      init;
-    hook_join_t      join;
-    hook_getcfg_t    getcfg;
-    hook_setcfg_t    setcfg;
-    hook_fini_t      fini;
-
-    int *wait_generate;
+    // Index list of trials waiting in the generation side of this layer.
+    int* wait_generate;
     int wait_generate_len;
     int wait_generate_cap;
 
-    int *wait_analyze;
+    // Index list of trials waiting in the analyze side of this layer.
+    int* wait_analyze;
     int wait_analyze_len;
     int wait_analyze_cap;
-} layer_t;
+} pstack_t;
 
-/* Stack of layer objects. */
-layer_t *lstack = NULL;
-int lstack_len = 0;
-int lstack_cap = 0;
-
-/* ------------------------------
- * Forward function declarations.
+/*
+ * Structure to encapsulate the state of a single search instance.
  */
-int init_session(void);
-int generate_trial(void);
-int plugin_workflow(int trial_idx);
-int workflow_transition(int trial_idx);
-int handle_callback(callback_t *cb);
-int handle_join(hmesg_t *mesg);
-int handle_getcfg(hmesg_t *mesg);
-int handle_setcfg(hmesg_t *mesg);
-int handle_best(hmesg_t *mesg);
-int handle_fetch(hmesg_t *mesg);
-int handle_report(hmesg_t *mesg);
-int handle_reject(int trial_idx);
-int handle_restart(hmesg_t *mesg);
-int handle_wait(int trial_idx);
-int load_strategy(const char *file);
-int load_layers(const char *list);
-int extend_lists(int target_cap);
-void reverse_array(void *ptr, int head, int tail);
+typedef struct hsearch {
+    int open;
 
-/* -------------------
- * Workflow variables.
+    hspace_t space;       // Search space definition.
+    hcfg_t   cfg;         // Configuration environment.
+    hpoint_t best;        // Best known point.
+
+    pstack_t*  pstack;     // Plug-in stack.
+    int        pstack_len;
+    int        pstack_cap;
+
+    // Search specific pseudo-random number generator state.
+    unsigned short xsubi[3];
+
+    // Workflow state.
+    hflow_t flow;
+    int     curr_layer;
+    int     paused_id;
+
+    // List of all points generated, but not yet returned to the strategy.
+    htrial_t* pending;
+    int       pending_cap;
+    int       pending_len;
+
+    // These variables control the capacity of the pending list.
+    int clients;
+    int per_client;
+
+    // List of all trials (point/performance pairs) waiting for client fetch.
+    int* ready;
+    int  ready_head;
+    int  ready_tail;
+    int  ready_cap;
+
+    char* buf;
+    int   buf_len;
+    const char* errmsg;
+} hsearch_t;
+
+/*
+ * Callback registration system.
  */
-const char *errmsg;
-int curr_layer = 0;
-hflow_t flow;
-int paused_id;
+typedef struct callback {
+    int        fd;        // Listen on this file descriptor for incoming data.
+    int        layer_idx; // Return to this layer index when data is ready.
+    cb_func_t  func;      // Call this function to process incoming data.
+    void*      data;      // Instance-specific data pointer.
+    hsearch_t* search;    // Search this callback is associated with.
+} callback_t;
 
-/* List of all points generated, but not yet returned to the strategy. */
-htrial_t *pending = NULL;
-int pending_cap = 0;
-int pending_len = 0;
+callback_t* cbs; // List of callbacks.
+int         cbs_len;
+int         cbs_cap;
 
-/* List of all trials (point/performance pairs) waiting for client fetch. */
-int *ready = NULL;
-int ready_head = 0;
-int ready_tail = 0;
-int ready_cap = 0;
-
-/* ----------------------------
+/*
  * Variables used for select().
  */
-struct timeval polltime, *pollstate;
+struct timeval  polltime;
+struct timeval* pollstate;
 fd_set fds;
 int maxfd;
 
-/* =================================
+/*
+ * Other global variables.
+ */
+static const char* home_dir;
+static hsearch_t** slist;
+static int slist_cap;
+
+/*
+ * Pointer to the current search instance for use from within the
+ * functions exported for pluggable modules.
+ */
+static hsearch_t* current_search;
+const  hcfg_t*    search_cfg;
+
+/*
+ * Base search structure management prototypes.
+ */
+static int  open_search(hsearch_t* search, hmesg_t* mesg);
+static void close_search(hsearch_t* search);
+static void free_search(hsearch_t* search);
+static int  load_strategy(hsearch_t* search, const char* file);
+static int  load_layers(hsearch_t* search, const char* list);
+static int  load_plugin(hsearch_t* search, const char* filename,
+                        hplugin_type_t type);
+
+/*
+ * Internal helper function prototypes.
+ */
+static int        generate_trial(hsearch_t* search);
+static int        plugin_workflow(hsearch_t* search, int trial_idx);
+static int        workflow_transition(hsearch_t* search, int trial_idx);
+static hsearch_t* find_search(hmesg_t* mesg);
+static int        handle_callback(callback_t* cb);
+static int        handle_session(hsearch_t* search, hmesg_t* mesg);
+static int        handle_join(hsearch_t* search, hmesg_t* mesg);
+static int        handle_getcfg(hsearch_t* search, hmesg_t* mesg);
+static int        handle_setcfg(hsearch_t* search, hmesg_t* mesg);
+static int        handle_best(hmesg_t* mesg);
+static int        handle_fetch(hsearch_t* search, hmesg_t* mesg);
+static int        handle_report(hsearch_t* search, hmesg_t* mesg);
+static int        handle_reject(hsearch_t* search, int trial_idx);
+static int        handle_command(hsearch_t* search, hmesg_t* mesg);
+static int        handle_wait(hsearch_t* search, int trial_idx);
+static int        extend_lists(hsearch_t* search, int target_cap);
+static void       reverse_array(void* ptr, int head, int tail);
+static int        update_state(hmesg_t* mesg, hsearch_t* search);
+static void       set_current(hsearch_t* search);
+
+/*
  * Core session routines begin here.
  */
-int main(int argc, char **argv)
+int main(int argc, char* argv[])
 {
     struct stat sb;
-    int i, retval;
+    int retval;
     fd_set ready_fds;
     hmesg_t mesg = HMESG_INITIALIZER;
-    hmesg_t session_mesg = HMESG_INITIALIZER;
 
-    /* Check that we have been launched correctly by checking that
-     * STDIN_FILENO is a socket descriptor.
-     *
-     * Print an error message to stderr if this is not the case.  This
-     * should be the only time an error message is printed to stdout
-     * or stderr.
-     */
+    if (argc < 2) {
+        fprintf(stderr, "%s should not be launched manually.\n", argv[0]);
+        return -1;
+    }
+    home_dir = argv[1];
+
+    // Check that we have been launched correctly by checking that
+    // STDIN_FILENO is a socket descriptor.
+    //
+    // Print an error message to stderr if this is not the case.  This
+    // should be the only time an error message is printed to stdout
+    // or stderr.
+    //
     if (fstat(STDIN_FILENO, &sb) < 0) {
         perror("Could not determine the status of STDIN");
         return -1;
@@ -177,361 +204,538 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    /* Receive the initial session message. */
-    mesg.type = HMESG_SESSION;
-    printf("Receiving initial session message on fd %d\n", STDIN_FILENO);
-    if (mesg_recv(STDIN_FILENO, &session_mesg) < 1) {
-        mesg.data.string = "Socket or deserialization error";
-        goto error;
+    // Ignore SIGINT.  Graceful exit comes from the parent process
+    // closing their end of our STDIN file descriptor.
+    //
+    if (signal(SIGINT, SIG_IGN) == SIG_ERR) {
+        perror("Error in requesting to ignore SIGINT");
+        return -1;
     }
 
-    if (session_mesg.type != HMESG_SESSION ||
-        session_mesg.status != HMESG_STATUS_REQ)
-    {
-        mesg.data.string = "Invalid initial message";
-        goto error;
-    }
-
-    /* Initialize the session. */
-    sess = &session_mesg.data.session;
-    if (init_session() != 0)
-        goto error;
-
-    /* Send the initial session message acknowledgment. */
-    mesg.dest   = session_mesg.dest;
-    mesg.type   = session_mesg.type;
-    mesg.status = HMESG_STATUS_OK;
-    mesg.src_id = session_mesg.src_id;
-    if (mesg_send(STDIN_FILENO, &mesg) < 1) {
-        errmsg = session_mesg.data.string;
-        goto error;
-    }
-
-    while (1) {
-        flow.status = HFLOW_ACCEPT;
-        flow.point  = HPOINT_INITIALIZER;
-
-        ready_fds = fds;
-        retval = select(maxfd + 1, &ready_fds, NULL, NULL, (pending_len == pending_cap)?NULL:pollstate);
-        if (retval < 0)
-            goto error;
-
-        /* Launch callbacks, if needed. */
-        for (i = 0; i < cb_len; ++i) {
-            if (FD_ISSET(cb[i].fd, &ready_fds))
-                handle_callback(&cb[i]);
-        }
-
-        /* Handle hmesg_t, if needed. */
-        if (FD_ISSET(STDIN_FILENO, &ready_fds)) {
-            retval = mesg_recv(STDIN_FILENO, &mesg);
-            if (retval == 0) goto cleanup;
-            if (retval <  0) goto error;
-
-            hcfg_set(sess->cfg, CFGKEY_CURRENT_CLIENT, mesg.src_id);
-            switch (mesg.type) {
-            case HMESG_JOIN:    retval = handle_join(&mesg); break;
-            case HMESG_GETCFG:  retval = handle_getcfg(&mesg); break;
-            case HMESG_SETCFG:  retval = handle_setcfg(&mesg); break;
-            case HMESG_BEST:    retval = handle_best(&mesg); break;
-            case HMESG_FETCH:   retval = handle_fetch(&mesg); break;
-            case HMESG_REPORT:  retval = handle_report(&mesg); break;
-            case HMESG_RESTART: retval = handle_restart(&mesg); break;
-            default:
-                errmsg = "Internal error: Unknown message type.";
-                goto error;
-            }
-            if (retval != 0)
-                goto error;
-
-            hcfg_set(sess->cfg, CFGKEY_CURRENT_CLIENT, NULL);
-            mesg.src_id = NULL;
-
-            if (mesg_send(STDIN_FILENO, &mesg) < 1)
-                goto error;
-        }
-
-        /* Generate another point, if there's room in the queue. */
-        while (pollstate != NULL && pending_len < pending_cap) {
-            generate_trial();
-        }
-    }
-    goto cleanup;
-
-  error:
-    mesg.status = HMESG_STATUS_FAIL;
-    mesg.data.string = errmsg;
-    if (mesg_send(STDIN_FILENO, &mesg) < 1) {
-        fprintf(stderr, "%s: Error sending error message: %s\n",
-                argv[0], mesg.data.string);
-    }
-
-  cleanup:
-    for (i = lstack_len - 1; i >= 0; --i) {
-        if (lstack[i].fini)
-            lstack[i].fini();
-    }
-
-    hmesg_fini(&session_mesg);
-    hmesg_fini(&mesg);
-    return retval;
-}
-
-int init_session(void)
-{
-    const char *ptr;
-    int count = DEFAULT_CLIENT_COUNT;
-    long seed;
-
-    /* Before anything else, control the random seeds. */
-    ptr = hcfg_get(sess->cfg, CFGKEY_RANDOM_SEED);
-    seed = (ptr && *ptr) ? atol(ptr) : time(NULL);
-    srand((int) seed);
-    srand48(seed);
-
-    /* Initialize global data structures. */
+    // Initialize global data structures.
     pollstate = &polltime;
     FD_ZERO(&fds);
     FD_SET(STDIN_FILENO, &fds);
     maxfd = STDIN_FILENO;
 
-    if (array_grow(&cb, &cb_cap, sizeof(callback_t)) != 0) {
-        errmsg = "Error allocating callback vector.";
-        return -1;
-    }
-
-    if (array_grow(&lstack, &lstack_cap, sizeof(layer_t)) != 0) {
-        errmsg = "Error allocating processing layer stack.";
-        return -1;
-    }
-
-    /* Insure the output dimensionality exists in the config system. */
-    ptr = hcfg_get(sess->cfg, CFGKEY_PERF_COUNT);
-    if (ptr) {
-        perf_count = atoi(ptr);
-        if (count < 1) {
-            errmsg = "Invalid config value for " CFGKEY_PERF_COUNT ".";
-            return -1;
+    while (1) {
+        ready_fds = fds;
+        retval = select(maxfd + 1, &ready_fds, NULL, NULL, pollstate);
+        if (retval < 0) {
+            perror("Error during main select loop of session-core");
+            break;
         }
+
+        // Launch callbacks, if needed.
+        for (int i = 0; i < cbs_len; ++i) {
+            if (FD_ISSET(cbs[i].fd, &ready_fds))
+                handle_callback(&cbs[i]);
+        }
+
+        // Handle hmesg_t, if needed.
+        if (FD_ISSET(STDIN_FILENO, &ready_fds)) {
+            retval = mesg_recv(STDIN_FILENO, &mesg);
+            if (retval == 0) break;
+            if (retval <  0) {
+                perror("Error receiving message in session-core");
+                break;
+            }
+
+            hsearch_t* search = find_search(&mesg);
+            if (!search)
+                goto error;
+
+            set_current(search);
+            search->flow.status = HFLOW_ACCEPT;
+
+            if (search->open) {
+                hcfg_set(&search->cfg, CFGKEY_CURRENT_CLIENT,
+                         mesg.state.client);
+            }
+
+            switch (mesg.type) {
+            case HMESG_SESSION: retval = handle_session(search, &mesg); break;
+            case HMESG_JOIN:    retval = handle_join(search, &mesg); break;
+            case HMESG_GETCFG:  retval = handle_getcfg(search, &mesg); break;
+            case HMESG_SETCFG:  retval = handle_setcfg(search, &mesg); break;
+            case HMESG_BEST:    retval = handle_best(&mesg); break;
+            case HMESG_FETCH:   retval = handle_fetch(search, &mesg); break;
+            case HMESG_REPORT:  retval = handle_report(search, &mesg); break;
+            case HMESG_COMMAND: retval = handle_command(search, &mesg); break;
+
+            default:
+                search->errmsg = "Invalid message type";
+                goto error;
+            }
+            if (retval != 0)
+                goto error;
+
+            if (update_state(&mesg, search) != 0) {
+                search->errmsg = "Could not update message session state";
+                goto error;
+            }
+
+            hcfg_set(&search->cfg, CFGKEY_CURRENT_CLIENT, NULL);
+            set_current(NULL);
+            goto reply;
+
+          error:
+            mesg.status = HMESG_STATUS_FAIL;
+            if (search)
+                mesg.data.string = search->errmsg;
+            else
+                mesg.data.string = "No matching search in session-core";
+
+          reply:
+            // Swap the source and destination fields to reply.
+            mesg.src  ^= mesg.dest;
+            mesg.dest ^= mesg.src;
+            mesg.src  ^= mesg.dest;
+
+            if (mesg_send(STDIN_FILENO, &mesg) < 1)
+                fprintf(stderr, "%s: Error sending reply: %s\n",
+                        argv[0], mesg.data.string);
+
+            search_cfg = NULL;
+        }
+
+        // Generate more points to test.
+        do {
+            pollstate = NULL;
+            for (int i = 0; i < slist_cap; ++i) {
+                hsearch_t* search = slist[i];
+
+                if (!search || !search->open)
+                    continue;
+
+                // Generate a single trial for this search.
+                set_current(search);
+                generate_trial(search);
+                set_current(NULL);
+
+                if (!pollstate && search->flow.status != HFLOW_WAIT &&
+                    search->pending_len < search->pending_cap)
+                {
+                    pollstate = &polltime;
+                }
+            }
+        } while (pollstate);
+    }
+
+    for (int i = 0; i < slist_cap; ++i) {
+        if (slist[i]) {
+            if (slist[i]->open)
+                close_search(slist[i]);
+            free_search(slist[i]);
+        }
+    }
+    free(slist);
+    free(cbs);
+    hmesg_fini(&mesg);
+
+    return retval;
+}
+
+/*
+ * Base search structure management implementation.
+ */
+
+int open_search(hsearch_t* search, hmesg_t* mesg)
+{
+    const char* ptr;
+
+    // Initialize the session.
+    if (hspace_copy(&search->space, mesg->state.space) != 0) {
+        search->errmsg = "Could not copy session data";
+        return -1;
+    }
+
+    if (hcfg_copy(&search->cfg, mesg->data.cfg) != 0) {
+        search->errmsg = "Could not copy configuration environment";
+        return -1;
+    }
+
+    // Control the random number generator state.
+    long seed = hcfg_int(&search->cfg, CFGKEY_RANDOM_SEED);
+    if (seed == -1) {
+        // Default seed is based on time and hsearch_t object address.
+        seed = time(NULL);
+
+        search->xsubi[0] = (((unsigned long) seed) >> 16) & 0xFFFF;
+        search->xsubi[1] = (((unsigned long) seed)      ) & 0xFFFF;
+        search->xsubi[2] = (((unsigned long) search)    ) & 0xFFFF;
     }
     else {
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%d", DEFAULT_PERF_COUNT);
-        hcfg_set(sess->cfg, CFGKEY_PERF_COUNT, buf);
+        search->xsubi[0] = (((unsigned long) seed) >> 32) & 0xFFFF;
+        search->xsubi[1] = (((unsigned long) seed) >> 16) & 0xFFFF;
+        search->xsubi[2] = (((unsigned long) seed)      ) & 0xFFFF;
     }
 
-    /* Determine the number of trials to prepare per-client. */
-    ptr = hcfg_get(sess->cfg, CFGKEY_PER_CLIENT_STORAGE);
+    // Overwrite CFGKEY_HARMONY_HOME.
+    if (hcfg_set(&search->cfg, CFGKEY_HARMONY_HOME, home_dir) != 0) {
+        search->errmsg = "Could not set " CFGKEY_HARMONY_HOME " for session";
+        return -1;
+    }
+
+    if (hcfg_int(&search->cfg, CFGKEY_PERF_COUNT) < 1) {
+        search->errmsg = "Invalid " CFGKEY_PERF_COUNT " configuration value";
+        return -1;
+    }
+
+    search->per_client = hcfg_int(&search->cfg, CFGKEY_GEN_COUNT);
+    if (search->per_client < 1) {
+        search->errmsg = "Invalid " CFGKEY_GEN_COUNT " configuration value";
+        return -1;
+    }
+
+    int expected = hcfg_int(&search->cfg, CFGKEY_CLIENT_COUNT);
+    if (expected < 1) {
+        search->errmsg = "Invalid " CFGKEY_CLIENT_COUNT " configuration value";
+        return -1;
+    }
+
+    if (extend_lists(search, expected * search->per_client) != 0)
+        return -1;
+
+    // Any existing points in the pending list must be re-initialized.
+    search->pending_len = 0;
+    for (int i = 0; i < search->pending_cap; ++i)
+        ((hpoint_t*) &search->pending[i].point)->id = 0;
+
+    // Any index values in the ready list must be re-initialized.
+    search->ready_head = 0;
+    search->ready_tail = 0;
+    for (int i = 0; i < search->ready_cap; ++i)
+        search->ready[i] = -1;
+
+    ptr = hcfg_get(&search->cfg, CFGKEY_STRATEGY);
+    if (!ptr) {
+        if (expected > 1)
+            ptr = "pro.so"; // Default strategy for multi-client searches.
+        else
+            ptr = "nm.so";  // Default strategy for single-client searches.
+    }
+
+    // Begin region where plug-in hooks may be executed.  Make sure the
+    // correct data is available in the global pointers.
+    //
+    search_cfg = &search->cfg;
+
+    // Load and initialize requested strategy plug-in.
+    if (load_strategy(search, ptr) != 0)
+        return -1;
+
+    // Load and initialize requested layer plug-ins.
+    ptr = hcfg_get(&search->cfg, CFGKEY_LAYERS);
     if (ptr) {
-        per_client = atoi(ptr);
-        if (per_client < 1) {
-            errmsg = "Invalid config value for " CFGKEY_PER_CLIENT_STORAGE ".";
+        if (load_layers(search, ptr) != 0)
             return -1;
-        }
     }
 
-    /* Determine the number of clients to expect. */
-    ptr = hcfg_get(sess->cfg, CFGKEY_CLIENT_COUNT);
-    if (ptr) {
-        count = atoi(ptr);
-        if (count < 1) {
-            errmsg = "Invalid config value for " CFGKEY_CLIENT_COUNT ".";
+    // End region where plug-in hooks may be executed.
+    //
+    search_cfg = NULL;
+
+    search->best.id = 0;
+    search->paused_id = 0;
+    search->clients = 1;
+    search->open = 1;
+
+    set_current(search);
+    for (int i = 0; i < search->pstack_len; ++i) {
+        hplugin_t* plugin = &search->pstack[i].plugin;
+
+        if (hplugin_init(plugin, &search->space) != 0)
             return -1;
-        }
     }
-    else {
-        /* Otherwise, make sure this key exists. */
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%d", DEFAULT_CLIENT_COUNT);
-        if (hcfg_set(sess->cfg, CFGKEY_CLIENT_COUNT, buf) != 0) {
-            errmsg = "Error setting default client count.";
-            return -1;
-        }
-    }
-    count *= per_client;
-
-    /* Load and initialize the strategy code object. */
-    ptr = hcfg_get(sess->cfg, CFGKEY_SESSION_STRATEGY);
-    if (load_strategy(ptr) < 0)
-        return -1;
-
-    /* Load and initialize requested layer's. */
-    ptr = hcfg_get(sess->cfg, CFGKEY_SESSION_LAYERS);
-    if (ptr && load_layers(ptr) < 0)
-        return -1;
-
-    if (extend_lists(count) != 0)
-        return -1;
+    set_current(NULL);
 
     return 0;
 }
 
-int generate_trial(void)
+void close_search(hsearch_t* search)
 {
-    int idx;
-    htrial_t *trial;
+    for (int i = search->pstack_len - 1; i >= 0; --i) {
+        hplugin_t* plugin = &search->pstack[i].plugin;
 
-    /* Find a free point. */
-    for (idx = 0; idx < pending_cap; ++idx) {
-        trial = &pending[idx];
-        if (trial->point.id == -1)
-            break;
+        if (hplugin_fini(plugin) != 0)
+            fprintf(stderr, "Error finalizing plug-in: %s\n", search->errmsg);
+
+        if (hplugin_close(plugin, &search->errmsg) != 0)
+            fprintf(stderr, "Error closing plug-in: %s\n", search->errmsg);
     }
-    if (idx == pending_cap) {
-        errmsg = "Internal error: Point generation overflow.";
-        return -1;
-    }
-
-    /* Reset the performance for this trial. */
-    hperf_reset(trial->perf);
-
-    /* Call strategy generation routine. */
-    if (strategy_generate(&flow, (hpoint_t *)&trial->point) != 0)
-        return -1;
-
-    if (flow.status == HFLOW_WAIT) {
-        /* Strategy requests that we pause point generation. */
-        pollstate = NULL;
-        return 0;
-    }
-    ++pending_len;
-
-    /* Begin generation workflow for new point. */
-    curr_layer = 1;
-    return plugin_workflow(idx);
+    search->open = 0;
 }
 
-int plugin_workflow(int trial_idx)
+void free_search(hsearch_t* search)
 {
-    htrial_t *trial = &pending[trial_idx];
+    if (!search)
+        return;
 
-    while (curr_layer != 0 && curr_layer <= lstack_len)
+    for (int i = 0; i < search->pending_cap; ++i) {
+        hpoint_fini((hpoint_t*) &search->pending[i].point);
+        hperf_fini(&search->pending[i].perf);
+    }
+
+    hpoint_fini(&search->flow.point);
+    hpoint_fini(&search->best);
+    hcfg_fini(&search->cfg);
+    hspace_fini(&search->space);
+
+    free(search->buf);
+    free(search->ready);
+    free(search->pending);
+    free(search->pstack);
+    free(search);
+}
+
+/*
+ * Loads strategy given name of library file.
+ * Checks that strategy defines required functions,
+ * and then calls the strategy's init function (if defined)
+ */
+int load_strategy(hsearch_t* search, const char* file)
+{
+    char** pathbuf     = &search->buf;
+    int*   pathbuf_len = &search->buf_len;
+
+    search->pstack_len = 0;
+
+    if (snprintf_grow(pathbuf, pathbuf_len,
+                      "%s/libexec/%s", home_dir, file) < 0)
     {
-        int stack_idx = abs(curr_layer) - 1;
-        int retval;
+        search->errmsg = "Could not allocate full pathname for plug-in";
+        return -1;
+    }
 
-        flow.status = HFLOW_ACCEPT;
-        if (curr_layer < 0) {
-            /* Analyze workflow. */
-            if (lstack[stack_idx].analyze) {
-                if (lstack[stack_idx].analyze(&flow, trial) != 0)
-                    return -1;
-            }
+    return load_plugin(search, *pathbuf, HPLUGIN_STRATEGY);
+}
+
+#define LAYER_DELIM_CHARS ":;, \t\n"
+int load_layers(hsearch_t* search, const char* list)
+{
+    char** pathbuf = &search->buf;
+    int*   pathlen = &search->buf_len;
+
+    while (*list) {
+        // Skip any delimiter characters.
+        list += strspn(list, LAYER_DELIM_CHARS);
+
+        // Find the end of the current filename.
+        int span = strcspn(list, LAYER_DELIM_CHARS);
+
+        if (snprintf_grow(pathbuf, pathlen,
+                          "%s/libexec/%.*s", home_dir, span, list) < 0)
+        {
+            search->errmsg = "Could not allocate full pathname for plug-in";
+            return -1;
+        }
+
+        if (load_plugin(search, *pathbuf, HPLUGIN_LAYER) != 0)
+            return -1;
+
+        list += span;
+    }
+    return 0;
+}
+
+int load_plugin(hsearch_t* search, const char* pathname, hplugin_type_t type)
+{
+    if (search->pstack_len == search->pstack_cap) {
+        if (array_grow(&search->pstack, &search->pstack_cap,
+                       sizeof(*search->pstack)) != 0)
+        {
+            search->errmsg = "Could not extend plug-in stack";
+            return -1;
+        }
+    }
+
+    hplugin_t* plugin = &search->pstack[ search->pstack_len ].plugin;
+    if (hplugin_open(plugin, search->buf, &search->errmsg) != 0)
+        return -1;
+
+    // At this point, resources have been allocated.  Increment
+    // the counter now so, even if this function encounters an
+    // error, these resources may be properly freed during
+    // close_search().
+    //
+    ++search->pstack_len;
+
+    if (plugin->type != type) {
+        search->errmsg = "Inappropriate Harmony plug-in type loaded";
+        return -1;
+    }
+
+    if (plugin->keyinfo) {
+        if (hcfg_reginfo(&search->cfg, plugin->keyinfo) != 0) {
+            search->errmsg = "Could not register default configuration";
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+/*
+ * Internal helper function implementation.
+ */
+
+int generate_trial(hsearch_t* search)
+{
+    int idx;
+    htrial_t* trial = NULL;
+
+    // Find a free point.
+    for (idx = 0; idx < search->pending_cap; ++idx) {
+        trial = &search->pending[idx];
+        if (!trial->point.id)
+            break;
+    }
+    if (idx == search->pending_cap) {
+        search->errmsg = "Point generation overflow";
+        return -1;
+    }
+
+    // Reset the performance for this trial.
+    hperf_reset(&trial->perf);
+
+    // Call strategy generation routine.
+    hplugin_t* strategy = &search->pstack[0].plugin;
+    if (hplugin_generate(strategy, &search->flow, trial) != 0)
+        return -1;
+
+    if (search->flow.status == HFLOW_ACCEPT) {
+        ++search->pending_len;
+
+        // Begin generation workflow for new point.
+        search->curr_layer = 1;
+        return plugin_workflow(search, idx);
+    }
+    return 0;
+}
+
+int plugin_workflow(hsearch_t* search, int trial_idx)
+{
+    htrial_t* trial = &search->pending[trial_idx];
+
+    while (search->curr_layer != 0 && search->curr_layer < search->pstack_len)
+    {
+        int        stack_idx = abs(search->curr_layer);
+        hplugin_t* plugin    = &search->pstack[stack_idx].plugin;
+
+        search->flow.status = HFLOW_ACCEPT;
+        if (search->curr_layer < 0) {
+            // Analyze workflow.
+            if (hplugin_analyze(plugin, &search->flow, trial) != 0)
+                return -1;
         }
         else {
-            /* Generate workflow. */
-            if (lstack[stack_idx].generate) {
-                if (lstack[stack_idx].generate(&flow, trial) != 0)
-                    return -1;
-            }
+            // Generate workflow.
+            if (hplugin_generate(plugin, &search->flow, trial) != 0)
+                return -1;
         }
 
-        retval = workflow_transition(trial_idx);
+        int retval = workflow_transition(search, trial_idx);
         if (retval < 0) return -1;
         if (retval > 0) return  0;
     }
 
-    if (curr_layer == 0) {
-        /* Completed analysis layers.  Send trial to strategy. */
-        if (strategy_analyze(trial) != 0)
+    if (search->curr_layer == 0) {
+        // Completed analysis layers.  Send trial to strategy.
+        hplugin_t* strategy = &search->pstack[0].plugin;
+        if (hplugin_analyze(strategy, NULL, trial) != 0)
             return -1;
 
-        /* Remove point data from pending list. */
-        hpoint_fini( (hpoint_t *)&trial->point );
-        *(hpoint_t *)&trial->point = HPOINT_INITIALIZER;
-        --pending_len;
+        // Remove point data from pending list.
+        ((hpoint_t*) &trial->point)->id = 0;
+        --search->pending_len;
 
-        /* Point generation attempts may begin again. */
+        // Point generation attempts may begin again.
         pollstate = &polltime;
     }
-    else if (curr_layer > lstack_len) {
-        /* Completed generation layers.  Enqueue trial in ready queue. */
-        if (ready[ready_tail] != -1) {
-            errmsg = "Internal error: Ready queue overflow.";
+    else if (search->curr_layer == search->pstack_len) {
+        // Completed generation layers.  Enqueue trial in ready queue.
+        if (search->ready[search->ready_tail] != -1) {
+            search->errmsg = "Ready queue overflow";
             return -1;
         }
 
-        ready[ready_tail] = trial_idx;
-        ready_tail = (ready_tail + 1) % ready_cap;
+        search->ready[search->ready_tail] = trial_idx;
+        search->ready_tail = (search->ready_tail + 1) % search->ready_cap;
     }
     else {
-        errmsg = "Internal error: Invalid current plug-in layer.";
+        search->errmsg = "Invalid current plug-in layer";
         return -1;
     }
 
     return 0;
 }
 
-/* Layer state machine transitions. */
-int workflow_transition(int trial_idx)
+// Layer state machine transitions.
+int workflow_transition(hsearch_t* search, int trial_idx)
 {
-    switch (flow.status) {
+    switch (search->flow.status) {
     case HFLOW_ACCEPT:
-        curr_layer += 1;
+        search->curr_layer += 1;
         break;
 
     case HFLOW_WAIT:
-        if (handle_wait(trial_idx) != 0) {
+        if (handle_wait(search, trial_idx) != 0) {
             return -1;
         }
         return 1;
 
     case HFLOW_RETURN:
     case HFLOW_RETRY:
-        curr_layer = -curr_layer;
+        search->curr_layer = -search->curr_layer;
         break;
 
     case HFLOW_REJECT:
-        if (handle_reject(trial_idx) != 0)
+        if (handle_reject(search, trial_idx) != 0)
             return -1;
 
-        if (flow.status == HFLOW_WAIT)
+        if (search->flow.status == HFLOW_WAIT)
             return 1;
 
-        curr_layer = 1;
+        search->curr_layer = 1;
         break;
 
     default:
-        errmsg = "Internal error: Invalid workflow status.";
+        search->errmsg = "Invalid workflow status";
         return -1;
     }
     return 0;
 }
 
-int handle_reject(int trial_idx)
+int handle_reject(hsearch_t* search, int trial_idx)
 {
-    htrial_t *trial = &pending[trial_idx];
-
-    if (curr_layer < 0) {
-        errmsg = "Internal error: REJECT invalid for analysis workflow.";
+    if (search->curr_layer < 0) {
+        search->errmsg = "REJECT invalid for analysis workflow";
         return -1;
     }
 
-    /* Regenerate this rejected point. */
-    if (strategy_rejected(&flow, (hpoint_t *) &trial->point) != 0)
-        return -1;
-
-    if (flow.status == HFLOW_WAIT)
-        pollstate = NULL;
-
-    return 0;
+    // Regenerate this rejected point.
+    htrial_t*  trial    = &search->pending[trial_idx];
+    hplugin_t* strategy = &search->pstack[0].plugin;
+    return hplugin_rejected(strategy, &search->flow, trial);
 }
 
-int handle_wait(int trial_idx)
+int handle_wait(hsearch_t* search, int trial_idx)
 {
-    int idx = abs(curr_layer) - 1;
-    int **list;
-    int *len, *cap;
+    int   idx = abs(search->curr_layer);
+    int** list;
+    int*  len;
+    int*  cap;
 
-    if (curr_layer < 0) {
-        list = &lstack[idx].wait_analyze;
-        len  = &lstack[idx].wait_analyze_len;
-        cap  = &lstack[idx].wait_analyze_cap;
+    if (search->curr_layer < 0) {
+        list = &search->pstack[idx].wait_analyze;
+        len  = &search->pstack[idx].wait_analyze_len;
+        cap  = &search->pstack[idx].wait_analyze_cap;
     }
     else {
-        list = &lstack[idx].wait_generate;
-        len  = &lstack[idx].wait_generate_len;
-        cap  = &lstack[idx].wait_generate_cap;
+        list = &search->pstack[idx].wait_generate;
+        len  = &search->pstack[idx].wait_generate_len;
+        cap  = &search->pstack[idx].wait_generate_cap;
     }
 
     if (*len == *cap) {
@@ -543,7 +747,7 @@ int handle_wait(int trial_idx)
     }
 
     if ((*list)[*len] != -1) {
-        errmsg = "Internal error: Could not append to wait list.";
+        search->errmsg = "Could not append to wait list";
         return -1;
     }
 
@@ -552,455 +756,374 @@ int handle_wait(int trial_idx)
     return 0;
 }
 
-int handle_callback(callback_t *cb)
+hsearch_t* find_search(hmesg_t* mesg)
 {
-    htrial_t **trial_list;
-    int *list, *len, trial_idx;
-    int i, idx, retval;
+    int idx;
 
-    curr_layer = cb->index;
-    idx = abs(curr_layer) - 1;
+    if (mesg->type == HMESG_SESSION || mesg->type == HMESG_JOIN) {
+        int open_slot = slist_cap;
 
-    /* The idx variable represents layer plugin index for now. */
-    if (curr_layer < 0) {
-        list = lstack[idx].wait_analyze;
-        len = &lstack[idx].wait_analyze_len;
+        // Find an active search by name.
+        for (idx = 0; idx < slist_cap; ++idx) {
+            if (!slist[idx] || !slist[idx]->open) {
+                // Save the first open search slot we find.
+                if (open_slot == slist_cap)
+                    open_slot = idx;
+                continue;
+            }
+
+            const char* name;
+            if (mesg->type == HMESG_SESSION)
+                name = mesg->state.space->name;
+            else
+                name = mesg->data.string;
+
+            if (strcmp(name, slist[idx]->space.name) == 0)
+                return slist[idx];
+        }
+        if (open_slot == slist_cap) {
+            if (array_grow(&slist, &slist_cap, sizeof(*slist)) != 0)
+                return NULL;
+        }
+
+        if (!slist[open_slot])
+            slist[open_slot] = calloc(1, sizeof(*slist[open_slot]));
+        return slist[open_slot];
     }
     else {
-        list = lstack[idx].wait_generate;
-        len = &lstack[idx].wait_generate_len;
+        // Sanity check that the given index is valid and active.
+        idx = mesg->dest;
+        if (idx >= 0 && idx < slist_cap && slist[idx] && slist[idx]->open)
+            return slist[idx];
+    }
+    return NULL;
+}
+
+int handle_callback(callback_t* cb)
+{
+    hsearch_t* search = cb->search;
+    htrial_t** trial_list;
+    int* list;
+    int* len;
+    int  trial_idx, retval;
+
+    search->curr_layer = cb->layer_idx;
+    int        idx    = abs(search->curr_layer);
+    pstack_t*  pstack = &search->pstack[idx];
+
+    // The idx variable represents layer plug-in index for now.
+    if (search->curr_layer < 0) {
+        list = pstack->wait_analyze;
+        len = &pstack->wait_analyze_len;
+    }
+    else {
+        list = pstack->wait_generate;
+        len = &pstack->wait_generate_len;
     }
 
     if (*len < 1) {
-        errmsg = "Internal error: Callback on layer with empty waitlist.";
+        search->errmsg = "Callback on layer with empty waitlist";
         return -1;
     }
 
-    /* Prepare a list of htrial_t pointers. */
-    trial_list = (htrial_t **) malloc(*len * sizeof(htrial_t *));
-    for (i = 0; i < *len; ++i)
-        trial_list[i] = &pending[ list[i] ];
+    // Prepare a list of htrial_t pointers.
+    trial_list = malloc(*len * sizeof(htrial_t*));
+    for (int i = 0; i < *len; ++i)
+        trial_list[i] = &search->pending[ list[i] ];
 
-    /* Reusing idx to represent waitlist index.  (Shame on me.) */
-    idx = cb->func(cb->fd, &flow, *len, trial_list);
+    // Reusing idx to represent waitlist index.  (Shame on me.)
+    idx = cb->func(cb->fd, cb->data, &search->flow, *len, trial_list);
     free(trial_list);
 
     trial_idx = list[idx];
-    retval = workflow_transition(trial_idx);
+    retval = workflow_transition(search, trial_idx);
     if (retval < 0) return -1;
     if (retval > 0) return  0;
 
     --(*len);
     list[ idx] = list[*len];
     list[*len] = -1;
-    return plugin_workflow(trial_idx);
+    return plugin_workflow(search, trial_idx);
 }
 
-int handle_join(hmesg_t *mesg)
+int handle_session(hsearch_t* search, hmesg_t* mesg)
 {
-    int i;
-
-    /* Verify that client signature matches current session. */
-    if (!hsignature_match(&mesg->data.join, &sess->sig)) {
-        errmsg = "Incompatible join signature.";
+    if (search->open) {
+        search->errmsg = "Search name already exists";
         return -1;
     }
 
-    if (hsignature_copy(&mesg->data.join, &sess->sig) < 0) {
-        errmsg = "Internal error: Could not copy signature.";
-        return -1;
-    }
-
-    /* Grow the pending and ready queues. */
-    ++num_clients;
-    if (extend_lists(num_clients * per_client) != 0)
+    // Initialize a new session slot.
+    if (open_search(search, mesg) != 0)
         return -1;
 
-    /* Launch all join hooks defined in the plug-in stack. */
-    if (strategy_join && strategy_join(mesg->src_id) != 0)
-        return -1;
-
-    for (i = 0; i < lstack_len; ++i) {
-        if (lstack[i].join && lstack[i].join(mesg->src_id) != 0)
-            return -1;
+    // Find the search index.
+    for (int i = 0; i < slist_cap; ++i) {
+        if (slist[i] == search) {
+            mesg->dest = i;
+            break;
+        }
     }
 
     mesg->status = HMESG_STATUS_OK;
     return 0;
 }
 
-int handle_getcfg(hmesg_t *mesg)
+int handle_join(hsearch_t* search, hmesg_t* mesg)
 {
-    int i;
-    const char *key;
+    if (!search->open) {
+        search->errmsg = "Could not find existing search to join";
+        return -1;
+    }
 
-    key = mesg->data.string;
-
-    /* Launch all getcfg hooks defined in the plug-in stack. */
-    if (strategy_getcfg && strategy_getcfg(key) != 0)
+    // Grow the pending and ready queues.
+    ++search->clients;
+    if (extend_lists(search, search->clients * search->per_client) != 0)
         return -1;
 
-    for (i = 0; i < lstack_len; ++i) {
-        if (lstack[i].getcfg && lstack[i].getcfg(key) != 0)
+    // Launch all join hooks defined in the plug-in stack.
+    for (int i = 0; i < search->pstack_len; ++i) {
+        hplugin_t* plugin = &search->pstack[i].plugin;
+
+        if (hplugin_join(plugin, mesg->state.client) != 0)
             return -1;
     }
 
-    /* Prepare getcfg response message for client. */
-    mesg->data.string = hcfg_get(sess->cfg, key);
+    // Find the search index.
+    for (int i = 0; i < slist_cap; ++i) {
+        if (slist[i] == search) {
+            mesg->dest = i;
+            break;
+        }
+    }
+
+    mesg->state.space = &search->space;
     mesg->status = HMESG_STATUS_OK;
     return 0;
 }
 
-int handle_setcfg(hmesg_t *mesg)
+int handle_getcfg(hsearch_t* search, hmesg_t* mesg)
 {
-    static char *buf = NULL;
-    static int buflen = 0;
+    // Prepare getcfg response message for client.
+    const char* cfgval = hcfg_get(&search->cfg, mesg->data.string);
+    if (cfgval == NULL)
+        cfgval = "";
 
-    char *key, *val;
-    const char *oldval;
+    snprintf_grow(&search->buf, &search->buf_len, "%s=%s",
+                  mesg->data.string, cfgval);
+    mesg->data.string = search->buf;
+    mesg->status = HMESG_STATUS_OK;
+    return 0;
+}
 
-    hcfg_parse((char *)mesg->data.string, &key, &val);
-    if (!key) {
-        errmsg = strerror(EINVAL);
+int handle_setcfg(hsearch_t* search, hmesg_t* mesg)
+{
+    char* sep = (char*) strchr(mesg->data.string, '=');
+    const char* oldval;
+
+    if (!sep) {
+        search->errmsg = "Malformed configuration request";
         return -1;
     }
+    *sep = '\0';
 
-    /* Store the original value, possibly allocating memory for it. */
-    oldval = hcfg_get(sess->cfg, key);
+    // Store the original value, possibly allocating memory for it.
+    oldval = hcfg_get(&search->cfg, mesg->data.string);
     if (oldval) {
-        snprintf_grow(&buf, &buflen, "%s", oldval);
-        oldval = buf;
+        snprintf_grow(&search->buf, &search->buf_len, "%s", oldval);
+        oldval = search->buf;
     }
 
-    if (session_setcfg(key, val) != 0) {
-        errmsg = "Error setting session configuration variable";
+    if (search_setcfg(mesg->data.string, sep + 1) != 0) {
+        search->errmsg = "Error setting session configuration variable";
         return -1;
     }
 
-    /* Prepare setcfg response message for client. */
+    // Prepare setcfg response message for client.
     mesg->data.string = oldval;
     mesg->status = HMESG_STATUS_OK;
     return 0;
 }
 
-int handle_best(hmesg_t *mesg)
+int handle_best(hmesg_t* mesg)
 {
-    mesg->data.point = HPOINT_INITIALIZER;
-    if (strategy_best(&mesg->data.point) != 0)
-        return -1;
-
     mesg->status = HMESG_STATUS_OK;
     return 0;
 }
 
-int handle_fetch(hmesg_t *mesg)
+int handle_fetch(hsearch_t* search, hmesg_t* mesg)
 {
-    int idx = ready[ready_head], paused;
-    const char *cfgval;
-    htrial_t *next;
+    int idx = search->ready[search->ready_head], paused;
 
-    /* Check if the session is paused. */
-    cfgval = hcfg_get(sess->cfg, CFGKEY_SESSION_PAUSED);
-    paused = (cfgval && *cfgval == '1');
+    // Check if the session is paused.
+    paused = hcfg_bool(&search->cfg, CFGKEY_PAUSED);
 
     if (!paused && idx >= 0) {
-        /* Send the next point on the ready queue. */
-        next = &pending[idx];
+        // Send the next point on the ready queue.
+        mesg->data.point = &search->pending[idx].point;
 
-        mesg->data.point = HPOINT_INITIALIZER;
-        if (hpoint_copy(&mesg->data.point, &next->point) != 0) {
-            errmsg = "Internal error: Could not copy candidate point data.";
-            return -1;
-        }
-
-        /* Remove the first point from the ready queue. */
-        ready[ready_head] = -1;
-        ready_head = (ready_head + 1) % ready_cap;
+        // Remove the first point from the ready queue.
+        search->ready[search->ready_head] = -1;
+        search->ready_head = (search->ready_head + 1) % search->ready_cap;
 
         mesg->status = HMESG_STATUS_OK;
     }
     else {
-        /* Ready queue is empty, or session is paused.
-         * Send the best known point. */
-        mesg->data.point = HPOINT_INITIALIZER;
-        if (strategy_best(&mesg->data.point) != 0)
+        // Ready queue is empty, or session is paused.
+        // Send the best known point.
+        hplugin_t* strategy = &search->pstack[0].plugin;
+        if (hplugin_best(strategy, &search->best) != 0)
             return -1;
 
-        paused_id = mesg->data.point.id;
+        mesg->state.best = &search->best;
+        search->paused_id = mesg->data.point->id;
         mesg->status = HMESG_STATUS_BUSY;
     }
     return 0;
 }
 
-int handle_report(hmesg_t *mesg)
+int handle_report(hsearch_t* search, hmesg_t* mesg)
 {
     int idx;
-    htrial_t *trial;
+    htrial_t* trial = NULL;
 
-    /* Find the associated trial in the pending list. */
-    for (idx = 0; idx < pending_cap; ++idx) {
-        trial = &pending[idx];
-        if (trial->point.id == mesg->data.report.cand_id)
+    // Find the associated trial in the pending list.
+    for (idx = 0; idx < search->pending_cap; ++idx) {
+        trial = &search->pending[idx];
+        if (trial->point.id == mesg->data.point->id)
             break;
     }
-    if (idx == pending_cap) {
-        if (mesg->data.report.cand_id == paused_id) {
-            hperf_fini(mesg->data.report.perf);
+    if (idx == search->pending_cap) {
+        if (mesg->data.point->id == search->paused_id) {
             mesg->status = HMESG_STATUS_OK;
             return 0;
         }
         else {
-            errmsg = "Rouge point support not yet implemented.";
+            search->errmsg = "Rouge point support not yet implemented";
             return -1;
         }
     }
-    paused_id = 0;
+    search->paused_id = 0;
 
-    /* Update performance in our local records. */
-    hperf_copy(trial->perf, mesg->data.report.perf);
+    // Update performance in our local records.
+    hperf_copy(&trial->perf, mesg->data.perf);
 
-    /* Begin the workflow at the outermost analysis layer. */
-    curr_layer = -lstack_len;
-    if (plugin_workflow(idx) != 0)
+    // Begin the workflow at the outermost analysis layer.
+    search->curr_layer = -search->pstack_len + 1;
+    if (plugin_workflow(search, idx) != 0)
         return -1;
 
-    hperf_fini(mesg->data.report.perf);
     mesg->status = HMESG_STATUS_OK;
     return 0;
 }
 
-int handle_restart(hmesg_t *mesg)
+int handle_command(hsearch_t* search, hmesg_t* mesg)
 {
-    session_restart();
+    if (strcmp(mesg->data.string, "restart") == 0) {
+        if (search_restart() != 0)
+            goto error;
+    }
+    else if (strcmp(mesg->data.string, "leave") == 0) {
+        --search->clients;
+    }
+    else if (strcmp(mesg->data.string, "kill") == 0) {
+        close_search(search);
+    }
+    else {
+        search->errmsg = "Received unknown command";
+        goto error;
+    }
+
     mesg->status = HMESG_STATUS_OK;
     return 0;
+
+  error:
+    mesg->status = HMESG_STATUS_FAIL;
+    return -1;
 }
 
-/* ISO C forbids conversion of object pointer to function pointer,
- * making it difficult to use dlsym() for functions.  We get around
- * this by first casting to a word-length integer.  (ILP32/LP64
- * compilers assumed).
- */
-#define dlfptr(x, y) ((void (*)(void))(long)(dlsym((x), (y))))
-
-/* Loads strategy given name of library file.
- * Checks that strategy defines required functions,
- * and then calls the strategy's init function (if defined)
- */
-int load_strategy(const char *file)
+int update_state(hmesg_t* mesg, hsearch_t* search)
 {
-    const char *root;
-    char *path;
-    void *lib;
-
-    if (!file)
-        file = DEFAULT_STRATEGY;
-
-    root = hcfg_get(sess->cfg, CFGKEY_HARMONY_HOME);
-    path = sprintf_alloc("%s/libexec/%s", root, file);
-
-    lib = dlopen(path, RTLD_LAZY | RTLD_LOCAL);
-    free(path);
-    if (!lib) {
-        errmsg = dlerror();
-        return -1;
+    // Send updated search space to client if necessary.
+    if (mesg->state.space->id < search->space.id) {
+        mesg->state.space = &search->space;
+    }
+    else if (mesg->type != HMESG_JOIN) {
+        mesg->state.space = &mesg->unpacked_space;
+        mesg->unpacked_space.id = 0;
     }
 
-    strategy_generate = (strategy_generate_t) dlfptr(lib, "strategy_generate");
-    strategy_rejected = (strategy_rejected_t) dlfptr(lib, "strategy_rejected");
-    strategy_analyze  =  (strategy_analyze_t) dlfptr(lib, "strategy_analyze");
-    strategy_best     =     (strategy_best_t) dlfptr(lib, "strategy_best");
-
-    strategy_init     =         (hook_init_t) dlfptr(lib, "strategy_init");
-    strategy_join     =         (hook_join_t) dlfptr(lib, "strategy_join");
-    strategy_getcfg   =       (hook_getcfg_t) dlfptr(lib, "strategy_getcfg");
-    strategy_setcfg   =       (hook_setcfg_t) dlfptr(lib, "strategy_setcfg");
-    strategy_fini     =         (hook_fini_t) dlfptr(lib, "strategy_fini");
-
-    if (!strategy_generate) {
-        errmsg = "Strategy does not define strategy_generate()";
-        return -1;
+    // Refresh the best known point from the strategy.
+    if (search->open) {
+        hplugin_t* strategy = &search->pstack[0].plugin;
+        if (hplugin_best(strategy, &search->best) != 0)
+            return -1;
     }
 
-    if (!strategy_rejected) {
-        errmsg = "Strategy does not define strategy_rejected()";
-        return -1;
+    // Send it to the client if necessary.
+    if (!mesg->state.best || mesg->state.best->id < search->best.id) {
+        mesg->state.best = &search->best;
     }
-
-    if (!strategy_analyze) {
-        errmsg = "Strategy does not define strategy_analyze()";
-        return -1;
+    else {
+        mesg->state.best = &mesg->unpacked_best;
+        mesg->unpacked_best.id = 0;
     }
-
-    if (!strategy_best) {
-        errmsg = "Strategy does not define strategy_best()";
-        return -1;
-    }
-
-    if (strategy_init)
-        return strategy_init(&sess->sig);
-
     return 0;
 }
 
-int load_layers(const char *list)
+
+int extend_lists(hsearch_t* search, int target_cap)
 {
-    const char *prefix, *end;
-    char *path;
-    int path_len, retval;
-    void *lib;
+    int orig_cap = search->pending_cap;
 
-    path = NULL;
-    path_len = 0;
-    retval = 0;
-    while (list && *list) {
-        if (lstack_len == lstack_cap) {
-            if (array_grow(&lstack, &lstack_cap, sizeof(layer_t)) < 0) {
-                retval = -1;
-                goto cleanup;
-            }
-        }
-        end = strchr(list, SESSION_LAYER_SEP);
-        if (!end)
-            end = list + strlen(list);
-
-        prefix = hcfg_get(sess->cfg, CFGKEY_HARMONY_HOME);
-        if (snprintf_grow(&path, &path_len, "%s/libexec/%.*s",
-                          prefix, end - list, list) < 0)
-        {
-            retval = -1;
-            goto cleanup;
-        }
-
-        lib = dlopen(path, RTLD_LAZY | RTLD_LOCAL);
-        if (!lib) {
-            errmsg = dlerror();
-            retval = -1;
-            goto cleanup;
-        }
-
-        prefix = (const char *) dlsym(lib, "harmony_layer_name");
-        if (!prefix) {
-            errmsg = dlerror();
-            retval = -1;
-            goto cleanup;
-        }
-        lstack[lstack_len].name = prefix;
-
-        if (snprintf_grow(&path, &path_len, "%s_init", prefix) < 0) {
-            retval = -1;
-            goto cleanup;
-        }
-        lstack[lstack_len].init = (hook_init_t) dlfptr(lib, path);
-
-        if (snprintf_grow(&path, &path_len, "%s_join", prefix) < 0) {
-            retval = -1;
-            goto cleanup;
-        }
-        lstack[lstack_len].join = (hook_join_t) dlfptr(lib, path);
-
-        if (snprintf_grow(&path, &path_len, "%s_generate", prefix) < 0) {
-            retval = -1;
-            goto cleanup;
-        }
-        lstack[lstack_len].generate = (layer_generate_t) dlfptr(lib, path);
-
-        if (snprintf_grow(&path, &path_len, "%s_analyze", prefix) < 0) {
-            retval = -1;
-            goto cleanup;
-        }
-        lstack[lstack_len].analyze = (layer_analyze_t) dlfptr(lib, path);
-
-        if (snprintf_grow(&path, &path_len, "%s_getcfg", prefix) < 0) {
-            retval = -1;
-            goto cleanup;
-        }
-        lstack[lstack_len].getcfg = (hook_getcfg_t) dlfptr(lib, path);
-
-        if (snprintf_grow(&path, &path_len, "%s_setcfg", prefix) < 0) {
-            retval = -1;
-            goto cleanup;
-        }
-        lstack[lstack_len].setcfg = (hook_setcfg_t) dlfptr(lib, path);
-
-        if (snprintf_grow(&path, &path_len, "%s_fini", prefix) < 0) {
-            retval = -1;
-            goto cleanup;
-        }
-        lstack[lstack_len].fini = (hook_fini_t) dlfptr(lib, path);
-
-        if (lstack[lstack_len].init) {
-            curr_layer = lstack_len + 1;
-            if (lstack[lstack_len].init(&sess->sig) < 0) {
-                retval = -1;
-                goto cleanup;
-            }
-        }
-        ++lstack_len;
-
-        if (*end)
-            list = end + 1;
-        else
-            list = NULL;
-    }
-
-  cleanup:
-    free(path);
-    return retval;
-}
-
-int extend_lists(int target_cap)
-{
-    int orig_cap = pending_cap;
-    int i;
-
-    if (pending_cap >= target_cap && pending_cap != 0)
+    if (orig_cap >= target_cap && orig_cap != 0)
         return 0;
 
-    if (ready && ready_tail <= ready_head && ready[ready_head] != -1) {
-        i = ready_cap - ready_head;
+    if (   search->ready
+        && search->ready_tail <= search->ready_head
+        && search->ready[search->ready_head] != -1)
+    {
+        int i = search->ready_cap - search->ready_head;
 
-        /* Shift ready array to align head with array index 0. */
-        reverse_array(ready, 0, ready_cap);
-        reverse_array(ready, 0, i);
-        reverse_array(ready, i, ready_cap);
+        // Shift ready array to align head with array index 0.
+        reverse_array(search->ready, 0, search->ready_cap);
+        reverse_array(search->ready, 0, i);
+        reverse_array(search->ready, i, search->ready_cap);
 
-        ready_head = 0;
-        ready_tail = ready_cap - ready_tail + ready_head;
+        search->ready_head = 0;
+        search->ready_tail = (search->ready_cap
+                              - search->ready_tail
+                              + search->ready_head);
     }
 
-    ready_cap = target_cap;
-    if (array_grow(&ready, &ready_cap, sizeof(htrial_t *)) != 0) {
-        errmsg = "Internal error: Could not extend ready array.";
+    search->ready_cap = target_cap;
+    if (array_grow(&search->ready, &search->ready_cap,
+                   sizeof(*search->ready)) != 0)
+    {
+        search->errmsg = "Could not extend ready array";
         return -1;
     }
 
-    pending_cap = target_cap;
-    if (array_grow(&pending, &pending_cap, sizeof(htrial_t)) != 0) {
-        errmsg = "Internal error: Could not extend pending array.";
+    search->pending_cap = target_cap;
+    if (array_grow(&search->pending, &search->pending_cap,
+                   sizeof(*search->pending)) != 0)
+    {
+        search->errmsg = "Could not extend pending array";
         return -1;
     }
 
-    for (i = orig_cap; i < pending_cap; ++i) {
-        hpoint_t *point = (hpoint_t *) &pending[i].point;
-        *point = HPOINT_INITIALIZER;
-        pending[i].perf = hperf_alloc(perf_count);
-        if (!pending[i].perf) {
-            pending_cap = orig_cap;
-            errmsg = "Internal error: Could not allocate perf structure.";
-            return -1;
-        }
-        ready[i] = -1;
-    }
+    for (int i = orig_cap; i < search->pending_cap; ++i)
+        search->ready[i] = -1;
+
     return 0;
 }
 
-void reverse_array(void *ptr, int head, int tail)
+void reverse_array(void* ptr, int head, int tail)
 {
-    unsigned long *arr = (unsigned long *) ptr;
+    unsigned long* arr = (unsigned long*) ptr;
 
     while (head < --tail) {
-        /* Swap head and tail entries. */
+        // Swap head and tail entries.
         arr[head] ^= arr[tail];
         arr[tail] ^= arr[head];
         arr[head] ^= arr[tail];
@@ -1008,20 +1131,46 @@ void reverse_array(void *ptr, int head, int tail)
     }
 }
 
-/* ========================================================
+void set_current(hsearch_t* search)
+{
+    current_search = search;
+    search_cfg     = &search->cfg;
+}
+
+/*
  * Exported functions for pluggable modules.
+ *
+ * Since these function will be called from within plug-in module
+ * hooks, there will exist the notion of a "current search instance."
+ * These functions rely on the current search pointer to be set
+ * correctly, and access search data exclusively through it.
  */
 
-int callback_generate(int fd, cb_func_t func)
+/*
+ * Retrieve the best known configuration, as determined by the strategy.
+ */
+int search_best(hpoint_t* pt)
 {
-    if (cb_len >= cb_cap) {
-        if (array_grow(&cb, &cb_cap, sizeof(callback_t)) < 0)
+    hplugin_t* strategy = &current_search->pstack[0].plugin;
+    return hplugin_best(strategy, pt);
+}
+
+/*
+ * Register an "analyze" callback to handle file descriptor data.
+ */
+int search_callback_analyze(int fd, void* data, cb_func_t func)
+{
+    if (cbs_len >= cbs_cap) {
+        if (array_grow(&cbs, &cbs_cap, sizeof(*cbs)) != 0)
             return -1;
     }
-    cb[cb_len].fd = fd;
-    cb[cb_len].index = curr_layer;
-    cb[cb_len].func = func;
-    ++cb_len;
+
+    cbs[ cbs_len ].fd        = fd;
+    cbs[ cbs_len ].search    = current_search;
+    cbs[ cbs_len ].layer_idx = -current_search->curr_layer;
+    cbs[ cbs_len ].data      = data;
+    cbs[ cbs_len ].func      = func;
+    ++cbs_len;
 
     FD_SET(fd, &fds);
     if (maxfd < fd)
@@ -1030,16 +1179,22 @@ int callback_generate(int fd, cb_func_t func)
     return 0;
 }
 
-int callback_analyze(int fd, cb_func_t func)
+/*
+ * Register a "generate" callback to handle file descriptor data.
+ */
+int search_callback_generate(int fd, void* data, cb_func_t func)
 {
-    if (cb_len >= cb_cap) {
-        if (array_grow(&cb, &cb_cap, sizeof(callback_t)) < 0)
+    if (cbs_len >= cbs_cap) {
+        if (array_grow(&cbs, &cbs_cap, sizeof(*cbs)) != 0)
             return -1;
     }
-    cb[cb_len].fd = fd;
-    cb[cb_len].index = -curr_layer;
-    cb[cb_len].func = func;
-    ++cb_len;
+
+    cbs[ cbs_len ].fd        = fd;
+    cbs[ cbs_len ].search    = current_search;
+    cbs[ cbs_len ].layer_idx = current_search->curr_layer;
+    cbs[ cbs_len ].data      = data;
+    cbs[ cbs_len ].func      = func;
+    ++cbs_len;
 
     FD_SET(fd, &fds);
     if (maxfd < fd)
@@ -1048,57 +1203,65 @@ int callback_analyze(int fd, cb_func_t func)
     return 0;
 }
 
-const char *session_getcfg(const char *key)
+/*
+ * Set the error message for the current search instance.
+ */
+void search_error(const char* msg)
 {
-    return hcfg_get(sess->cfg, key);
+    current_search->errmsg = msg;
 }
 
-int session_setcfg(const char *key, const char *val)
+/*
+ * Trigger a restart of the current search instance.
+ */
+int search_restart(void)
 {
-    int i;
+    // Re-initialize all plug-ins associated with this search.
+    for (int i = 0; i < current_search->pstack_len; ++i) {
+        hplugin_t* plugin = &current_search->pstack[i].plugin;
 
-    if (hcfg_set(sess->cfg, key, val) != 0)
-        return -1;
-
-    /* Make sure setcfg callbacks are triggered after the
-     * configuration has been set.  Otherwise, any subsequent
-     * calls to setcfg further down the stack will be nullified
-     * when we return to this frame.
-     */
-    if (strategy_setcfg && strategy_setcfg(key, val) != 0)
-        return -1;
-
-    for (i = 0; i < lstack_len; ++i)
-        if (lstack[i].setcfg && lstack[i].setcfg(key, val) != 0)
+        if (hplugin_init(plugin, &current_search->space) != 0)
             return -1;
+    }
 
     return 0;
 }
 
-int session_best(hpoint_t *pt)
+/*
+ * Central interface for shared configuration between pluggable modules.
+ */
+int search_setcfg(const char* key, const char* val)
 {
-    return strategy_best(pt);
-}
-
-int session_restart(void)
-{
-    int i;
-
-    for (i = lstack_len - 1; i >= 0; --i)
-        if (lstack[i].fini && lstack[i].fini() != 0)
-            return -1;
-
-    if (strategy_init && strategy_init(&sess->sig) != 0)
+    if (hcfg_set(&current_search->cfg, key, val) != 0)
         return -1;
 
-    for (i = 0; i < lstack_len; ++i)
-        if (lstack[i].init && lstack[i].init(&sess->sig) != 0)
+    // Make sure setcfg callbacks are triggered after the
+    // configuration has been set.  Otherwise, any subsequent calls to
+    // setcfg further down the stack will be nullified when we return
+    // to this frame.
+    //
+    for (int i = 0; i < current_search->pstack_len; ++i) {
+        hplugin_t* plugin = &current_search->pstack[i].plugin;
+
+        if (hplugin_setcfg(plugin, key, val) != 0)
             return -1;
+    }
 
     return 0;
 }
 
-void session_error(const char *msg)
+/*
+ * Return a session-specific pseudo-random double value.
+ */
+double search_drand48(void)
 {
-    errmsg = msg;
+    return erand48(current_search->xsubi);
+}
+
+/*
+ * Return a session-specific pseudo-random long integer value.
+ */
+long int search_lrand48(void)
+{
+    return nrand48(current_search->xsubi);
 }

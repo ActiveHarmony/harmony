@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -27,46 +27,57 @@
 extern "C" {
 #endif
 
+typedef struct ilist {
+    int* slot;
+    int  len;
+    int  cap;
+} ilist_t;
+
+typedef enum search_flags {
+    FLAG_CONVERGED = 0x1,
+    FLAG_PAUSED    = 0x2
+} search_flag_t;
+
 typedef struct http_log {
     struct timeval stamp;
     hpoint_t pt;
     double perf;
 } http_log_t;
 
-typedef struct session_state {
-    char *name;
-    int fd, old_fd;
-    int *client;
-    int client_len, client_cap;
+typedef struct sinfo {
+    int id;
+
+    // Best known search point and performance.
     hpoint_t best;
     double best_perf;
 
-    /* Fields used by the HTTP server. */
-    struct timeval start;
-    hsignature_t sig;
-    char *strategy;
-    unsigned int status;
+    // Client-related lists/
+    ilist_t client;
+    ilist_t request;
 
-    http_log_t *log;
+    // Fields used by the HTTP server.
+    struct timeval start;
+    hspace_t space;
+    char* strategy;
+    unsigned int flags;
+
+    http_log_t* log;
     int log_len, log_cap;
-    hpoint_t *fetched;
+
+    hpoint_t* fetched;
     int fetched_len, fetched_cap;
     int reported;
-} session_state_t;
+} sinfo_t;
 
-extern session_state_t *slist;
+extern sinfo_t* slist;
 extern int slist_cap;
 
-extern hmesg_t mesg_in;
-
-session_state_t *session_open(hmesg_t *mesg);
-void session_close(session_state_t *sess);
-const char *session_getcfg(session_state_t *sess, const char *key);
-int session_setcfg(session_state_t *sess, const char *key, const char *val);
-int session_restart(session_state_t *sess);
+int  request_command(sinfo_t* sinfo, const char* command);
+int  request_refresh(sinfo_t* sinfo);
+int  request_setcfg(sinfo_t* sinfo, const char* key, const char* val);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __HSERVER_H__ */
+#endif // __HSERVER_H__

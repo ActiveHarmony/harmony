@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -55,10 +55,10 @@ long application(long p1, long p2, long p3, long p4, long p5, long p6)
     return perf;
 }
 
-int get_cpu_info(char *cpu_vendor, char *cpu_model,
-                 char *cpu_freq, char *cache_size)
+int get_cpu_info(char* cpu_vendor, char* cpu_model,
+                 char* cpu_freq, char* cache_size)
 {
-    FILE *cpuinfo;
+    FILE* cpuinfo;
     int core_num;
     bool recorded_vendor;
     bool recorded_model;
@@ -72,7 +72,7 @@ int get_cpu_info(char *cpu_vendor, char *cpu_model,
     core_num = 0;
     recorded_vendor = recorded_model = recorded_freq = recorded_cache = false;
 
-    /*Open cpuinfo in /proc/cpuinfo*/
+    // Open cpuinfo in /proc/cpuinfo.
     cpuinfo = fopen("/proc/cpuinfo", "r");
     if (cpuinfo == NULL) {
         fprintf(stderr, "Error occurs when acquire cpu information.\n");
@@ -84,7 +84,10 @@ int get_cpu_info(char *cpu_vendor, char *cpu_model,
     }
 
     while (!feof(cpuinfo)) {
-        fgets(line_str, sizeof(line_str), cpuinfo);
+        if (fgets(line_str, sizeof(line_str), cpuinfo) == NULL) {
+            fprintf(stderr, "Warning: Could not read /proc/cpuinfo.\n");
+            return -1;
+        }
 
         if (strlen(line_str) <= 1)
             continue;
@@ -115,7 +118,7 @@ int get_cpu_info(char *cpu_vendor, char *cpu_model,
     return core_num;
 }
 
-char *get_metadata(void)
+char* get_metadata(void)
 {
     struct utsname uts; //os info
 
@@ -125,9 +128,9 @@ char *get_metadata(void)
     char cpu_freq[32];
     char cache_size[32];
 
-    char *retval;
+    char* retval;
 
-    retval = (char*)malloc(sizeof(char)*MAX_STR_LEN);
+    retval = malloc(sizeof(char) * MAX_STR_LEN);
     if (uname(&uts) < 0)
         perror("uname() error\n");
 
@@ -145,18 +148,75 @@ char *get_metadata(void)
     return retval;
 }
 
-int main(int argc, char **argv)
+htask_t* start_search(hdesc_t* hdesc, const char* name)
 {
-    const char *name;
-    hdesc_t *hdesc;
-    int i, retval, loop = 200;
-    double perf = -INFINITY;
-    char *metadata;
+    hdef_t* hdef;
+    htask_t* htask;
 
-    /* Variables to hold the application's runtime tunable parameters.
-     * Once bound to a Harmony tuning session, these variables will be
-     * modified upon harmony_fetch() to a new testing configuration.
-     */
+    hdef = ah_def_alloc();
+    if (!hdef) {
+        fprintf(stderr, "Error allocating search definition: %s\n",
+                ah_error());
+        return NULL;
+    }
+
+    // TAUDB_STORE_METHOD can be "real_time" or any number
+    //
+    // "one_time": First "TAUDB_STORE_NUM" number of data will be
+    // loaded at the end
+    //
+    // "real_time": data will be loaded at real time, but can't use
+    // paraprof or perfexplorer to visualize the data, storing
+    // interval is "TAUDB_STORE_NUM" number of data per save (to
+    // reduce the overhead for taudb_save_trial())
+    //
+    if (ah_def_name(hdef, name)                                 != 0 ||
+        ah_def_layers(hdef, "TAUdb.so")                         != 0 ||
+        ah_def_cfg(hdef, CFGKEY_CLIENT_COUNT, "1")              != 0 ||
+        ah_def_cfg(hdef, CFGKEY_TAUDB_STORE_METHOD, "one_time") != 0 ||
+        ah_def_cfg(hdef, CFGKEY_TAUDB_STORE_NUM, "150")         != 0 ||
+        ah_def_int(hdef, "param_1", 1, 100, 1, NULL)            != 0 ||
+        ah_def_int(hdef, "param_2", 1, 100, 1, NULL)            != 0 ||
+        ah_def_int(hdef, "param_3", 1, 100, 1, NULL)            != 0 ||
+        ah_def_int(hdef, "param_4", 1, 100, 1, NULL)            != 0 ||
+        ah_def_int(hdef, "param_5", 1, 100, 1, NULL)            != 0 ||
+        ah_def_int(hdef, "param_6", 1, 100, 1, NULL)            != 0)
+    {
+        fprintf(stderr, "Error during session setup: %s\n", ah_error());
+        goto error;
+    }
+
+    // Begin a new tuning session.
+    htask = ah_start(hdesc, hdef);
+    if (!htask) {
+        fprintf(stderr, "Could not start tuning search task: %s\n",
+                ah_error());
+        goto error;
+    }
+    goto cleanup;
+
+  error:
+    htask = NULL;
+
+  cleanup:
+    ah_def_free(hdef);
+    return htask;
+}
+
+int main(int argc, char* argv[])
+{
+    hdesc_t* hdesc;
+    htask_t* htask;
+    const char* name;
+    int i, retval, loop = 200;
+    double perf = -HUGE_VAL;
+    char* metadata;
+
+    // Variables to hold the application's runtime tunable parameters.
+    //
+    // Once bound to a Harmony tuning session, these variables will be
+    // modified upon ah_fetch() to a new testing configuration.
+    //
     long param_1;
     long param_2;
     long param_3;
@@ -173,147 +233,112 @@ int main(int argc, char **argv)
         }
     }
 
-    /* Initialize a Harmony client. */
-    hdesc = harmony_init(&argc, &argv);
+    // Initialize a Harmony client.
+    hdesc = ah_alloc();
     if (hdesc == NULL) {
-        fprintf(stderr, "Failed to initialize a harmony session.\n");
-        return -1;
+        fprintf(stderr, "Error allocating Harmony descriptor: %s\n",
+                ah_error());
+        goto error;
     }
+    ah_args(hdesc, &argc, argv);
 
-    /* Set a unique id for ourselves */
+    // Set a unique id for ourselves.
     metadata = get_metadata();
     printf("Metadata is %s\n", metadata);
-    if (harmony_id(hdesc, metadata) != 0) {
-        perror("Error setting client id");
-        return -1;
+    if (ah_id(hdesc, metadata) != 0) {
+        fprintf(stderr, "Error setting client id: %s\n", ah_error());
+        goto error;
     }
 
-    /* Process the program arguments. */
+    // Connect to Harmony session.
+    if (ah_connect(hdesc, NULL, 0) != 0) {
+        fprintf(stderr, "Error connecting to Harmony session: %s\n",
+                ah_error());
+        goto error;
+    }
+
+    // Process the program arguments.
     name = "TAUdb_example";
     if (argc > 1)
         name = argv[1];
 
-    /* TAUDB_STORE_METHOD can be "real_time" or any number
-     *
-     * "one_time": First "TAUDB_STORE_NUM" number of data will be
-     * loaded at the end
-     *
-     * "real_time": data will be loaded at real time, but can't use
-     * paraprof or perfexplorer to visualize the data, storing
-     * interval is "TAUDB_STORE_NUM" number of data per save (to
-     * reduce the overhead for taudb_save_trial())
-     */
-    errno = 0;
-    harmony_session_name(hdesc, name);
-    harmony_setcfg(hdesc, CFGKEY_SESSION_LAYERS, "TAUdb.so");
-    harmony_setcfg(hdesc, CFGKEY_CLIENT_COUNT, "1");
-    harmony_setcfg(hdesc, "TAUDB_STORE_METHOD", "one_time");
-    harmony_setcfg(hdesc, "TAUDB_STORE_NUM", "150");
-    if (errno) {
-        perror("Error during session setup");
-        return -1;
-    }
+    htask = start_search(hdesc, name);
+    if (!htask)
+        goto error;
 
-    if (harmony_int(hdesc, "param_1", 1, 100, 1) < 0 ||
-        harmony_int(hdesc, "param_2", 1, 100, 1) < 0 ||
-        harmony_int(hdesc, "param_3", 1, 100, 1) < 0 ||
-        harmony_int(hdesc, "param_4", 1, 100, 1) < 0 ||
-        harmony_int(hdesc, "param_5", 1, 100, 1) < 0 ||
-        harmony_int(hdesc, "param_6", 1, 100, 1) < 0)
+    // Bind the session variables to local variables.
+    if (ah_bind_int(htask, "param_1", &param_1) != 0 ||
+        ah_bind_int(htask, "param_2", &param_2) != 0 ||
+        ah_bind_int(htask, "param_3", &param_3) != 0 ||
+        ah_bind_int(htask, "param_4", &param_4) != 0 ||
+        ah_bind_int(htask, "param_5", &param_5) != 0 ||
+        ah_bind_int(htask, "param_6", &param_6) != 0)
     {
-        fprintf(stderr, "Failed to define tuning session\n");
-        return -1;
+        fprintf(stderr, "Error binding tuning variable to local memory: %s\n",
+                ah_error());
+        goto error;
     }
 
-    printf("Launching tuning session.\n");
-    if (harmony_launch(hdesc, NULL, 0) != 0) {
-        fprintf(stderr, "Could not launch tuning session: %s\n",
-                harmony_error_string(hdesc));
-        return -1;
-    }
-
-    printf("Starting Harmony...\n");
-
-    /* Bind the session variables to local variables. */
-    if (harmony_bind_int(hdesc, "param_1", &param_1) < 0 ||
-        harmony_bind_int(hdesc, "param_2", &param_2) < 0 ||
-        harmony_bind_int(hdesc, "param_3", &param_3) < 0 ||
-        harmony_bind_int(hdesc, "param_4", &param_4) < 0 ||
-        harmony_bind_int(hdesc, "param_5", &param_5) < 0 ||
-        harmony_bind_int(hdesc, "param_6", &param_6) < 0)
-    {
-        fprintf(stderr, "Failed to register variable\n");
-        retval = -1;
-        goto cleanup;
-    }
-
-    /* Join this client to the tuning session we established above. */
-    if (harmony_join(hdesc, NULL, 0, name) < 0) {
-        fprintf(stderr, "Could not connect to harmony server: %s\n",
-                harmony_error_string(hdesc));
-        retval = -1;
-        goto cleanup;
-    }
-    printf("Connected to harmony server.\n");
-
-    /* main loop */
-    for (i = 0; !harmony_converged(hdesc) && i < loop; i++) {
-        int hresult = harmony_fetch(hdesc);
+    // Main loop.
+    for (i = 0; !ah_converged(htask) && i < loop; i++) {
+        int hresult = ah_fetch(htask);
         if (hresult < 0) {
-            fprintf(stderr, "Failed to fetch values from server: %s\n",
-                    harmony_error_string(hdesc));
-            retval = -1;
-            goto cleanup;
+            fprintf(stderr, "Error fetching values from search task: %s\n",
+                    ah_error());
+            goto error;
         }
         else if (hresult == 0) {
-            /* New values were not available at this time.
-             * Bundles remain unchanged by Harmony system.
-             */
+            // New values were not available at this time.
+            // Bundles remain unchanged by Harmony system.
         }
         else if (hresult > 0) {
-            /* The Harmony system modified the variable values.
-             * Do any systemic updates to deal with such a change.
-             */
+            // The Harmony system modified the variable values.
+            // Do any systemic updates to deal with such a change.
         }
 
-        /* Run one full iteration of the application (or code variant).
-         *
-         * Here our application is rather simple. Definition of performance can
-         * be user-defined. Depending on application, it can be MFlops/sec,
-         * time to complete the entire run of the application, cache hits vs.
-         * misses and so on.
-         *
-         * For searching the parameter space in a Transformation framework,
-         * just run different parameterized code variants here. A simple
-         * mapping between the parameters and the code-variants is needed to
-         * call the appropriate code variant.
-         */
-
+        // Run one full iteration of the application (or code variant).
+        //
+        // Here our application is rather simple. Definition of
+        // performance can be user-defined. Depending on application,
+        // it can be MFlops/sec, time to complete the entire run of
+        // the application, cache hits vs.  misses and so on.
+        //
+        // For searching the parameter space in a Transformation
+        // framework, just run different parameterized code variants
+        // here. A simple mapping between the parameters and the
+        // code-variants is needed to call the appropriate code
+        // variant.
+        //
         perf = application(param_1, param_2, param_3,
                            param_4, param_5, param_6);
 
         if (hresult > 0) {
-            /* Only print performance if new values were fetched. */
+            // Only print performance if new values were fetched.
             printf("%ld, %ld, %ld, %ld, %ld, %ld = %lf\n",
                    param_1, param_2, param_3,
                    param_4, param_5, param_6, perf);
         }
 
-        /* Report the performance we've just measured. */
-        if (harmony_report(hdesc, &perf) < 0) {
-            fprintf(stderr, "Failed to report performance to server.\n");
-            retval = -1;
-            goto cleanup;
+        // Report the performance we've just measured.
+        if (ah_report(htask, &perf) != 0) {
+            fprintf(stderr, "Error reporting performance to search task: %s\n",
+                    ah_error());
+            goto error;
         }
     }
 
-    /* Leave the session */
-    if (harmony_leave(hdesc) < 0) {
-        fprintf(stderr, "Failed to disconnect from harmony server.\n");
-        retval = -1;
+    // Leave the session.
+    if (ah_close(hdesc) != 0) {
+        fprintf(stderr, "Error disconnecting from Harmony session: %s\n",
+                ah_error());
+        goto error;
     }
+    goto cleanup;
+
+  error:
+    retval = -1;
 
   cleanup:
-    harmony_fini(hdesc);
+    ah_free(hdesc);
     return retval;
 }

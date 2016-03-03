@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -16,6 +16,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
+#define _XOPEN_SOURCE 500 // Needed for M_PI and M_E
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -59,21 +60,21 @@ benchfunc_t f_dtlz7a_3;
 
 finfo_t flist[] = {
     {"dejong", "De Jong’s first function",
-     0, -64.0, 64.0, 0.0, f_dejong,
+     0, FTYPE_REAL, -64.0, 64.0, 1, 0.0, f_dejong,
      "    De Jong's first function is continuous, convex, and unimodal.\n"},
 
     {"axispar", "Axis parallel hyper-ellipsoid function",
-     0, -64.0, 64.0, 0.0, f_axispar,
+     0, FTYPE_REAL, -64.0, 64.0, 1, 0.0, f_axispar,
      "    The axis parallel hyper-ellipsoid is similar the first De Jong\n"
      "    function.  It is also known as the weighted sphere model.  This\n"
      "    function is continuous, convex and unimodal.\n"},
 
     {"axisrot", "Rotated hyper-ellipsoid function",
-     0, -64.0, 64.0, 0.0, f_axisrot,
+     0, FTYPE_REAL, -64.0, 64.0, 1, 0.0, f_axisrot,
      "    The rotated hyper-ellipsoid function.\n"},
 
     {"rosenbrock", "Rosenbrock's Valley",
-     0, -2, 2, 0.0, f_rosenbrock,
+     0, FTYPE_REAL, -2, 2, 1, 0.0, f_rosenbrock,
      "    De Jong's second function, Rosenbrock's valley, is a classic\n"
      "    optimization problem, also known as Rosenbrock's banana function.\n"
      "    The global optimum is inside a long, narrow, parabolic shaped\n"
@@ -81,7 +82,7 @@ finfo_t flist[] = {
      "    to the global optimum is difficult.\n"},
 
     {"ackley", "Ackley's Function",
-     0, -32.0, 32.0, 0.0, f_ackley,
+     0, FTYPE_REAL, -32.0, 32.0, 1, 0.0, f_ackley,
      "    Ackley's Function is a continuous, multimodal function obtained\n"
      "    by modulating an exponential function with a cosine wave of\n"
      "    moderate amplitude.  Its topology is characterized by an almost\n"
@@ -90,7 +91,7 @@ finfo_t flist[] = {
      "    become more and more influential.\n"},
 
     {"michalewicz", "Michalewicz's Function",
-     0, 0, 4.0, -INFINITY, f_michalewicz,
+     0, FTYPE_REAL, 0, 4.0, 0, -0.0, f_michalewicz,
      "    Michalewicz's Function is a multimodal function with N! local\n"
      "    optima.  It takes one parameter that controls the slope of its\n"
      "    valleys and edges.  As the parameter grows larger, the function\n"
@@ -98,111 +99,111 @@ finfo_t flist[] = {
      "    haystack problem.  10 is used by default.\n"},
 
     {"cos", "Cosine Sum",
-     0, -10.0, 10.0, -INFINITY, f_cos,
+     0, FTYPE_REAL, -10.0, 10.0, 0, -0.0, f_cos,
      "    Returns the running sum of the cosine of each parameter.\n"},
 
     {"flat", "Flat Function",
-     0, -10.0, 10.0, -INFINITY, f_flat,
+     0, FTYPE_REAL, -10.0, 10.0, 0, -0.0, f_flat,
      "    Always returns 1.0 (or the value of the first option).\n"},
 
     {"sum", "Sum",
-     0, -10.0, 10.0, -INFINITY, f_sum,
+     0, FTYPE_REAL, -10.0, 10.0, 0, -0.0, f_sum,
      "    Returns the simple sum of all parameters.\n"},
 
     {"oka1_1", "oka1 Objective #1",
-     2, 0.027415472, 6.310535189, -INFINITY, f_oka1_1,
+     2, FTYPE_REAL, 0.027415472, 6.310535189, 0, -0.0, f_oka1_1,
      "    oka1 from J.Knowles.\n"},
 
     {"oka1_2", "oka1 Objective #2",
-     2, -0.028709416, 5.999937366, -INFINITY, f_oka1_2,
+     2, FTYPE_REAL, -0.028709416, 5.999937366, 0, -0.0, f_oka1_2,
      "    oka1 from J.Knowles.\n"},
 
     {"oka2_1", "oka2 Objective #1",
-     3, -5.0, 5.0, -INFINITY, f_oka2_1,
+     3, FTYPE_REAL, -5.0, 5.0, 0, -0.0, f_oka2_1,
      "    oka2 from J.Knowles.\n"},
 
     {"oka2_2", "oka2 Objective #2",
-     3, -5.0, 5.0, -INFINITY, f_oka2_2,
+     3, FTYPE_REAL, -5.0, 5.0, 0, -0.0, f_oka2_2,
      "    oka2 from J.Knowles.\n"},
 
     {"vlmop2_1", "vlmop2 Objective #1",
-     2, -2.0, 2.0, -INFINITY, f_vlmop2_1,
+     2, FTYPE_REAL, -2.0, 2.0, 0, -0.0, f_vlmop2_1,
      "    vlmop2 from J.Knowles.\n"},
 
     {"vlmop2_2", "vlmop2 Objective #2",
-     2, -2.0, 2.0, -INFINITY, f_vlmop2_2,
+     2, FTYPE_REAL, -2.0, 2.0, 0, -0.0, f_vlmop2_2,
      "    vlmop2 from J.Knowles.\n"},
 
     {"vlmop3_1", "vlmop3 Objective #1",
-     2, -3.0, 3.0, -INFINITY, f_vlmop3_1,
+     2, FTYPE_REAL, -3.0, 3.0, 0, -0.0, f_vlmop3_1,
      "    vlmop2 from J.Knowles.\n"},
 
     {"vlmop3_2", "vlmop3 Objective #2",
-     2, -3.0, 3.0, -INFINITY, f_vlmop3_2,
+     2, FTYPE_REAL, -3.0, 3.0, 0, -0.0, f_vlmop3_2,
      "    vlmop2 from J.Knowles.\n"},
 
     {"vlmop3_3", "vlmop3 Objective #3",
-     2, -3.0, 3.0, -INFINITY, f_vlmop3_3,
+     2, FTYPE_REAL, -3.0, 3.0, 0, -0.0, f_vlmop3_3,
      "    vlmop2 from J.Knowles.\n"},
 
     {"kno1_1", "kno1 Objective #1",
-     2, 0.0, 3.0, -INFINITY, f_kno1_1,
+     2, FTYPE_REAL, 0.0, 3.0, 0, -0.0, f_kno1_1,
      "    kno1 from J.Knowles.\n"},
 
     {"kno1_2", "kno1 Objective #2",
-     2, 0.0, 3.0, -INFINITY, f_kno1_2,
+     2, FTYPE_REAL, 0.0, 3.0, 0, -0.0, f_kno1_2,
      "    kno1 from J.Knowles.\n"},
 
     {"dtlz1a_1", "dtlz1a Objective #1",
-     6, 0.0, 1.0, -INFINITY, f_dtlz1a_1,
+     6, FTYPE_REAL, 0.0, 1.0, 0, -0.0, f_dtlz1a_1,
      "    dtlz1a from J.Knowles.  Uses 3 decision variables.\n"},
 
     {"dtlz1a_2", "dtlz1a Objective #2",
-     6, 0.0, 1.0, -INFINITY, f_dtlz1a_2,
+     6, FTYPE_REAL, 0.0, 1.0, 0, -0.0, f_dtlz1a_2,
      "    dtlz1a from J.Knowles.  Uses 3 decision variables.\n"},
 
     {"dtlz2a_1", "dtlz2a Objective #1",
-     8, 0.0, 1.0, -INFINITY, f_dtlz2a_1,
+     8, FTYPE_REAL, 0.0, 1.0, 0, -0.0, f_dtlz2a_1,
      "    dtlz2a from J.Knowles.  Uses 8 decision variables.\n"},
 
     {"dtlz2a_2", "dtlz2a Objective #2",
-     8, 0.0, 1.0, -INFINITY, f_dtlz2a_2,
+     8, FTYPE_REAL, 0.0, 1.0, 0, -0.0, f_dtlz2a_2,
      "    dtlz2a from J.Knowles.  Uses 8 decision variables.\n"},
 
     {"dtlz2a_3", "dtlz2a Objective #3",
-     8, 0.0, 1.0, -INFINITY, f_dtlz2a_3,
+     8, FTYPE_REAL, 0.0, 1.0, 0, -0.0, f_dtlz2a_3,
      "    dtlz2a from J.Knowles.  Uses 8 decision variables.\n"},
 
     {"dtlz4a_1", "dtlz4a Objective #1",
-     8, 0.0, 1.0, -INFINITY, f_dtlz4a_1,
+     8, FTYPE_REAL, 0.0, 1.0, 0, -0.0, f_dtlz4a_1,
      "    dtlz4a from J.Knowles.  Uses 8 decision variables.\n"},
 
     {"dtlz4a_2", "dtlz4a Objective #2",
-     8, 0.0, 1.0, -INFINITY, f_dtlz4a_2,
+     8, FTYPE_REAL, 0.0, 1.0, 0, -0.0, f_dtlz4a_2,
      "    dtlz4a from J.Knowles.  Uses 8 decision variables.\n"},
 
     {"dtlz4a_3", "dtlz4a Objective #3",
-     8, 0.0, 1.0, -INFINITY, f_dtlz4a_3,
+     8, FTYPE_REAL, 0.0, 1.0, 0, -0.0, f_dtlz4a_3,
      "    dtlz4a from J.Knowles.  Uses 8 decision variables.\n"},
 
     {"dtlz7a_1", "dtlz7a Objective #1",
-     8, 0.0, 1.0, -INFINITY, f_dtlz7a_1,
+     8, FTYPE_REAL, 0.0, 1.0, 0, -0.0, f_dtlz7a_1,
      "    dtlz7a from J.Knowles.  Uses 8 decision variables.\n"},
 
     {"dtlz7a_2", "dtlz7a Objective #2",
-     8, 0.0, 1.0, -INFINITY, f_dtlz7a_2,
+     8, FTYPE_REAL, 0.0, 1.0, 0, -0.0, f_dtlz7a_2,
      "    dtlz7a from J.Knowles.  Uses 8 decision variables.\n"},
 
     {"dtlz7a_3", "dtlz7a Objective #3",
-     8, 0.0, 1.0, -INFINITY, f_dtlz7a_3,
+     8, FTYPE_REAL, 0.0, 1.0, 0, -0.0, f_dtlz7a_3,
      "    dtlz7a from J.Knowles.  Uses 8 decision variables.\n"},
 
-    {NULL, NULL, 0, 0.0, 0.0, 0.0, NULL, NULL}
+    {NULL, NULL, 0, FTYPE_REAL, 0.0, 0.0, 0, -0.0, NULL, NULL}
 };
 
-void flist_print(FILE *fd, int verbose)
+void flist_print(FILE* fd, int verbose)
 {
-    finfo_t *ptr;
+    finfo_t* ptr;
     int len;
 
     len = 0;
@@ -226,9 +227,9 @@ void flist_print(FILE *fd, int verbose)
     }
 }
 
-finfo_t *flist_find(const char *name)
+finfo_t* flist_find(const char* name)
 {
-    finfo_t *ptr;
+    finfo_t* ptr;
 
     for (ptr = flist; ptr->name; ++ptr) {
         if (strcmp(ptr->name, name) == 0)
@@ -284,12 +285,12 @@ double f_rosenbrock(int n, double x[], double option[])
     if (n == 2) {
         d1 = x[1] - (x[0] * x[0]);
         d2 = 1.0 - x[0];
-        d  = (100.0 * d1 * d1) + (d2 + d2);
+        d  = (100.0 * d1 * d1) + (d2 * d2);
     }
     else {
         d = 0.0;
-        for (i = 1; i < (n-1); ++i) {
-            d1 = x[i+1] - (x[i-1] * x[i-1]);
+        for (i = 1; i < n; ++i) {
+            d1 = x[i] - (x[i-1] * x[i-1]);
             d2 = 1.0 - x[i-1];
             d += (100.0 * d1 * d1) + (d2 * d2);
         }
@@ -333,7 +334,7 @@ double f_michalewicz(int n, double x[], double option[])
         m = option[0];
 
     for (i = 0; i < n; ++i) {
-        double d1 = i * x[i] * x[i];
+        double d1 = (i+1) * x[i] * x[i];
         double d2 = sin(d1 / M_PI);
 
         sum += sin(x[i]) * pow(d2, 2 * m);
@@ -392,23 +393,23 @@ double f_oka1_2(int n, double x[], double option[])
 
 double f_oka2_1(int n, double x[], double option[])
 {
-    /* There are 2 objectives, 3 decision (x) variables.
-     * The x variables are in the ranges:
-     *  x[0] in [-PI, PI]
-     *  x[1] in [-5, 5]
-     *  x[2] in [-5, 5]
-     */
+    // There are 2 objectives, 3 decision (x) variables.
+    // The x variables are in the ranges:
+    //  x[0] in [-PI, PI]
+    //  x[1] in [-5, 5]
+    //  x[2] in [-5, 5]
+    //
     return x[0];
 }
 
 double f_oka2_2(int n, double x[], double option[])
 {
-    /* There are 2 objectives, 3 decision (x) variables.
-     * The x variables are in the ranges:
-     *  x[0] in [-PI, PI]
-     *  x[1] in [-5, 5]
-     *  x[2] in [-5, 5]
-     */
+    // There are 2 objectives, 3 decision (x) variables.
+    // The x variables are in the ranges:
+    //  x[0] in [-PI, PI]
+    //  x[1] in [-5, 5]
+    //  x[2] in [-5, 5]
+    //
     return (1.0 - (1.0 / (4.0 * M_PI * M_PI)) * pow(x[0] + M_PI, 2) +
             pow(fabs(x[1] - 5.0 * cos(x[0])), 1.0/3.0) +
             pow(fabs(x[2] - 5.0 * sin(x[0])), 1.0/3.0));
@@ -416,7 +417,7 @@ double f_oka2_2(int n, double x[], double option[])
 
 double f_vlmop2_1(int n, double x[], double option[])
 {
-    /* x variables must be in the range [-2,2] */
+    // x variables must be in the range [-2,2].
     int i;
     double sum1 = 0.0;
 
@@ -428,7 +429,7 @@ double f_vlmop2_1(int n, double x[], double option[])
 
 double f_vlmop2_2(int n, double x[], double option[])
 {
-    /* x variables must be in the range [-2,2] */
+    // x variables must be in the range [-2,2].
     int i;
     double sum2 = 0.0;
 
@@ -457,9 +458,9 @@ double f_vlmop3_3(int n, double x[], double option[])
 
 double f_kno1_1(int n, double x[], double option[])
 {
-    /* There are 2 objectives, 2 decision (x) variables.
-     * The x variables are in the range [0,3]
-     */
+    // There are 2 objectives, 2 decision (x) variables.
+    // The x variables are in the range [0,3]
+    //
     double f;
     double g;
     double c;
@@ -474,9 +475,9 @@ double f_kno1_1(int n, double x[], double option[])
 
 double f_kno1_2(int n, double x[], double option[])
 {
-    /* There are 2 objectives, 2 decision (x) variables.
-     * The x variables are in the range [0,3]
-     */
+    // There are 2 objectives, 2 decision (x) variables.
+    // The x variables are in the range [0,3]
+    //
     double f;
     double g;
     double c;
@@ -490,15 +491,15 @@ double f_kno1_2(int n, double x[], double option[])
 
 double f_dtlz1a_1(int n, double x[], double option[])
 {
-    /* There are 2 objectives, 6 decision (x) variables.
-     * The x variables are in the range [0,1].
-     */
+    // There are 2 objectives, 6 decision (x) variables.
+    // The x variables are in the range [0,1].
+    //
     int i;
     double g = 0.0;
     assert(n == 6);
 
     for (i = 1; i < n; ++i) {
-        /* Note this is 20*PI in Deb's DTLZ1 */
+        // Note this is 20*PI in Deb's DTLZ1.
         g += (x[i] - 0.5) * (x[i] - 0.5) - cos(2 * M_PI * (x[i] - 0.5));
     }
     g += n-1;
@@ -509,15 +510,15 @@ double f_dtlz1a_1(int n, double x[], double option[])
 
 double f_dtlz1a_2(int n, double x[], double option[])
 {
-    /* There are 2 objectives, 6 decision (x) variables.
-     * The x variables are in the range [0,1].
-     */
+    // There are 2 objectives, 6 decision (x) variables.
+    // The x variables are in the range [0,1].
+    //
     int i;
     double g = 0.0;
     assert(n == 6);
 
     for (i = 1; i < n; ++i) {
-        /* Note this is 20*PI in Deb's DTLZ1 */
+        // Note this is 20*PI in Deb's DTLZ1.
         g += (x[i] - 0.5) * (x[i] - 0.5) - cos(2 * M_PI * (x[i] - 0.5));
     }
     g += n-1;
@@ -528,9 +529,9 @@ double f_dtlz1a_2(int n, double x[], double option[])
 
 double f_dtlz2a_1(int n, double x[], double option[])
 {
-    /* There are 3 objectives, 8 decision (x) variables.
-     * The x variables are in the range [0,1].
-     */
+    // There are 3 objectives, 8 decision (x) variables.
+    // The x variables are in the range [0,1].
+    //
     int i;
     double alph = 1.0;
     double g = 0.0;
@@ -546,9 +547,9 @@ double f_dtlz2a_1(int n, double x[], double option[])
 
 double f_dtlz2a_2(int n, double x[], double option[])
 {
-    /* There are 3 objectives, 8 decision (x) variables.
-     * The x variables are in the range [0,1].
-     */
+    // There are 3 objectives, 8 decision (x) variables.
+    // The x variables are in the range [0,1].
+    //
     int i;
     double alph = 1.0;
     double g = 0.0;
@@ -567,9 +568,9 @@ double f_dtlz2a_2(int n, double x[], double option[])
 
 double f_dtlz2a_3(int n, double x[], double option[])
 {
-    /* There are 3 objectives, 8 decision (x) variables.
-     * The x variables are in the range [0,1].
-     */
+    // There are 3 objectives, 8 decision (x) variables.
+    // The x variables are in the range [0,1].
+    //
     int i;
     double alph = 1.0;
     double g = 0.0;
@@ -616,27 +617,27 @@ double f_dtlz4a_3(int n, double x[], double option[])
 
 double f_dtlz7a_1(int n, double x[], double option[])
 {
-    /* There are 3 objectives, 8 decision (x) variables.
-     * The x variables are in the range [0,1].
-     */
+    // There are 3 objectives, 8 decision (x) variables.
+    // The x variables are in the range [0,1].
+    //
     assert(n == 8);
     return x[0];
 }
 
 double f_dtlz7a_2(int n, double x[], double option[])
 {
-    /* There are 3 objectives, 8 decision (x) variables.
-     * The x variables are in the range [0,1].
-     */
+    // There are 3 objectives, 8 decision (x) variables.
+    // The x variables are in the range [0,1].
+    //
     assert(n == 8);
     return x[1];
 }
 
 double f_dtlz7a_3(int n, double x[], double option[])
 {
-    /* There are 3 objectives, 8 decision (x) variables.
-     * The x variables are in the range [0,1].
-     */
+    // There are 3 objectives, 8 decision (x) variables.
+    // The x variables are in the range [0,1].
+    //
     int i, nobjs = 3;
     double g, h, sum;
     assert(n == 8);

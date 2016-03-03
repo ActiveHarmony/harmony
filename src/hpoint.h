@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -20,33 +20,47 @@
 #ifndef __HPOINT_H__
 #define __HPOINT_H__
 
+#include "hspace.h"
 #include "hval.h"
-#include "hsignature.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* ----------------------------------------------------------------
+/*
  * Harmony structure that represents a point within a search space.
- *
  */
 typedef struct hpoint {
-    int id;
-    int n;
-    hval_t *val;
-    int memlevel; /* 1 if *val has pointers to memory that must be freed. */
+    unsigned id;
+    hval_t*  term;
+    int      len;
+    int      cap;
 } hpoint_t;
 
-extern const hpoint_t HPOINT_INITIALIZER;
+#define HPOINT_INITIALIZER {0}
+extern const hpoint_t hpoint_zero;
 
-int  hpoint_init(hpoint_t *pt, int n);
-void hpoint_fini(hpoint_t *pt);
-int  hpoint_copy(hpoint_t *dst, const hpoint_t *src);
-int  hpoint_serialize(char **buf, int *buflen, const hpoint_t *pt);
-int  hpoint_deserialize(hpoint_t *pt, char *buf);
-int  hpoint_align(hpoint_t *pt, hsignature_t *sig);
-int  hpoint_parse(hpoint_t *pt, hsignature_t *sig, const char *buf);
+/*
+ * Base structure management interface.
+ */
+int  hpoint_init(hpoint_t* point, int newcap);
+int  hpoint_copy(hpoint_t* dst, const hpoint_t* src);
+void hpoint_fini(hpoint_t* point);
+void hpoint_scrub(hpoint_t* point);
+
+/*
+ * Point comparison interface.
+ */
+int hpoint_align(hpoint_t* point, const hspace_t* space);
+int hpoint_eq(const hpoint_t* a, const hpoint_t* b);
+int hpoint_cmp(const hpoint_t* a, const hpoint_t* b);
+
+/*
+ * Data transmission interface.
+ */
+int hpoint_pack(char** buf, int* buflen, const hpoint_t* point);
+int hpoint_unpack(hpoint_t* point, char* buf);
+int hpoint_parse(hpoint_t* point, const char* buf, const hspace_t* space);
 
 #ifdef __cplusplus
 }

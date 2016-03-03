@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -19,31 +19,80 @@
 #ifndef __HCFG_H__
 #define __HCFG_H__
 
-#include <stdio.h>
+#include "defaults.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct hcfg;
-typedef struct hcfg hcfg_t;
+/*
+ * Harmony structure that represents configuration key/value pairs.
+ */
+typedef struct hcfg {
+    char** env;
+    int    len;
+    int    cap;
+} hcfg_t;
+#define HCFG_INITIALIZER {0}
+extern const hcfg_t hcfg_zero;
 
-hcfg_t *hcfg_alloc(void);
-hcfg_t *hcfg_copy(const hcfg_t *);
-void hcfg_free(hcfg_t *cfg);
+/*
+ * Harmony structure that represents key/value pair metadata.
+ */
+typedef struct hcfg_info {
+    const char* key;
+    const char* val;
+    const char* help;
+} hcfg_info_t;
 
-const char *hcfg_get(hcfg_t *cfg, const char *key);
-int hcfg_set(hcfg_t *cfg, const char *key, const char *val);
-int hcfg_unset(hcfg_t *cfg, const char *key);
-int hcfg_load(hcfg_t *cfg, const char *filename);
-int hcfg_merge(hcfg_t *dst, const hcfg_t *src);
-int hcfg_write(hcfg_t *cfg, const char *filename);
+/*
+ * Basic structure management interface.
+ */
+int  hcfg_init(hcfg_t* cfg);
+int  hcfg_loadenv(hcfg_t* cfg);
+int  hcfg_reginfo(hcfg_t* cfg, const hcfg_info_t* info);
+int  hcfg_copy(hcfg_t* dst, const hcfg_t* src);
+int  hcfg_merge(hcfg_t* dst, const hcfg_t* src);
+void hcfg_fini(hcfg_t* cfg);
+void hcfg_scrub(hcfg_t* cfg);
 
-char *hcfg_parse(char *buf, char **key, char **val);
-int hcfg_is_cmd(const char *buf);
+/*
+ * Configuration value access interface.
+ */
+char* hcfg_get(const hcfg_t* cfg, const char* key);
+int   hcfg_set(hcfg_t* cfg, const char* key, const char* val);
 
-int hcfg_serialize(char **buf, int *buflen, const hcfg_t *cfg);
-int hcfg_deserialize(hcfg_t *cfg, char *buf);
+/*
+ * Key lookup and scalar value conversion interface.
+ */
+int    hcfg_bool(const hcfg_t* cfg, const char* key);
+long   hcfg_int(const hcfg_t* cfg, const char* key);
+double hcfg_real(const hcfg_t* cfg, const char* key);
+
+/*
+ * Key lookup and array value conversion interface.
+ */
+int    hcfg_arr_len(const hcfg_t* cfg, const char* key);
+int    hcfg_arr_get(const hcfg_t* cfg, const char* key, int idx,
+                    char* buf, int len);
+int    hcfg_arr_bool(const hcfg_t* cfg, const char* key, int idx);
+long   hcfg_arr_int(const hcfg_t* cfg, const char* key, int idx);
+double hcfg_arr_real(const hcfg_t* cfg, const char* key, int idx);
+
+/*
+ * Value conversion interface.
+ */
+int    hcfg_parse_bool(const char* val);
+long   hcfg_parse_int(const char* val);
+double hcfg_parse_real(const char* val);
+
+/*
+ * Data transmission interface.
+ */
+int hcfg_pack(char** buf, int* buflen, const hcfg_t* cfg);
+int hcfg_unpack(hcfg_t* cfg, char* buf);
+int hcfg_parse(hcfg_t* cfg, const char* buf, const char** errptr);
+int hcfg_write(const hcfg_t* cfg, const char* filename);
 
 #ifdef __cplusplus
 }

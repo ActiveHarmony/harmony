@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -21,7 +21,6 @@
 #include "hutil.h"
 #include "hsockutil.h"
 #include "hcfg.h"
-#include "defaults.h" /* needed for looking cfg params up */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,15 +31,14 @@
 #include <errno.h>
 #include <limits.h>
 
-#include <sys/mman.h>
-#include <sys/stat.h>
 #include <sys/socket.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 
 #define HTTP_ENDL "\r\n"
 
-/* The following opt_* definitions allow the compiler to possibly
+/*
+ * The following opt_* definitions allow the compiler to possibly
  * optimize away a call to strlen().
  */
 #define opt_sock_write(x, y) socket_write((x), (y), strlen(y))
@@ -49,11 +47,6 @@
 
 unsigned int http_connection_limit = 32;
 
-typedef enum http_status {
-    HTTP_STATUS_CONVERGED = 0x1,
-    HTTP_STATUS_PAUSED    = 0x2
-} http_status_t;
-
 typedef enum {
     CONTENT_HTML,
     CONTENT_JAVASCRIPT,
@@ -61,14 +54,14 @@ typedef enum {
 } content_t;
 
 typedef struct {
-    const char *filename;
+    const char* filename;
     content_t type;
-    char *buf;
-    unsigned buflen;
+    char* buf;
+    size_t buflen;
 } memfile_t;
 
 static memfile_t html_file[] = {
-    /* The overview html file must be first in this array. */
+    // The overview html file must be first in this array.
     { "overview.cgi",                 CONTENT_HTML,       NULL, 0 },
     { "overview.js",                  CONTENT_JAVASCRIPT, NULL, 0 },
     { "session-view.cgi",             CONTENT_HTML,       NULL, 0 },
@@ -81,13 +74,14 @@ static memfile_t html_file[] = {
     { "jquery.flot.resize.min.js",    CONTENT_JAVASCRIPT, NULL, 0 },
     { "jquery.flot.selection.min.js", CONTENT_JAVASCRIPT, NULL, 0 },
     { "excanvas.min.js",              CONTENT_JAVASCRIPT, NULL, 0 },
-    /* A null entry must end this array. */
+    // A null entry must end this array.
     { NULL, CONTENT_HTML, NULL, 0 }
 };
 
 static const char status_200[] = "HTTP/1.1 200 OK" HTTP_ENDL;
 static const char status_400[] = "HTTP/1.1 400 Bad Request" HTTP_ENDL;
 static const char status_404[] = "HTTP/1.1 404 Not Found" HTTP_ENDL;
+static const char status_500[] = "HTTP/1.1 500 Internal Error" HTTP_ENDL;
 static const char status_501[] = "HTTP/1.1 501 Not Implemented" HTTP_ENDL;
 static const char status_503[] = "HTTP/1.1 503 Service Unavailable" HTTP_ENDL;
 
@@ -102,66 +96,45 @@ static const char http_headers[] =
     "Cache-Control: no-cache"    HTTP_ENDL
     "Transfer-Encoding: chunked" HTTP_ENDL;
 
-char sendbuf[8192];  /* Static buffer used for outgoing HTTP data. */
-char recvbuf[10240]; /* Static buffer used for incoming HTTP data. */
+char sendbuf[8192];  // Static buffer used for outgoing HTTP data.
+char recvbuf[10240]; // Static buffer used for incoming HTTP data.
 
-/* Internal helper function declarations */
-const char *status_string(session_state_t *sess);
-char *uri_decode(char *buf);
-session_state_t *find_session(const char *name);
-int http_request_handle(int fd, char *req);
-char *http_request_recv(int fd, char *buf, int buflen, char **data);
-int http_chunk_send(int fd, const char *data, int datalen);
+/*
+ * Internal helper function prototypes.
+ */
+const char* status_string(sinfo_t* sinfo);
+char* uri_decode(char* buf);
+sinfo_t* find_search(const char* name);
+int http_request_handle(int fd, char* req);
+char* http_request_recv(int fd, char* buf, int buflen, char** data);
+int http_chunk_send(int fd, const char* data, int datalen);
 int http_send_overview(int fd);
-int http_send_init(int fd, session_state_t *sess);
-int http_send_refresh(int fd, session_state_t *sess, const char *arg);
-int report_append(char **buf, int *buflen, session_state_t *sess,
-                  struct timeval *tv, const hpoint_t *pt, const double perf);
+int http_send_init(int fd, sinfo_t* sinfo);
+int http_send_refresh(int fd, sinfo_t* sinfo, const char* arg);
+int report_append(char** buf, int* buflen, sinfo_t* sinfo,
+                  struct timeval* tv, const hpoint_t* pt, const double perf);
 
-int http_init(const char *basedir)
+int http_init(const char* basedir)
 {
-    int fd, i;
-    char *filename;
-    struct stat sb;
+    int i;
+    char* filename;
 
     for (i = 0; html_file[i].filename != NULL; ++i) {
         if (html_file[i].buf != NULL)
-            munmap(html_file[i].buf, html_file[i].buflen);
+            file_unmap(html_file[i].buf, html_file[i].buflen);
 
-        filename = sprintf_alloc("%s/libexec/html/%s", basedir,
+        filename = sprintf_alloc("%s/libexec/http/%s", basedir,
                                  html_file[i].filename);
         if (!filename) {
             perror("Could not allocate temp memory for filename");
             goto error;
         }
 
-        fd = open(filename, O_RDONLY);
-        if (fd == -1) {
-            fprintf(stderr, "Error on open(%s): %s\n",
-                    filename, strerror(errno));
+        html_file[i].buf = file_map(filename, &html_file[i].buflen);
+        if (!html_file[i].buf) {
+            perror("Error mapping HTML server support file");
             goto error;
         }
-
-        /* Obtain file size */
-        if (fstat(fd, &sb) == -1) {
-            fprintf(stderr, "Error on fstat(%s): %s",
-                    filename, strerror(errno));
-            goto error;
-        }
-        html_file[i].buflen = sb.st_size;
-
-        html_file[i].buf = (char *)mmap(NULL, html_file[i].buflen,
-                                        PROT_READ, MAP_PRIVATE, fd, 0);
-        if (html_file[i].buf == (char *)-1) {
-            fprintf(stderr, "Error on mmap(%s): %s",
-                    filename, strerror(errno));
-            goto error;
-        }
-
-        if (close(fd) != 0)
-            fprintf(stderr, "Ignoring error on close(%s): %s",
-                    filename, strerror(errno));
-
         free(filename);
     }
     return 0;
@@ -171,10 +144,10 @@ int http_init(const char *basedir)
     return -1;
 }
 
-void http_send_error(int fd, int status, const char *arg)
+void http_send_error(int fd, int status, const char* arg)
 {
-    const char *status_line;
-    const char *message = NULL;
+    const char* status_line;
+    const char* message = NULL;
 
     if (status == 400) {
         status_line = status_400;
@@ -191,6 +164,10 @@ void http_send_error(int fd, int status, const char *arg)
     } else if (status == 503) {
         status_line = status_503;
         message = "The maximum number of HTTP connections has been exceeded.";
+
+    } else {
+        status_line = status_500;
+        message = "An unknown status was passed to http_send_error().";
     }
 
     opt_sock_write(fd, status_line);
@@ -217,7 +194,9 @@ void http_send_error(int fd, int status, const char *arg)
 int handle_http_socket(int fd)
 {
     static char buf[4096];
-    char *ptr = NULL, *req, *endp;
+    char* ptr = NULL;
+    char* req;
+    char* endp;
 
     errno = 0;
     req = http_request_recv(fd, buf, sizeof(buf), &ptr);
@@ -225,13 +204,13 @@ int handle_http_socket(int fd)
         if (opt_strncmp(req, "GET ") == 0) {
             endp = strchr(req + 4, ' ');
             if (endp == NULL) {
-                http_send_error(fd, 400, req); /* Bad Request */
+                http_send_error(fd, 400, req); // "Bad Request" error.
             }
             else {
                 *endp = '\0';
                 req = uri_decode(req + 4);
                 if (http_request_handle(fd, req) < 0)
-                    http_send_error(fd, 404, req);  /* Not Found */
+                    http_send_error(fd, 404, req); // "Not Found" error.
             }
         }
         else if (opt_strncmp(req, "OPTIONS ") == 0 ||
@@ -242,7 +221,7 @@ int handle_http_socket(int fd)
                  opt_strncmp(req, "TRACE ")   == 0 ||
                  opt_strncmp(req, "CONNECT ") == 0) {
 
-            /* Unimplemented Function */
+            // "Unimplemented Function" error.
             http_send_error(fd, 501, req);
         }
 
@@ -250,7 +229,7 @@ int handle_http_socket(int fd)
     }
 
     if (errno == 0) {
-        /* No data returned, and no error reported.  Socket closed by peer. */
+        // No data returned, and no error reported.  Socket closed by peer.
         printf("[AH]: Closing socket %d (HTTP Socket)\n", fd);
         if (close(fd) < 0)
             printf("[AH]: Error closing HTTP socket\n");
@@ -261,51 +240,24 @@ int handle_http_socket(int fd)
     return 0;
 }
 
-int handle_http_info(session_state_t *sess, char *buf)
+const char* status_string(sinfo_t* sinfo)
 {
-    char *key, *val;
-
-    if (hcfg_parse(buf, &key, &val) == NULL)
-        return -1;
-
-    if (strcmp(key, CFGKEY_SESSION_STRATEGY) == 0) {
-        free(sess->strategy);
-        sess->strategy = stralloc(val);
-    }
-    else if (strcmp(key, CFGKEY_STRATEGY_CONVERGED) == 0) {
-        if (*val == '1')
-            sess->status |= HTTP_STATUS_CONVERGED;
-        else
-            sess->status &= ~HTTP_STATUS_CONVERGED;
-    }
-    else if (strcmp(key, CFGKEY_SESSION_PAUSED) == 0) {
-        if (*val == '1')
-            sess->status |= HTTP_STATUS_PAUSED;
-        else
-            sess->status &= ~HTTP_STATUS_PAUSED;
-    }
-
-    return 0;
-}
-
-const char *status_string(session_state_t *sess)
-{
-    if (sess->status & HTTP_STATUS_PAUSED)
+    if (sinfo->flags & FLAG_PAUSED)
         return "Paused";
 
-    if (sess->status & HTTP_STATUS_CONVERGED)
+    if (sinfo->flags & FLAG_CONVERGED)
         return "Converged";
 
     return "Searching";
 }
 
-/**************************************
- * Internal helper function definitions
+/*
+ * Internal helper function implementation.
  */
-char *uri_decode(char *buf)
+char* uri_decode(char* buf)
 {
-    char *head = buf;
-    char *tail = buf;
+    char* head = buf;
+    char* tail = buf;
 
     while (*head != '\0') {
         if (*head == '%') {
@@ -324,32 +276,34 @@ char *uri_decode(char *buf)
     return buf;
 }
 
-session_state_t *find_session(const char *name)
+sinfo_t* find_search(const char* name)
 {
-    int i;
+    for (int i = 0; i < slist_cap; ++i) {
+        if (slist[i].id == -1)
+            continue;
 
-    for (i = 0; i < slist_cap; ++i) {
-        if (slist[i].name && strcmp(slist[i].name, name) == 0)
+        if (strcmp(slist[i].space.name, name) == 0)
             return &slist[i];
     }
     return NULL;
 }
 
-int http_request_handle(int fd, char *req)
+int http_request_handle(int fd, char* req)
 {
-    session_state_t *sess = NULL;
-    char *sess_name, *arg;
+    sinfo_t* sinfo = NULL;
+    char* search_name;
+    char* arg = NULL;
     int i;
 
-    sess_name = strchr(req, '?');
-    if (sess_name) {
-        *(sess_name++) = '\0';
+    search_name = strchr(req, '?');
+    if (search_name) {
+        *(search_name++) = '\0';
 
-        arg = strchr(sess_name, '&');
+        arg = strchr(search_name, '&');
         if (arg)
             *(arg++) = '\0';
 
-        sess = find_session(sess_name);
+        sinfo = find_search(search_name);
     }
 
     if (strcmp(req, "/") == 0) {
@@ -378,8 +332,8 @@ int http_request_handle(int fd, char *req)
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        if (sess) {
-            http_send_init(fd, sess);
+        if (sinfo) {
+            http_send_init(fd, sinfo);
             opt_http_write(fd, "");
             return 0;
         }
@@ -393,8 +347,8 @@ int http_request_handle(int fd, char *req)
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        if (sess) {
-            http_send_refresh(fd, sess, arg);
+        if (sinfo && request_refresh(sinfo) == 0) {
+            http_send_refresh(fd, sinfo, arg);
             opt_http_write(fd, "");
             return 0;
         }
@@ -408,8 +362,7 @@ int http_request_handle(int fd, char *req)
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        if (sess) {
-            session_close(sess);
+        if (sinfo && request_command(sinfo, "kill") == 0) {
             opt_http_write(fd, "OK");
             opt_http_write(fd, "");
             return 0;
@@ -424,8 +377,8 @@ int http_request_handle(int fd, char *req)
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        if (sess) {
-            session_setcfg(sess, CFGKEY_SESSION_PAUSED, "1");
+        if (sinfo) {
+            request_setcfg(sinfo, CFGKEY_PAUSED, "1");
             opt_http_write(fd, "OK");
             opt_http_write(fd, "");
             return 0;
@@ -440,8 +393,8 @@ int http_request_handle(int fd, char *req)
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        if (sess) {
-            session_setcfg(sess, CFGKEY_SESSION_PAUSED, "0");
+        if (sinfo) {
+            request_setcfg(sinfo, CFGKEY_PAUSED, "0");
             opt_http_write(fd, "OK");
             opt_http_write(fd, "");
             return 0;
@@ -456,9 +409,11 @@ int http_request_handle(int fd, char *req)
         opt_sock_write(fd, http_headers);
         opt_sock_write(fd, HTTP_ENDL);
 
-        if (sess) {
-            session_setcfg(sess, CFGKEY_INIT_POINT, arg);
-            session_restart(sess);
+        if (sinfo) {
+            if (arg && strstr(arg, "_=") != arg) {
+                request_setcfg(sinfo, CFGKEY_INIT_POINT, arg);
+            }
+            request_command(sinfo, "restart");
             opt_http_write(fd, "OK");
             opt_http_write(fd, "");
             return 0;
@@ -468,9 +423,9 @@ int http_request_handle(int fd, char *req)
         return 0;
     }
 
-    /* If request is not handled by any special cases above,
-     * look for a known html file corresponding to the request.
-     */
+    // If request is not handled by any special cases above,
+    // look for a known html file corresponding to the request.
+    //
     for (i = 0; html_file[i].filename != NULL; ++i) {
         if (strcmp(req + 1, html_file[i].filename) == 0) {
             opt_sock_write(fd, status_200);
@@ -497,25 +452,26 @@ int http_request_handle(int fd, char *req)
     return -1;
 }
 
-int http_chunk_send(int fd, const char *data, int datalen)
+int http_chunk_send(int fd, const char* data, int datalen)
 {
     int n;
     char buf[11];
 
     n = snprintf(buf, sizeof(buf), "%x" HTTP_ENDL, datalen);
 
-    /* Relying on TCP buffering to keep this somewhat efficient. */
+    // Relying on TCP buffering to keep this somewhat efficient.
     socket_write(fd, buf, n);
     if (datalen > 0)
         n += socket_write(fd, data, datalen);
     return n + opt_sock_write(fd, HTTP_ENDL);
 }
 
-char *http_request_recv(int fd, char *buf, int buflen, char **data)
+char* http_request_recv(int fd, char* buf, int buflen, char** data)
 {
     const char delim[] = HTTP_ENDL HTTP_ENDL;
-    char *retval, *split;
-    int len, recvlen;
+    char* retval;
+    char* split;
+    int len = 0, recvlen;
 
     if (!*data) {
         *data = buf;
@@ -526,18 +482,18 @@ char *http_request_recv(int fd, char *buf, int buflen, char **data)
         len = strlen(*data);
 
         if (*data == buf && len == (buflen-1)) {
-            /* Buffer overflow.  Return truncated request. */
+            // Buffer overflow.  Return truncated request.
             break;
         }
 
         if (*data != buf) {
             if (len > 0) {
-                /* Move existing data to the front of buffer. */
+                // Move existing data to the front of buffer.
                 if (len < *data - buf) {
                     strcpy(buf, *data);
 
                 } else {
-                    /* Memory region overlaps.  Can't use strcpy(). */
+                    // Memory region overlaps.  Can't use strcpy().
                     for (len = 0; (*data)[len] != '\0'; ++len)
                         buf[len] = (*data)[len];
                     buf[len] = '\0';
@@ -546,13 +502,13 @@ char *http_request_recv(int fd, char *buf, int buflen, char **data)
             *data = buf;
         }
 
-        /* Read more data from socket into the remaining buffer space. */
+        // Read more data from socket into the remaining buffer space.
         recvlen = recv(fd, buf + len, buflen - (len + 1), MSG_DONTWAIT);
         if (recvlen < 0) {
             return NULL;
         } else if (recvlen == 0) {
             if (len == 0) {
-                /* No data in buffer, and connection was closed. */
+                // No data in buffer, and connection was closed.
                 return NULL;
             }
             break;
@@ -568,7 +524,7 @@ char *http_request_recv(int fd, char *buf, int buflen, char **data)
         *data = split + strlen(delim);
 
     } else {
-        /* Socket closed while buffer not empty.  Return remaining data */
+        // Socket closed while buffer not empty.  Return remaining data
         *data += len;
     }
     // /* DEBUG */ printf("HTTP REQ: %s", retval);
@@ -577,89 +533,83 @@ char *http_request_recv(int fd, char *buf, int buflen, char **data)
 
 int http_send_overview(int fd)
 {
-    char *buf, *ptr;
-    int i, j, buflen, count, total;
+    char* buf;
+    char* ptr;
+    int buflen, count, total;
 
     sendbuf[0] = '\0';
     buf = sendbuf;
     buflen = sizeof(sendbuf);
     total = 0;
 
-    for (i = 0; i < slist_cap; ++i) {
-        if (!slist[i].name)
+    for (int i = 0; i < slist_cap; ++i) {
+        if (slist[i].id < 0)
             continue;
 
         ptr = buf;
         count = snprintf_serial(&buf, &buflen, "%s:%ld%03ld:%d:%d:",
-                                slist[i].name,
+                                slist[i].space.name,
                                 slist[i].start.tv_sec,
                                 slist[i].start.tv_usec/1000,
-                                slist[i].client_len,
+                                slist[i].client.len,
                                 slist[i].reported);
-        if (count < 0)
-            return -1;
+        if (count < 0) return -1;
         total += count;
 
-        if (slist[i].best.id == -1) {
+        if (!slist[i].best.id) {
             count = snprintf_serial(&buf, &buflen, "&lt;unknown&gt;");
-            if (count < 0)
-                return -1;
+            if (count < 0) return -1;
             total += count;
         }
         else {
-            for (j = 0; j < slist[i].best.n; ++j) {
+            hrange_t* dim = slist[i].space.dim;
+            for (int j = 0; j < slist[i].best.len; ++j) {
+                const hval_t* v = &slist[i].best.term[j];
+
                 if (j > 0) {
                     count = snprintf_serial(&buf, &buflen, " ");
-                    if (count < 0)
-                        return -1;
+                    if (count < 0) return -1;
                     total += count;
                 }
 
-                switch (slist[i].best.val[j].type) {
+                switch (dim[j].type) {
                 case HVAL_INT:
-                    count = snprintf_serial(&buf, &buflen, "%ld",
-                                            slist[i].best.val[j].value.i);
-                    if (count < 0)
-                        return -1;
+                    count = snprintf_serial(&buf, &buflen, "%ld", v->value.i);
+                    if (count < 0) return -1;
                     total += count;
                     break;
                 case HVAL_REAL:
-                    count = snprintf_serial(&buf, &buflen, "%lf",
-                                            slist[i].best.val[j].value.r);
-                    if (count < 0)
-                        return -1;
+                    count = snprintf_serial(&buf, &buflen, "%lf", v->value.r);
+                    if (count < 0) return -1;
                     total += count;
                     break;
                 case HVAL_STR:
-                    count = snprintf_serial(&buf, &buflen, "\"%s\"",
-                                            slist[i].best.val[j].value.s);
-                    if (count < 0)
-                        return -1;
+                    count = snprintf_serial(&buf, &buflen, "%s", v->value.s);
+                    if (count < 0) return -1;
                     total += count;
                     break;
                 default:
-                    break;
+                    return -1;
                 }
             }
         }
 
         count = snprintf_serial(&buf, &buflen, "|");
-        if (count < 0)
-            return -1;
+        if (count < 0) return -1;
         total += count;
 
         if (total >= sizeof(sendbuf)) {
-            /* Corner Case: No room for any session data.  Error out. */
+            // Corner Case: No room for any search data.  Error out.
             if (ptr == sendbuf) {
                 opt_http_write(fd, "FAIL");
                 return -1;
             }
 
-            /* Make room in buffer by sending the contents thus far. */
+            // Make room in buffer by sending the contents thus far.
             *ptr = '\0';
             opt_http_write(fd, sendbuf);
 
-            /* Reset the loop variables and try again. */
+            // Reset the loop variables and try again.
             buf = sendbuf;
             buflen = sizeof(sendbuf);
             total = 0;
@@ -672,20 +622,20 @@ int http_send_overview(int fd)
     return 0;
 }
 
-int http_send_init(int fd, session_state_t *sess)
+int http_send_init(int fd, sinfo_t* sinfo)
 {
-    char *buf = sendbuf;
+    char* buf = sendbuf;
     int buflen = sizeof(sendbuf), total = 0;
-    int i, j, count;
+    int count;
 
-    count = snprintf_serial(&buf, &buflen, "sig:");
+    count = snprintf_serial(&buf, &buflen, "space:");
     if (count < 0)
         goto error;
     total += count;
 
-    for (i = 0; i < sess->sig.range_len; ++i) {
+    for (int i = 0; i < sinfo->space.len; ++i) {
         char type;
-        hrange_t *range = &sess->sig.range[i];
+        hrange_t* range = &sinfo->space.dim[i];
 
         if (i > 0) {
             count = snprintf_serial(&buf, &buflen, ",");
@@ -707,9 +657,9 @@ int http_send_init(int fd, session_state_t *sess)
         total += count;
 
         if (range->type == HVAL_STR) {
-            for (j = 0; j < range->bounds.s.set_len; ++j) {
+            for (int j = 0; j < range->bounds.e.len; ++j) {
                 count = snprintf_serial(&buf, &buflen, ";%s",
-                                        range->bounds.s.set[j]);
+                                        range->bounds.e.set[j]);
                 if (count < 0)
                     goto error;
                 total += count;
@@ -717,7 +667,10 @@ int http_send_init(int fd, session_state_t *sess)
         }
     }
 
-    count = snprintf_serial(&buf, &buflen, "|strat:%s", sess->strategy);
+    if (sinfo->strategy)
+        count = snprintf_serial(&buf, &buflen, "|strat:%s", sinfo->strategy);
+    else
+        count = snprintf_serial(&buf, &buflen, "|strat:<unknown>");
     if (count < 0)
         goto error;
     total += count;
@@ -733,9 +686,10 @@ int http_send_init(int fd, session_state_t *sess)
     return -1;
 }
 
-int http_send_refresh(int fd, session_state_t *sess, const char *arg)
+int http_send_refresh(int fd, sinfo_t* sinfo, const char* arg)
 {
-    char *ptr, *buf = sendbuf;
+    char* ptr;
+    char* buf = sendbuf;
     int idx = 0, buflen = sizeof(sendbuf), total = 0;
     int i, count;
     struct timeval tv;
@@ -749,8 +703,8 @@ int http_send_refresh(int fd, session_state_t *sess, const char *arg)
     count = snprintf_serial(&buf, &buflen,
                             "time:%ld%03ld|status:%s|clients:%d|index:%d",
                             tv.tv_sec, tv.tv_usec/1000,
-                            status_string(sess),
-                            sess->client_len,
+                            status_string(sinfo),
+                            sinfo->client.len,
                             idx);
     if (count < 0)
         goto error;
@@ -761,13 +715,13 @@ int http_send_refresh(int fd, session_state_t *sess, const char *arg)
         goto error;
     total += count;
 
-    count = report_append(&buf, &buflen, sess, NULL,
-                          &sess->best, sess->best_perf);
+    count = report_append(&buf, &buflen, sinfo, NULL,
+                          &sinfo->best, sinfo->best_perf);
     if (count < 0)
         goto error;
     total += count;
 
-    for (i = idx; i < sess->log_len; ++i) {
+    for (i = idx; i < sinfo->log_len; ++i) {
         ptr = buf;
 
         count = snprintf_serial(&buf, &buflen, "|trial:");
@@ -775,22 +729,22 @@ int http_send_refresh(int fd, session_state_t *sess, const char *arg)
             goto error;
         total += count;
 
-        count = report_append(&buf, &buflen, sess, &sess->log[i].stamp,
-                              &sess->log[i].pt, sess->log[i].perf);
+        count = report_append(&buf, &buflen, sinfo, &sinfo->log[i].stamp,
+                              &sinfo->log[i].pt, sinfo->log[i].perf);
         if (count < 0)
             goto error;
         total += count;
 
         if (total >= sizeof(sendbuf)) {
-            /* Corner Case: No room for any session data.  Error out. */
+            // Corner Case: No room for any search data.  Error out.
             if (ptr == sendbuf)
                 goto error;
 
-            /* Make room in buffer by sending the contents thus far. */
+            // Make room in buffer by sending the contents thus far.
             *ptr = '\0';
             opt_http_write(fd, sendbuf);
 
-            /* Reset the loop variables and try again. */
+            // Reset the loop variables and try again.
             buf = sendbuf;
             buflen = sizeof(sendbuf);
             total = 0;
@@ -806,10 +760,10 @@ int http_send_refresh(int fd, session_state_t *sess, const char *arg)
     return -1;
 }
 
-int report_append(char **buf, int *buflen, session_state_t *sess,
-                  struct timeval *tv, const hpoint_t *pt, const double perf)
+int report_append(char** buf, int* buflen, sinfo_t* sinfo,
+                  struct timeval* tv, const hpoint_t* pt, const double perf)
 {
-    int i, count, total = 0;
+    int count, total = 0;
 
     if (tv) {
         count = snprintf_serial(buf, buflen, "%ld%03ld,",
@@ -819,44 +773,46 @@ int report_append(char **buf, int *buflen, session_state_t *sess,
         total += count;
     }
 
-    if (pt->id == -1) {
-        for (i = 0; i < sess->sig.range_len; ++i) {
+    if (!pt->id) {
+        for (int i = 0; i < sinfo->space.len; ++i) {
             count = snprintf_serial(buf, buflen, ",");
-            if (count < 0)
-                return -1;
+            if (count < 0) return -1;
             total += count;
         }
     }
     else {
-        for (i = 0; i < sess->sig.range_len; ++i) {
-            hval_t *val;
+        hrange_t* dim = sinfo->space.dim;
+        for (int i = 0; i < sinfo->space.len; ++i) {
+            const hval_t* v = &pt->term[i];
 
-            val = &pt->val[i];
-            switch (val->type) {
+            switch (dim[i].type) {
             case HVAL_INT:
-                count = snprintf_serial(buf, buflen, "%ld,", val->value.i);
+                count = snprintf_serial(buf, buflen, "%ld,", v->value.i);
+                if (count < 0) return -1;
+                total += count;
                 break;
             case HVAL_REAL:
-                count = snprintf_serial(buf, buflen, "%.17lf,", val->value.r);
+                count = snprintf_serial(buf, buflen, "%lf,", v->value.r);
+                if (count < 0) return -1;
+                total += count;
                 break;
             case HVAL_STR: {
-                str_bounds_t *bounds = &sess->sig.range[i].bounds.s;
-                unsigned long index = hrange_str_index(bounds, val->value.s);
+                unsigned long index = hrange_index(&sinfo->space.dim[i], v);
                 count = snprintf_serial(buf, buflen, "%ld,", index);
+                if (count < 0) return -1;
+                total += count;
                 break;
             }
             default:
                 return -1;
             }
 
-            if (count < 0)
-                return -1;
+            if (count < 0) return -1;
             total += count;
         }
 
         count = snprintf_serial(buf, buflen, "%lf", perf);
-        if (count < 0)
-            return -1;
+        if (count < 0) return -1;
         total += count;
     }
 

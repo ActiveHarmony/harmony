@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -26,48 +26,58 @@
  * step of the algorithm.  As such, it is ideal for a parallel search
  * utilizing multiple nodes, for instance when integrated in OpenMP or
  * MPI programs.
- *
- * **Configuration Variables**
- * Key           | Type    | Default | Description
- * --------------| ------- | ------- | -----------
- * SIMPLEX_SIZE  | Integer | N+1     | Number of vertices in the simplex.  Defaults to the number of tuning variables + 1.
- * INIT_METHOD   | String  | point   | Initial simplex generation method.  Valid values are "point", and "random" (without quotes).
- * INIT_PERCENT  | Real    | 0.35    | Initial simplex size as a percentage of the total search space.  Only for "point" and "point_fast" initial simplex methods.
- * REJECT_METHOD | String  | penalty | How to choose a replacement when dealing with rejected points:<br> **Penalty** - Use this method if the chance of point rejection is relatively low.  It applies an infinite penalty factor for invalid points, allowing the PRO algorithm to select a sensible next point.  However, if the entire simplex is comprised of invalid points, an infinite loop of invalid points may occur.<br> **Random** - Use this method if the chance of point rejection is high.  It reduces the risk of infinitely selecting invalid points at the cost of increasing the risk of deforming the simplex.
- * REFLECT       | Real    | 1.0     | Multiplicative coefficient for simplex reflection step.
- * EXPAND        | Real    | 2.0     | Multiplicative coefficient for simplex expansion step.
- * SHRINK        | Real    | 0.5     | Multiplicative coefficient for simplex shrink step.
- * FVAL_TOL      | Real    | 0.0001  | Convergence test succeeds if difference between all vertex performance values fall below this value.
- * SIZE_TOL      | Real    | 0.05*r  | Convergence test succeeds if simplex size falls below this value.  Default is 5% of the initial simplex radius.
  */
 
-#include "strategy.h"
+#include "hstrategy.h"
 #include "session-core.h"
-#include "hsession.h"
-#include "hutil.h"
 #include "hcfg.h"
-#include "defaults.h"
+#include "hspace.h"
+#include "hpoint.h"
+#include "hperf.h"
+#include "hutil.h"
 #include "libvertex.h"
 
-#include <stdlib.h>
-#include <string.h>
-#include <strings.h>
-#include <errno.h>
-#include <time.h>
-#include <math.h>
-#include <assert.h>
+#include <string.h> // For strcmp().
+#include <math.h>   // For isnan().
 
-hpoint_t best;
-double   best_perf;
-
-typedef enum simplex_init {
-    SIMPLEX_INIT_UNKNOWN = 0,
-    SIMPLEX_INIT_CENTER,
-    SIMPLEX_INIT_RANDOM,
-    SIMPLEX_INIT_POINT,
-
-    SIMPLEX_INIT_MAX
-} simplex_init_t;
+/*
+ * Configuration variables used in this plugin.
+ * These will automatically be registered by session-core upon load.
+ */
+const hcfg_info_t hplugin_keyinfo[] = {
+    { CFGKEY_INIT_POINT, NULL,
+      "Centroid point used to initialize the search simplex.  If this key "
+      "is left undefined, the simplex will be initialized in the center of "
+      "the search space." },
+    { CFGKEY_INIT_RADIUS, "0.50",
+      "Size of the initial simplex, specified as a fraction of the total "
+      "search space radius." },
+    { CFGKEY_REJECT_METHOD, "penalty",
+      "How to choose a replacement when dealing with rejected points. "
+      "    penalty: Use this method if the chance of point rejection is "
+      "relatively low. It applies an infinite penalty factor for invalid "
+      "points, allowing the strategy to select a sensible next point.  "
+      "However, if the entire simplex is comprised of invalid points, an "
+      "infinite loop of rejected points may occur.\n"
+      "    random: Use this method if the chance of point rejection is "
+      "high.  It reduces the risk of infinitely selecting invalid points "
+      "at the cost of increasing the risk of deforming the simplex." },
+    { CFGKEY_REFLECT, "1.0",
+      "Multiplicative coefficient for simplex reflection step." },
+    { CFGKEY_EXPAND, "2.0",
+      "Multiplicative coefficient for simplex expansion step." },
+    { CFGKEY_SHRINK, "0.5",
+      "Multiplicative coefficient for simplex shrink step." },
+    { CFGKEY_FVAL_TOL, "0.0001",
+      "Convergence test succeeds if difference between all vertex "
+      "performance values fall below this value." },
+    { CFGKEY_SIZE_TOL, "0.005",
+      "Convergence test succeeds if the simplex radius becomes smaller "
+      "than this percentage of the total search space.  Simplex radius "
+      "is measured from centroid to furthest vertex.  Total search space "
+      "is measured from minimum to maximum point." },
+    { NULL }
+};
 
 typedef enum reject_method {
     REJECT_METHOD_UNKNOWN = 0,
@@ -89,283 +99,134 @@ typedef enum simplex_state {
     SIMPLEX_STATE_MAX
 } simplex_state_t;
 
-/* Forward function definitions. */
-int  strategy_cfg(hsignature_t *sig);
-int  init_by_random(void);
-int  init_by_point(int fast);
-int  init_by_specified_point(const char *str);
-int  pro_algorithm(void);
-int  pro_next_state(const simplex_t *input, int best_in);
-int  pro_next_simplex(simplex_t *output);
-void check_convergence(void);
+/*
+ * Structure to hold data for an individual PRO search instance.
+ */
+struct hplugin_data {
+    hspace_t* space;
+    hpoint_t  best;
+    hperf_t   best_perf;
 
-/* Variables to control search properties. */
-simplex_init_t  init_method;
-vertex_t *      init_point;
-double          init_percent = 0.35;
-reject_method_t reject_type  = REJECT_METHOD_PENALTY;
+    // Search options.
+    vertex_t        init_point;
+    double          init_radius;
+    reject_method_t reject_type;
 
-double reflect  = 1.0;
-double expand   = 2.0;
-double shrink   = 0.5;
-double fval_tol = 1e-4;
-double size_tol;
-int simplex_size;
+    double reflect_val;
+    double expand_val;
+    double shrink_val;
+    double fval_tol;
+    double size_tol;
 
-/* Variables to track current search state. */
-simplex_state_t state;
-simplex_t *base;
-simplex_t *test;
+    // Search state.
+    simplex_t       simplex;
+    simplex_t       reflect;
+    simplex_t       expand;
+    vertex_t        centroid;
+    simplex_state_t state;
 
-int best_base;
-int best_test;
-int best_stash;
-int next_id;
-int send_idx;
-int reported;
-int coords;    /* number of coordinates per vertex */
+    simplex_t* next;
+    int        best_base;
+    int        best_test;
+    int        best_reflect;
+    int        next_id;
+    int        send_idx;
+    int        reported;
+};
 
 /*
- * Invoked once on strategy load.
+ * Internal helper function prototypes.
  */
-int strategy_init(hsignature_t *sig)
+static int config_strategy(hplugin_data_t* data);
+static int pro_algorithm(hplugin_data_t* data);
+static int pro_next_state(hplugin_data_t* data);
+static int pro_next_simplex(hplugin_data_t* data);
+static int check_convergence(hplugin_data_t* data);
+
+/*
+ * Allocate memory for a new search task.
+ */
+hplugin_data_t* strategy_alloc(void)
 {
-    if (libvertex_init(sig) != 0) {
-        session_error("Could not initialize vertex library.");
-        return -1;
-    }
+    hplugin_data_t* retval = calloc(1, sizeof(*retval));
+    if (!retval)
+        return NULL;
 
-    if (!base) {
-        const char *cfgval;
-        /* One time memory allocation and/or initialization. */
+    retval->next_id = 1;
 
-        cfgval = session_getcfg(CFGKEY_SIMPLEX_SIZE);
-        if (cfgval)
-            simplex_size = atoi(cfgval);
-
-        /* Make sure the simplex size is N+1 or greater. */
-        if (simplex_size < sig->range_len + 1)
-            simplex_size = sig->range_len + 1;
-
-        init_point = vertex_alloc();
-        if (!init_point) {
-            session_error("Could not allocate memory for initial point.");
-            return -1;
-        }
-
-        test = simplex_alloc(simplex_size);
-        if (!test) {
-            session_error("Could not allocate memory for candidate simplex.");
-            return -1;
-        }
-
-        base = simplex_alloc(simplex_size);
-        if (!base) {
-            session_error("Could not allocate memory for reference simplex.");
-            return -1;
-        }
-
-        /* The best point and trial counter should only be initialized once,
-         * and thus be retained across a restart.
-         */
-        best = HPOINT_INITIALIZER;
-        best_perf = INFINITY;
-        next_id = 1;
-    }
-
-    /* Initialization for subsequent calls to strategy_init(). */
-    vertex_reset(init_point);
-    simplex_reset(test);
-    simplex_reset(base);
-    reported = 0;
-    send_idx = 0;
-    coords = sig->range_len;
-
-    if (strategy_cfg(sig) != 0)
-        return -1;
-
-    switch (init_method) {
-    case SIMPLEX_INIT_CENTER:
-        vertex_center(init_point);
-        break;
-
-    case SIMPLEX_INIT_RANDOM:
-        vertex_rand_trim(init_point, init_percent);
-        break;
-
-    case SIMPLEX_INIT_POINT:
-        vertex_from_string(session_getcfg(CFGKEY_INIT_POINT), sig, init_point);
-        break;
-
-    default:
-        session_error("Invalid initial search method.");
-        return -1;
-    }
-    simplex_from_vertex(init_point, init_percent, base);
-
-    if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
-        session_error("Could not set "
-                      CFGKEY_STRATEGY_CONVERGED " config variable.");
-        return -1;
-    }
-
-    state = SIMPLEX_STATE_INIT;
-    if (pro_next_simplex(test) != 0) {
-        session_error("Could not initiate the simplex.");
-        return -1;
-    }
-
-    return 0;
+    return retval;
 }
 
-int strategy_cfg(hsignature_t *sig)
+/*
+ * Initialize (or re-initialize) data for this search task.
+ */
+int strategy_init(hplugin_data_t* data, hspace_t* space)
 {
-    const char *cfgval;
-    char *endp;
-
-    init_method = SIMPLEX_INIT_CENTER; /* Default value. */
-    cfgval = session_getcfg(CFGKEY_INIT_METHOD);
-    if (cfgval) {
-        if (strcasecmp(cfgval, "center") == 0) {
-            init_method = SIMPLEX_INIT_CENTER;
-        }
-        else if (strcasecmp(cfgval, "random") == 0) {
-            init_method = SIMPLEX_INIT_RANDOM;
-        }
-        else if (strcasecmp(cfgval, "point") == 0) {
-            init_method = SIMPLEX_INIT_POINT;
-        }
-        else {
-            session_error("Invalid value for "
-                          CFGKEY_INIT_METHOD " configuration key.");
+    if (data->space != space) {
+        if (simplex_init(&data->simplex, space->len) != 0) {
+            search_error("Could not initialize base simplex");
             return -1;
         }
+
+        if (simplex_init(&data->reflect, space->len) != 0) {
+            search_error("Could not initialize reflection simplex");
+            return -1;
+        }
+
+        if (simplex_init(&data->expand, space->len) != 0) {
+            search_error("Could not initialize expansion simplex");
+            return -1;
+        }
+        data->space = space;
     }
 
-    /* CFGKEY_INIT_POINT will override CFGKEY_INIT_METHOD if necessary. */
-    cfgval = session_getcfg(CFGKEY_INIT_POINT);
-    if (cfgval) {
-        init_method = SIMPLEX_INIT_POINT;
+    if (config_strategy(data) != 0)
+        return -1;
+
+    if (simplex_set(&data->simplex, space,
+                    &data->init_point, data->init_radius) != 0)
+    {
+        search_error("Could not generate initial simplex");
+        return -1;
     }
 
-    cfgval = session_getcfg(CFGKEY_INIT_PERCENT);
-    if (cfgval) {
-        init_percent = strtod(cfgval, &endp);
-        if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_INIT_PERCENT
-                          " configuration key.");
-            return -1;
-        }
-        if (init_percent <= 0 || init_percent > 1) {
-            session_error("Configuration key " CFGKEY_INIT_PERCENT
-                          " must be between 0.0 and 1.0 (exclusive).");
-            return -1;
-        }
+    if (search_setcfg(CFGKEY_CONVERGED, "0") != 0) {
+        search_error("Could not set " CFGKEY_CONVERGED " config variable");
+        return -1;
     }
 
-    cfgval = session_getcfg(CFGKEY_REJECT_METHOD);
-    if (cfgval) {
-        if (strcasecmp(cfgval, "penalty") == 0) {
-            reject_type = REJECT_METHOD_PENALTY;
-        }
-        else if (strcasecmp(cfgval, "random") == 0) {
-            reject_type = REJECT_METHOD_RANDOM;
-        }
-        else {
-            session_error("Invalid value for "
-                          CFGKEY_REJECT_METHOD " configuration key.");
-            return -1;
-        }
+    data->send_idx = 0;
+    data->state = SIMPLEX_STATE_INIT;
+    if (pro_next_simplex(data) != 0) {
+        search_error("Could not initiate the simplex");
+        return -1;
     }
 
-    cfgval = session_getcfg(CFGKEY_REFLECT);
-    if (cfgval) {
-        reflect = strtod(cfgval, &endp);
-        if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_REFLECT
-                          " configuration key.");
-            return -1;
-        }
-        if (reflect <= 0.0) {
-            session_error("Configuration key " CFGKEY_REFLECT
-                          " must be positive.");
-            return -1;
-        }
-    }
-
-    cfgval = session_getcfg(CFGKEY_EXPAND);
-    if (cfgval) {
-        expand = strtod(cfgval, &endp);
-        if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_EXPAND
-                          " configuration key.");
-            return -1;
-        }
-        if (expand <= reflect) {
-            session_error("Configuration key " CFGKEY_EXPAND
-                          " must be greater than the reflect coefficient.");
-            return -1;
-        }
-    }
-
-    cfgval = session_getcfg(CFGKEY_SHRINK);
-    if (cfgval) {
-        shrink = strtod(cfgval, &endp);
-        if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_SHRINK
-                          " configuration key.");
-            return -1;
-        }
-        if (shrink <= 0.0 || shrink >= 1.0) {
-            session_error("Configuration key " CFGKEY_SHRINK
-                          " must be between 0.0 and 1.0 (exclusive).");
-            return -1;
-        }
-    }
-
-    cfgval = session_getcfg(CFGKEY_FVAL_TOL);
-    if (cfgval) {
-        fval_tol = strtod(cfgval, &endp);
-        if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_FVAL_TOL
-                          " configuration key.");
-            return -1;
-        }
-    }
-
-    cfgval = session_getcfg(CFGKEY_SIZE_TOL);
-    if (cfgval) {
-        size_tol = strtod(cfgval, &endp);
-        if (*endp != '\0') {
-            session_error("Invalid value for " CFGKEY_SIZE_TOL
-                          " configuration key.");
-            return -1;
-        }
-    }
-    else {
-        /* Default stopping criteria: 0.5% of dist(vertex_min, vertex_max). */
-        size_tol = vertex_dist(vertex_min(), vertex_max()) * 0.005;
-    }
+    data->reported = 0;
     return 0;
 }
 
 /*
  * Generate a new candidate configuration point.
  */
-int strategy_generate(hflow_t *flow, hpoint_t *point)
+int strategy_generate(hplugin_data_t* data, hflow_t* flow, hpoint_t* point)
 {
-    if (send_idx == simplex_size || state == SIMPLEX_STATE_CONVERGED) {
+    if (data->send_idx > data->space->len ||
+        data->state == SIMPLEX_STATE_CONVERGED)
+    {
         flow->status = HFLOW_WAIT;
         return 0;
     }
 
-    test->vertex[send_idx]->id = next_id;
-    if (vertex_to_hpoint(test->vertex[send_idx], point) != 0) {
-        session_error( strerror(errno) );
+    data->next->vertex[data->send_idx].id = data->next_id;
+    if (vertex_point(&data->next->vertex[data->send_idx],
+                     data->space, point) != 0)
+    {
+        search_error("Could not copy point during generate");
         return -1;
     }
-    ++next_id;
-    ++send_idx;
+    ++data->next_id;
+    ++data->send_idx;
 
     flow->status = HFLOW_ACCEPT;
     return 0;
@@ -374,74 +235,82 @@ int strategy_generate(hflow_t *flow, hpoint_t *point)
 /*
  * Regenerate a point deemed invalid by a later plug-in.
  */
-int strategy_rejected(hflow_t *flow, hpoint_t *point)
+int strategy_rejected(hplugin_data_t* data, hflow_t* flow, hpoint_t* point)
 {
-    int i;
-    hpoint_t *hint = &flow->point;
+    int reject_idx;
+    hpoint_t* hint = &flow->point;
 
-    /* Find the rejected vertex. */
-    for (i = 0; i < simplex_size; ++i) {
-        if (test->vertex[i]->id == point->id)
+    // Find the rejected vertex.
+    for (reject_idx = 0; reject_idx <= data->space->len; ++reject_idx) {
+        if (data->next->vertex[reject_idx].id == point->id)
             break;
     }
-    if (i == simplex_size) {
-        session_error("Internal error: Could not find rejected point.");
+    if (reject_idx > data->space->len) {
+        search_error("Could not find rejected point");
         return -1;
     }
 
-    if (hint && hint->id != -1) {
-        int orig_id = point->id;
-
-        /* Update our state to include the hint point. */
-        if (vertex_from_hpoint(hint, test->vertex[i]) != 0) {
-            session_error("Internal error: Could not make vertex from point.");
+    if (hint && hint->id) {
+        // Update our state to include the hint point.
+        if (vertex_set(&data->next->vertex[reject_idx],
+                       data->space, hint) != 0)
+        {
+            search_error("Could not copy hint into simplex during reject");
             return -1;
         }
 
+        // Return the hint point.
         if (hpoint_copy(point, hint) != 0) {
-            session_error("Internal error: Could not copy point.");
+            search_error("Could not return hint during reject");
             return -1;
         }
-        point->id = orig_id;
     }
     else {
-        if (reject_type == REJECT_METHOD_PENALTY) {
-            /* Apply an infinite penalty to the invalid point and
-             * allow the algorithm to determine the next point to try.
-             */
-            hperf_reset(test->vertex[i]->perf);
-            ++reported;
+        if (data->reject_type == REJECT_METHOD_PENALTY) {
+            // Apply an infinite penalty to the invalid point and
+            // allow the algorithm to determine the next point to try.
+            //
+            hperf_reset(&data->next->vertex[reject_idx].perf);
+            ++data->reported;
 
-            if (reported == simplex_size) {
-                if (pro_algorithm() != 0) {
-                    session_error("Internal error: PRO algorithm failure.");
+            if (data->reported > data->space->len) {
+                if (pro_algorithm(data) != 0) {
+                    search_error("PRO algorithm failure");
                     return -1;
                 }
-                reported = 0;
-                send_idx = 0;
-                i = 0;
+                data->reported = 0;
+                data->send_idx = 0;
             }
 
-            if (send_idx == simplex_size) {
+            if (data->send_idx > data->space->len) {
                 flow->status = HFLOW_WAIT;
                 return 0;
             }
 
-            test->vertex[send_idx]->id = next_id;
-            if (vertex_to_hpoint(test->vertex[send_idx], point) != 0) {
-                session_error("Internal error: Could not make point"
-                              " from vertex.");
+            data->next->vertex[data->send_idx].id = data->next_id;
+            if (vertex_point(&data->next->vertex[data->send_idx],
+                             data->space, point) != 0)
+            {
+                search_error("Could not convert vertex during reject");
                 return -1;
             }
-            ++next_id;
-            ++send_idx;
+
+            ++data->next_id;
+            ++data->send_idx;
         }
-        else if (reject_type == REJECT_METHOD_RANDOM) {
-            /* Replace the rejected point with a random point. */
-            vertex_rand(test->vertex[i]);
-            if (vertex_to_hpoint(test->vertex[i], point) != 0) {
-                session_error("Internal error: Could not make point"
-                              " from vertex.");
+        else if (data->reject_type == REJECT_METHOD_RANDOM) {
+            // Replace the rejected point with a random point.
+            if (vertex_random(&data->next->vertex[reject_idx],
+                              data->space, 1.0) != 0)
+            {
+                search_error("Could not make random point during reject");
+                return -1;
+            }
+
+            if (vertex_point(&data->next->vertex[reject_idx],
+                             data->space, point) != 0)
+            {
+                search_error("Could not convert vertex during reject");
                 return -1;
             }
         }
@@ -453,39 +322,42 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
 /*
  * Analyze the observed performance for this configuration point.
  */
-int strategy_analyze(htrial_t *trial)
+int strategy_analyze(hplugin_data_t* data, htrial_t* trial)
 {
-    int i;
-    double perf = hperf_unify(trial->perf);
-
-    for (i = 0; i < simplex_size; ++i) {
-        if (test->vertex[i]->id == trial->point.id)
+    int report_idx;
+    for (report_idx = 0; report_idx <= data->space->len; ++report_idx) {
+        if (data->next->vertex[report_idx].id == trial->point.id)
             break;
     }
-    if (i == simplex_size) {
-        /* Ignore rouge vertex reports. */
+    if (report_idx > data->space->len) {
+        // Ignore rouge vertex reports.
         return 0;
     }
 
-    ++reported;
-    hperf_copy(test->vertex[i]->perf, trial->perf);
-    if (hperf_cmp(test->vertex[i]->perf, test->vertex[best_test]->perf) < 0)
-        best_test = i;
+    ++data->reported;
+    hperf_copy(&data->next->vertex[report_idx].perf, &trial->perf);
+    if (hperf_cmp(&data->next->vertex[report_idx].perf,
+                  &data->next->vertex[data->best_test].perf) < 0)
+        data->best_test = report_idx;
 
-    if (reported == simplex_size) {
-        if (pro_algorithm() != 0) {
-            session_error("Internal error: PRO algorithm failure.");
+    if (data->reported > data->space->len) {
+        if (pro_algorithm(data) != 0) {
+            search_error("PRO algorithm failure");
             return -1;
         }
-        reported = 0;
-        send_idx = 0;
+        data->reported = 0;
+        data->send_idx = 0;
     }
 
-    /* Update the best performing point, if necessary. */
-    if (best_perf > perf) {
-        best_perf = perf;
-        if (hpoint_copy(&best, &trial->point) != 0) {
-            session_error( strerror(errno) );
+    // Update the best performing point, if necessary.
+    if (!data->best.id || hperf_cmp(&data->best_perf, &trial->perf) > 0) {
+        if (hperf_copy(&data->best_perf, &trial->perf) != 0) {
+            search_error("Could not store best performance during analyze");
+            return -1;
+        }
+
+        if (hpoint_copy(&data->best, &trial->point) != 0) {
+            search_error("Could not copy best point during analyze");
             return -1;
         }
     }
@@ -495,99 +367,228 @@ int strategy_analyze(htrial_t *trial)
 /*
  * Return the best performing point thus far in the search.
  */
-int strategy_best(hpoint_t *point)
+int strategy_best(hplugin_data_t* data, hpoint_t* point)
 {
-    if (hpoint_copy(point, &best) != 0) {
-        session_error("Internal error: Could not copy point.");
+    if (hpoint_copy(point, &data->best) != 0) {
+        search_error("Could not copy best point during strategy_best()");
         return -1;
     }
     return 0;
 }
 
-int pro_algorithm(void)
+/*
+ * Free memory associated with this search task.
+ */
+int strategy_fini(hplugin_data_t* data)
+{
+    vertex_fini(&data->centroid);
+    simplex_fini(&data->expand);
+    simplex_fini(&data->reflect);
+    simplex_fini(&data->simplex);
+    vertex_fini(&data->init_point);
+    hperf_fini(&data->best_perf);
+    hpoint_fini(&data->best);
+
+    free(data);
+    return 0;
+}
+
+/*
+ * Internal helper function implementation.
+ */
+
+int config_strategy(hplugin_data_t* data)
+{
+    const char* cfgstr;
+    double cfgval;
+
+    cfgstr = hcfg_get(search_cfg, CFGKEY_INIT_POINT);
+    if (cfgstr) {
+        if (vertex_parse(&data->init_point, data->space, cfgstr) != 0) {
+            search_error("Could not convert initial point to vertex");
+            return -1;
+        }
+    }
+    else {
+        if (vertex_center(&data->init_point, data->space) != 0) {
+            search_error("Could not create central vertex");
+            return -1;
+        }
+    }
+
+    cfgval = hcfg_real(search_cfg, CFGKEY_INIT_RADIUS);
+    if (isnan(cfgval) || cfgval <= 0 || cfgval > 1) {
+        search_error("Configuration key " CFGKEY_INIT_RADIUS
+                     " must be between 0.0 and 1.0 (exclusive)");
+        return -1;
+    }
+    data->init_radius = cfgval;
+
+    cfgstr = hcfg_get(search_cfg, CFGKEY_REJECT_METHOD);
+    if (cfgstr) {
+        if (strcmp(cfgstr, "penalty") == 0) {
+            data->reject_type = REJECT_METHOD_PENALTY;
+        }
+        else if (strcmp(cfgstr, "random") == 0) {
+            data->reject_type = REJECT_METHOD_RANDOM;
+        }
+        else {
+            search_error("Invalid value for "
+                         CFGKEY_REJECT_METHOD " configuration key");
+            return -1;
+        }
+    }
+
+    cfgval = hcfg_real(search_cfg, CFGKEY_REFLECT);
+    if (isnan(cfgval) || cfgval <= 0.0) {
+        search_error("Configuration key " CFGKEY_REFLECT
+                     " must be positive");
+        return -1;
+    }
+    data->reflect_val = cfgval;
+
+    cfgval = hcfg_real(search_cfg, CFGKEY_EXPAND);
+    if (isnan(cfgval) || cfgval <= data->reflect_val) {
+        search_error("Configuration key " CFGKEY_EXPAND
+                     " must be greater than the reflect coefficient");
+        return -1;
+    }
+    data->expand_val = cfgval;
+
+    cfgval = hcfg_real(search_cfg, CFGKEY_SHRINK);
+    if (isnan(cfgval) || cfgval <= 0.0 || cfgval >= 1.0) {
+        search_error("Configuration key " CFGKEY_SHRINK
+                     " must be between 0.0 and 1.0 (exclusive)");
+        return -1;
+    }
+    data->shrink_val = cfgval;
+
+    cfgval = hcfg_real(search_cfg, CFGKEY_FVAL_TOL);
+    if (isnan(cfgval)) {
+        search_error("Configuration key " CFGKEY_FVAL_TOL " is invalid");
+        return -1;
+    }
+    data->fval_tol = hcfg_real(search_cfg, CFGKEY_FVAL_TOL);
+
+    cfgval = hcfg_real(search_cfg, CFGKEY_SIZE_TOL);
+    if (isnan(cfgval) || cfgval <= 0.0 || cfgval >= 1.0) {
+        search_error("Configuration key " CFGKEY_SIZE_TOL
+                     " must be between 0.0 and 1.0 (exclusive)");
+        return -1;
+    }
+    data->size_tol = cfgval;
+
+    // Use the first two verticies of the base simplex as temporaries
+    // to calculate the size tolerance.
+    vertex_t* vertex = data->simplex.vertex;
+    if (vertex_minimum(&vertex[0], data->space) != 0 ||
+        vertex_maximum(&vertex[1], data->space) != 0)
+        return -1;
+
+    data->size_tol *= vertex_norm(&vertex[0], &vertex[1], VERTEX_NORM_L2);
+    return 0;
+}
+
+int pro_algorithm(hplugin_data_t* data)
 {
     do {
-        if (state == SIMPLEX_STATE_CONVERGED)
+        if (data->state == SIMPLEX_STATE_CONVERGED)
             break;
 
-        if (pro_next_state(test, best_test) != 0)
+        if (pro_next_state(data) != 0)
             return -1;
 
-        if (state == SIMPLEX_STATE_REFLECT)
-            check_convergence();
+        if (data->state == SIMPLEX_STATE_REFLECT) {
+            if (check_convergence(data) != 0)
+                return -1;
+        }
 
-        if (pro_next_simplex(test) != 0)
+        if (pro_next_simplex(data) != 0)
             return -1;
 
-    } while (simplex_outofbounds(test));
+    } while (!simplex_inbounds(data->next, data->space));
 
     return 0;
 }
 
-int pro_next_state(const simplex_t *input, int best_in)
+int pro_next_state(hplugin_data_t* data)
 {
-    switch (state) {
+    switch (data->state) {
     case SIMPLEX_STATE_INIT:
     case SIMPLEX_STATE_SHRINK:
-        /* Simply accept the candidate simplex and prepare to reflect. */
-        simplex_copy(base, input);
-        best_base = best_in;
-        state = SIMPLEX_STATE_REFLECT;
+        // Simply accept the candidate simplex and prepare to reflect.
+        data->best_base = data->best_test;
+        data->state = SIMPLEX_STATE_REFLECT;
         break;
 
     case SIMPLEX_STATE_REFLECT:
-        if (hperf_cmp(input->vertex[best_in]->perf,
-                      base->vertex[best_base]->perf) < 0)
+        if (hperf_cmp(&data->reflect.vertex[data->best_test].perf,
+                      &data->simplex.vertex[data->best_base].perf) < 0)
         {
-            /* Reflected simplex has best known performance.
-             * Accept the reflected simplex, and prepare a trial expansion.
-             */
-            simplex_copy(base, input);
-            best_stash = best_test;
-            state = SIMPLEX_STATE_EXPAND_ONE;
+            // Reflected simplex has best known performance.
+            // Attempt a trial expansion.
+            //
+            data->best_reflect = data->best_test;
+            data->state = SIMPLEX_STATE_EXPAND_ONE;
         }
         else {
-            /* Reflected simplex does not improve performance.
-             * Shrink the simplex instead.
-             */
-            state = SIMPLEX_STATE_SHRINK;
+            // Reflected simplex does not improve performance.
+            // Shrink the simplex instead.
+            //
+            data->state = SIMPLEX_STATE_SHRINK;
         }
         break;
 
     case SIMPLEX_STATE_EXPAND_ONE:
-        if (hperf_cmp(input->vertex[0]->perf,
-                      base->vertex[best_base]->perf) < 0)
+        if (hperf_cmp(&data->expand.vertex[0].perf,
+                      &data->reflect.vertex[data->best_reflect].perf) < 0)
         {
-            /* Trial expansion has found the best known vertex thus far.
-             * We are now free to expand the entire reflected simplex.
-             */
-            state = SIMPLEX_STATE_EXPAND_ALL;
+            // Trial expansion has found the best known vertex thus far.
+            // We are now free to expand the entire reflected simplex.
+            //
+            data->state = SIMPLEX_STATE_EXPAND_ALL;
         }
         else {
-            /* Expanded vertex does not improve performance.
-             * Revert to the (unexpanded) reflected simplex.
-             */
-            best_base = best_stash;
-            state = SIMPLEX_STATE_REFLECT;
+            // Expanded test vertex does not improve performance.
+            // Accept the original (unexpanded) reflected simplex and
+            // attempt another reflection.
+            //
+            if (simplex_copy(&data->simplex, &data->reflect) != 0) {
+                search_error("Could not copy reflection simplex"
+                             " for next state");
+                return -1;
+            }
+            data->best_base = data->best_reflect;
+            data->state = SIMPLEX_STATE_REFLECT;
         }
         break;
 
     case SIMPLEX_STATE_EXPAND_ALL:
-        if (hperf_cmp(input->vertex[best_in]->perf,
-                      base->vertex[best_base]->perf) < 0)
-        {
-            /* Expanded simplex has found the best known vertex thus far.
-             * Accept the expanded simplex as the reference simplex. */
-            simplex_copy(base, input);
-            best_base = best_in;
+        if (simplex_inbounds(&data->expand, data->space)) {
+            // If the entire expanded simplex is valid (in bounds),
+            // accept it as the reference simplex.
+            //
+            if (simplex_copy(&data->simplex, &data->expand) != 0) {
+                search_error("Could not copy expanded simplex"
+                             " for next state");
+                return -1;
+            }
+            data->best_base = data->best_test;
+        }
+        else {
+            // Otherwise, accept the original (unexpanded) reflected
+            // simplex as the reference simplex.
+            //
+            if (simplex_copy(&data->simplex, &data->reflect) != 0) {
+                search_error("Could not copy reflected simplex"
+                             " for next state");
+                return -1;
+            }
+            data->best_base = data->best_reflect;
         }
 
-        /* Expanded simplex may not improve performance over the
-         * reference simplex.  In general, this can only happen if the
-         * entire expanded simplex is out of bounds.
-         *
-         * Either way, reflection should be tested next. */
-        state = SIMPLEX_STATE_REFLECT;
+        // Either way, test reflection next.
+        data->state = SIMPLEX_STATE_REFLECT;
         break;
 
     default:
@@ -596,48 +597,64 @@ int pro_next_state(const simplex_t *input, int best_in)
     return 0;
 }
 
-int pro_next_simplex(simplex_t *output)
+int pro_next_simplex(hplugin_data_t* data)
 {
-    int i;
-
-    switch (state) {
+    switch (data->state) {
     case SIMPLEX_STATE_INIT:
-        /* Bootstrap the process by testing the reference simplex. */
-        simplex_copy(output, base);
+        // Bootstrap the process by testing the reference simplex.
+        data->next = &data->simplex;
         break;
 
     case SIMPLEX_STATE_REFLECT:
-        /* Reflect all original simplex vertices around the best known
-         * vertex thus far. */
-        simplex_transform(base, base->vertex[best_base], -reflect, output);
+        // Each simplex vertex is translated to a position opposite
+        // its origin (best performing) vertex.  This corresponds to a
+        // coefficient that is -1 * (1.0 + <reflect coefficient>).
+        //
+        simplex_transform(&data->simplex,
+                          &data->simplex.vertex[data->best_base],
+                          -(1.0 + data->reflect_val), &data->reflect);
+        data->next = &data->reflect;
         break;
 
     case SIMPLEX_STATE_EXPAND_ONE:
-        /* Next simplex should have one vertex extending the best.
-         * And the rest should be copies of the best known vertex.
-         */
-        vertex_transform(test->vertex[best_test], base->vertex[best_base],
-                         expand, output->vertex[0]);
+        // Next simplex should have one vertex extending the best.
+        // And the rest should be copies of the best known vertex.
+        //
+        vertex_transform(&data->simplex.vertex[data->best_reflect],
+                         &data->simplex.vertex[data->best_base],
+                         -(1.0 + data->expand_val), &data->expand.vertex[0]);
 
-        for (i = 1; i < simplex_size; ++i)
-            vertex_copy(output->vertex[i], base->vertex[best_base]);
+        for (int i = 1; i < data->expand.len; ++i)
+            vertex_copy(&data->expand.vertex[i],
+                        &data->simplex.vertex[data->best_base]);
+
+        data->next = &data->expand;
         break;
 
     case SIMPLEX_STATE_EXPAND_ALL:
-        /* Expand all original simplex vertices away from the best
-         * known vertex thus far. */
-        simplex_transform(base, base->vertex[best_base], expand, output);
+        // Expand all original simplex vertices away from the best
+        // known vertex thus far.
+        //
+        simplex_transform(&data->simplex,
+                          &data->simplex.vertex[data->best_base],
+                          -(1.0 + data->expand_val), &data->expand);
+        data->next = &data->expand;
         break;
 
     case SIMPLEX_STATE_SHRINK:
-        /* Shrink all original simplex vertices towards the best
-         * known vertex thus far. */
-        simplex_transform(base, base->vertex[best_base], shrink, output);
+        // Shrink all original simplex vertices towards the best
+        // known vertex thus far.
+        //
+        simplex_transform(&data->simplex,
+                          &data->simplex.vertex[data->best_base],
+                          -data->shrink_val, &data->simplex);
+        data->next = &data->simplex;
         break;
 
     case SIMPLEX_STATE_CONVERGED:
-        /* Simplex has converged.  Nothing to do.
-         * In the future, we may consider new search at this point. */
+        // Simplex has converged.  Nothing to do.
+        // In the future, we may consider new search at this point.
+        //
         break;
 
     default:
@@ -646,41 +663,41 @@ int pro_next_simplex(simplex_t *output)
     return 0;
 }
 
-void check_convergence(void)
+int check_convergence(hplugin_data_t* data)
 {
-    int i;
-    double fval_err, size_max, avg_perf;
-    static vertex_t *centroid;
+    double avg_perf;
+    double fval_err;
+    double size_max;
 
-    if (!centroid)
-        centroid = vertex_alloc();
+    if (simplex_centroid(&data->simplex, &data->centroid) != 0)
+        return -1;
 
-    if (simplex_collapsed(base) == 1)
+    if (simplex_collapsed(&data->simplex, data->space))
         goto converged;
 
-    simplex_centroid(base, centroid);
-    avg_perf = hperf_unify(centroid->perf);
-
+    avg_perf = hperf_unify(&data->centroid.perf);
     fval_err = 0.0;
-    for (i = 0; i < simplex_size; ++i) {
-        double vert_perf = hperf_unify(base->vertex[i]->perf);
+    for (int i = 0; i < data->simplex.len; ++i) {
+        double vert_perf = hperf_unify(&data->simplex.vertex[i].perf);
         fval_err += ((vert_perf - avg_perf) * (vert_perf - avg_perf));
     }
-    fval_err /= simplex_size;
+    fval_err /= data->simplex.len;
 
     size_max = 0.0;
-    for (i = 0; i < simplex_size; ++i) {
-        double dist = vertex_dist(base->vertex[i], centroid);
+    for (int i = 0; i < data->simplex.len; ++i) {
+        double dist = vertex_norm(&data->simplex.vertex[i], &data->centroid,
+                                  VERTEX_NORM_L2);
         if (size_max < dist)
             size_max = dist;
     }
 
-    if (fval_err < fval_tol && size_max < size_tol)
+    if (fval_err < data->fval_tol && size_max < data->size_tol)
         goto converged;
 
-    return;
+    return 0;
 
   converged:
-    state = SIMPLEX_STATE_CONVERGED;
-    session_setcfg(CFGKEY_STRATEGY_CONVERGED, "1");
+    data->state = SIMPLEX_STATE_CONVERGED;
+    search_setcfg(CFGKEY_CONVERGED, "1");
+    return 0;
 }

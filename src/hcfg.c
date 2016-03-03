@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -16,8 +16,8 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 #include "hcfg.h"
+#include "hmesg.h"
 #include "hutil.h"
 
 #include <stdio.h>
@@ -28,571 +28,508 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <ctype.h>
+#include <math.h> // For NAN.
 
-typedef struct keyval {
-    char *key;
-    char *val;
-} keyval_t;
+const hcfg_t hcfg_zero = HCFG_INITIALIZER;
 
-struct hcfg {
-    keyval_t *hash;
-    unsigned int count;
-    unsigned int logsize;
+/*
+ * Default values for configuration variables.
+ */
+const hcfg_info_t hcfg_global_keys[] = {
+    { CFGKEY_HARMONY_HOME, NULL,
+      "Filesystem path to base of Active Harmony installation."},
+    { CFGKEY_HARMONY_HOST, NULL,
+      "Filesystem path to base of Active Harmony installation."},
+    { CFGKEY_HARMONY_PORT, "1979",
+      "Filesystem path to base of Active Harmony installation."},
+    { CFGKEY_RANDOM_SEED, NULL,
+      "Seed used to initialize the random number generator for the entire "
+      "session.  If not defined, the seed is taken from the system time." },
+    { CFGKEY_PERF_COUNT, "1",
+      "Number of output dimensions of the search space." },
+    { CFGKEY_GEN_COUNT, "1",
+      "Number of trials to prepare for each expected client." },
+    { CFGKEY_CLIENT_COUNT, "1",
+      "Number of expected clients." },
+    { CFGKEY_STRATEGY, NULL,
+      "Search strategy to use as the driver for this session."
+      "If left unset, the default strategy then depends upon the "
+      CFGKEY_CLIENT_COUNT " configuration variable.  If it is greater "
+      "than 1, the PRO strategy will be used.  Otherwise, the Nelder-Mead "
+      "strategy will be used." },
+    { CFGKEY_LAYERS, NULL,
+      "Colon (:) separated list of plugin layer objects to load." },
+    { NULL }
 };
 
-/* Internal function prototypes */
-int line_count(const char *buf);
-unsigned int hash_function(const char *input, unsigned int logsize);
-keyval_t *hash_init(unsigned int logsize);
-keyval_t *hash_find(hcfg_t *cfg, const char *key);
-int hash_resize(hcfg_t *cfg, unsigned int new_logsize);
-int hash_insert(hcfg_t *cfg, const char *key, const char *val);
-int hash_delete(hcfg_t *cfg, const char *key);
-void hash_clear(hcfg_t *cfg);
+/*
+ * Internal helper function prototypes.
+ */
+static void   free_data(hcfg_t* cfg);
+static int    key_find(const hcfg_t* cfg, const char* key, char** val);
+static char*  key_val(const hcfg_t* cfg, const char* key);
+static char*  key_val_index(const hcfg_t* cfg, const char* key, int idx);
+static int    key_add(hcfg_t* cfg, char* pair);
+static void   key_del(hcfg_t* cfg, const char* key);
+static int    copy_keyval(const char* buf, char** keyval, const char** errptr);
 
-/* Static global variables */
-static const unsigned HASH_GROWTH_THRESH = 50;
-static const unsigned CONFIG_INITIAL_LOGSIZE = 8;
-
-hcfg_t *hcfg_alloc(void)
+/*
+ * Basic structure management implementation.
+ */
+int hcfg_init(hcfg_t* cfg)
 {
-    hcfg_t *retval;
+    cfg->len = 0;
+    cfg->cap = 32;
+    cfg->env = malloc(cfg->cap * sizeof(*cfg->env));
+    if (!cfg->env)
+        return -1;
 
-    retval = (hcfg_t *) malloc(sizeof(struct hcfg));
-    if (retval == NULL)
-        return NULL;
-
-    retval->count = 0;
-    retval->logsize = CONFIG_INITIAL_LOGSIZE;
-    retval->hash = hash_init(CONFIG_INITIAL_LOGSIZE);
-    if (retval->hash == NULL) {
-        free(retval);
-        return NULL;
-    }
-
-    return retval;
+    return hcfg_reginfo(cfg, hcfg_global_keys);
 }
 
-hcfg_t *hcfg_copy(const hcfg_t *src)
+int hcfg_loadenv(hcfg_t* cfg)
 {
-    unsigned i, size = 0;
-    hcfg_t *retval;
+    extern char** environ;
 
-    retval = (hcfg_t *)malloc(sizeof(struct hcfg));
-    if (retval == NULL)
-        return NULL;
+    // Incorporate environment variables into current configuration.
+    for (int i = 0; environ[i]; ++i) {
+        if (valid_id(environ[i], strcspn(environ[i], "="))) {
+            char* pair = stralloc( environ[i] );
 
-    retval->count = src->count;
-    retval->logsize = src->logsize;
-    retval->hash = hash_init(src->logsize);
-    if (retval->hash == NULL)
-        goto cleanup;
-
-    size = 1 << src->logsize;
-    for (i = 0; i < size; ++i) {
-        if (src->hash[i].key != NULL) {
-            retval->hash[i].key = malloc(strlen(src->hash[i].key) + 1);
-            retval->hash[i].val = malloc(strlen(src->hash[i].val) + 1);
-            if (retval->hash[i].key == NULL || retval->hash[i].val == NULL)
-                goto cleanup;
-            strcpy(retval->hash[i].key, src->hash[i].key);
-            strcpy(retval->hash[i].val, src->hash[i].val);
+            if (!pair || key_add(cfg, pair) != 0)
+                return -1;
         }
     }
-    return retval;
-
-  cleanup:
-    if (retval->hash != NULL) {
-        for (i = 0; i < size; ++i) {
-            free(retval->hash[i].key);
-            free(retval->hash[i].val);
-        }
-        free(retval->hash);
-    }
-    free(retval);
-    return NULL;
+    return 0;
 }
 
-void hcfg_free(hcfg_t *cfg)
+int hcfg_reginfo(hcfg_t* cfg, const hcfg_info_t* info)
 {
-    hash_clear(cfg);
-    free(cfg->hash);
-    free(cfg);
-}
-
-const char *hcfg_get(hcfg_t *cfg, const char *key)
-{
-    keyval_t *entry;
-    entry = hash_find(cfg, key);
-    if (entry == NULL || entry->key == NULL)
-        return NULL;
-
-    return entry->val;
-}
-
-int hcfg_set(hcfg_t *cfg, const char *key, const char *val)
-{
-    if (val == NULL)
-        return hash_delete(cfg, key);
-    return hash_insert(cfg, key, val);
-}
-
-int hcfg_unset(hcfg_t *cfg, const char *key)
-{
-    return hash_delete(cfg, key);
-}
-
-/* Open the configuration file, and parse it line by line. */
-int hcfg_load(hcfg_t *cfg, const char *filename)
-{
-    FILE *fd;
-    char buf[4096];
-    char *head, *next, *tail, *key, *val;
-    int linenum = 1;
-
-    if (strcmp(filename, "-") == 0)
-        fd = stdin;
-    else {
-        fd = fopen(filename, "r");
-        if (!fd) {
-            perror("Error parsing configuration data");
-            return -1;
-        }
-    }
-
-    head = buf;
-    tail = buf;
-    while (!feof(fd)) {
-        int count;
-
-        tail += fread(tail, sizeof(char), sizeof(buf) - (tail - buf + 1), fd);
-        *tail = '\0';
-
-        while (head < tail) {
-            count = line_count(head);
-            if (count == 0 && !feof(fd))
-                break;
-
-            next = hcfg_parse(head, &key, &val);
-            if (!next)
-                break;
-
-            if (key && val) {
-                keyval_t *entry = hash_find(cfg, key);
-
-                if (entry != NULL && entry->key != NULL) {
-                    fprintf(stderr, "Warning: Line %d: Redefinition of"
-                            " configuration key %s.\n", linenum, key);
-                }
-
-                if (hash_insert(cfg, key, val) != 0) {
-                    fprintf(stderr, "Error: Internal hash table error.\n");
-                    fclose(fd);
-                    return -1;
-                }
+    while (info->key) {
+        if (info->val && !hcfg_get(cfg, info->key)) {
+            if (hcfg_set(cfg, info->key, info->val) != 0) {
+                fprintf(stderr, "Error: Could not register default value "
+                                "for configuration key '%s'.\n", info->key);
+                return -1;
             }
-            linenum += count;
-            head = next;
         }
-
-        /* Parse error detected. */
-        if (!next)
-            break;
-
-        /* Full buffer with no newline. */
-        if (tail - head == sizeof(buf) - 1)
-            break;
-
-        /* Move remaining data to front of buffer. */
-        if (head != buf) {
-            next = buf;
-            while (head < tail)
-                *(next++) = *(head++);
-            tail = next;
-            head = buf;
-        }
+        ++info;
     }
-    if (fclose(fd) != 0) {
-        perror("Error parsing configuration data");
-        return -1;
-    }
-
-    if (head != tail) {
-        fprintf(stderr, "Parse error in file %s line %d: ", filename, linenum);
-        if (tail - head == sizeof(buf) - 1)
-            fprintf(stderr, "Line buffer overflow.\n");
-        else if (key == NULL)
-            fprintf(stderr, "Invalid key string.\n");
-        else if (val == NULL)
-            fprintf(stderr, "No key/value separator character (=).\n");
-        return -1;
-    }
-
     return 0;
 }
 
-int hcfg_merge(hcfg_t *dst, const hcfg_t *src)
+int hcfg_copy(hcfg_t* dst, const hcfg_t* src)
 {
-    int i;
-    keyval_t *entry;
+    // Free heap data allocated by the destination structure.
+    free_data(dst);
 
-    for (i = 0; i < (1 << src->logsize); ++i) {
-        if (!src->hash[i].key)
-            continue;
+    if (dst->cap < src->cap) {
+        char** newbuf = realloc(dst->env, src->cap * sizeof(*dst->env));
+        if (!newbuf)
+            return -1;
 
-        entry = hash_find(dst, src->hash[i].key);
-        if (entry && entry->key)
-            continue;
+        dst->env = newbuf;
+        dst->cap = src->cap;
+    }
 
-        if (hash_insert(dst, src->hash[i].key, src->hash[i].val) < 0)
+    for (dst->len = 0; dst->len < src->len; ++dst->len) {
+        dst->env[ dst->len ] = stralloc( src->env[ dst->len ] );
+        if (!dst->env[ dst->len ])
             return -1;
     }
     return 0;
 }
 
-int hcfg_write(hcfg_t *cfg, const char *filename)
+int hcfg_merge(hcfg_t* dst, const hcfg_t* src)
 {
-    FILE *fd;
-    int i;
+    int newlen = dst->len + src->len;
 
-    if (strcmp(filename, "-") == 0)
-        fd = stdout;
+    if (dst->cap < newlen) {
+        char** newbuf = realloc(dst->env, newlen * sizeof(*dst->env));
+        if (!newbuf)
+            return -1;
+
+        dst->env = newbuf;
+        dst->cap = newlen;
+    }
+
+    for (int i = 0; i < src->len; ++i) {
+        char* pair = stralloc(src->env[i]);
+        if (!pair || key_add(dst, pair) != 0)
+            return -1;
+    }
+    return 0;
+}
+
+void hcfg_fini(hcfg_t* cfg)
+{
+    free_data(cfg);
+    free(cfg->env);
+}
+
+void hcfg_scrub(hcfg_t* cfg)
+{
+    free(cfg->env);
+}
+
+/*
+ * Configuration value access implementation.
+ */
+char* hcfg_get(const hcfg_t* cfg, const char* key)
+{
+    return key_val(cfg, key);
+}
+
+int hcfg_set(hcfg_t* cfg, const char* key, const char* val)
+{
+    if (!valid_id(key, strlen(key)))
+        return -1;
+
+    if (val) {
+        char* pair = sprintf_alloc("%s=%s", key, val);
+        return key_add(cfg, pair);
+    }
     else {
-        fd = fopen(filename, "w");
-        if (!fd) {
+        key_del(cfg, key);
+        return 0;
+    }
+}
+
+/*
+ * Key lookup and scalar value conversion implementation.
+ */
+int hcfg_bool(const hcfg_t* cfg, const char* key)
+{
+    return hcfg_parse_bool( key_val(cfg, key) );
+}
+
+long hcfg_int(const hcfg_t* cfg, const char* key)
+{
+    return hcfg_parse_int( key_val(cfg, key) );
+}
+
+double hcfg_real(const hcfg_t* cfg, const char* key)
+{
+    return hcfg_parse_real( key_val(cfg, key) );
+}
+
+/*
+ * Key lookup and array value conversion implementation.
+ */
+int hcfg_arr_len(const hcfg_t* cfg, const char* key)
+{
+    char* val = key_val(cfg, key);
+    int retval = 0;
+
+    if (val) {
+        do {
+            ++retval;
+            val += strcspn(val, ",");
+        } while (*(val++));
+    }
+    return retval;
+}
+
+int hcfg_arr_get(const hcfg_t* cfg, const char* key, int idx,
+                 char* buf, int len)
+{
+    char* val = key_val_index(cfg, key, idx);
+    if (!val) return -1;
+
+    int n = strcspn(val, ",");
+    while (n && isspace(val[n - 1])) --n;
+
+    return snprintf(buf, len, "%.*s", n, val);
+}
+
+int hcfg_arr_bool(const hcfg_t* cfg, const char* key, int idx)
+{
+    return hcfg_parse_bool( key_val_index(cfg, key, idx) );
+}
+
+long hcfg_arr_int(const hcfg_t* cfg, const char* key, int idx)
+{
+    return hcfg_parse_int( key_val_index(cfg, key, idx) );
+}
+
+double hcfg_arr_real(const hcfg_t* cfg, const char* key, int idx)
+{
+    return hcfg_parse_real( key_val_index(cfg, key, idx) );
+}
+
+/*
+ * Value conversion interface.
+ */
+int hcfg_parse_bool(const char* val)
+{
+    return (val && (val[0] == '1' ||
+                    val[0] == 't' || val[0] == 'T' ||
+                    val[0] == 'y' || val[0] == 'Y'));
+}
+
+long hcfg_parse_int(const char* val)
+{
+    return val ? strtol(val, NULL, 0) : -1;
+}
+
+double hcfg_parse_real(const char* val)
+{
+    double retval;
+    if (val && sscanf(val, "%lf", &retval) == 1)
+        return retval;
+    return NAN;
+}
+
+/*
+ * Data transmission implementation.
+ */
+int hcfg_pack(char** buf, int* buflen, const hcfg_t* cfg)
+{
+    int count, total;
+
+    count = snprintf_serial(buf, buflen, " cfg:%d", cfg->len);
+    if (count < 0) goto invalid;
+    total = count;
+
+    for (int i = 0; i < cfg->len; ++i) {
+        count = printstr_serial(buf, buflen, cfg->env[i]);
+        if (count < 0) goto invalid;
+        total += count;
+    }
+    return total;
+
+  invalid:
+    errno = EINVAL;
+    return -1;
+}
+
+int hcfg_unpack(hcfg_t* cfg, char* buf)
+{
+    int total = 0;
+    sscanf(buf, " cfg:%d%n", &cfg->len, &total);
+    if (!total)
+        goto invalid;
+
+    if (cfg->cap < cfg->len) {
+        char** newbuf = realloc(cfg->env, cfg->len * sizeof(*cfg->env));
+        if (!newbuf)
+            return -1;
+
+        cfg->env = newbuf;
+        cfg->cap = cfg->len;
+    }
+
+    for (int i = 0; i < cfg->len; ++i) {
+        int count = scanstr_serial((const char**)&cfg->env[i], buf + total);
+        if (count < 0) goto invalid;
+        total += count;
+    }
+    return total;
+
+  invalid:
+    errno = EINVAL;
+    return -1;
+}
+
+int hcfg_parse(hcfg_t* cfg, const char* buf, const char** errptr)
+{
+    const char* key = buf;
+    const char* val = buf + strcspn(buf, "=");
+    const char* errstr;
+
+    if (*key == '\0')
+        return 0;
+
+    if (!valid_id(key, val - key)) {
+        errstr = "Invalid key string";
+        goto error;
+    }
+
+    if (*val != '=') {
+        errstr = "Missing separator character (=)";
+        goto error;
+    }
+
+    char* keyval;
+    if (copy_keyval(buf, &keyval, errptr) != 0)
+        return -1;
+
+    if (key_add(cfg, keyval)) {
+        errstr = "Could not insert key/val pair";
+        goto error;
+    }
+    return 1;
+
+  error:
+    if (errptr) *errptr = errstr;
+    return -1;
+}
+
+int hcfg_write(const hcfg_t* cfg, const char* filename)
+{
+    FILE* fp = stdout;
+
+    if (strcmp(filename, "-") != 0) {
+        fp = fopen(filename, "w");
+        if (!fp) {
             perror("Error opening file for write");
             return -1;
         }
     }
 
-    for (i = 0; i < (1 << cfg->logsize); ++i) {
-        if (cfg->hash[i].key != NULL) {
-            fprintf(fd, "%s=%s\n", cfg->hash[i].key, cfg->hash[i].val);
+    for (int i = 0; i < cfg->len; ++i) {
+        char* ptr = strchr(cfg->env[i], '=');
+        int   end = strlen(ptr) - 1;
+        char* quote = cfg->env[i] + strcspn(cfg->env[i], "#'\"\n\\");
+
+        if (isspace(ptr[1]) || isspace(ptr[end]) || *quote) {
+            fprintf(fp, "%.*s=\"", (int)(ptr - cfg->env[i]), cfg->env[i]);
+            ++ptr;
+            while (*ptr) {
+                int span = strcspn(ptr, "\"\\");
+                fprintf(fp, "%.*s", span, ptr);
+                ptr += span;
+                if (*ptr) {
+                    fprintf(fp, "\\%c", *ptr);
+                    ++ptr;
+                }
+            }
+            fprintf(fp, "\"\n");
+        }
+        else {
+            fprintf(fp, "%s\n", cfg->env[i]);
         }
     }
 
-    if (fclose(fd) != 0) {
-        perror("Error parsing configuration data");
-        return -1;
+    if (fp != stdout && fclose(fp) != 0) {
+        fprintf(stderr, "Warning: Ignoring error on close(%s): %s\n",
+                filename, strerror(errno));
     }
     return 0;
-}
-
-/* Parse the key and value from a memory buffer. */
-char *hcfg_parse(char *buf, char **key, char **val)
-{
-    char *ptr = NULL;
-
-    *key = NULL;
-    *val = NULL;
-
-    /* Skip leading key whitespace. */
-    while (isspace(*buf) && *buf != '\n')
-        ++buf;
-
-    /* Skip empty lines and comments. */
-    if (*buf == '\n' || *buf == '#')
-        goto endline;
-
-    if (!isalnum(*buf) && *buf != '_')
-        return NULL;
-
-    /* Force key strings to be uppercase. */
-    *key = buf;
-    while (isalnum(*buf) || *buf == '_') {
-        *buf = toupper(*buf);
-        ++buf;
-    }
-
-    /* Check that key string was valid. */
-    ptr = buf;
-    while (isspace(*buf) && *buf != '\n')
-        ++buf;
-
-    if (*(buf++) != '=')
-        return NULL;
-
-    while (isspace(*buf) && *buf != '\n')
-        ++buf;
-
-    /* Kill whitespace and separator between key and value. */
-    while (ptr < buf)
-        *(ptr++) = '\0';
-
-    /* Check for empty value, used for deleting a key/value pair. */
-    if (*buf == '\n' || *buf == '\0')
-        goto endline;
-
-    /* Unquote the value string. */
-    *val = buf;
-    while (*buf && *buf != '\n') {
-        if (*buf ==  '#') goto endline;
-        if (*buf == '\\') ++buf;
-        *(ptr++) = *(buf++);
-    }
-    if (**val == '\\')
-        ++(*val);
-
-  endline:
-    buf += strcspn(buf, "\n");
-    if (*buf == '\n')
-        ++buf;
-
-    /* Kill trailing value whitespace. */
-    if (ptr) {
-        do *(ptr--) = '\0';
-        while (isspace(*ptr));
-    }
-    return buf;
-}
-
-int hcfg_is_cmd(const char *buf)
-{
-    while (isspace(*buf)) ++buf;
-    while (isalnum(*buf) || *buf == '_') ++buf;
-    while (isspace(*buf)) ++buf;
-
-    return (*buf == '=');
-}
-
-int hcfg_serialize(char **buf, int *buflen, const hcfg_t *cfg)
-{
-    int i, count, total;
-
-    count = snprintf_serial(buf, buflen, "hcfg:%u %u ",
-                            cfg->count, cfg->logsize);
-    if (count < 0) goto invalid;
-    total = count;
-
-    for (i = 0; i < (1 << cfg->logsize); ++i) {
-        if (cfg->hash[i].key) {
-            count = printstr_serial(buf, buflen, cfg->hash[i].key);
-            if (count < 0) goto invalid;
-            total += count;
-
-            count = printstr_serial(buf, buflen, cfg->hash[i].val);
-            if (count < 0) goto invalid;
-            total += count;
-        }
-    }
-    return total;
-
-  invalid:
-    errno = EINVAL;
-    return -1;
-}
-
-int hcfg_deserialize(hcfg_t *cfg, char *buf)
-{
-    int count, total;
-    unsigned int i, kcount, logsize;
-    const char *key, *val;
-
-    if (sscanf(buf, " hcfg:%u %u%n", &kcount, &logsize, &count) < 2)
-        goto invalid;
-    total = count;
-
-    if (hash_resize(cfg, logsize) < 0)
-        goto error;
-
-    for (i = 0; i < kcount; ++i) {
-        count = scanstr_serial(&key, buf + total);
-        if (count < 0) goto invalid;
-        total += count;
-
-        count = scanstr_serial(&val, buf + total);
-        if (count < 0) goto invalid;
-        total += count;
-
-        if (hcfg_set(cfg, key, val) < 0)
-            goto error;
-    }
-    return total;
-
-  invalid:
-    errno = EINVAL;
-  error:
-    return -1;
-}
-
-/* Find the end of the string, returning a count of the newlines. */
-int line_count(const char *buf)
-{
-    const char *stop = "=#\\";
-    const char *ptr = buf;
-    int linecount = 0;
-
-    while (*ptr && *ptr != '\n') {
-        ptr += strcspn(ptr, stop);
-
-        if (*ptr == '\\') {
-            ++ptr;
-            if (*stop == '#') {
-                if      (*ptr == '\n') ++linecount;
-                else if (*ptr == '\0') break;
-                ++ptr;
-            }
-        }
-        else if (*ptr == '=') stop = "#\n";
-        else if (*ptr == '#') stop = "\n";
-    }
-
-    if (*ptr == '\n')
-        ++linecount;
-
-    return linecount;
 }
 
 /*
- * Simple implementation of an FNV-1a 32-bit hash.
+ * Internal helper function implementation.
  */
-#define FNV_PRIME_32     0x01000193
-#define FNV_OFFSET_BASIS 0x811C9DC5
-unsigned int hash_function(const char *input, unsigned int logsize)
-{
-    unsigned int hash = FNV_OFFSET_BASIS;
-    while (*input != '\0') {
-        hash ^= tolower(*(input++));
-        hash *= FNV_PRIME_32;
-    }
-    return ((hash >> logsize) ^ hash) & ((1 << logsize) - 1);
+void free_data(hcfg_t* cfg) {
+    for (int i = 0; i < cfg->len; ++i)
+        free(cfg->env[i]);
 }
 
-keyval_t *hash_init(unsigned int logsize)
-{
-    keyval_t *hash;
-    hash = (keyval_t *) malloc(sizeof(keyval_t) * (1 << logsize));
-    if (hash != NULL)
-        memset(hash, 0, sizeof(keyval_t) * (1 << logsize));
-    return hash;
-}
-
-keyval_t *hash_find(hcfg_t *cfg, const char *key)
-{
-    unsigned int idx, orig_idx, capacity;
-
-    capacity = 1 << cfg->logsize;
-    orig_idx = idx = hash_function(key, cfg->logsize);
-
-    while (cfg->hash[idx].key != NULL &&
-           strcasecmp(key, cfg->hash[idx].key) != 0)
-    {
-        idx = (idx + 1) % capacity;
-        if (idx == orig_idx)
-            return NULL;
-    }
-    return &cfg->hash[idx];
-}
-
-int hash_resize(hcfg_t *cfg, unsigned int new_logsize)
-{
-    unsigned int i, idx, orig_size, new_size;
-    keyval_t *new_hash;
-
-    if (new_logsize == cfg->logsize)
-        return 0;
-
-    orig_size = 1 << cfg->logsize;
-    new_size = 1 << new_logsize;
-
-    new_hash = (keyval_t *) malloc(sizeof(keyval_t) * new_size);
-    if (new_hash == NULL)
-        return -1;
-    memset(new_hash, 0, sizeof(keyval_t) * new_size);
-
-    for (i = 0; i < orig_size; ++i) {
-        if (cfg->hash[i].key != NULL) {
-            idx = hash_function(cfg->hash[i].key, new_logsize);
-            while (new_hash[idx].key != NULL)
-                idx = (idx + 1) % new_size;
-
-            new_hash[idx].key = cfg->hash[i].key;
-            new_hash[idx].val = cfg->hash[i].val;
-        }
-    }
-
-    free(cfg->hash);
-    cfg->hash = new_hash;
-    cfg->logsize = new_logsize;
-    if (cfg->logsize > 16)
-        fprintf(stderr, "Warning: Internal hash grew beyond expectation.\n");
-
-    return 0;
-}
-
-int hash_insert(hcfg_t *cfg, const char *key, const char *val)
-{
-    keyval_t *entry;
-    char *new_val;
-
-    entry = hash_find(cfg, key);
-    if (entry == NULL)
-        return -1;
-
-    if (entry->key == NULL)
-    {
-        /* New entry case. */
-        entry->key = malloc(strlen(key) + 1);
-        entry->val = malloc(strlen(val) + 1);
-
-        if (entry->key == NULL || entry->val == NULL) {
-            free(entry->key);
-            free(entry->val);
-            entry->key = NULL;
-            entry->val = NULL;
-            return -1;
-        }
-
-        strcpy(entry->key, key);
-        strcpy(entry->val, val);
-
-        if (((++cfg->count * 100) / (1 << cfg->logsize)) > HASH_GROWTH_THRESH)
-            hash_resize(cfg, cfg->logsize + 1); /* Failing to grow the
-                                                   hash is not an error. */
-    }
-    else {
-        /* Value replacement case. */
-        new_val = malloc(strlen(val) + 1);
-        if (new_val == NULL)
-            return -1;
-        strcpy(new_val, val);
-        free(entry->val);
-        entry->val = new_val;
-    }
-    return 0;
-}
-
-int hash_delete(hcfg_t *cfg, const char *key)
-{
-    keyval_t *entry;
-
-    entry = hash_find(cfg, key);
-    if (!entry)
-        return -1;
-
-    if (entry->key) {
-        free(entry->key);
-        free(entry->val);
-        entry->key = NULL;
-        entry->val = NULL;
-        --cfg->count;
-    }
-    return 0;
-}
-
-void hash_clear(hcfg_t *cfg)
+int key_find(const hcfg_t* cfg, const char* key, char** val)
 {
     int i;
-
-    for (i = 0; i < (1 << cfg->logsize); ++i) {
-        if (cfg->hash[i].key) {
-            free(cfg->hash[i].key);
-            cfg->hash[i].key = NULL;
-        }
-        if (cfg->hash[i].val) {
-            free(cfg->hash[i].val);
-            cfg->hash[i].val = NULL;
+    for (i = 0; i < cfg->len; ++i) {
+        int n = strcspn(key, "=");
+        if (strncmp(key, cfg->env[i], n) == 0 && cfg->env[i][n] == '=') {
+            if (val) *val = cfg->env[i] + n + 1;
+            break;
         }
     }
-    cfg->count = 0;
+    return i;
+}
+
+char* key_val(const hcfg_t* cfg, const char* key)
+{
+    char* val = NULL;
+    key_find(cfg, key, &val);
+    return val;
+}
+
+char* key_val_index(const hcfg_t* cfg, const char* key, int idx)
+{
+    char* val = key_val(cfg, key);
+    if (!val)
+        return NULL;
+
+    while (idx--) {
+        int n = 0;
+        sscanf(val, " %*[^,], %n", &n);
+        if (!n)
+            return NULL;
+        val += n;
+    }
+    return val;
+}
+
+int key_add(hcfg_t* cfg, char* pair)
+{
+    int i = key_find(cfg, pair, NULL);
+
+    if (i < cfg->len) {
+        free(cfg->env[i]);
+    }
+    else if (i == cfg->cap) {
+        if (array_grow(&cfg->env, &cfg->cap, sizeof(*cfg->env)) != 0)
+            return -1;
+    }
+
+    cfg->env[i] = pair;
+    if (i == cfg->len)
+        ++cfg->len;
+
+    return 0;
+}
+
+void key_del(hcfg_t* cfg, const char* key)
+{
+    int i = key_find(cfg, key, NULL);
+
+    if (i < cfg->len) {
+        free(cfg->env[i]);
+        cfg->env[i] = cfg->env[ --cfg->len ];
+    }
+}
+
+int copy_keyval(const char* buf, char** keyval, const char** errptr)
+{
+    const char* errstr;
+    const char* src;
+    int cap = 0;
+
+    while (1) {
+        src = buf;
+        int   len = cap;
+        char* dst = *keyval;
+        char  quote = '\0';
+        while (*src) {
+            if (!quote) {
+                if      (*src == '\'') { quote = '\''; ++src; continue; }
+                else if (*src ==  '"') { quote =  '"'; ++src; continue; }
+            }
+            else {
+                if      (*src == '\\')  { ++src; }
+                else if (*src == quote) { quote = '\0'; ++src; continue; }
+            }
+
+            if (len-- > 0)
+                *(dst++) = *(src++);
+            else
+                ++src;
+        }
+        if (len-- > 0)
+            *dst = '\0';
+
+        if (quote != '\0') {
+            errstr = "Non-terminated quote detected";
+            goto error;
+        }
+
+        if (len < -1) {
+            // Keyval buffer size is -len;
+            cap += -len;
+            *keyval = malloc(cap * sizeof(**keyval));
+            if (!*keyval) {
+                errstr = "Could not allocate a new configuration key/val pair";
+                goto error;
+            }
+        }
+        else break; // Loop exit.
+    }
+    return 0;
+
+  error:
+    if (errptr)
+        *errptr = errstr;
+    return -1;
 }

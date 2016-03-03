@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -18,7 +18,6 @@
  */
 
 #include "hmesg.h"
-#include "hsession.h"
 #include "hval.h"
 #include "hutil.h"
 #include "hsockutil.h"
@@ -29,172 +28,118 @@
 #include <string.h>
 #include <arpa/inet.h>
 
-const hmesg_t HMESG_INITIALIZER = {0};
+const hmesg_t hmesg_zero = HMESG_INITIALIZER;
 
-void hmesg_scrub(hmesg_t *mesg)
+/*
+ * Internal helper function prototypes.
+ */
+static int pack_header(char* buf, int length, const hmesg_t* mesg);
+static int unpack_header(hmesg_t* mesg);
+static int pack_state(char** buf, int* buflen, const hmesg_t* mesg);
+static int unpack_state(hmesg_t* mesg, char* buf);
+static int pack_data(char** buf, int* buflen, const hmesg_t* mesg);
+static int unpack_data(hmesg_t* mesg, char* buf);
+
+/*
+ * To avoid excessive memory allocation, the *_unpack() routines build
+ * non-standard versions of their structures by taking advantage of the
+ * hmesg_t internal buffers.
+ *
+ * As a result, we use the *_scrub() routines here instead of their
+ * corresponding *_fini() routine.
+ */
+void hmesg_fini(hmesg_t* mesg)
 {
-    switch (mesg->type) {
-    case HMESG_SESSION:
-        if (mesg->status == HMESG_STATUS_REQ)
-            hsession_fini(&mesg->data.session);
-        break;
+    hspace_scrub(&mesg->unpacked_space);
+    hpoint_scrub(&mesg->unpacked_best);
+    hcfg_scrub(&mesg->unpacked_cfg);
+    hpoint_scrub(&mesg->unpacked_point);
+    hperf_fini(&mesg->unpacked_perf); // No scrub routine for hperf_t.
 
-    case HMESG_JOIN:
-        if (mesg->status == HMESG_STATUS_REQ ||
-            mesg->status == HMESG_STATUS_OK)
-        {
-            hsignature_fini(&mesg->data.join);
-        }
-        break;
-
-    case HMESG_BEST:
-    case HMESG_FETCH:
-        if (mesg->status == HMESG_STATUS_OK ||
-            mesg->status == HMESG_STATUS_BUSY)
-        {
-            hpoint_fini(&mesg->data.point);
-        }
-        break;
-
-    case HMESG_REPORT:
-        if (mesg->status == HMESG_STATUS_REQ)
-            hperf_fini(mesg->data.report.perf);
-        break;
-
-    default:
-        break;
-        /* All other cases have no heap memory to release. */
-    }
-    mesg->type = HMESG_UNKNOWN;
+    free(mesg->recv_buf);
+    free(mesg->send_buf);
 }
 
-void hmesg_fini(hmesg_t *mesg)
+int hmesg_forward(hmesg_t* mesg)
 {
-    hmesg_scrub(mesg);
-    free(mesg->buf);
+    return pack_header(mesg->recv_buf, 0, mesg);
 }
 
-int hmesg_serialize(hmesg_t *mesg)
+int hmesg_pack(hmesg_t* mesg)
 {
-    const char *type_str, *status_str;
-    char hdr[HMESG_HDRLEN + 1];
-    char *buf;
-    int buflen, count, total;
+    int count, total;
 
-  top:
-    buf = mesg->buf;
-    buflen = mesg->buflen;
+    while (1) {
+        char* buf = mesg->send_buf;
+        int   buflen = mesg->send_len;
 
-    /* Leave room for a header. */
-    buf += HMESG_HDRLEN;
-    buflen -= HMESG_HDRLEN;
-    if (buflen < 0)
-        buflen = 0;
-    total = HMESG_HDRLEN;
+        // Leave room for the packet header.
+        buf += HMESG_HEADER_SIZE;
+        buflen -= HMESG_HEADER_SIZE;
+        if (buflen < 0)
+            buflen = 0;
+        total = HMESG_HEADER_SIZE;
 
-    switch (mesg->type) {
-    case HMESG_UNKNOWN: type_str = "UNK"; break;
-    case HMESG_SESSION: type_str = "SES"; break;
-    case HMESG_JOIN:    type_str = "JOI"; break;
-    case HMESG_GETCFG:  type_str = "QRY"; break;
-    case HMESG_SETCFG:  type_str = "INF"; break;
-    case HMESG_BEST:    type_str = "BST"; break;
-    case HMESG_FETCH:   type_str = "FET"; break;
-    case HMESG_REPORT:  type_str = "REP"; break;
-    case HMESG_RESTART: type_str = "RES"; break;
-    default: goto invalid;
-    }
+        const char* type_str;
+        switch (mesg->type) {
+        case HMESG_UNKNOWN: type_str = "UNK"; break;
+        case HMESG_SESSION: type_str = "SES"; break;
+        case HMESG_JOIN:    type_str = "JOI"; break;
+        case HMESG_GETCFG:  type_str = "QRY"; break;
+        case HMESG_SETCFG:  type_str = "INF"; break;
+        case HMESG_BEST:    type_str = "BST"; break;
+        case HMESG_FETCH:   type_str = "FET"; break;
+        case HMESG_REPORT:  type_str = "REP"; break;
+        case HMESG_COMMAND: type_str = "CMD"; break;
+        default:
+            fprintf(stderr, "Error during hmesg_pack():"
+                    "Message type (%d) is invalid\n", (int) mesg->type);
+            goto invalid;
+        }
 
-    switch (mesg->status) {
-    case HMESG_STATUS_REQ:  status_str = "REQ"; break;
-    case HMESG_STATUS_OK:   status_str = "ACK"; break;
-    case HMESG_STATUS_FAIL: status_str = "ERR"; break;
-    case HMESG_STATUS_BUSY: status_str = "BSY"; break;
-    default: goto invalid;
-    }
-
-    count = snprintf_serial(&buf, &buflen, ":%d:%s:%s:", mesg->dest,
-                            type_str, status_str);
-    if (count < 0) goto error;
-    total += count;
-
-    count = printstr_serial(&buf, &buflen, mesg->src_id);
-    if (count < 0) goto error;
-    total += count;
-
-    if (mesg->status == HMESG_STATUS_FAIL) {
-        count = printstr_serial(&buf, &buflen, mesg->data.string);
+        const char* status_str;
+        switch (mesg->status) {
+        case HMESG_STATUS_REQ:  status_str = "REQ"; break;
+        case HMESG_STATUS_OK:   status_str = "ACK"; break;
+        case HMESG_STATUS_FAIL: status_str = "ERR"; break;
+        case HMESG_STATUS_BUSY: status_str = "BSY"; break;
+        default:
+            fprintf(stderr, "Error during hmesg_pack():"
+                    "Message status (%d) is invalid\n", (int) mesg->status);
+            goto invalid;
+        }
+        count = snprintf_serial(&buf, &buflen, " %s %s", type_str, status_str);
         if (count < 0) goto error;
         total += count;
-    }
-    else {
-        switch (mesg->type) {
-        case HMESG_SESSION:
-            if (mesg->status == HMESG_STATUS_REQ) {
-                count = hsession_serialize(&buf, &buflen, &mesg->data.session);
-                if (count < 0) goto error;
-                total += count;
-            }
-            break;
 
-        case HMESG_JOIN:
-            count = hsignature_serialize(&buf, &buflen, &mesg->data.join);
-            if (count < 0) goto error;
-            total += count;
-            break;
-
-        case HMESG_GETCFG:
-        case HMESG_SETCFG:
+        if (mesg->status == HMESG_STATUS_FAIL) {
             count = printstr_serial(&buf, &buflen, mesg->data.string);
             if (count < 0) goto error;
             total += count;
-            break;
-
-        case HMESG_BEST:
-        case HMESG_FETCH:
-            if (mesg->status == HMESG_STATUS_OK ||
-                mesg->status == HMESG_STATUS_BUSY)
-            {
-                count = hpoint_serialize(&buf, &buflen, &mesg->data.point);
-                if (count < 0) goto error;
-                total += count;
-            }
-            break;
-
-        case HMESG_REPORT:
-            if (mesg->status == HMESG_STATUS_REQ) {
-                count = snprintf_serial(&buf, &buflen, "%d ",
-                                        mesg->data.report.cand_id);
-                if (count < 0) goto error;
-                total += count;
-
-                count = hperf_serialize(&buf, &buflen, mesg->data.report.perf);
-                if (count < 0) goto error;
-                total += count;
-            }
-            break;
-
-        case HMESG_RESTART:
-            break;
-
-        default:
-            goto invalid;
         }
+        else {
+            count = pack_state(&buf, &buflen, mesg);
+            if (count < 0) goto error;
+            total += count;
+
+            count = pack_data(&buf, &buflen, mesg);
+            if (count < 0) goto error;
+            total += count;
+        }
+
+        if (total >= mesg->send_len) {
+            buf = realloc(mesg->send_buf, total + 1);
+            if (!buf) goto error;
+
+            mesg->send_buf = buf;
+            mesg->send_len = total + 1;
+        }
+        else break;
     }
 
-    if (total >= mesg->buflen) {
-        buf = (char *) realloc(mesg->buf, total + 1);
-        if (!buf)
-            goto error;
-
-        mesg->buf = buf;
-        mesg->buflen = total + 1;
-        goto top;
-    }
-
-    snprintf(hdr, sizeof(hdr), "XXXX%04d%02x", total, HMESG_VERSION);
-    *(unsigned int *)(hdr) = htonl(HMESG_MAGIC);
-    memcpy(mesg->buf, hdr, HMESG_HDRLEN);
+    // Now that message length is known, write packet header.
+    if (pack_header(mesg->send_buf, total, mesg) != 0)
+        goto error;
 
     return total;
 
@@ -204,36 +149,21 @@ int hmesg_serialize(hmesg_t *mesg)
     return -1;
 }
 
-int hmesg_deserialize(hmesg_t *mesg)
+int hmesg_unpack(hmesg_t* mesg)
 {
-    char type_str[4], status_str[4];
     int count, total;
-    unsigned int msgver;
-    char *buf = mesg->buf;
+    char* buf = mesg->recv_buf;
 
-    /* Verify HMESG_MAGIC and HMESG_VERSION */
-    if (ntohl(*(unsigned int *)buf) != HMESG_MAGIC)
+    total = unpack_header(mesg);
+    if (total < 0)
         goto invalid;
 
-    if (sscanf(buf + sizeof(unsigned int), "%*4d%2x", &msgver) < 1)
-        goto invalid;
-
-    if (msgver != HMESG_VERSION)
-        goto invalid;
-    total = HMESG_HDRLEN;
-
-    if (sscanf(buf + total, " :%d:%3s:%3s:%n", &mesg->dest,
-               type_str, status_str, &count) < 3)
+    char type_str[4];
+    char status_str[4];
+    if (sscanf(buf + total, " %3s %3s%n", type_str, status_str, &count) < 2)
         goto invalid;
     total += count;
 
-    count = scanstr_serial(&mesg->src_id, buf + total);
-    if (count < 0) goto invalid;
-    total += count;
-
-    /* Before we overwrite this message's type, make sure memory allocated
-     * from previous usage has been released.
-     */
     if      (strcmp(type_str, "UNK") == 0) mesg->type = HMESG_UNKNOWN;
     else if (strcmp(type_str, "SES") == 0) mesg->type = HMESG_SESSION;
     else if (strcmp(type_str, "JOI") == 0) mesg->type = HMESG_JOIN;
@@ -242,7 +172,7 @@ int hmesg_deserialize(hmesg_t *mesg)
     else if (strcmp(type_str, "BST") == 0) mesg->type = HMESG_BEST;
     else if (strcmp(type_str, "FET") == 0) mesg->type = HMESG_FETCH;
     else if (strcmp(type_str, "REP") == 0) mesg->type = HMESG_REPORT;
-    else if (strcmp(type_str, "RES") == 0) mesg->type = HMESG_RESTART;
+    else if (strcmp(type_str, "CMD") == 0) mesg->type = HMESG_COMMAND;
     else goto invalid;
 
     if      (strcmp(status_str, "REQ") == 0) mesg->status = HMESG_STATUS_REQ;
@@ -257,62 +187,13 @@ int hmesg_deserialize(hmesg_t *mesg)
         total += count;
     }
     else {
-        switch (mesg->type) {
-        case HMESG_SESSION:
-            if (mesg->status == HMESG_STATUS_REQ) {
-                hsession_init(&mesg->data.session);
-                count = hsession_deserialize(&mesg->data.session, buf + total);
-                if (count < 0) goto error;
-                total += count;
-            }
-            break;
+        count = unpack_state(mesg, buf + total);
+        if (count < 0) goto error;
+        total += count;
 
-        case HMESG_JOIN:
-            mesg->data.join = HSIGNATURE_INITIALIZER;
-            count = hsignature_deserialize(&mesg->data.join, buf + total);
-            if (count < 0) goto error;
-            total += count;
-            break;
-
-        case HMESG_GETCFG:
-        case HMESG_SETCFG:
-            count = scanstr_serial(&mesg->data.string, buf + total);
-            if (count < 0) goto error;
-            total += count;
-            break;
-
-        case HMESG_BEST:
-        case HMESG_FETCH:
-            if (mesg->status == HMESG_STATUS_OK ||
-                mesg->status == HMESG_STATUS_BUSY)
-            {
-                mesg->data.point = HPOINT_INITIALIZER;
-                count = hpoint_deserialize(&mesg->data.point, buf + total);
-                if (count < 0) goto error;
-                total += count;
-            }
-            break;
-
-        case HMESG_REPORT:
-            if (mesg->status == HMESG_STATUS_REQ) {
-                if (sscanf(buf + total, " %d%n",
-                           &mesg->data.report.cand_id, &count) < 1)
-                    goto invalid;
-                total += count;
-
-                count = hperf_deserialize(&mesg->data.report.perf,
-                                          buf + total);
-                if (count < 0) goto error;
-                total += count;
-            }
-            break;
-
-        case HMESG_RESTART:
-            break;
-
-        default:
-            goto invalid;
-        }
+        count = unpack_data(mesg, buf + total);
+        if (count < 0) goto error;
+        total += count;
     }
     return total;
 
@@ -320,4 +201,310 @@ int hmesg_deserialize(hmesg_t *mesg)
     errno = EINVAL;
   error:
     return -1;
+}
+
+/*
+ * Internal helper function implementation.
+ */
+int pack_header(char* buf, int length, const hmesg_t* mesg)
+{
+    if (length && (length < HMESG_HEADER_SIZE || length > 0xFFFF)) {
+        fprintf(stderr, "Error during pack_header():"
+                "Message length (%d) is out of range [%d, 65535)\n",
+                HMESG_HEADER_SIZE, length);
+        return -1;
+    }
+
+    if (mesg->dest < -1 || mesg->dest >= 0xFFFF) {
+        fprintf(stderr, "Error during pack_header():"
+                "Destination (%d) is out of range [-1, 65534]\n", mesg->dest);
+        return -1;
+    }
+
+    if (mesg->src < -1 || mesg->src >= 0xFFFF) {
+        fprintf(stderr, "Error during pack_header():"
+                "Source (%d) is out of range [-1, 65534]\n", mesg->src);
+        return -1;
+    }
+
+    unsigned int   pkt_magic = htonl(HMESG_MAGIC);
+    unsigned short pkt_len   = htons((unsigned short) length);
+    unsigned short pkt_dest  = htons((unsigned short) mesg->dest);
+    unsigned short pkt_src   = htons((unsigned short) mesg->src);
+
+    if (length) {
+        memcpy(buf + HMESG_MAGIC_OFFSET, &pkt_magic, HMESG_MAGIC_SIZE);
+        memcpy(buf + HMESG_LEN_OFFSET,   &pkt_len,   HMESG_LEN_SIZE);
+    }
+    memcpy(buf + HMESG_DEST_OFFSET,  &pkt_dest,  HMESG_DEST_SIZE);
+    memcpy(buf + HMESG_SRC_OFFSET,   &pkt_src,   HMESG_SRC_SIZE);
+
+    return 0;
+}
+
+int unpack_header(hmesg_t* mesg)
+{
+    unsigned int   pkt_magic;
+    unsigned short pkt_dest;
+    unsigned short pkt_src;
+
+    memcpy(&pkt_magic, mesg->recv_buf + HMESG_MAGIC_OFFSET, HMESG_MAGIC_SIZE);
+    memcpy(&pkt_dest,  mesg->recv_buf + HMESG_DEST_OFFSET,  HMESG_DEST_SIZE);
+    memcpy(&pkt_src,   mesg->recv_buf + HMESG_SRC_OFFSET,   HMESG_SRC_SIZE);
+
+    if (ntohl(pkt_magic) != HMESG_MAGIC)
+        return -1;
+
+    mesg->dest = ntohs(pkt_dest);
+    if (mesg->dest >= 0xFFFF)
+        mesg->dest = -1;
+
+
+    mesg->src = ntohs(pkt_src);
+    if (mesg->src >= 0xFFFF)
+        mesg->src = -1;
+
+    return HMESG_HEADER_SIZE;
+}
+
+int pack_state(char** buf, int* buflen, const hmesg_t* mesg)
+{
+    int count, total = 0;
+
+    if (mesg->type == HMESG_SESSION ||
+        mesg->type == HMESG_JOIN ||
+        mesg->type == HMESG_UNKNOWN)
+    {
+        // Session state doesn't exist for these messages.
+        return 0;
+    }
+
+    switch (mesg->status) {
+    case HMESG_STATUS_REQ:
+        count = snprintf_serial(buf, buflen, " state:%u %u",
+                                mesg->state.space->id, mesg->state.best->id);
+        if (count < 0) return -1;
+        total += count;
+
+        count = printstr_serial(buf, buflen, mesg->state.client);
+        if (count < 0) return -1;
+        total += count;
+        break;
+
+    case HMESG_STATUS_OK:
+    case HMESG_STATUS_BUSY:
+        count = snprintf_serial(buf, buflen, " state:");
+        if (count < 0) return -1;
+        total += count;
+
+        count = hspace_pack(buf, buflen, mesg->state.space);
+        if (count < 0) return -1;
+        total += count;
+
+        count = hpoint_pack(buf, buflen, mesg->state.best);
+        if (count < 0) return -1;
+        total += count;
+        break;
+
+    case HMESG_STATUS_FAIL:
+        break; // No need to send state.
+
+    default:
+        return -1;
+    }
+    return total;
+}
+
+int unpack_state(hmesg_t* mesg, char* buf)
+{
+    int count = -1, total = 0;
+
+    if (mesg->type == HMESG_SESSION ||
+        mesg->type == HMESG_JOIN)
+    {
+        // Session state doesn't exist just yet.
+        return 0;
+    }
+
+    switch (mesg->status) {
+    case HMESG_STATUS_REQ:
+        if (sscanf(buf, " state:%u %u%n", &mesg->unpacked_space.id,
+                   &mesg->unpacked_best.id, &count) < 2)
+            return -1;
+        total += count;
+        mesg->state.space = &mesg->unpacked_space;
+        mesg->state.best  = &mesg->unpacked_best;
+
+        count = scanstr_serial(&mesg->state.client, buf + total);
+        if (count < 0) return -1;
+        total += count;
+        break;
+
+    case HMESG_STATUS_OK:
+    case HMESG_STATUS_BUSY:
+        sscanf(buf, " state:%n", &count);
+        if (count < 0) return -1;
+        total += count;
+
+        count = hspace_unpack(&mesg->unpacked_space, buf + total);
+        if (count < 0) return -1;
+        total += count;
+        mesg->state.space = &mesg->unpacked_space;
+
+        count = hpoint_unpack(&mesg->unpacked_best, buf + total);
+        if (count < 0) return -1;
+        total += count;
+        mesg->state.best = &mesg->unpacked_best;
+        break;
+
+    case HMESG_STATUS_FAIL:
+        break; // No need to send state.
+
+    default:
+        return -1;
+    }
+    return total;
+}
+
+int pack_data(char** buf, int* buflen, const hmesg_t* mesg)
+{
+    int count, total = 0;
+
+    // Pack message data based on message type and status.
+    switch (mesg->type) {
+    case HMESG_SESSION:
+        if (mesg->status == HMESG_STATUS_REQ) {
+            count = hspace_pack(buf, buflen, mesg->state.space);
+            if (count < 0) return -1;
+            total += count;
+
+            count = hcfg_pack(buf, buflen, mesg->data.cfg);
+            if (count < 0) return -1;
+            total += count;
+        }
+        break;
+
+    case HMESG_JOIN:
+        if (mesg->status == HMESG_STATUS_REQ) {
+            count = printstr_serial(buf, buflen, mesg->data.string);
+            if (count < 0) return -1;
+            total += count;
+            break;
+        }
+        else if (mesg->status == HMESG_STATUS_OK) {
+            count = hspace_pack(buf, buflen, mesg->state.space);
+            if (count < 0) return -1;
+            total += count;
+        }
+
+    case HMESG_GETCFG:
+    case HMESG_SETCFG:
+    case HMESG_COMMAND:
+        count = printstr_serial(buf, buflen, mesg->data.string);
+        if (count < 0) return -1;
+        total += count;
+        break;
+
+    case HMESG_FETCH:
+        if (mesg->status == HMESG_STATUS_OK) {
+            count = hpoint_pack(buf, buflen, mesg->data.point);
+            if (count < 0) return -1;
+            total += count;
+        }
+        break;
+
+    case HMESG_REPORT:
+        if (mesg->status == HMESG_STATUS_REQ) {
+            count = snprintf_serial(buf, buflen, " %d", mesg->data.point->id);
+            if (count < 0) return -1;
+            total += count;
+
+            count = hperf_pack(buf, buflen, mesg->data.perf);
+            if (count < 0) return -1;
+            total += count;
+        }
+        break;
+
+    case HMESG_UNKNOWN:
+    case HMESG_BEST:
+        break;
+
+    default:
+        return -1;
+    }
+    return total;
+}
+
+int unpack_data(hmesg_t* mesg, char* buf)
+{
+    int count, total = 0;
+
+    switch (mesg->type) {
+    case HMESG_SESSION:
+        if (mesg->status == HMESG_STATUS_REQ) {
+            count = hspace_unpack(&mesg->unpacked_space, buf + total);
+            if (count < 0) return -1;
+            total += count;
+            mesg->state.space = &mesg->unpacked_space;
+
+            count = hcfg_unpack(&mesg->unpacked_cfg, buf + total);
+            if (count < 0) return -1;
+            total += count;
+            mesg->data.cfg = &mesg->unpacked_cfg;
+        }
+        break;
+
+    case HMESG_JOIN:
+        if (mesg->status == HMESG_STATUS_REQ) {
+            count = scanstr_serial(&mesg->data.string, buf + total);
+            if (count < 0) return -1;
+            total += count;
+        }
+        else if (mesg->status == HMESG_STATUS_OK) {
+            count = hspace_unpack(&mesg->unpacked_space, buf + total);
+            if (count < 0) return -1;
+            total += count;
+            mesg->state.space = &mesg->unpacked_space;
+        }
+        break;
+
+    case HMESG_GETCFG:
+    case HMESG_SETCFG:
+    case HMESG_COMMAND:
+        count = scanstr_serial(&mesg->data.string, buf + total);
+        if (count < 0) return -1;
+        total += count;
+        break;
+
+    case HMESG_FETCH:
+        if (mesg->status == HMESG_STATUS_OK) {
+            count = hpoint_unpack(&mesg->unpacked_point, buf + total);
+            if (count < 0) return -1;
+            total += count;
+            mesg->data.point = &mesg->unpacked_point;
+        }
+        break;
+
+    case HMESG_REPORT:
+        if (mesg->status == HMESG_STATUS_REQ) {
+            if (sscanf(buf + total, " %d%n",
+                       &mesg->unpacked_point.id, &count) < 1)
+                return -1;
+            total += count;
+            mesg->data.point = &mesg->unpacked_point;
+
+            count = hperf_unpack(&mesg->unpacked_perf, buf + total);
+            if (count < 0) return -1;
+            total += count;
+            mesg->data.perf = &mesg->unpacked_perf;
+        }
+        break;
+
+    case HMESG_BEST:
+        break;
+
+    default:
+        return -1;
+    }
+    return total;
 }

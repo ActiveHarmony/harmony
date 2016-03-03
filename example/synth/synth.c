@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -16,6 +16,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
+#define _XOPEN_SOURCE 600 // Needed for srand48() and usleep().
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,26 +30,31 @@
 
 #include "testfunc.h"
 #include "hclient.h"
+#include "defaults.h"
 
 #define MAX_ACCURACY 17
 #define MAX_IN       16
 #define MAX_OUT      16
 
-/* Function Prototypes */
-void   parse_opts(int argc, char *argv[]);
-void   parse_params(int idx, int argc, char *argv[]);
-void   parse_dim(char *dim);
-void   parse_funcs(char *list);
-int    parse_fopts(int idx, char **opts);
-int    start_harmony(hdesc_t *hdesc);
-void   eval_func(void);
-double quantize_value(double perf);
-double random_value(double min, double max);
-void   fprint_darr(FILE *fp, const char *head,
-                   double *arr, int len, const char *tail);
-void   use_resources(void);
+/*
+ * Internal helper function prototypes.
+ */
+void     parse_opts(int argc, char* argv[]);
+void     parse_params(int idx, int argc, char* argv[]);
+void     parse_dim(char* dim);
+void     parse_funcs(char* list);
+int      parse_fopts(int idx, char** opts);
+htask_t* start_harmony(hdesc_t* hdesc);
+void     eval_func(void);
+double   quantize_value(double val);
+double   random_value(double min, double max);
+void     fprint_darr(FILE* fp, const char* head,
+                   double* arr, int len, const char* tail);
+void     use_resources(void);
 
-/* Option Variables (and their associated defaults). */
+/*
+ * Option Variables (and their associated defaults).
+ */
 int accuracy = 6;
 long seed;
 int i_cnt, o_cnt;
@@ -59,16 +65,18 @@ double quantize;
 double perturb;
 char tuna_mode;
 
-/* Global Variables */
-finfo_t *finfo[MAX_OUT];
-double *fopts[MAX_OUT];
+/*
+ * Global Variables
+ */
+finfo_t* finfo[MAX_OUT];
+double* fopts[MAX_OUT];
 double bound_min, bound_max;
 double point[MAX_IN];
 double perf[MAX_OUT];
 double best[MAX_OUT];
 int single_eval;
 
-void usage(const char *prog)
+void usage(const char* prog)
 {
     fprintf(stdout,
 "Usage: %s [OPTIONS] <N> <fname1>[,<fname2>,...] [x1..xN] [KEY=VAL ..]\n"
@@ -121,22 +129,24 @@ void usage(const char *prog)
 "\n", prog, accuracy);
 }
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
     int i, j, hresult, report, retval = 0;
     int width, maxwidth;
-    double best_val = INFINITY;
-    hdesc_t *hdesc;
+    double best_val = HUGE_VAL;
+    hdesc_t* hdesc;
+    htask_t* htask;
 
-    hdesc = harmony_init(&argc, &argv);
+    hdesc = ah_alloc();
     if (!hdesc) {
-        perror("Error allocating/initializing a Harmony descriptor");
-        return -1;
+        fprintf(stderr, "Error allocating a Harmony descriptor");
+        goto error;
     }
+    ah_args(hdesc, &argc, argv);
 
     parse_opts(argc, argv);
 
-    if (perturb)
+    if (perturb > 0.0)
         fprintf(stdout, "Seed value: %ld\n", seed);
     srand((int) seed);
     srand48(seed);
@@ -150,24 +160,28 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    if (start_harmony(hdesc) != 0) {
+    if (ah_connect(hdesc, NULL, 0) != 0) {
+        fprintf(stderr, "Error connecting to Harmony session");
+        goto error;
+    }
+
+    htask = start_harmony(hdesc);
+    if (!htask) {
         retval = -1;
         goto cleanup;
     }
 
     report = 8;
-    for (i = 0; !harmony_converged(hdesc); i++) {
+    for (i = 0; !ah_converged(htask); i++) {
         double cmp = 0.0;
 
         if (iterations && i >= iterations)
             break;
 
-        hresult = harmony_fetch(hdesc);
+        hresult = ah_fetch(htask);
         if (hresult < 0) {
-            fprintf(stderr, "Error fetching values from session: %s\n",
-                    harmony_error_string(hdesc));
-            retval = -1;
-            goto cleanup;
+            fprintf(stderr, "Error fetching values from search task");
+            goto error;
         }
         else if (hresult == 0) {
             continue;
@@ -181,11 +195,9 @@ int main(int argc, char *argv[])
             memcpy(best, perf, sizeof(best));
         }
 
-        if (harmony_report(hdesc, perf) < 0) {
-            fprintf(stderr, "Error reporting performance to session: %s\n",
-                    harmony_error_string(hdesc));
-            retval = -1;
-            goto cleanup;
+        if (ah_report(htask, perf) < 0) {
+            fprintf(stderr, "Error reporting performance to session");
+            goto error;
         }
 
         if (i == report) {
@@ -195,16 +207,15 @@ int main(int argc, char *argv[])
         }
     }
 
-    hresult = harmony_best(hdesc);
+    hresult = ah_best(htask);
     if (hresult < 0) {
-        fprintf(stderr, "Error setting best input values: %s\n",
-                harmony_error_string(hdesc));
-        goto cleanup;
+        fprintf(stderr, "Error setting best input values");
+        goto error;
     }
     else if (hresult == 1) {
         double cmp = 0.0;
 
-        /* A new point was retrieved.  Evaluate it. */
+        // A new point was retrieved.  Evaluate it.
         eval_func();
         for (j = 0; j < o_cnt; ++j)
             cmp += perf[j];
@@ -218,12 +229,12 @@ int main(int argc, char *argv[])
     fprintf(stdout, "%6d eval%s, best value: ", i, i == 1 ? "" : "s");
     fprint_darr(stdout, "(", best, o_cnt, ")");
 
-    if (o_cnt == 1 && finfo[0]->optimal != -INFINITY)
+    if (o_cnt == 1 && finfo[0]->has_optimal)
         printf(" [Global optimal: %lf]\n", finfo[0]->optimal);
     else
         printf(" [Global optimal: <Unknown>]\n");
 
-    /* Initial pass through the point array to find maximum field width. */
+    // Initial pass through the point array to find maximum field width.
     maxwidth = 0;
     for (i = 0; i < i_cnt; ++i) {
         width = snprintf(NULL, 0, "%lf", point[i]);
@@ -235,15 +246,24 @@ int main(int argc, char *argv[])
     for (i = 0; i < i_cnt; ++i)
         fprintf(stdout, "x[%d] = %*lf\n", i, maxwidth, point[i]);
 
+    goto cleanup;
+
+  error:
+    fprintf(stderr, ": %s\n", ah_error());
+    retval = -1;
+
   cleanup:
-    harmony_fini(hdesc);
+    ah_free(hdesc);
     return retval;
 }
 
-void parse_opts(int argc, char *argv[])
+/*
+ * Internal helper function implementation.
+ */
+void parse_opts(int argc, char* argv[])
 {
     int c, list_funcs = 0;
-    char *end;
+    char* end;
 
     static struct option longopts[] = {
         {"accuracy",   required_argument, NULL, 'a'},
@@ -296,7 +316,7 @@ void parse_opts(int argc, char *argv[])
 
         case 'p':
             perturb = strtod(optarg, &end);
-            if (*end != '\0' || perturb < 0) {
+            if (*end != '\0' || perturb < 0.0) {
                 fprintf(stderr, "Invalid perturbation value '%s'.\n", optarg);
                 exit(-1);
             }
@@ -348,10 +368,10 @@ void parse_opts(int argc, char *argv[])
     parse_params(optind, argc, argv);
 }
 
-void parse_params(int idx, int argc, char *argv[])
+void parse_params(int idx, int argc, char* argv[])
 {
     int i;
-    char *end;
+    char* end;
 
     parse_dim(argv[idx++]);
     parse_funcs(argv[idx++]);
@@ -377,9 +397,9 @@ void parse_params(int idx, int argc, char *argv[])
     }
 }
 
-void parse_dim(char *dim)
+void parse_dim(char* dim)
 {
-    char *end;
+    char* end;
 
     if (!dim || *dim == '\0') {
         fprintf(stderr, "Search space dimensionality not specified.\n"
@@ -405,12 +425,12 @@ void parse_dim(char *dim)
     }
 }
 
-void parse_funcs(char *list)
+void parse_funcs(char* list)
 {
-    char *end;
+    char* end;
 
-    bound_min =  INFINITY;
-    bound_max = -INFINITY;
+    bound_min =  HUGE_VAL;
+    bound_max = -HUGE_VAL;
     while (list && *list) {
         char stash = '\0';
         while (isspace(*list))
@@ -464,10 +484,10 @@ void parse_funcs(char *list)
     }
 }
 
-int parse_fopts(int idx, char **opts)
+int parse_fopts(int idx, char** opts)
 {
     int i, cnt;
-    char *list = *opts;
+    char* list = *opts;
 
     cnt = 1;
     for (i = 0; list[i]; ++i) {
@@ -481,7 +501,7 @@ int parse_fopts(int idx, char **opts)
         return -1;
     }
 
-    fopts[idx] = (double *) malloc(cnt * sizeof(double));
+    fopts[idx] = malloc(cnt * sizeof(double));
     if (!fopts[idx]) {
         fprintf(stderr, "Error allocating memory for options array.\n");
         return -1;
@@ -511,20 +531,26 @@ int parse_fopts(int idx, char **opts)
     return 0;
 }
 
-int start_harmony(hdesc_t *hdesc)
+htask_t* start_harmony(hdesc_t* hdesc)
 {
+    hdef_t* hdef;
     char session_name[64], intbuf[16];
     double step;
     int i;
 
-    /* Build the session name. */
+    hdef = ah_def_alloc();
+    if (!hdef) {
+        fprintf(stderr, "Error retrieving new hdef_t: %s\n", ah_error());
+        return NULL;
+    }
+
+    // Build the session name.
     snprintf(session_name, sizeof(session_name),
              "test_in%d_out%d.pid%d", i_cnt, o_cnt, getpid());
-
-    if (harmony_session_name(hdesc, session_name) != 0) {
-        fprintf(stderr, "Could not set session name: %s\n",
-                harmony_error_string(hdesc));
-        return -1;
+    if (ah_def_name(hdef, session_name) != 0) {
+        fprintf(stderr, "Error setting search name: %s\n", ah_error());
+        ah_def_free(hdef);
+        return NULL;
     }
 
     if (accuracy <= MAX_ACCURACY)
@@ -534,37 +560,31 @@ int start_harmony(hdesc_t *hdesc)
 
     for (i = 0; i < i_cnt; ++i) {
         snprintf(intbuf, sizeof(intbuf), "x%d", i + 1);
-        if (harmony_real(hdesc, intbuf, bound_min, bound_max, step) != 0) {
+        if (ah_def_real(hdef, intbuf,
+                        bound_min, bound_max, step, &point[i]) != 0)
+        {
             fprintf(stderr, "Error defining '%s' tuning variable: %s\n",
-                    intbuf, harmony_error_string(hdesc));
-            return -1;
-        }
-
-        if (harmony_bind_real(hdesc, intbuf, &point[i]) != 0) {
-            fprintf(stderr, "Failed to register variable %s: %s\n",
-                    intbuf, harmony_error_string(hdesc));
-            return -1;
+                    intbuf, ah_error());
+            ah_def_free(hdef);
+            return NULL;
         }
     }
 
     snprintf(intbuf, sizeof(intbuf), "%d", o_cnt);
-    harmony_setcfg(hdesc, "PERF_COUNT", intbuf);
+    ah_def_cfg(hdef, CFGKEY_PERF_COUNT, intbuf);
 
     snprintf(intbuf, sizeof(intbuf), "%ld", seed);
-    harmony_setcfg(hdesc, "RANDOM_SEED", intbuf);
+    ah_def_cfg(hdef, CFGKEY_RANDOM_SEED, intbuf);
 
-    if (harmony_launch(hdesc, NULL, 0) != 0) {
-        fprintf(stderr, "Error launching tuning session: %s\n",
-                harmony_error_string(hdesc));
-        return -1;
+    htask_t* htask = ah_start(hdesc, hdef);
+    ah_def_free(hdef);
+
+    if (!htask) {
+        fprintf(stderr, "Error starting tuning search task: %s\n",
+                ah_error());
     }
 
-    if (harmony_join(hdesc, NULL, 0, session_name) != 0) {
-        fprintf(stderr, "Error joining tuning session: %s\n",
-                harmony_error_string(hdesc));
-        return -1;
-    }
-    return 0;
+    return htask;
 }
 
 void eval_func(void)
@@ -588,7 +608,7 @@ void eval_func(void)
         fprintf(stdout, "]");
     }
 
-    if (quantize) {
+    if (quantize > 0.0) {
         for (i = 0; i < o_cnt; ++i)
             perf[i] = quantize_value(perf[i]);
 
@@ -600,7 +620,7 @@ void eval_func(void)
         }
     }
 
-    if (perturb) {
+    if (perturb > 0.0) {
         for (i = 0; i < o_cnt; ++i)
             perf[i] += random_value(0.0, perturb);
 
@@ -616,18 +636,18 @@ void eval_func(void)
         fprintf(stdout, "\n");
 }
 
-double quantize_value(double perf)
+double quantize_value(double val)
 {
-    return round(perf * quantize) / quantize;
+    return round(val * quantize) / quantize;
 }
 
 double random_value(double min, double max)
 {
-    return min + ((double)rand()/(double)RAND_MAX) * (max - min);
+    return min + (rand()/((double)RAND_MAX)) * (max - min);
 }
 
-void fprint_darr(FILE *fp, const char *head,
-                 double *arr, int len, const char *tail)
+void fprint_darr(FILE* fp, const char* head,
+                 double* arr, int len, const char* tail)
 {
     int i;
 
@@ -653,10 +673,10 @@ void use_resources(void)
     for (i = 0; i < o_cnt; ++i)
         sum += perf[i];
 
-    stall = sum * 1000;
+    stall = (unsigned int)(sum * 1000);
 
     switch (tuna_mode) {
-    case 'w': /* Wall time */
+    case 'w': // Wall time.
         if (verbose) {
             fprintf(stdout, " ==> usleep(%d)\n", stall);
             fflush(stdout);
@@ -664,7 +684,7 @@ void use_resources(void)
         usleep(stall);
         break;
 
-    case 'u': /* User time */
+    case 'u': // User time.
         if (verbose) {
             fprintf(stdout, " ==> perform %d flops\n", stall * 2);
             fflush(stdout);
@@ -673,7 +693,7 @@ void use_resources(void)
             sum = sum * (17.0/sum);
         break;
 
-    case 's': /* System time */
+    case 's': // System time.
         if (verbose) {
             fprintf(stdout, " ==> perform %d syscalls\n", stall * 2);
             fflush(stdout);
@@ -682,7 +702,7 @@ void use_resources(void)
             close(open("/dev/null", O_RDONLY));
         break;
 
-    case 'o': /* Output method */
+    case 'o': // Output method.
         fprint_darr(stdout, "(", perf, o_cnt, ")\n");
         break;
     }

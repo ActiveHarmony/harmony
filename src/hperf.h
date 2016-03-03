@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -24,28 +24,37 @@
 extern "C" {
 #endif
 
+/*
+ * Harmony structure that represents a (possibly multi-objective)
+ * performance value.
+ */
 typedef struct hperf {
-    int n;
-#ifdef __cplusplus
-    /* XXX - Hack to allow flexible array member in C++. */
-    double p[1];
-#else
-    double p[];
-#endif
-
+    double* obj;
+    int     len;
+    int     cap;
 } hperf_t;
+#define HPERF_INITIALIZER {0}
+extern const hperf_t hperf_zero;
 
-hperf_t *hperf_alloc(int n);
-void     hperf_reset(hperf_t *perf);
-int      hperf_copy(hperf_t *src, const hperf_t *dst);
-hperf_t *hperf_clone(const hperf_t *perf);
-void     hperf_fini(hperf_t *perf);
+/*
+ * Base structure management interface.
+ */
+int    hperf_init(hperf_t* perf, int newcap);
+void   hperf_reset(hperf_t* perf);
+int    hperf_copy(hperf_t* src, const hperf_t* dst);
+void   hperf_fini(hperf_t* perf);
 
-int      hperf_cmp(const hperf_t *a, const hperf_t *b);
-double   hperf_unify(const hperf_t *perf);
+/*
+ * Performance utility interface.
+ */
+int    hperf_cmp(const hperf_t* a, const hperf_t* b);
+double hperf_unify(const hperf_t* perf);
 
-int hperf_serialize(char **buf, int *buflen, const hperf_t *perf);
-int hperf_deserialize(hperf_t **perf, char *buf);
+/*
+ * Data transmission interface.
+ */
+int    hperf_pack(char** buf, int* buflen, const hperf_t* perf);
+int    hperf_unpack(hperf_t* perf, char* buf);
 
 #ifdef __cplusplus
 }

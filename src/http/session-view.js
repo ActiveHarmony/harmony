@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -17,9 +17,11 @@
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/* Global Variables */
+/*
+ * Global Variables.
+ */
 var appName;
-var sig;
+var space;
 var trials = new Array();
 var best;
 var chartData;
@@ -36,7 +38,9 @@ function shutdown_comm(xhr, status, error)
     $("#interval").attr("disabled", true);
 }
 
-// Effectively, the main() routine for this program.
+/*
+ * Effectively, the main() routine for this program.
+ */
 $(document).ready(function(){
     ajaxSetup(shutdown_comm);
 
@@ -58,8 +62,8 @@ function handleInitData(data)
         var pair = keyval(pairs[i]);
 
         switch (pair.key) {
-        case "sig":
-            updateSignature(pair.val);
+        case "space":
+            updateSpace(pair.val);
             break;
         case "strat":
             $("#app_strategy").html(pair.val);
@@ -71,7 +75,7 @@ function handleInitData(data)
     }
 
     chartData = new Array();
-    for (var i = 0; i < sig.varNames.length + 1; ++i)
+    for (var i = 0; i < space.varNames.length + 1; ++i)
         chartData[i] = new Array();
     refresh();
 
@@ -82,30 +86,30 @@ function handleInitData(data)
     $("#table_div").css("display", "inherit");
 }
 
-function updateSignature(sig_string)
+function updateSpace(space_string)
 {
-    sig = new Object();
-    sig.varNames = new Array();
-    sig.varTypes = new Array();
-    sig.setVals  = new Array();
+    space = new Object();
+    space.varNames = new Array();
+    space.varTypes = new Array();
+    space.setVals  = new Array();
 
-    var ranges = sig_string.split(",");
+    var ranges = space_string.split(",");
     for (var i = 0; i < ranges.length; ++i) {
         var arr = ranges[i].split(";");
         var name = arr.shift();
         var type = arr.shift();
 
-        sig.varNames[i] = name;
-        sig.varTypes[i] = type;
+        space.varNames[i] = name;
+        space.varTypes[i] = type;
         if (type == "s")
-            sig.setVals[i] = arr;
+            space.setVals[i] = arr;
     }
 }
 
 function updateTableHeader()
 {
     var cell = $("#table_head");
-    var names = sig.varNames.concat(["Performance"]);
+    var names = space.varNames.concat(["Performance"]);
 
     for (var i = 0; i < names.length; ++i) {
         if (cell.is(":last-child"))
@@ -120,11 +124,11 @@ function updateViewList()
 {
     var list = $("#view_opts");
 
-    for (var i = 0; i < sig.varNames.length; ++i) {
+    for (var i = 0; i < space.varNames.length; ++i) {
         if (list.is(":last-child"))
             list.after("<option></option>");
         list = list.next("option");
-        list.text(sig.varNames[i]);
+        list.text(space.varNames[i]);
     }
     list.nextAll("option").remove();
 }
@@ -152,8 +156,10 @@ function handleRefreshData(data)
     var oldTrialsLength = trials.length;
     var index;
 
-    /* mechanism only updates parts of the page that need to be updated
-      (what was sent from the session with the session data request) */
+    // Mechanism only updates parts of the page that need to be
+    // updated (what was sent from the session with the session data
+    // request)
+    //
     for (var i = 0; i < pairs.length; ++i) {
         var pair = keyval(pairs[i]);
 
@@ -218,8 +224,8 @@ function parseTrial(trial_string)
     var trial = new Array();
 
     trial["time"] = parseInt(text.shift());
-    for (var i = 0; i < sig.varTypes.length; ++i) {
-        switch (sig.varTypes[i]) {
+    for (var i = 0; i < space.varTypes.length; ++i) {
+        switch (space.varTypes[i]) {
         case "i":
         case "s": trial[i] = parseInt(text[i]); break;
         case "r": trial[i] = parseFloat(text[i]); break;
@@ -258,7 +264,7 @@ function redrawBest(highlight)
 function redrawTable()
 {
     var numRows = $("#table_len").val();
-    var valCols = sig.varNames.length;
+    var valCols = space.varNames.length;
     var tblHtml;
 
     var idx = trials.length - 1;
@@ -284,13 +290,13 @@ function displayVal(trial, index)
     switch (index) {
     case "time": type = "t"; break;
     case "perf": type = "r"; break;
-    default:     type = sig.varTypes[index];
+    default:     type = space.varTypes[index];
     }
 
     switch (type) {
     case "i": return val.toString();
     case "r": return val.toPrecision($("#precision").val());
-    case "s": return '"' + sig.setVals[index][val] + '"';
+    case "s": return '"' + space.setVals[index][val] + '"';
     case "t": return timeDate(val);
     }
 }
@@ -339,8 +345,8 @@ function popupText(pointIdx)
     var trial = chartData[chartIdx][pointIdx]["trial"];
 
     var retval = "Timestamp:" + displayVal(trial, "time") + "<br>";
-    for (var i = 0; i < sig.varNames.length; ++i)
-        retval += sig.varNames[i] + ": " + displayVal(trial, i) + "<br>";
+    for (var i = 0; i < space.varNames.length; ++i)
+        retval += space.varNames[i] + ": " + displayVal(trial, i) + "<br>";
     retval += "Performance:" + displayVal(trial, "perf");
 
     return retval;

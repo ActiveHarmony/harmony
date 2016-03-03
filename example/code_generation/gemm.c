@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -16,6 +16,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
+#define _XOPEN_SOURCE 600 // Needed for gethostname().
 
 /*
  * This is an example of an application that uses the code-server
@@ -46,39 +47,46 @@
 #define SEARCH_MAX 400
 #define N 500
 
-/* ISO C forbids conversion of object pointer to function pointer.  We
+/*
+ * ISO C forbids conversion of object pointer to function pointer.  We
  * get around this by first casting to a word-length integer.  (LP64
  * compilers assumed).
  */
 #define HACK_CAST(x) (code_t)(long)(x)
 
-/* Function signature of the tuning target function produced by CHiLL. */
-typedef void (*code_t)(void *, void *, void *, void *);
+/*
+ * Function signature of the tuning target function produced by CHiLL.
+ */
+typedef void (*code_t)(void*, void*, void*, void*);
 
 /*
- * Function Prototypes
+ * Internal helper function prototypes.
  */
 int    fetch_configuration(void);
-int    check_convergence(hdesc_t *hdesc);
-char * construct_so_filename(void);
-int    update_so(const char *filename);
+int    check_convergence(void);
+char*  construct_so_filename(void);
+int    update_so(const char* filename);
 void   initialize_matrices(void);
 int    check_code_correctness(void);
 int    penalty_factor(void);
 double calculate_performance(double raw_perf);
 double timer(void);
-int    dprint(const char *fmt, ...);
-int    errprint(const char *fmt, ...);
+int    dprint(const char* fmt, ...);
+int    errprint(const char* fmt, ...);
+
 /*
  * Global variable declarations.
  */
 int debug = 1;
 int rank = -1;
-hdesc_t *hdesc = NULL;
+hdesc_t* hdesc;
+htask_t* htask;
 int matrix_size = N;
 
-/* Pointers to data loaded from shared libraries of generated code. */
-void *flib_eval;
+/*
+ * Pointers to data loaded from shared libraries of generated code.
+ */
+void* flib_eval;
 code_t code_so;
 
 /*
@@ -89,13 +97,15 @@ double B[N][N];
 double C[N][N];
 double C_TRUTH[N][N];
 
-/* Parameters that will be modified by the Harmony server. */
+/*
+ * Parameters that will be modified by the Harmony server.
+ */
 long TI, TJ, TK, UI, UJ;
 
 double time_start, time_end;
-const char *new_code_path;
+const char* new_code_path;
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
     char numbuf[12];
     char hostname[64];
@@ -103,13 +113,29 @@ int main(int argc, char *argv[])
     int node_count;
     double time_initial, time_current, time;
     double raw_perf, perf;
-    int i, found_iter, harmonized;
+    int i, found_iter = 0, harmonized;
 
-    /* MPI Initialization */
+    // MPI Initialization.
     MPI_Init(&argc, &argv);
     time_initial = MPI_Wtime();
 
-    /* Set the location where new code will arrive. */
+    // Get the rank and size of this MPI application.
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &node_count);
+
+    // Retrieve for the host name.
+    gethostname(hostname, sizeof(hostname));
+    harmony_connected = 0;
+
+    // Initialize Harmony API.
+    hdesc = ah_alloc();
+    if (hdesc == NULL) {
+        errprint("Failed to initialize a Harmony session descriptor.\n");
+        goto cleanup;
+    }
+    ah_args(hdesc, &argc, argv);
+
+    // Set the location where new code will arrive.
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <new_code_dir>"
                 " [KEY_1=VAL_1] .. [KEY_N=VAL_N]\n\n", argv[0]);
@@ -118,75 +144,68 @@ int main(int argc, char *argv[])
     }
     new_code_path = argv[1];
 
-    /* Get the rank and size of this MPI application. */
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &node_count);
-
-    /* Retrieve for the host name */
-    gethostname(hostname, sizeof(hostname));
-    harmony_connected = 0;
-
-    /* Initialize Harmony API. */
-    hdesc = harmony_init(&argc, &argv);
-    if (hdesc == NULL) {
-        errprint("Failed to initialize a Harmony session.\n");
-        goto cleanup;
+    if (ah_connect(hdesc, NULL, 0) != 0) {
+        errprint("Could not connect to Harmony tuning session: %s\n",
+                 ah_error());
+        MPI_Abort(MPI_COMM_WORLD, -1);
     }
+    harmony_connected = 1;
 
     if (rank == 0) {
-        /* We are the master rank.  Establish a new Harmony tuning session. */
+        // We are the master rank.  Establish a new Harmony tuning search.
+        hdef_t* hdef = ah_def_alloc();
         snprintf(numbuf, sizeof(numbuf), "%d", node_count);
 
-        errno = 0;
-        harmony_session_name(hdesc, SESSION_NAME);
-        harmony_setcfg(hdesc, CFGKEY_CLIENT_COUNT, numbuf);
-        harmony_setcfg(hdesc, CFGKEY_SESSION_STRATEGY, "pro.so");
-        harmony_setcfg(hdesc, CFGKEY_SESSION_LAYERS, "codegen.so");
-        if (errno) {
-            errprint("Error during session configuration.\n");
-            MPI_Abort(MPI_COMM_WORLD, -1);
-        }
-
-        if (harmony_int(hdesc, "TI", 2, 500, 2) != 0 ||
-            harmony_int(hdesc, "TJ", 2, 500, 2) != 0 ||
-            harmony_int(hdesc, "TK", 2, 500, 2) != 0 ||
-            harmony_int(hdesc, "UI", 1,   8, 1) != 0 ||
-            harmony_int(hdesc, "UJ", 1,   8, 1) != 0)
+        if (ah_def_name(hdef, SESSION_NAME)               != 0 ||
+            ah_def_strategy(hdef, "pro.so")               != 0 ||
+            ah_def_layers(hdef, "codegen.so")             != 0 ||
+            ah_def_cfg(hdef, CFGKEY_CLIENT_COUNT, numbuf) != 0)
         {
-            errprint("Failed to define tuning session\n");
-            MPI_Abort(MPI_COMM_WORLD, -1);
+            errprint("Error during session configuration: %s.\n", ah_error());
+            goto cleanup;
         }
 
-        if (harmony_launch(hdesc, NULL, 0) != 0) {
-            errprint("Could not launch tuning session: %s\n",
-                     harmony_error_string(hdesc));
-            MPI_Abort(MPI_COMM_WORLD, -1);
+        if (ah_def_int(hdef, "TI", 2, 500, 2, NULL) != 0 ||
+            ah_def_int(hdef, "TJ", 2, 500, 2, NULL) != 0 ||
+            ah_def_int(hdef, "TK", 2, 500, 2, NULL) != 0 ||
+            ah_def_int(hdef, "UI", 1,   8, 1, NULL) != 0 ||
+            ah_def_int(hdef, "UJ", 1,   8, 1, NULL) != 0)
+        {
+            errprint("Failed to define tuning session: %s\n", ah_error());
+            goto cleanup;
+        }
+
+        htask = ah_start(hdesc, hdef);
+        ah_def_free(hdef);
+        if (!htask) {
+            errprint("Could not start tuning task: %s\n", ah_error());
+            goto cleanup;
         }
     }
 
-    /* Everybody should wait until a tuning session is created. */
     MPI_Barrier(MPI_COMM_WORLD);
+    if (rank != 0) {
+        // Everybody else may now join the master's new Harmony search.
+        htask = ah_join(hdesc, SESSION_NAME);
+        if (!htask) {
+            errprint("Could not start tuning task: %s\n", ah_error());
+            goto cleanup;
+        }
+    }
 
-    /* Associate local memory to the session's runtime tunable
-     * parameters.  For example, these represent loop tiling and
-     * unrolling factors.
-     */
-    if (harmony_bind_int(hdesc, "TI", &TI) != 0 ||
-        harmony_bind_int(hdesc, "TJ", &TJ) != 0 ||
-        harmony_bind_int(hdesc, "TK", &TK) != 0 ||
-        harmony_bind_int(hdesc, "UI", &UI) != 0 ||
-        harmony_bind_int(hdesc, "UJ", &UJ) != 0)
+    // Associate local memory to the session's runtime tunable
+    // parameters.  For example, these represent loop tiling and
+    // unrolling factors.
+    //
+    if (ah_bind_int(htask, "TI", &TI) != 0 ||
+        ah_bind_int(htask, "TJ", &TJ) != 0 ||
+        ah_bind_int(htask, "TK", &TK) != 0 ||
+        ah_bind_int(htask, "UI", &UI) != 0 ||
+        ah_bind_int(htask, "UJ", &UJ) != 0)
     {
         errprint("Error binding local memory to Harmony variables.\n");
         goto cleanup;
     }
-
-    /* Connect to Harmony server and register ourselves as a client. */
-    if (harmony_join(hdesc, NULL, 0, SESSION_NAME) != 0) {
-        errprint("Could not join Harmony tuning session.\n");
-        goto cleanup;
-    }
-    harmony_connected = 1;
 
     dprint("MPI node ready and searching for new shared objects in %s:%s\n",
            hostname, new_code_path);
@@ -198,13 +217,13 @@ int main(int argc, char *argv[])
     for (i = 1; i < SEARCH_MAX; ++i) {
         dprint("Begin iteration #%d\n", i);
 
-        /* Retrieve a new point to test from the tuning session. */
+        // Retrieve a new point to test from the tuning session.
         if (fetch_configuration() != 0)
             goto cleanup;
 
         memset(C, 0, sizeof(C));
 
-        /* Perform and measure the client application code. */
+        // Perform and measure the client application code.
         time_start = timer();
         code_so(&matrix_size, A, B, C);
         time_end = timer();
@@ -218,38 +237,37 @@ int main(int argc, char *argv[])
         dprint("TI:%ld, TJ:%ld, TK:%ld, UI:%ld, UJ:%ld = %lf\n",
                TI, TJ, TK, UI, UJ, perf);
 
-        /* update the performance result */
-        if (harmony_report(hdesc, &perf) != 0) {
+        // Update the performance result.
+        if (ah_report(htask, &perf) != 0) {
             errprint("Error reporting performance to server.\n");
             goto cleanup;
         }
 
         if (!harmonized) {
-            // check_convergence returns 0 if not converged, 1 if converged
-            harmonized = check_convergence(hdesc);
+            // check_convergence() returns 0 if not converged, 1 if converged.
+            harmonized = check_convergence();
             if (harmonized != 0 && harmonized != 1) {
                 errprint("Error checking harmony convergence status.\n");
                 goto cleanup;
             }
 
             if (harmonized) {
-                /*
-                 * Harmony server has converged, so make one final fetch
-                 * to load the harmonized values, and disconnect from
-                 * server.
-                 */
+                // Harmony server has converged, so make one final fetch
+                // to load the harmonized values, and disconnect from
+                // server.
+                //
                 if (fetch_configuration() != 0)
                     goto cleanup;
 
-                if (harmony_leave(hdesc) != 0) {
+                if (ah_leave(htask) != 0) {
                     errprint("Error leaving tuning session.");
                     goto cleanup;
                 }
 
-                /* At this point, the application may continue its
-                 * execution using the harmonized values without
-                 * interference from the Harmony server.
-                 */
+                // At this point, the application may continue its
+                // execution using the harmonized values without
+                // interference from the Harmony server.
+                //
                 harmony_connected = 0;
                 found_iter = i;
             }
@@ -257,16 +275,16 @@ int main(int argc, char *argv[])
         MPI_Barrier(MPI_COMM_WORLD);
     }
 
-    /* Print final book-keeping messages. */
+    // Print final book-keeping messages.
     time_current = MPI_Wtime();
     time = time_current - time_initial;
     dprint("%.3f: machine=%s [# node_count=%i]\n",
            time, hostname, node_count);
 
-    /* Leave the Harmony session, if needed. */
+    // Leave the Harmony session, if needed.
     if (harmony_connected) {
-        if (harmony_leave(hdesc) != 0) {
-            errprint("Error leaving Harmony session.\n");
+        if (ah_close(hdesc) != 0) {
+            errprint("Error disconnecting from Harmony session.\n");
             harmony_connected = 0;
             goto cleanup;
         }
@@ -281,12 +299,16 @@ int main(int argc, char *argv[])
 
   cleanup:
     if (harmony_connected) {
-        if (harmony_leave(hdesc) != 0)
-            errprint("Error disconnecting from Harmony server.\n");
+        if (ah_close(hdesc) != 0)
+            errprint("Error disconnecting from Harmony session.\n");
     }
-    harmony_fini(hdesc);
+    ah_free(hdesc);
     return MPI_Abort(MPI_COMM_WORLD, -1);
 }
+
+/*
+ * Internal helper function prototypes.
+ */
 
 double timer()
 {
@@ -307,17 +329,17 @@ int fetch_configuration(void)
     int changed = 0;
 
     while (changed == 0) {
-        changed = harmony_fetch(hdesc);
+        changed = ah_fetch(htask);
 
         if (changed == 1) {
-            /* Harmony updated variable values.  Load a new shared object. */
+            // Harmony updated variable values.  Load a new shared object.
             if (update_so(construct_so_filename()) != 0) {
                 errprint("Could not load new code object.");
                 return -1;
             }
         }
         else if (changed == 0) {
-            /* No points available from Harmony, and harmony_best() failed. */
+            // No points available from Harmony, and ah_best() failed.
             sleep(1);
             continue;
         }
@@ -333,19 +355,19 @@ int fetch_configuration(void)
  * Check if the parameter space search has converged.
  * Only rank 0 communicates directly with the Harmony server.
  */
-int check_convergence(hdesc_t *hdesc)
+int check_convergence(void)
 {
     int status;
 
     if (rank == 0) {
         dprint("Checking Harmony search status.\n");
-        status = harmony_converged(hdesc);
+        status = ah_converged(htask);
     }
     else {
         dprint("Waiting to hear search status from rank 0.\n");
     }
 
-    /* Broadcast the result of harmony_converged(). */
+    // Broadcast the result of ah_converged().
     MPI_Bcast(&status, 1, MPI_INT, 0, MPI_COMM_WORLD);
     return status;
 }
@@ -353,7 +375,7 @@ int check_convergence(hdesc_t *hdesc)
 /*
  * Construct the full pathname for the new code variant.
  */
-char *construct_so_filename()
+char* construct_so_filename()
 {
     static char fullpath[1024];
 
@@ -362,13 +384,15 @@ char *construct_so_filename()
     return fullpath;
 }
 
-/* Update the code we wish to test.
+/*
+ * Update the code we wish to test.
+ *
  * Loads function <symbol_name> from shared object <filename>,
  * and stores that address in code_ptr.
  */
-int update_so(const char *filename)
+int update_so(const char* filename)
 {
-    char *err_str;
+    char* err_str;
 
     flib_eval = dlopen(filename, RTLD_LAZY);
     err_str = dlerror();
@@ -421,7 +445,9 @@ int check_code_correctness(void)
     return 0;
 }
 
-/* Illustrates the use of a local penalization technique. */
+/*
+ * Illustrates the use of a local penalization technique.
+ */
 int penalty_factor()
 {
     int increment = 100;
@@ -442,7 +468,7 @@ double calculate_performance(double raw_perf)
     return (double)(result + penalty_factor());
 }
 
-int dprint(const char *fmt, ...)
+int dprint(const char* fmt, ...)
 {
     va_list ap;
     int count;
@@ -458,7 +484,7 @@ int dprint(const char *fmt, ...)
     return count;
 }
 
-int errprint(const char *fmt, ...)
+int errprint(const char* fmt, ...)
 {
     va_list ap;
     int count;

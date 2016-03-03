@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -20,59 +20,90 @@
 #ifndef __LIBVERTEX_H__
 #define __LIBVERTEX_H__
 
-#include "hsignature.h"
+#include "hspace.h"
 #include "hpoint.h"
 #include "hperf.h"
+
+#include <stdio.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+/*
+ * Vertex structure for geometric manipulation of hpoints.
+ */
 typedef struct vertex {
-    int id;
-    hperf_t *perf;
-    double term[];
+    unsigned id;
+    double*  term;
+    int      len;
+    hperf_t  perf;
 } vertex_t;
 
+typedef enum vertex_norm {
+    VERTEX_NORM_UNKNOWN = 0,
+    VERTEX_NORM_L1,
+    VERTEX_NORM_L2,
+
+    VERTEX_NORM_MAX
+} vertex_norm_t;
+
+/*
+ * Vertex structure management interface.
+ */
+int  vertex_init(vertex_t* vertex, int newlen);
+int  vertex_copy(vertex_t* dest, const vertex_t* src);
+void vertex_fini(vertex_t* vertex);
+
+/*
+ * Vertex initialization interface.
+ */
+int vertex_center(vertex_t* vertex, const hspace_t* space);
+int vertex_maximum(vertex_t* vertex, const hspace_t* space);
+int vertex_minimum(vertex_t* vertex, const hspace_t* space);
+int vertex_parse(vertex_t* vertex, const hspace_t* space, const char* buf);
+int vertex_random(vertex_t* vertex, const hspace_t* space, double radius);
+int vertex_set(vertex_t* vertex, const hspace_t* space, const hpoint_t* point);
+
+/*
+ * Vertex utility function interface.
+ */
+int    vertex_inbounds(const vertex_t* vertex, const hspace_t* space);
+double vertex_norm(const vertex_t* a, const vertex_t* b, vertex_norm_t norm);
+int    vertex_point(const vertex_t* vertex, const hspace_t* space,
+                    hpoint_t* point);
+int    vertex_transform(const vertex_t* base, const vertex_t* origin,
+                        double coefficient, vertex_t* result);
+
+/*
+ * Simplex structure to support operations on vertex groups.
+ */
 typedef struct simplex {
-    int len;
-    vertex_t *vertex[];
+    vertex_t* vertex;
+    int       len;
 } simplex_t;
 
-int libvertex_init(hsignature_t *sig);
-const vertex_t *vertex_min(void);
-const vertex_t *vertex_max(void);
+/*
+ * Simplex structure management interface.
+ */
+int  simplex_init(simplex_t* simplex, unsigned dimensions);
+int  simplex_copy(simplex_t* dest, const simplex_t* src);
+void simplex_fini(simplex_t* simplex);
 
-vertex_t * vertex_alloc();
-void       vertex_reset(vertex_t *v);
-int        vertex_copy(vertex_t *dst, const vertex_t *src);
-void       vertex_free(vertex_t *v);
-int        vertex_center(vertex_t *v);
-int        vertex_rand(vertex_t *v);
-int        vertex_rand_trim(vertex_t *v, double trim);
-double     vertex_dist(const vertex_t *v1, const vertex_t *v2);
-void       vertex_transform(const vertex_t *src, const vertex_t *wrt,
-                            double coefficient, vertex_t *result);
-int        vertex_outofbounds(const vertex_t *v);
-int        vertex_regrid(vertex_t *v);
-int        vertex_to_hpoint(const vertex_t *v, hpoint_t *result);
-int        vertex_from_hpoint(const hpoint_t *pt, vertex_t *result);
-int        vertex_from_string(const char *str, hsignature_t *sig,
-                              vertex_t *result);
+/*
+ * Simplex initialization interface.
+ */
+int simplex_set(simplex_t* simplex, const hspace_t* space,
+                const vertex_t* base, double radius);
 
-simplex_t *simplex_alloc(int m);
-void       simplex_reset(simplex_t *s);
-int        simplex_copy(simplex_t *dst, const simplex_t *src);
-void       simplex_free(simplex_t *s);
-void       simplex_centroid(const simplex_t *s, vertex_t *v);
-void       simplex_transform(const simplex_t *src, const vertex_t *wrt,
-                             double coefficient, simplex_t *result);
-int        simplex_outofbounds(const simplex_t *s);
-int        simplex_regrid(simplex_t *s);
-int        simplex_from_vertex(const vertex_t *v, double percent,
-                               simplex_t *s);
-int        simplex_collapsed(const simplex_t *s);
-int simplex_set_vertex(simplex_t *s, const vertex_t *v, int n);
+/*
+ * Simplex utility function interface.
+ */
+int simplex_centroid(const simplex_t* simplex, vertex_t* centroid);
+int simplex_collapsed(const simplex_t* simplex, const hspace_t* space);
+int simplex_inbounds(const simplex_t* simplex, const hspace_t* space);
+int simplex_transform(const simplex_t* base, const vertex_t* origin,
+                      double coefficient, simplex_t* result);
 
 #ifdef __cplusplus
 }

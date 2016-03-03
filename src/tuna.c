@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -16,6 +16,11 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Active Harmony.  If not, see <http://www.gnu.org/licenses/>.
  */
+#ifdef __gnu_linux__
+#define _POSIX_SOURCE   // Needed for kill(), and fdopen() on older libc's.
+#define _BSD_SOURCE     // Needed for wait3(), kill(), timersub() and fdopen().
+#define _DEFAULT_SOURCE // Needed for _BSD_SOURCE on glibc 2.20 and later.
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,7 +43,7 @@
 #include "hclient.h"
 #include "hutil.h"
 #include "hval.h"
-#include "defaults.h"
+#include "hcfg.h"
 
 typedef enum method_t {
     METHOD_WALL,
@@ -50,39 +55,41 @@ typedef enum method_t {
 } method_t;
 
 struct strlist {
-    char *str;
-    struct strlist *next;
+    char* str;
+    struct strlist* next;
 };
 typedef struct strlist strlist_t;
 
 typedef struct bundle_info {
-    hval_type type;
-    char *name;
-    void *data;
+    hval_type_t type;
+    char* name;
+    void* data;
     int used;
 } bundle_info_t;
 
-void usage(const char *);
-void parseArgs(int, char **);
-int handle_int(char *);
-int handle_real(char *);
-int handle_enum(char *);
-int handle_method(char *);
-int handle_chapel(char *);
+void usage(const char*);
+void parseArgs(int, char**);
+int handle_int(char*);
+int handle_real(char*);
+int handle_enum(char*);
+int handle_method(char*);
+int handle_chapel(char*);
 int prepare_client_argv();
-FILE *tuna_popen(const char *, char **, pid_t *);
-double tv_to_double(struct timeval *);
-int argv_add(char *);
-bundle_info_t *tuna_bundle_add(hval_type, char *);
-bundle_info_t *tuna_bundle_get(char **);
-int is_exec(const char *filename);
-char *find_exec(const char *);
+FILE* tuna_popen(const char*, char**, pid_t*);
+double tv_to_double(struct timeval*);
+int argv_add(char*);
+bundle_info_t* tuna_bundle_add(hval_type_t, char*);
+bundle_info_t* tuna_bundle_get(char**);
+int is_exec(const char* filename);
+char* find_exec(const char*);
 
 char prog_env[FILENAME_MAX];
 char prog_hsvr[FILENAME_MAX];
 
 method_t method = METHOD_WALL;
-hdesc_t *hdesc = NULL;
+hdesc_t* hdesc = NULL;
+hdef_t* hdef = NULL;
+htask_t* htask = NULL;
 unsigned int max_loop = 50;
 unsigned int quiet = 0;
 unsigned int verbose = 0;
@@ -91,18 +98,19 @@ unsigned int verbose = 0;
 unsigned int bcount = 0;
 bundle_info_t binfo[MAX_BUNDLE];
 
-strlist_t *argv_template = NULL;
-char *client_bin;
+strlist_t* argv_template = NULL;
+char* client_bin;
 int client_argc = 0;
-char **client_argv;
-char *argv_buf = NULL;
+char** client_argv;
+char* argv_buf = NULL;
 int argv_buflen = 0;
 
-int main(int argc, char **argv)
+int main(int argc, char* argv[])
 {
     int i, hresult, line_start, count;
-    char readbuf[4096], *path;
-    FILE *fptr;
+    char readbuf[4096];
+    char* path;
+    FILE* fptr;
     double perf = 0.0;
 
     struct timeval wall_start, wall_end, wall_time;
@@ -116,7 +124,7 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    /* Find external support executables */
+    // Find external support executables.
     path = find_exec("env");
     if (path != NULL) {
         strncpy(prog_env, path, sizeof(prog_env));
@@ -127,49 +135,45 @@ int main(int argc, char **argv)
                 "  Will attempt direct execution.\n");
     }
 
-    /* Initialize the Harmony descriptor */
-    hdesc = harmony_init(&argc, &argv);
+    // Initialize the Harmony descriptor.
+    hdesc = ah_alloc();
     if (hdesc == NULL) {
         fprintf(stderr, "Failed to initialize a Harmony descriptor.\n");
         return -1;
     }
 
-    /* Parse the command line arguments. */
+    // Parse the command line arguments.
     parseArgs(argc, argv);
 
-    /* Name the session after the target application. */
-    harmony_session_name(hdesc, client_bin);
-
-    /* Use the Nelder-Mead search strategy by default. */
-    harmony_setcfg(hdesc, CFGKEY_SESSION_STRATEGY, "nm.so");
-
-    /* Sanity check before we attempt to connect to the server. */
+    // Sanity check before we attempt to connect to the server.
     if (bcount < 1) {
         fprintf(stderr, "No tunable variables defined.\n");
         return -1;
     }
 
-    if (harmony_launch(hdesc, NULL, 0) != 0) {
-        fprintf(stderr, "Error launching new tuning session: %s\n",
-                harmony_error_string(hdesc));
+    // Connect to a Harmony search session.
+    if (ah_connect(hdesc, NULL, 0) != 0) {
+        fprintf(stderr, "Error connecting to Harmony session: %s\n",
+                ah_error());
         return -1;
     }
 
-    /* Connect to Harmony server and register ourselves as a client. */
-    if (harmony_join(hdesc, NULL, 0, client_bin) != 0) {
-        fprintf(stderr, "Error joining Harmony session: %s\n",
-                harmony_error_string(hdesc));
+    // Start a new Harmony search task.
+    htask = ah_start(hdesc, hdef);
+    if (!htask) {
+        fprintf(stderr, "Error starting Harmony search: %s\n",
+                ah_error());
         goto cleanup;
     }
 
     for (i = 0; max_loop <= 0 || i < max_loop; ++i) {
-        hresult = harmony_fetch(hdesc);
+        hresult = ah_fetch(htask);
         if (hresult < 0) {
             fprintf(stderr, "Failed to fetch values from server.\n");
             goto cleanup;
         }
         else if (hresult > 0) {
-            /* The Harmony system modified the variable values. */
+            // The Harmony system modified the variable values.
             prepare_client_argv();
         }
 
@@ -220,24 +224,24 @@ int main(int argc, char **argv)
             goto cleanup;
         }
 
-        /* Update the performance result */
-        if (harmony_report(hdesc, &perf) < 0) {
+        // Update the performance result.
+        if (ah_report(htask, &perf) < 0) {
             fprintf(stderr, "Failed to report performance to server.\n");
             goto cleanup;
         }
 
-        if (harmony_converged(hdesc))
+        if (ah_converged(htask))
             break;
     }
 
-    if (harmony_best(hdesc) >= 0) {
+    if (ah_best(htask) >= 0) {
         printf("Best configuration found:\n");
         for (i = 0; i < bcount; ++i) {
             printf("\t%s: ", binfo[i].name);
             switch (binfo[i].type) {
-            case HVAL_INT:  printf("%ld\n", *(long *)binfo[i].data); break;
-            case HVAL_REAL: printf("%lf\n", *(double *)binfo[i].data); break;
-            case HVAL_STR:  printf("\"%s\"\n", *(char **)binfo[i].data); break;
+            case HVAL_INT:  printf("%ld\n", *(long*)binfo[i].data); break;
+            case HVAL_REAL: printf("%lf\n", *(double*)binfo[i].data); break;
+            case HVAL_STR:  printf("\"%s\"\n", *(char**)binfo[i].data); break;
             default:        assert(0 && "Invalid parameter type.");
             }
         }
@@ -248,10 +252,10 @@ int main(int argc, char **argv)
     }
 
   cleanup:
-    /* Close the session */
-    if (harmony_leave(hdesc) < 0)
-        fprintf(stderr, "Failed to disconnect from harmony server.\n");
-    harmony_fini(hdesc);
+    // Close the connection to the session.
+    if (ah_close(hdesc) != 0)
+        fprintf(stderr, "Failed to detach from Harmony session.\n");
+    ah_free(hdesc);
 
     if (svr_pid && kill(svr_pid, SIGKILL) < 0)
         fprintf(stderr, "Could not kill server process (%d).\n", svr_pid);
@@ -259,7 +263,7 @@ int main(int argc, char **argv)
     return 0;
 }
 
-void usage(const char *me)
+void usage(const char* me)
 {
     fprintf(stderr, "Usage: %s tunable_vars [options] prog [prog_args]\n", me);
     fprintf(stderr, "\n"
@@ -299,19 +303,27 @@ void usage(const char *me)
 "  describe the format of the argument vector.  Each argument (starting with\n"
 "  and including the program binary) may include a percent sign (%%)\n"
 "  followed by the name of a previously defined tunable variable.  This\n"
-"  identifier may be optionally bracketed by curly-braces.  Values from the\n"
-"  tuning server will then be used to complete a command-line instance.\n"
+"  identifier may be optionally bracketed by curly-braces.  Values fromn"
+"  the Harmony search will then be used to complete a command-line instance.\n"
 "  A backslash (\\) may be used to produce a literal %%.  For example:\n"
 "\n"
 "    %s -i=tile,1,10,1 -i=unroll,1,10,1 \\\n"
 "        ./matrix_mult -t %%tile -u %%unroll`\n\n", me);
 }
 
-void parseArgs(int argc, char **argv)
+void parseArgs(int argc, char* argv[])
 {
     int i, stop = 0, chapel = 0;
-    char *arg;
-    bundle_info_t *bun;
+    char* arg;
+    bundle_info_t* bun;
+
+    // Define a new search.
+    hdef = ah_def_alloc();
+    if (!hdef) {
+        fprintf(stderr, "Could not allocate a new search definition: %s\n",
+                ah_error());
+        return;
+    }
 
     for (i = 1; i < argc && *argv[i] == '-' && !stop; ++i) {
         arg = argv[i] + 1;
@@ -335,7 +347,7 @@ void parseArgs(int argc, char **argv)
                     }
                 }
                 else {
-                    char *ptr = argv[++i];
+                    char* ptr = argv[++i];
                     max_loop = strtoul(ptr, &ptr, 0);
                     if (*ptr != '\0') {
                         fprintf(stderr, "Trailing characters after n value\n");
@@ -367,7 +379,7 @@ void parseArgs(int argc, char **argv)
         }
     }
 
-    client_bin = sprintf_alloc("%s.%d", argv[i], getpid());
+    client_bin = sprintf_alloc("%s_%d", argv[i], getpid());
     if (!client_bin) {
         perror("Could not allocate memory for client name");
         exit(-1);
@@ -401,7 +413,7 @@ void parseArgs(int argc, char **argv)
                 fprintf(stdout, "Warning: Appending unused bundle \"%s\""
                         " to target argv.\n", binfo[i].name);
 
-            arg = (char *) malloc(strlen(binfo[i].name) + 2);
+            arg = malloc(strlen(binfo[i].name) + 2);
             if (arg == NULL) {
                 perror("Malloc error");
                 exit(-1);
@@ -412,18 +424,19 @@ void parseArgs(int argc, char **argv)
         }
     }
 
-    client_argv = (char **) malloc(sizeof(char *) * (client_argc + 1));
+    client_argv = malloc(sizeof(char*) * (client_argc + 1));
     if (client_argv == NULL) {
         perror("Malloc error");
         exit(-1);
     }
 }
 
-int handle_int(char *arg)
+int handle_int(char* arg)
 {
-    char *arg_orig, *name;
+    char* arg_orig;
+    char* name;
     long min, max, step;
-    bundle_info_t *bun;
+    bundle_info_t* bun;
 
     assert(*arg == 'i');
     arg_orig = arg;
@@ -449,24 +462,20 @@ int handle_int(char *arg)
     if (bun == NULL)
         return -1;
 
-    if (harmony_int(hdesc, name, min, max, step) < 0) {
+    if (ah_def_int(hdef, name, min, max, step, bun->data) != 0) {
         fprintf(stderr, "Error registering variable '%s'.\n", name);
-        return -1;
-    }
-
-    if (harmony_bind_int(hdesc, name, bun->data) < 0) {
-        fprintf(stderr, "Error binding data to variable '%s'.\n", name);
         return -1;
     }
 
     return 0;
 }
 
-int handle_real(char *arg)
+int handle_real(char* arg)
 {
-    char *arg_orig, *name;
+    char* arg_orig;
+    char* name;
     double min, max, step;
-    bundle_info_t *bun;
+    bundle_info_t* bun;
 
     assert(*arg == 'r');
     arg_orig = arg;
@@ -492,23 +501,20 @@ int handle_real(char *arg)
     if (bun == NULL)
         return -1;
 
-    if (harmony_real(hdesc, name, min, max, step) < 0) {
+    if (ah_def_real(hdef, name, min, max, step, bun->data) != 3) {
         fprintf(stderr, "Error registering variable '%s'.\n", name);
-        return -1;
-    }
-
-    if (harmony_bind_real(hdesc, name, bun->data) < 0) {
-        fprintf(stderr, "Error binding data to variable '%s'.\n", name);
         return -1;
     }
 
     return 0;
 }
 
-int handle_enum(char *arg)
+int handle_enum(char* arg)
 {
-    char *arg_orig, *name, *val;
-    bundle_info_t *bun;
+    char* arg_orig;
+    char* name;
+    char* val;
+    bundle_info_t* bun;
 
     assert(*arg == 'e');
     arg_orig = arg;
@@ -529,27 +535,29 @@ int handle_enum(char *arg)
     if (bun == NULL)
         return -1;
 
+    if (ah_def_enum(hdef, name, bun->data) != 0) {
+        fprintf(stderr, "Error adding enumerated-domain variable '%s': %s\n",
+                name, ah_error());
+        return -1;
+    }
+
     while (*arg != '\0') {
         val = arg;
         while (*arg != ',' && *arg != '\0') ++arg;
         if (*arg != '\0')
             *(arg++) = '\0';
 
-        if (harmony_enum(hdesc, name, val) < 0) {
-            fprintf(stderr, "Invalid value string for variable '%s'.\n", name);
+        if (ah_def_enum_value(hdef, name, val) != 0) {
+            fprintf(stderr, "Error adding value to enumerated-domain"
+                    " variable '%s': %s\n", name, ah_error());
             return -1;
         }
-    }
-
-    if (harmony_bind_enum(hdesc, name, bun->data) < 0) {
-        fprintf(stderr, "Error binding data to variable '%s'.\n", name);
-        return -1;
     }
 
     return 0;
 }
 
-int handle_method(char *arg)
+int handle_method(char* arg)
 {
     assert(*arg == 'm');
     ++arg;
@@ -568,17 +576,18 @@ int handle_method(char *arg)
     return 0;
 }
 
-int handle_chapel(char *prog)
+int handle_chapel(char* prog)
 {
-    char buf[4096], *arg;
+    char buf[4096];
+    char* arg;
     int chpl_flag = 0;
 
-    char *name;
+    char* name;
     long min, max, step;
-    bundle_info_t *bun;
+    bundle_info_t* bun;
 
-    FILE *fd;
-    char *help_argv[3];
+    FILE* fd;
+    char* help_argv[3];
 
     help_argv[0] = prog;
     help_argv[1] = "--help";
@@ -601,12 +610,8 @@ int handle_chapel(char *prog)
     bun = tuna_bundle_add(HVAL_INT, "dataParTsk");
     if (bun == NULL)
         return -1;
-    if (harmony_int(hdesc, "dataParTsk", 1, 64, 1) < 0) {
+    if (ah_def_int(hdef, "dataParTsk", 1, 64, 1, bun->data) != 0) {
         fprintf(stderr, "Error registering variable 'dataParTsk'.\n");
-        return -1;
-    }
-    if (harmony_bind_int(hdesc, "dataParTsk", bun->data) < 0) {
-        fprintf(stderr, "Error binding data to variable 'dataParTsk'.\n");
         return -1;
     }
     if (argv_add("--dataParTasksPerLocale=%dataParTsk"))
@@ -616,12 +621,8 @@ int handle_chapel(char *prog)
     bun = tuna_bundle_add(HVAL_INT, "numThr");
     if (bun == NULL)
         return -1;
-    if (harmony_int(hdesc, "numThr", 1, 32, 1) < 0) {
+    if (ah_def_int(hdef, "numThr", 1, 32, 1, bun->data) != 0) {
         fprintf(stderr, "Error registering variable 'numThr'.\n");
-        return -1;
-    }
-    if (harmony_bind_int(hdesc, "numThr", bun->data) < 0) {
-        fprintf(stderr, "Error binding data to variable 'numThr'.\n");
         return -1;
     }
     if (argv_add("--numThreadsPerLocale=%numThr"))
@@ -657,7 +658,7 @@ int handle_chapel(char *prog)
         }
         *strchr(name, ':') = '\0';
 
-        arg = (char *)malloc((strlen(name) * 2) + 4);
+        arg = malloc((strlen(name) * 2) + 4);
         if (arg == NULL) {
             perror("Malloc error");
             return -1;
@@ -667,16 +668,12 @@ int handle_chapel(char *prog)
         if (bun == NULL)
             return -1;
 
-        if (harmony_int(hdesc, name, min, max, step) < 0) {
+        if (ah_def_int(hdef, name, min, max, step, bun->data) != 0) {
             fprintf(stderr, "Error registering variable '%s'.\n", name);
             return -1;
         }
-        if (harmony_bind_int(hdesc, name, bun->data) < 0) {
-            fprintf(stderr, "Error binding data to variable '%s'.\n", name);
-            return -1;
-        }
 
-        arg = (char *)malloc((strlen(name) * 2) + 4);
+        arg = malloc((strlen(name) * 2) + 4);
         if (arg == NULL) {
             perror("Malloc error");
             return -1;
@@ -695,9 +692,9 @@ int prepare_client_argv()
 {
     unsigned int i = 0;
     int count = 0, len, remainder;
-    char *arg;
-    strlist_t *arglist;
-    bundle_info_t *bun;
+    char* arg;
+    strlist_t* arglist;
+    bundle_info_t* bun;
 
     for (arglist = argv_template; arglist != NULL; arglist = arglist->next) {
         client_argv[i++] = argv_buf + count;
@@ -714,13 +711,13 @@ int prepare_client_argv()
 
                 switch (bun->type) {
                 case HVAL_INT:  len = snprintf(argv_buf + count, remainder,
-                                               "%ld", *(long *)bun->data);
+                                               "%ld", *(long*)bun->data);
                     break;
                 case HVAL_REAL: len = snprintf(argv_buf + count, remainder,
-                                               "%lf", *(double *)bun->data);
+                                               "%lf", *(double*)bun->data);
                     break;
                 case HVAL_STR:  len = snprintf(argv_buf + count, remainder,
-                                               "%s", *(char **)bun->data);
+                                               "%s", *(char**)bun->data);
                     break;
                 default:        assert(0 && "Invalid parameter type.");
                 }
@@ -741,7 +738,7 @@ int prepare_client_argv()
     client_argv[i] = NULL;
 
     if (count > argv_buflen) {
-        argv_buf = (char *)realloc(argv_buf, count);
+        argv_buf = realloc(argv_buf, count);
         if (argv_buf == NULL) {
             perror("Realloc error");
             return -1;
@@ -752,10 +749,10 @@ int prepare_client_argv()
     return 0;
 }
 
-FILE *tuna_popen(const char *prog, char **argv, pid_t *ret_pid)
+FILE* tuna_popen(const char* prog, char** argv, pid_t* ret_pid)
 {
     int i, pipefd[2];
-    FILE *fptr;
+    FILE* fptr;
     pid_t pid;
 
     if (pipe(pipefd) != 0) {
@@ -773,8 +770,8 @@ FILE *tuna_popen(const char *prog, char **argv, pid_t *ret_pid)
 
     pid = fork();
     if (pid == 0) {
-        /* Child Case */
-        close(pipefd[0]); /* Close (historically) read side of pipe. */
+        // Child Case.
+        close(pipefd[0]); // Close (historically) read side of pipe.
 
         if (dup2(pipefd[1], STDOUT_FILENO) < 0 ||
             dup2(pipefd[1], STDERR_FILENO) < 0)
@@ -791,9 +788,9 @@ FILE *tuna_popen(const char *prog, char **argv, pid_t *ret_pid)
         perror("Error on fork()");
         return NULL;
     }
-    close(pipefd[1]); /* Close (historically) write side of pipe. */
+    close(pipefd[1]); // Close (historically) write side of pipe.
 
-    /* Convert raw socket to stream based FILE ptr. */
+    // Convert raw socket to stream based FILE ptr.
     fptr = fdopen(pipefd[0], "r");
     if (fptr == NULL) {
         perror("Cannot convert pipefd to FILE ptr");
@@ -805,21 +802,21 @@ FILE *tuna_popen(const char *prog, char **argv, pid_t *ret_pid)
     return fptr;
 }
 
-double tv_to_double(struct timeval *tv)
+double tv_to_double(struct timeval* tv)
 {
     double retval = tv->tv_usec;
     retval /= 1000000;
     return retval + tv->tv_sec;
 }
 
-int argv_add(char *str)
+int argv_add(char* str)
 {
-    static strlist_t **tail;
+    static strlist_t** tail;
 
     if (argv_template == NULL)
         tail = &argv_template;
 
-    *tail = (strlist_t *)malloc(sizeof(strlist_t));
+    *tail = malloc(sizeof(*tail));
     if (*tail == NULL) {
         perror("Malloc error");
         return -1;
@@ -832,9 +829,9 @@ int argv_add(char *str)
     return 0;
 }
 
-bundle_info_t *tuna_bundle_add(hval_type type, char *name)
+bundle_info_t* tuna_bundle_add(hval_type_t type, char* name)
 {
-    void *data;
+    void* data;
 
     if (bcount >= MAX_BUNDLE) {
         fprintf(stderr, "Maximum number of tunable parameters"
@@ -845,7 +842,7 @@ bundle_info_t *tuna_bundle_add(hval_type type, char *name)
     switch (type) {
     case HVAL_INT:  data = malloc(sizeof(long)); break;
     case HVAL_REAL: data = malloc(sizeof(double)); break;
-    case HVAL_STR:  data = malloc(sizeof(char *)); break;
+    case HVAL_STR:  data = malloc(sizeof(char*)); break;
     default: assert(0 && "Invalid parameter type.");
     }
 
@@ -861,11 +858,11 @@ bundle_info_t *tuna_bundle_add(hval_type type, char *name)
     return &binfo[bcount++];
 }
 
-bundle_info_t *tuna_bundle_get(char **name)
+bundle_info_t* tuna_bundle_get(char** name)
 {
     int i;
-    char *end = NULL;
-    bundle_info_t *retval = NULL;
+    char* end = NULL;
+    bundle_info_t* retval = NULL;
 
     if (**name == '%') {
         ++(*name);
@@ -885,7 +882,6 @@ bundle_info_t *tuna_bundle_get(char **name)
         {
             retval = binfo + i;
             break;
-            return binfo + i;
         }
     }
 
@@ -900,10 +896,11 @@ bundle_info_t *tuna_bundle_get(char **name)
     return retval;
 }
 
-char *find_exec(const char *filename)
+char* find_exec(const char* filename)
 {
     static char fullpath[FILENAME_MAX];
-    char *path, *ptr;
+    char* path;
+    char* ptr;
 
     path = getenv("PATH");
     if (path == NULL)
@@ -928,7 +925,7 @@ char *find_exec(const char *filename)
     return NULL;
 }
 
-int is_exec(const char *filename)
+int is_exec(const char* filename)
 {
     uid_t uid, euid;
     gid_t gid, egid;

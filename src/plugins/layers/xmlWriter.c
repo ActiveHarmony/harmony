@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -34,12 +34,14 @@
  * And `LIBXML2` should point wherever libxml2 has been installed.
  * For Linux distributions that include libxml2 as a package, using
  * `/usr` may be sufficient.
- *
- * **Configuration Variables**
- * Key                | Type    | Default | Description
- * ------------------ | ------- | ------- | -----------
- * XML_FILENAME       | String  | [none]  | XML output file.
  */
+
+#include "hlayer.h"
+#include "session-core.h"
+#include "hspace.h"
+#include "hpoint.h"
+#include "hutil.h"
+#include "hcfg.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -55,55 +57,97 @@
 #include <libxml/xpathInternals.h>
 #include <libxml/xmlwriter.h>
 
-#include "session-core.h"
-#include "hsignature.h"
-#include "hpoint.h"
-#include "hutil.h"
-#include "defaults.h"
+/*
+ * Name used to identify this plugin layer.
+ * All Harmony plugins must define this variable.
+ */
+const char hplugin_name[] = "xmlWriter";
+
+/*
+ * Configuration variables used in this plugin.
+ * These will automatically be registered by session-core upon load.
+ */
+const hcfg_info_t hplugin_keyinfo[] = {
+    { CFGKEY_XML_FILE, NULL, "XML output file." },
+    { NULL }
+};
 
 #define MY_ENCODING "ISO-8859-1"
 
-char harmony_layer_name[] = "xmlWriter";
+/*
+ * Structure to hold all data needed by an individual search instance.
+ *
+ * To support multiple parallel search instances, no global variables
+ * should be defined or used in this plug-in layer.  They should
+ * instead be defined as a part of this structure.
+ */
+struct hplugin_data {
+    hspace_t* space;
+    //clock_t file_create_time;
+    char filename[128];
+    char create_time[128];
+    int paramNum;
+};
 
-hsignature_t sess_sig;
-/* clock_t file_create_time; */
-char filename[128];
-char create_time[128];
-int paramNum;
+/*
+ * Internal helper function prototypes.
+ */
+static int harmony_xmlWriteAppName(hplugin_data_t* data, const char* appName);
+static int harmony_xmlWriteParamInfo(hplugin_data_t* data);
+/*
+static int harmony_xmlWriteNodeInfo(hplugin_data_t* data, int clientID,
+                                    char* nodeinfo, char* sysName,
+                                    char* release, char* machine,
+                                    int core_num, char* cpu_vendor,
+                                    char* cpu_model, char* cpu_freq,
+                                    char* cache_size);
+*/
 
-int harmony_xmlWriteAppName(const char *appName);
-int harmony_xmlWriteParamInfo(void);
+/*
+ * Allocate memory for a new search task.
+ */
+void* xmlWriter_alloc(void)
+{
+    hplugin_data_t* retval = calloc(1, sizeof(*retval));
+    if (!retval)
+        return NULL;
 
-int xmlWriter_init(hsignature_t *sig)
+    return retval;
+}
+
+/*
+ * Initialize (or re-initialize) data for this search task.
+ */
+int xmlWriter_init(hplugin_data_t* data, hspace_t* space)
 {
     int rc;
-    const char *tmpstr;
+    const char* tmpstr;
     xmlTextWriterPtr writer;
-    /* xmlChar *tmp; */
+    //xmlChar* tmp;
     xmlDocPtr doc;
     xmlNodePtr node;
 
-    /* Using create time to name xml file and initialize */
+    // Using create time to name xml file and initialize.
     time_t now;
-    struct tm *current;
+    struct tm* current;
     now = time(0);
     current = localtime(&now);
-    snprintf(create_time, 64, "%d%d%d", (int)current->tm_hour,
+    snprintf(data->create_time, 64, "%d%d%d", (int)current->tm_hour,
              (int)current->tm_min, (int)current->tm_sec);
 
-    tmpstr = session_getcfg("XML_FILENAME");
+    tmpstr = hcfg_get(search_cfg, CFGKEY_XML_FILE);
     if (tmpstr)
-        strncpy(filename, tmpstr, sizeof(filename));
+        strncpy(data->filename, tmpstr, sizeof(data->filename));
     else
-        snprintf(filename, sizeof(filename), "%s_%s.xml",
-                 sig->name, create_time);
+        snprintf(data->filename, sizeof(data->filename), "%s_%s.xml",
+                 space->name, data->create_time);
 
     doc = xmlNewDoc(BAD_CAST XML_DEFAULT_VERSION);
     if (!doc) {
-        session_error("Error creating the xml document tree");
+        search_error("Error creating the xml document tree");
         return -1;
     }
-    xmlSaveFileEnc(filename, doc, MY_ENCODING);
+    xmlSaveFileEnc(data->filename, doc, MY_ENCODING);
 
     node = xmlNewDocNode(doc, NULL, BAD_CAST "Harmony", NULL);
     if (node == NULL) {
@@ -111,93 +155,94 @@ int xmlWriter_init(hsignature_t *sig)
         return -1;
     }
 
-    /* Make "HarmonyData" the root node of the tree */
+    // Make "HarmonyData" the root node of the tree.
     xmlDocSetRootElement(doc, node);
 
-    /* Create a new xmlWriter for DOM tree, with no compression */
+    // Create a new xmlWriter for DOM tree, with no compression.
     writer = xmlNewTextWriterTree(doc, node, 0);
     if (!writer) {
-        session_error("Error creating the xml writer");
+        search_error("Error creating the xml writer");
         return -1;
     }
 
     rc = xmlTextWriterStartDocument(writer, NULL, MY_ENCODING, NULL);
     if (rc < 0) {
-        session_error("Error at xmlTestWriterStartDocument");
+        search_error("Error at xmlTestWriterStartDocument");
         return -1;
     }
     rc = xmlTextWriterStartElement(writer, BAD_CAST "HarmonyData");
     rc = xmlTextWriterStartElement(writer, BAD_CAST "Metadata");
     if (rc < 0) {
-        session_error("Error at xmlTextWriterStartElement");
+        search_error("Error at xmlTextWriterStartElement");
         return -1;
     }
 
     rc = xmlTextWriterStartElement(writer, BAD_CAST "Nodeinfo");
 
-    /* Close the element Nodeinfo */
+    // Close the element Nodeinfo.
     rc = xmlTextWriterEndElement(writer);
 
-    /* Start them element AppName */
+    // Start them element AppName.
     rc = xmlTextWriterStartElement(writer, BAD_CAST "AppName");
 
-    /* Close the element AppName */
+    // Close the element AppName.
     rc = xmlTextWriterEndElement(writer);
 
-    /* Start and close the element Param */
+    // Start and close the element Param.
     rc = xmlTextWriterStartElement(writer, BAD_CAST "ParamList");
     rc = xmlTextWriterEndElement(writer);
 
-    /* Start and close starttime */
+    // Start and close starttime.
     rc = xmlTextWriterWriteFormatElement(writer, BAD_CAST "StartTime",
-                                         "%s", create_time);
-                                         /* Close the element Metadata */
+                                         "%s", data->create_time);
+
+    // Close the element Metadata.
     rc = xmlTextWriterEndElement(writer);
 
-    /* Start and close RawData */
+    // Start and close RawData.
     rc = xmlTextWriterStartElement(writer, BAD_CAST "RawData");
     rc = xmlTextWriterEndElement(writer);
 
-    /* close HarmonyData */
+    // Close HarmonyData.
     rc = xmlTextWriterEndElement(writer);
 
     rc = xmlTextWriterEndDocument(writer);
 
     xmlFreeTextWriter(writer);
-    xmlSaveFileEnc(filename, doc, MY_ENCODING);
+    xmlSaveFileEnc(data->filename, doc, MY_ENCODING);
     xmlFreeDoc(doc);
 
-    /* Writing primary metadata */
-    hsignature_copy(&sess_sig, sig);
+    // Writing primary metadata.
+    data->space = space;
 
-    /* Write appName */
-    if (harmony_xmlWriteAppName(sig->name) != 0)
+    // Write appName.
+    if (harmony_xmlWriteAppName(data, space->name) != 0)
         return -1;
 
-    /* Write nodeInfo */
+    // Write nodeInfo
 
-    /* Write param info */
-    paramNum = sig->range_len;
-    if (harmony_xmlWriteParamInfo() != 0)
+    // Write param info.
+    data->paramNum = space->len;
+    if (harmony_xmlWriteParamInfo(data) != 0)
         return -1;
 
     return 0;
 }
 
-int xmlWriter_generate(hflow_t *flow, htrial_t *trial)
+int xmlWriter_generate(hplugin_data_t* data, hflow_t* flow, htrial_t* trial)
 {
     int i;
 
-    xmlDoc *doc;
-    xmlNode *curNode;
-    xmlNode *dataNode;
-    xmlNode *root_element = NULL;
+    xmlDoc* doc;
+    xmlNode* curNode;
+    xmlNode* dataNode;
+    xmlNode* root_element = NULL;
 
     char timestr[64];
     char temp[32];
     char confstr[32];
     time_t now;
-    struct tm *current;
+    struct tm* current;
 
     now = time(0);
     current = localtime(&now);
@@ -205,19 +250,19 @@ int xmlWriter_generate(hflow_t *flow, htrial_t *trial)
              current->tm_min, current->tm_sec);
 
     char performance[32];
-    sprintf(performance, "%lf", trial->perf);
+    sprintf(performance, "%lf", hperf_unify(&trial->perf));
 
-    doc = xmlReadFile(filename, NULL, 0);
+    doc = xmlReadFile(data->filename, NULL, 0);
     if (doc == NULL) {
-        session_error("Failed to parse the xml file");
+        search_error("Failed to parse the xml file");
         return -1;
     }
 
     root_element = xmlDocGetRootElement(doc);
-    /* point to the first child under HarmonyData tag */
+    // Point to the first child under HarmonyData tag.
     curNode = root_element->xmlChildrenNode->xmlChildrenNode;
     while (curNode != NULL) {
-        if (xmlStrcmp(curNode->name, (const xmlChar *)"RawData") == 0) {
+        if (xmlStrcmp(curNode->name, (const xmlChar*)"RawData") == 0) {
             xmlNodePtr newNode;
 
             newNode = xmlNewNode(NULL, BAD_CAST"Data");
@@ -230,11 +275,11 @@ int xmlWriter_generate(hflow_t *flow, htrial_t *trial)
             xmlAddChild(curNode, newNode);
             curNode = newNode;
 
-            /* Start adding param and corresponding config */
-            for (i = 0; i < paramNum; i++) {
-                hval_t *val = &trial->point.val[i];
+            // Start adding param and corresponding config.
+            for (i = 0; i < data->paramNum; i++) {
+                const hval_t* val = &trial->point.term[i];
 
-                snprintf(temp, sizeof(temp), "%s", sess_sig.range[i].name);
+                snprintf(temp, sizeof(temp), "%s", data->space->dim[i].name);
                 switch (val->type) {
                 case HVAL_INT:
                     snprintf(confstr, sizeof(confstr), "%ld", val->value.i);
@@ -251,17 +296,18 @@ int xmlWriter_generate(hflow_t *flow, htrial_t *trial)
                 default:
                     break;
                 }
-                xmlNewTextChild(curNode, NULL, (xmlChar *)temp,
-                                (xmlChar *)confstr);
+                xmlNewTextChild(curNode, NULL, (xmlChar*)temp,
+                                (xmlChar*)confstr);
             }
 
-            xmlNewTextChild(dataNode, NULL, (xmlChar *)"Perf",
-                            (xmlChar *)performance);
-            xmlNewTextChild(dataNode, NULL, (xmlChar *)"Time",
-                            (xmlChar *)timestr);
-            xmlNewTextChild(dataNode, NULL, (xmlChar *)"Client",
-                            (xmlChar *)session_getcfg(CFGKEY_CURRENT_CLIENT));
-            xmlSaveFileEnc(filename, doc, MY_ENCODING);
+            xmlNewTextChild(dataNode, NULL, (xmlChar*)"Perf",
+                            (xmlChar*)performance);
+            xmlNewTextChild(dataNode, NULL, (xmlChar*)"Time",
+                            (xmlChar*)timestr);
+            xmlNewTextChild(dataNode, NULL, (xmlChar*)"Client",
+                            (xmlChar*)hcfg_get(search_cfg,
+                                               CFGKEY_CURRENT_CLIENT));
+            xmlSaveFileEnc(data->filename, doc, MY_ENCODING);
             break;
         }
         curNode = curNode->next;
@@ -269,25 +315,39 @@ int xmlWriter_generate(hflow_t *flow, htrial_t *trial)
     return 0;
 }
 
-int harmony_xmlWriteNodeInfo(int clientID, char *nodeinfo, char *sysName,
-                             char *release, char *machine, int core_num,
-                             char *cpu_vendor, char *cpu_model,
-                             char *cpu_freq, char *cache_size)
+/*
+ * Free memory associated with this search task.
+ */
+int xmlWriter_fini(hplugin_data_t* data)
 {
-    xmlDoc *doc;
-    xmlNode *curNode;
-    xmlNode *root_element = NULL;
+    free(data);
+    return 0;
+}
+
+/*
+ * Internal helper function implementation.
+ */
+
+/*
+int harmony_xmlWriteNodeInfo(hplugin_data_t* data, int clientID,
+                             char* nodeinfo, char* sysName, char* release,
+                             char* machine, int core_num, char* cpu_vendor,
+                             char* cpu_model, char* cpu_freq, char* cache_size)
+{
+    xmlDoc* doc;
+    xmlNode* curNode;
+    xmlNode* root_element = NULL;
 
     char proc_num[2];
     char client[4];
 
-    snprintf(filename, 128, "%s.xml", create_time);
+    snprintf(data->filename, 128, "%s.xml", data->create_time);
     snprintf(proc_num, 2, "%d", core_num);
     snprintf(client, 2, "%d", clientID);
 
-    doc = xmlReadFile(filename, NULL, 0);
+    doc = xmlReadFile(data->filename, NULL, 0);
     if (!doc) {
-        session_error("Failed to parse the xml file");
+        search_error("Failed to parse the xml file");
         return -1;
     }
 
@@ -295,59 +355,60 @@ int harmony_xmlWriteNodeInfo(int clientID, char *nodeinfo, char *sysName,
 
     curNode = root_element->xmlChildrenNode->xmlChildrenNode->xmlChildrenNode;
     while (curNode != NULL) {
-        if (!xmlStrcmp(curNode->name, (const xmlChar *)"Nodeinfo")) {
+        if (!xmlStrcmp(curNode->name, (const xmlChar*)"Nodeinfo")) {
             xmlNodePtr newNode = xmlNewNode(NULL, BAD_CAST"Node");
             xmlAddChild(curNode, newNode);
             curNode = newNode;
-            xmlNewTextChild(curNode, NULL, (xmlChar *)"HostName",
-                            (xmlChar *)nodeinfo);
-            xmlNewTextChild(curNode, NULL, (xmlChar *)"sysName",
-                            (xmlChar *)sysName);
-            xmlNewTextChild(curNode, NULL, (xmlChar *)"Release",
-                            (xmlChar *)release);
-            xmlNewTextChild(curNode, NULL, (xmlChar *)"Machine",
-                            (xmlChar *)machine);
-            xmlNewTextChild(curNode, NULL, (xmlChar *)"ProcessorNum",
-                            (xmlChar *)proc_num);
-            xmlNewTextChild(curNode, NULL, (xmlChar *)"CPUVendor",
-                            (xmlChar *)cpu_vendor);
-            xmlNewTextChild(curNode, NULL, (xmlChar *)"CPUModel",
-                            (xmlChar *)cpu_model);
-            xmlNewTextChild(curNode, NULL, (xmlChar *)"CPUFreq",
-                            (xmlChar *)cpu_freq);
-            xmlNewTextChild(curNode, NULL, (xmlChar *)"CacheSize",
-                            (xmlChar *)cache_size);
-            xmlNewTextChild(curNode, NULL, (xmlChar *)"ClientID",
-                            (xmlChar *)client);
+            xmlNewTextChild(curNode, NULL, (xmlChar*)"HostName",
+                            (xmlChar*)nodeinfo);
+            xmlNewTextChild(curNode, NULL, (xmlChar*)"sysName",
+                            (xmlChar*)sysName);
+            xmlNewTextChild(curNode, NULL, (xmlChar*)"Release",
+                            (xmlChar*)release);
+            xmlNewTextChild(curNode, NULL, (xmlChar*)"Machine",
+                            (xmlChar*)machine);
+            xmlNewTextChild(curNode, NULL, (xmlChar*)"ProcessorNum",
+                            (xmlChar*)proc_num);
+            xmlNewTextChild(curNode, NULL, (xmlChar*)"CPUVendor",
+                            (xmlChar*)cpu_vendor);
+            xmlNewTextChild(curNode, NULL, (xmlChar*)"CPUModel",
+                            (xmlChar*)cpu_model);
+            xmlNewTextChild(curNode, NULL, (xmlChar*)"CPUFreq",
+                            (xmlChar*)cpu_freq);
+            xmlNewTextChild(curNode, NULL, (xmlChar*)"CacheSize",
+                            (xmlChar*)cache_size);
+            xmlNewTextChild(curNode, NULL, (xmlChar*)"ClientID",
+                            (xmlChar*)client);
 
-            xmlSaveFileEnc(filename, doc, MY_ENCODING);
+            xmlSaveFileEnc(data->filename, doc, MY_ENCODING);
             break;
         }
         curNode = curNode->next;
     }
     return 0;
 }
+*/
 
-int harmony_xmlWriteAppName(const char *appName)
+int harmony_xmlWriteAppName(hplugin_data_t* data, const char* appName)
 {
-    xmlDoc *doc;
-    xmlNode *curNode;
-    xmlNode *root_element = NULL;
+    xmlDoc* doc;
+    xmlNode* curNode;
+    xmlNode* root_element = NULL;
 
-    doc = xmlReadFile(filename, NULL, 0);
+    doc = xmlReadFile(data->filename, NULL, 0);
     if (!doc) {
-        session_error("Failed to parse the xml file");
+        search_error("Failed to parse the xml file");
         return -1;
     }
 
     root_element = xmlDocGetRootElement(doc);
-    //point to the first child under Metadata tag
+    // Point to the first child under Metadata tag.
     curNode = root_element->xmlChildrenNode->xmlChildrenNode->xmlChildrenNode;
     while (curNode) {
-        if (!xmlStrcmp(curNode->name, (const xmlChar *)"AppName")) {
-            xmlNewTextChild(curNode, NULL, (xmlChar *)"appName",
-                            (xmlChar *)appName);
-            xmlSaveFileEnc(filename, doc, MY_ENCODING);
+        if (!xmlStrcmp(curNode->name, (const xmlChar*)"AppName")) {
+            xmlNewTextChild(curNode, NULL, (xmlChar*)"appName",
+                            (xmlChar*)appName);
+            xmlSaveFileEnc(data->filename, doc, MY_ENCODING);
             break;
         }
         curNode = curNode->next;
@@ -355,58 +416,59 @@ int harmony_xmlWriteAppName(const char *appName)
     return 0;
 }
 
-/* This function get the param information in the followint format
+/*
+ * This function get the param information in the following format
  * {Name Min Max Step Name Min Max Step ......}  And then parse this
  * formation and put it into the Metadata section of the xml file
  */
-int harmony_xmlWriteParamInfo(void)
+int harmony_xmlWriteParamInfo(hplugin_data_t* data)
 {
     int i;
 
-    xmlDoc *doc;
-    xmlNode *curNode;
-    xmlNode *root_element = NULL;
+    xmlDoc* doc;
+    xmlNode* curNode;
+    xmlNode* root_element = NULL;
 
     char paramName[32];
     char paramMin[16];
     char paramMax[16];
     char paramStep[16];
 
-    doc = xmlReadFile(filename, NULL, 0);
+    doc = xmlReadFile(data->filename, NULL, 0);
     if (doc == NULL) {
-        session_error("Failed to parse the xml file");
+        search_error("Failed to parse the xml file");
         return -1;
     }
 
     root_element = xmlDocGetRootElement(doc);
 
-    /* Point to the first child under Metadata tag */
+    // Point to the first child under Metadata tag.
     curNode = root_element->xmlChildrenNode->xmlChildrenNode->xmlChildrenNode;
     while (curNode != NULL) {
-        if (!xmlStrcmp(curNode->name, (const xmlChar *)"ParamList")) {
+        if (!xmlStrcmp(curNode->name, (const xmlChar*)"ParamList")) {
 
-            for (i = 0; i < paramNum; i++) {
+            for (i = 0; i < data->paramNum; i++) {
                 snprintf(paramName, sizeof(paramName), "%s",
-                         sess_sig.range[i].name);
+                         data->space->dim[i].name);
 
-                /*Type sensitive*/
-                switch (sess_sig.range[i].type) {
+                // Type sensitive.
+                switch (data->space->dim[i].type) {
                 case HVAL_INT:
                     snprintf(paramMin, sizeof(paramMin), "%ld",
-                             sess_sig.range[i].bounds.i.min);
+                             data->space->dim[i].bounds.i.min);
                     snprintf(paramMax, sizeof(paramMax), "%ld",
-                             sess_sig.range[i].bounds.i.max);
+                             data->space->dim[i].bounds.i.max);
                     snprintf(paramStep, sizeof(paramStep), "%ld",
-                             sess_sig.range[i].bounds.i.step);
+                             data->space->dim[i].bounds.i.step);
                     break;
 
                 case HVAL_REAL:
                     snprintf(paramMin, sizeof(paramMin), "%f",
-                             sess_sig.range[i].bounds.r.min);
+                             data->space->dim[i].bounds.r.min);
                     snprintf(paramMax, sizeof(paramMax), "%f",
-                             sess_sig.range[i].bounds.r.max);
+                             data->space->dim[i].bounds.r.max);
                     snprintf(paramStep, sizeof(paramStep), "%f",
-                             sess_sig.range[i].bounds.r.step);
+                             data->space->dim[i].bounds.r.step);
                     break;
 
                 case HVAL_STR:
@@ -418,15 +480,15 @@ int harmony_xmlWriteParamInfo(void)
                 xmlNodePtr newNode = xmlNewNode(NULL, BAD_CAST"Param");
                 xmlAddChild(curNode, newNode);
 
-                xmlNewTextChild(newNode, NULL, (xmlChar *)"paramName",
-                                (xmlChar *)paramName);
-                xmlNewTextChild(newNode, NULL, (xmlChar *)"paramMin",
-                                (xmlChar *)paramMin);
-                xmlNewTextChild(newNode, NULL, (xmlChar *)"paramMax",
-                                (xmlChar *)paramMax);
-                xmlNewTextChild(newNode, NULL, (xmlChar *)"paramStep",
-                                (xmlChar *)paramStep);
-                xmlSaveFileEnc(filename, doc, MY_ENCODING);
+                xmlNewTextChild(newNode, NULL, (xmlChar*)"paramName",
+                                (xmlChar*)paramName);
+                xmlNewTextChild(newNode, NULL, (xmlChar*)"paramMin",
+                                (xmlChar*)paramMin);
+                xmlNewTextChild(newNode, NULL, (xmlChar*)"paramMax",
+                                (xmlChar*)paramMax);
+                xmlNewTextChild(newNode, NULL, (xmlChar*)"paramStep",
+                                (xmlChar*)paramStep);
+                xmlSaveFileEnc(data->filename, doc, MY_ENCODING);
             }
 
         }

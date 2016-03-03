@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2013 Jeffrey K. Hollingsworth
+ * Copyright 2003-2016 Jeffrey K. Hollingsworth
  *
  * This file is part of Active Harmony.
  *
@@ -27,21 +27,15 @@
  *
  * It is mainly used as a basis of comparison for more intelligent
  * search strategies.
- *
- * **Configuration Variables**
- * Key          | Type       | Default | Description
- * ------------ | ---------- | ------- | -----------
- * RANDOM_SEED  | Integer    | time()  | Value to seed the pseudo-random number generator.  Default is to seed the random generator by time.
  */
 
-#include "strategy.h"
+#include "hstrategy.h"
 #include "session-core.h"
-#include "hsignature.h"
+#include "hcfg.h"
+#include "hspace.h"
+#include "hpoint.h"
 #include "hperf.h"
 #include "hutil.h"
-#include "hcfg.h"
-#include "defaults.h"
-#include "libvertex.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -49,64 +43,68 @@
 #include <time.h>
 #include <math.h>
 
-hpoint_t best;
-double   best_perf;
-
-/* Forward function definitions. */
-int strategy_cfg(hsignature_t *sig);
-
-/* Variables to track current search state. */
-vertex_t *curr;
+/*
+ * Configuration variables used in this plugin.
+ * These will automatically be registered by session-core upon load.
+ */
+const hcfg_info_t hplugin_keyinfo[] = {
+    { CFGKEY_INIT_POINT, NULL, "Initial point begin testing from." },
+    { NULL }
+};
 
 /*
- * Invoked once on strategy load.
+ * Structure to hold data for an individual exhaustive search instance.
  */
-int strategy_init(hsignature_t *sig)
+struct hplugin_data {
+    int       space_id;
+    hspace_t* space;
+    hpoint_t  best;
+    double    best_perf;
+
+    hpoint_t  next;
+};
+
+/*
+ * Internal helper function prototypes.
+ */
+static int  config_strategy(hplugin_data_t* data);
+static void randomize(hplugin_data_t* data, hpoint_t* point);
+
+/*
+ * Allocate memory for a new search task.
+ */
+hplugin_data_t* strategy_alloc(void)
 {
-    if (libvertex_init(sig) != 0) {
-        session_error("Could not initialize vertex library.");
-        return -1;
-    }
+    hplugin_data_t* retval = calloc(1, sizeof(*retval));
+    if (!retval)
+        return NULL;
 
-    if (!curr) {
-        /* One time memory allocation and/or initialization. */
-        curr = vertex_alloc();
-        if (!curr) {
-            session_error("Could not allocate memory for testing vertex.");
-            return -1;
-        }
+    retval->best_perf = HUGE_VAL;
+    retval->next.id = 1;
 
-        /* The best point and trial counter should only be initialized once,
-         * and thus be retained across a restart.
-         */
-        best = HPOINT_INITIALIZER;
-        best_perf = INFINITY;
-        curr->id = 1;
-    }
-
-    /* Initialization for subsequent calls to strategy_init(). */
-    if (strategy_cfg(sig) != 0)
-        return -1;
-
-    if (session_setcfg(CFGKEY_STRATEGY_CONVERGED, "0") != 0) {
-        session_error("Could not set "
-                      CFGKEY_STRATEGY_CONVERGED " config variable.");
-        return -1;
-    }
-    return 0;
+    return retval;
 }
 
-int strategy_cfg(hsignature_t *sig)
+/*
+ * Initialize (or re-initialize) data for this search task.
+ */
+int strategy_init(hplugin_data_t* data, hspace_t* space)
 {
-    const char *cfgval;
-
-    cfgval = session_getcfg(CFGKEY_INIT_POINT);
-    if (cfgval) {
-        if (vertex_from_string(cfgval, sig, curr) != 0)
+    if (data->space_id != space->id) {
+        if (hpoint_init(&data->next, space->len) != 0) {
+            search_error("Could not initialize point structure");
             return -1;
+        }
+        data->next.len = space->len;
+        data->space = space;
     }
-    else {
-        vertex_rand(curr);
+
+    if (config_strategy(data) != 0)
+        return -1;
+
+    if (search_setcfg(CFGKEY_CONVERGED, "0") != 0) {
+        search_error("Could not set " CFGKEY_CONVERGED " config variable");
+        return -1;
     }
     return 0;
 }
@@ -114,16 +112,16 @@ int strategy_cfg(hsignature_t *sig)
 /*
  * Generate a new candidate configuration.
  */
-int strategy_generate(hflow_t *flow, hpoint_t *point)
+int strategy_generate(hplugin_data_t* data, hflow_t* flow, hpoint_t* point)
 {
-    if (vertex_to_hpoint(curr, point) != 0) {
-        session_error("Internal error: Could not make point from vertex.");
+    if (hpoint_copy(point, &data->next) != 0) {
+        search_error("Could not copy point during generation");
         return -1;
     }
-    ++curr->id;
 
-    /* Prepare a new random vertex for the next call to strategy_generate. */
-    vertex_rand(curr);
+    // Prepare a new random vertex for the next call to strategy_generate.
+    randomize(data, &data->next);
+    ++data->next.id;
 
     flow->status = HFLOW_ACCEPT;
     return 0;
@@ -132,25 +130,19 @@ int strategy_generate(hflow_t *flow, hpoint_t *point)
 /*
  * Regenerate a point deemed invalid by a later plug-in.
  */
-int strategy_rejected(hflow_t *flow, hpoint_t *point)
+int strategy_rejected(hplugin_data_t* data, hflow_t* flow, hpoint_t* point)
 {
-    hpoint_t *hint = &flow->point;
+    if (flow->point.id) {
+        hpoint_t* hint = &flow->point;
 
-    if (hint && hint->id != -1) {
-        int orig_id = point->id;
-
+        hint->id = point->id;
         if (hpoint_copy(point, hint) != 0) {
-            session_error("Internal error: Could not copy point.");
+            search_error("Could not copy hint point during reject");
             return -1;
         }
-        point->id = orig_id;
     }
     else {
-        vertex_rand(curr);
-        if (vertex_to_hpoint(curr, point) != 0) {
-            session_error("Internal error: Could not make point from vertex.");
-            return -1;
-        }
+        randomize(data, point);
     }
 
     flow->status = HFLOW_ACCEPT;
@@ -160,14 +152,14 @@ int strategy_rejected(hflow_t *flow, hpoint_t *point)
 /*
  * Analyze the observed performance for this configuration point.
  */
-int strategy_analyze(htrial_t *trial)
+int strategy_analyze(hplugin_data_t* data, htrial_t* trial)
 {
-    double perf = hperf_unify(trial->perf);
+    double perf = hperf_unify(&trial->perf);
 
-    if (best_perf > perf) {
-        best_perf = perf;
-        if (hpoint_copy(&best, &trial->point) != 0) {
-            session_error("Internal error: Could not copy point.");
+    if (data->best_perf > perf) {
+        data->best_perf = perf;
+        if (hpoint_copy(&data->best, &trial->point) != 0) {
+            search_error("Could not copy best point");
             return -1;
         }
     }
@@ -177,11 +169,53 @@ int strategy_analyze(htrial_t *trial)
 /*
  * Return the best performing point thus far in the search.
  */
-int strategy_best(hpoint_t *point)
+int strategy_best(hplugin_data_t* data, hpoint_t* point)
 {
-    if (hpoint_copy(point, &best) != 0) {
-        session_error("Internal error: Could not copy point.");
+    if (hpoint_copy(point, &data->best) != 0) {
+        search_error("Could not copy best point out of strategy");
         return -1;
     }
     return 0;
+}
+
+/*
+ * Free memory associated with this search task.
+ */
+int strategy_fini(hplugin_data_t* data)
+{
+    hpoint_fini(&data->next);
+    hpoint_fini(&data->best);
+
+    free(data);
+    return 0;
+}
+
+/*
+ * Internal helper function implementation.
+ */
+
+int config_strategy(hplugin_data_t* data)
+{
+    const char* cfgval = hcfg_get(search_cfg, CFGKEY_INIT_POINT);
+    if (cfgval) {
+        if (hpoint_parse(&data->next, cfgval, data->space) != 0) {
+            search_error("Error parsing point from " CFGKEY_INIT_POINT);
+            return -1;
+        }
+
+        if (hpoint_align(&data->next, data->space) != 0) {
+            search_error("Could not align initial point to search space");
+            return -1;
+        }
+    }
+    else {
+        randomize(data, &data->next);
+    }
+    return 0;
+}
+
+void randomize(hplugin_data_t* data, hpoint_t* point)
+{
+    for (int i = 0; i < data->space->len; ++i)
+        point->term[i] = hrange_random(&data->space->dim[i], search_drand48());
 }
