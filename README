@@ -35,7 +35,7 @@ By default, this will create relevant files within the source tree.
 If you'd like to install the software elsewhere, use the `PREFIX`
 variable:
 
-    $ make install PREFIX=$HOME/local/harmony-4.5
+    $ make install PREFIX=$HOME/local/harmony-4.6
 
 This make system is also sensitive to standard build flags supplied by
 the environment:
@@ -95,7 +95,7 @@ installed.  Namely, it should match the `PREFIX` variable used during
 installation described in the [Installation](\ref start_install)
 section above (assuming Bourne shell semantics):
 
-    $ export HARMONY_HOME=$HOME/local/harmony-4.5
+    $ export HARMONY_HOME=$HOME/local/harmony-4.6
 
 If no `PREFIX` variable was used during `make install`, `HARMONY_HOME`
 should be set to the base directory of the source tree.
