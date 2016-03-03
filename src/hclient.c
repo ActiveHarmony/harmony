@@ -481,6 +481,8 @@ hdef_t* ah_def_alloc(void)
  * ah_def_enum() to programmatically define the parameters and
  * configuration environment for a new search.
  *
+ * \param hdef Definition descriptor returned from ah_def_alloc() or
+ *             ah_def_load().
  * \param name Name to associate with this search.  If NULL, then the
  *             library will attempt to generate a unique identifier
  *             during ah_start().
