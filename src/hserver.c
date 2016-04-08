@@ -300,7 +300,7 @@ int vars_init(int argc, char* argv[])
 
         harmony_dir = dirname(tmppath);
         if (strcmp(harmony_dir, ".") == 0)
-            harmony_dir = "..";
+            harmony_dir = stralloc("..");
         else
             harmony_dir = stralloc(dirname(harmony_dir));
         free(tmppath);
