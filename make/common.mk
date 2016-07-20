@@ -7,7 +7,8 @@ endif
 #
 .DEFAULT_GOAL=all
 
-prefix=$(realpath .)/$(TO_BASE)
+prefix="$(realpath .)/$(TO_BASE)"
+$(warning $(prefix))
 exec_prefix=$(prefix)
 bindir=$(exec_prefix)/bin
 libdir=$(exec_prefix)/lib
@@ -59,7 +60,6 @@ include $(TO_BASE)/make/$(OS_MAKE).mk
         $(TO_BASE)/src/libharmony.a
 
 all: $(TGTS) subdirs
-
 _BIN_DIRS=$(addprefix $(DESTDIR)$(bindir)/, $(dir $(BIN_TGTS))) \
           $(addprefix $(DESTDIR)$(bindir)/, $(dir $(BIN_COPY)))
 _LIB_DIRS=$(addprefix $(DESTDIR)$(libdir)/, $(dir $(LIB_TGTS))) \
@@ -70,8 +70,8 @@ _INCLUDE_DIRS=$(addprefix $(DESTDIR)$(includedir)/, $(dir $(INCLUDE_TGTS))) \
               $(addprefix $(DESTDIR)$(includedir)/, $(dir $(INCLUDE_COPY)))
 install: all
 	@if [ -n "$(BIN_TGTS)" -o -n "$(BIN_COPY)" ]; then \
-	    echo mkdir -p $(sort $(_BIN_DIRS)) && \
-	         mkdir -p $(sort $(_BIN_DIRS)) && \
+	    echo mkdir -p $(sort \"$(_BIN_DIRS)\") && \
+	         mkdir -p $(sort \"$(_BIN_DIRS)\") && \
 	    for i in $(BIN_TGTS); do \
 	        echo cp $$i $(DESTDIR)$(bindir)/$$i && \
 	             cp $$i $(DESTDIR)$(bindir)/$$i; \
