@@ -2,6 +2,13 @@ ifndef TO_BASE
     $(error Makefile does not define TO_BASE variables.)
 endif
 
+# BUG: Invoking with --always-make and --jobs > 1 creates a race condition.
+#      For now, we sacrifice performance for guaranteed correctness.
+ifneq (,$(findstring B,$(MAKEFLAGS)))
+.NOTPARALLEL:
+endif
+
+
 #
 # Variables that control the build system.
 #
